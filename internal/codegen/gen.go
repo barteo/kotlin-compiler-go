@@ -44,10 +44,14 @@ type gen struct {
 	// declares, whose code, as kotlinc's plugins' IR, has no checks of
 	// platform-typed values.
 	plugin bool
-	loops  []loopLabels
-	tries  []*tryCtx       // the try blocks the code is in, innermost last
-	lam    *lambdaCtx      // set in a lambda's method
-	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
+	// javaArg is the argument being passed to a Java method, which
+	// kotlinc doesn't check for null where an annotation makes the
+	// parameter's type non-null.
+	javaArg syntax.Expr
+	loops   []loopLabels
+	tries   []*tryCtx       // the try blocks the code is in, innermost last
+	lam     *lambdaCtx      // set in a lambda's method
+	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -100,6 +104,12 @@ type gen struct {
 	// srcInl are the copies of the program's inline functions being
 	// generated, innermost last.
 	srcInl []*srcInline
+	// inlineParams are, in the method of an inline function, its
+	// parameters whose lambdas its copies inline, and passedOn the
+	// arguments that pass one of them on to another inline function:
+	// see passedOnArg.
+	inlineParams map[*types.VarSym]bool
+	passedOn     map[*syntax.Ident]bool
 	// reified are the classes of the reified type parameters of the
 	// stdlib's inline function being copied, by name, and reifiedTypes
 	// their types, for typeOf.
@@ -172,6 +182,10 @@ type fileState struct {
 	// convertedArg.
 	inlinedConvs map[*syntax.Call]*types.VarSym
 	count        map[string]int // lambdas named with each class and prefix
+	// serializers are the serializers of the type arguments of the
+	// reified type parameters of the program's inline functions whose
+	// copies are being generated: see copySerializers.
+	serializers map[*types.TypeParamSym]syntax.Expr
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool
@@ -422,7 +436,7 @@ func (g *gen) privateAccessors() {
 			acc &^= cf.AccFinal // an interface's methods can't be final
 		}
 		code := c.NewMethod(acc, m.accessor(), d)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
 		}
 		switch {
@@ -438,7 +452,7 @@ func (g *gen) privateAccessors() {
 		default:
 			code.Invoke(op, m.class, m.name, m.desc)
 		}
-		code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		code.Op(returnOpOf(cf.RetDesc(d)))
 		if err := code.Err(); err != nil {
 			panic(err)
 		}
@@ -997,6 +1011,16 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		g.publicInline = true
 		defer func() { g.publicInline = saved }()
 	}
+	if fd.Inline && !sym.Suspend && len(fd.Inlinable) == len(fd.Params) {
+		saved := g.inlineParams
+		g.inlineParams = map[*types.VarSym]bool{}
+		for i, p := range fd.Params {
+			if fd.Inlinable[i] && p.Sym != nil {
+				g.inlineParams[p.Sym] = true
+			}
+		}
+		defer func() { g.inlineParams = saved }()
+	}
 	d := funDesc(sym)
 	if g.implsThis {
 		d = "(L" + g.owner.Name + ";" + d[1:] // a DefaultImpls body takes this first
@@ -1068,7 +1092,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 	g.cls.Throws(sym.Throws...)
 	if outer != nil {
 		g.code.NameLocal(g.code.AllocLocal("L"+g.cls.Name+";"), "this")
-		for i, pd := range descParams(d) {
+		for i, pd := range cf.DescParams(d) {
 			slot := g.code.AllocLocal(pd)
 			if !sym.Ext {
 				g.code.NameLocal(slot, sym.Params[i].Name)
@@ -1077,7 +1101,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 		}
 		g.code.Invoke(cf.INVOKESTATIC, outer.Name, sym.JVM(), d)
 		g.code.Line(fd.P.Line)
-		g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	g.annotateFun(m, fd, access&(cf.AccPrivate|cf.AccSynthetic) != 0 || g.owner != nil && g.owner.Anonymous)
@@ -1594,7 +1618,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 		}
 	}
 	g.code.AllocLocal(self)
-	from, to := descParams(d), descParams(td)
+	from, to := cf.DescParams(d), cf.DescParams(td)
 	slots := make([]int, len(from))
 	for i, pd := range from {
 		slots[i] = g.code.AllocLocal(pd)
@@ -1645,7 +1669,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	} else {
 		g.code.InvokeInterface(target.Owner.Name, target.JVM(), td)
 	}
-	ret, tret := d[strings.IndexByte(d, ')')+1:], td[strings.IndexByte(td, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(td)
 	switch {
 	case ret == "V" && (tret == "J" || tret == "D"):
 		g.code.Op(cf.POP2)
@@ -1723,7 +1747,7 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 	}
 	// An enum's name and ordinal, an inner class's outer instance or a
 	// local class's captures come first.
-	skip := len(descParams(ctorDesc(cd))) - len(cls.Ctor.Params)
+	skip := len(cf.DescParams(ctorDesc(cd))) - len(cls.Ctor.Params)
 	g.annotateCtor(c.LastMethod(), &cd.CtorMods, cls.Ctor.Params, nil, cd.CtorParams, skip, access&cf.AccPrivate != 0 || cls.Anonymous)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -1886,7 +1910,7 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	if access&cf.AccSynthetic == 0 {
 		g.signCtor(g.cls.LastMethod(), cls, f, sc.Params, d, sc.Annotations)
 	}
-	skip := len(descParams(d)) - len(f.Params)
+	skip := len(cf.DescParams(d)) - len(f.Params)
 	g.annotateCtor(g.cls.LastMethod(), &sc.Modifiers, f.Params, sc.Params, nil, skip, access&cf.AccPrivate != 0)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -2216,12 +2240,17 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		}
 	}
 	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
-	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
+	if copied && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda
-		// parameters into it.
+		// parameters into it. A suspend function's is the body of its
+		// name$$forInline method, whose suspension points are marked.
 		g.prefix = f.Name + "$lambda"
 		g.retType = types.JVMRet(f)
+		if f.Suspend {
+			g.suspendFun(fd, g.code.Name(), g.code.Desc(), k, &resumeCall{forInline: true})
+			defer g.endSuspend()
+		}
 		if fd.Body != nil {
 			g.block(fd.Body, types.UnitType, false)
 			if g.code.Reachable() {
@@ -2440,7 +2469,7 @@ func (g *gen) markerConstructor(f *types.FunSym) {
 	g.code = g.cls.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", d[:i]+"Lkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
 	g.code.AllocLocal("L" + f.Owner.Name + ";")
 	g.code.Local(cf.ALOAD, 0)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
 	g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
@@ -2843,11 +2872,11 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	i := strings.IndexByte(nameDesc, '(')
 	name, d := nameDesc[:i], nameDesc[i:]
 	target := methodDesc(params, result)
-	if ps := descParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
+	if ps := cf.DescParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
 		// A composable function's: the Composer and the ints are passed
 		// as they are.
 		target = types.ComposeDesc(target, len(ps)-len(params)-1)
-	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(descParams(d)) == len(params)+1 {
+	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(cf.DescParams(d)) == len(params)+1 {
 		// A suspend function's: the continuation and the result are
 		// passed as they are. A suspend function type's invoke takes
 		// the continuation as an Object.
@@ -2870,7 +2899,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	}
 	g.code = g.cls.NewMethod(access, name, d)
 	g.code.AllocLocal("L" + g.owner.Name + ";")
-	from, to := descParams(d), descParams(target)
+	from, to := cf.DescParams(d), cf.DescParams(target)
 	var slots []int
 	if spread {
 		// FunctionN's invoke, which takes the arguments in an array.
@@ -2900,7 +2929,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 		g.convertDesc(pd, to[i])
 	}
 	g.invokeVirtual(g.owner, targetName, target)
-	ret, tret := d[strings.IndexByte(d, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(target)
 	switch {
 	case tret == "V" && ret != "V":
 		g.unitValue() // Unit, as an Object
@@ -2985,77 +3014,23 @@ func (g *gen) convertDesc(from, to string) {
 	switch {
 	case from == to || to == "V":
 	case len(to) == 1: // a primitive, from its box or a supertype
-		box := descBox[to]
-		if from != "L"+box+";" {
+		t := types.Type{K: types.DescKind(to[0])}
+		if box := boxClass(t.K); from != "L"+box+";" {
 			g.code.Checkcast(box)
 		}
-		g.unbox(descType[to])
+		g.unbox(t)
 	case len(from) == 1:
-		g.box(descType[from])
+		g.box(types.Type{K: types.DescKind(from[0])})
 	case to != "Ljava/lang/Object;":
 		g.code.Checkcast(className(to)) // an array's class name is its descriptor
 	}
 }
 
-// descType and descBox are the primitive types by descriptor, and their
-// box classes.
-var (
-	descType = map[string]types.Type{
-		"I": types.IntType, "J": types.LongType, "D": types.DoubleType, "Z": types.BoolType,
-		"C": types.CharType, "F": types.FloatType, "B": types.ByteType, "S": types.ShortType,
-	}
-	descBox = func() map[string]string {
-		m := map[string]string{}
-		for d, t := range descType {
-			m[d] = types.Boxes[t.K]
-		}
-		return m
-	}()
-)
-
-func loadOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ILOAD
-	case "J":
-		return cf.LLOAD
-	case "F":
-		return cf.FLOAD
-	case "D":
-		return cf.DLOAD
-	}
-	return cf.ALOAD
-}
-
-func storeOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ISTORE
-	case "J":
-		return cf.LSTORE
-	case "F":
-		return cf.FSTORE
-	case "D":
-		return cf.DSTORE
-	}
-	return cf.ASTORE
-}
-
-func returnOpOf(d string) byte {
-	switch d {
-	case "V":
-		return cf.RETURN
-	case "I", "Z", "C", "B", "S":
-		return cf.IRETURN
-	case "J":
-		return cf.LRETURN
-	case "F":
-		return cf.FRETURN
-	case "D":
-		return cf.DRETURN
-	}
-	return cf.ARETURN
-}
+// loadOpOf, storeOpOf and returnOpOf return the instructions that load,
+// store and return a value of type descriptor d.
+func loadOpOf(d string) byte   { return cf.KindOf(d).Load }
+func storeOpOf(d string) byte  { return cf.KindOf(d).Store }
+func returnOpOf(d string) byte { return cf.KindOf(d).Return }
 
 // callMethod calls method f of the program, by its JVM name and
 // descriptor d, on a receiver of class cls below the arguments. As with
@@ -3270,15 +3245,28 @@ func (g *gen) invokeVirtual(cls *types.ClassSym, name, d string) {
 	}
 }
 
+// inOuter reports whether p is a companion object's property whose field
+// the outer class holds, and that has accessors: the delegate of a
+// delegated property has none.
+func inOuter(p *types.VarSym) bool {
+	pd, ok := p.Decl.(*syntax.PropDecl)
+	return ok && pd.DelegateOf == nil && p.Owner != nil && p.Owner.CompanionOf != nil && !p.JvmField && p.StaticField()
+}
+
 // directGet and directSet report whether code reads or writes a
 // property's field directly rather than through its getter or setter: as
 // kotlinc does, in the class that declares it, if the accessor is a
 // default one that can't be overridden. The body of a public inline
 // function or accessor, which other classes copy, calls the accessors of
-// the properties that aren't private.
+// the properties that aren't private. So does a companion object's code
+// for its properties whose fields the outer class holds, unless the
+// accessor is private: a mock of the companion then answers for them.
 func (g *gen) directGet(p *types.VarSym) bool {
 	if p.Lateinit && !p.Private {
 		return false // its getter checks it, as kotlinc calls it
+	}
+	if inOuter(p) && !p.Private && !g.companionInits {
+		return false
 	}
 	direct := p.JvmField || g.inClass(p.Owner) && (!g.publicInline || p.Private) && (p.Final || p.Private || p.Deferred && !p.Mutable) && p.HasField() && p.Getter == nil && !p.Const
 	if direct && !p.JvmField {
@@ -3307,6 +3295,9 @@ func lateinitAccess(pd *syntax.PropDecl) uint16 {
 }
 
 func (g *gen) directSet(p *types.VarSym) bool {
+	if inOuter(p) && !p.Private && !p.SetterPrivate && !g.companionInits {
+		return false
+	}
 	in := g.inClass(p.Owner) || g.companionInits && p.Owner == g.owner
 	direct := p.JvmField || in && (!g.publicInline || p.Private) && (p.Final || p.Private || p.SetterPrivate || p.Deferred && !p.Mutable) && p.HasField() && p.Setter == nil && !p.Const
 	if direct && !p.JvmField {

@@ -20,12 +20,12 @@ func (g *gen) classLit(x *syntax.ClassLit) {
 	case x.Class.IsParam() && !x.Bound && t.IsPrimitive():
 		// A reified type parameter's class is a box, as with kotlinc:
 		// T::class for Int is Integer's.
-		g.code.LdcClass(boxClass[t.K])
+		g.code.LdcClass(boxClass(t.K))
 	case x.Bound && t.IsPrimitive():
 		// A primitive's class is the static one, int.class, as with kotlinc.
 		g.expr(x.X)
 		g.pop(x.X.Type())
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[t.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(t.K), "TYPE", "Ljava/lang/Class;")
 	case x.Bound:
 		// The run-time class of a value.
 		g.expr(x.X)
@@ -37,7 +37,7 @@ func (g *gen) classLit(x *syntax.ClassLit) {
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Object", "getClass", "()Ljava/lang/Class;")
 	case t.IsPrimitive():
 		// Int::class.java is int.class.
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[t.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(t.K), "TYPE", "Ljava/lang/Class;")
 	case t.K == types.Unit:
 		g.code.LdcClass("kotlin/Unit")
 	case t.K == types.Nothing:
@@ -92,12 +92,29 @@ func (g *gen) ktype(t types.Type, bound bool) {
 		g.code.Invoke(cf.INVOKESTATIC, refl, name, "(Lkotlin/reflect/KClassifier;)Lkotlin/reflect/KType;")
 		return
 	}
+	if t.P {
+		// A platform type, as kotlinc builds it: between its non-null
+		// type, a mutable collection's, and its nullable type, a
+		// read-only one's.
+		g.ktype(t.NonNull(), bound)
+		g.kclassType(t.Nullable(), bound, false)
+		g.code.Invoke(cf.INVOKESTATIC, refl, "platformType", "(Lkotlin/reflect/KType;Lkotlin/reflect/KType;)Lkotlin/reflect/KType;")
+		return
+	}
+	g.kclassType(t, bound, true)
+}
+
+// kclassType pushes the KType of t, which is no type parameter and no
+// platform type: see ktype. A mutable collection's is marked if mutable
+// is set.
+func (g *gen) kclassType(t types.Type, bound, mutable bool) {
+	const refl, proj = "kotlin/jvm/internal/Reflection", "kotlin/reflect/KTypeProjection"
 	nn := t.NonNull()
 	switch {
 	case nn.IsPrimitive() && t.N:
-		g.code.LdcClass(boxClass[nn.K]) // Int? is Integer's
+		g.code.LdcClass(boxClass(nn.K)) // Int? is Integer's
 	case nn.IsPrimitive():
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[nn.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(nn.K), "TYPE", "Ljava/lang/Class;")
 	case nn.K == types.Unit:
 		g.code.LdcClass("kotlin/Unit")
 	case nn.K == types.Nothing:
@@ -149,7 +166,7 @@ func (g *gen) ktype(t types.Type, bound bool) {
 		}
 		g.code.Invoke(cf.INVOKESTATIC, refl, name, d+")Lkotlin/reflect/KType;")
 	}
-	if nn.K == types.Class && nn.C.ReadOnly != nil {
+	if mutable && nn.K == types.Class && nn.C.ReadOnly != nil {
 		g.code.Invoke(cf.INVOKESTATIC, refl, "mutableCollectionType", "(Lkotlin/reflect/KType;)Lkotlin/reflect/KType;")
 	}
 }

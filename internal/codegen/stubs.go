@@ -214,7 +214,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 		}
 		g.pushMask(o.omitted, types.DefaultBits(f))
 		g.code.Invoke(cf.INVOKESTATIC, g.cls.Name, f.JVM()+"$default", d)
-		g.code.Op(returnOpOf(o.desc[strings.IndexByte(o.desc, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(o.desc)))
 		g.check()
 	}
 }
@@ -287,11 +287,11 @@ func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 			nullability(methodAdder(g.cls.LastMethod()), t)
 		}
 		g.objectRef(comp)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 		}
 		g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
-		g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	stub(types.GetterJVM(p), "()"+desc(t), types.UnitType)
@@ -328,11 +328,11 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic, f.JVM(), "("+self+fd[1:])
 		g.code.Local(cf.ALOAD, g.code.AllocLocal(self))
 		g.code.Checkcast(fw.Of.Name)
-		for _, pd := range descParams(fd) {
+		for _, pd := range cf.DescParams(fd) {
 			g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 		}
 		g.code.Invoke(cf.INVOKESTATIC, fw.Impls, f.JVM(), "(L"+fw.Of.Name+";"+fd[1:])
-		g.code.Op(returnOpOf(fd[strings.IndexByte(fd, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(fd)))
 		g.check()
 	}
 	g.cls = iface
@@ -374,11 +374,17 @@ func (g *gen) stubAccess() uint16 {
 }
 
 // staticStub generates the static method of descriptor d that calls the
-// method of companion comp with the same name and descriptor.
+// method of companion comp with the same name and descriptor: a private
+// one for a private method, which it calls through its accessor, as
+// kotlinc does.
 func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, varargs bool, params []*types.VarSym) {
 	access := g.stubAccess() | synthetic(&fd.Modifiers)
 	if varargs {
 		access |= cf.AccVarargs
+	}
+	private := fd.Sym.Private && !fd.Sym.External
+	if private {
+		access = access&^cf.AccPublic | cf.AccPrivate
 	}
 	name := fd.Sym.JVM()
 	if fd.Sym.External && d == funDesc(fd.Sym) {
@@ -396,11 +402,17 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 	}
 	g.code.Line(fd.P.Line)
 	g.objectRef(comp)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
-	g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
-	g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+	if private {
+		// The companion's private method, through its accessor.
+		g.shared.methods[privateMethod{class: comp.Name, name: name, desc: d}] = true
+		g.code.Invoke(cf.INVOKESTATIC, comp.Name, "access$"+name, "(L"+comp.Name+";"+d[1:])
+	} else {
+		g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
+	}
+	g.code.Op(returnOpOf(cf.RetDesc(d)))
 	g.check()
 }
 
@@ -440,10 +452,10 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 	c := g.implsOf(cd.Sym, iface)
 	body := func(m defaultBody) {
 		d := "(" + self + m.desc[1:]
-		ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+		ret := cf.RetDesc(m.desc)
 		jd := "access$" + m.name + "$jd"
 		code := iface.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, jd, d)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
 		}
 		code.InvokeSpecialInterface(iface.Name, m.name, m.desc)
@@ -474,7 +486,7 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		for i, p := range m.params {
 			nullability(paramAdder(ref, i+1), p.Type)
 		}
-		pds := descParams(d)
+		pds := cf.DescParams(d)
 		slots := make([]int, len(pds))
 		for i, pd := range pds {
 			slots[i] = code.AllocLocal(pd)
@@ -507,7 +519,7 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 			d := defaultsDesc("("+self+m.desc[1:], types.DefaultBits(m.decl.Sym), objMarker)
 			code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, m.name+"$default", d)
 			code.Line(m.line)
-			for _, pd := range descParams(d) {
+			for _, pd := range cf.DescParams(d) {
 				code.Local(loadOpOf(pd), code.AllocLocal(pd))
 			}
 			code.InvokeStaticInterface(iface.Name, m.name+"$default", d)
@@ -558,6 +570,17 @@ type defaultBody struct {
 	prop     *syntax.PropDecl
 	acc      *syntax.FunDecl
 	site     string
+	// recv is the receiver of a member extension, which the method takes
+	// first.
+	recv *types.Type
+}
+
+// of returns m as the body of member f, with f's extension receiver.
+func (m defaultBody) of(f *types.FunSym) defaultBody {
+	if f.Ext && len(f.Contexts) == 0 {
+		m.recv = &f.Recv
+	}
+	return m
 }
 
 func (m defaultBody) synthetic() uint16 {
@@ -579,7 +602,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			case *syntax.FunDecl:
 				if f := m.Sym; f != nil && m.Visibility != syntax.Private {
 					abstract := f.Abstract || m.Body == nil && m.ExprBody == nil
-					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, ""})
+					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, "", nil}.of(f))
 				}
 			case *syntax.PropDecl:
 				p := m.Sym
@@ -589,7 +612,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				get := defaultBody{name: types.GetterJVM(p), desc: "()" + desc(types.GetterType(p)), ret: types.GetterType(p), abstract: true}
 				if a := m.Getter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get"}
+					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get", nil}.of(f)
 				}
 				out = append(out, get)
 				if !p.Mutable {
@@ -598,7 +621,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				set := defaultBody{name: types.SetterJVM(p), desc: "(" + desc(types.FieldType(p)) + ")V", ret: types.UnitType, abstract: true}
 				if a := m.Setter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set"}
+					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set", nil}.of(f)
 				}
 				out = append(out, set)
 			}
@@ -608,7 +631,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 	s.Ensure()
 	add := func(f *types.FunSym) {
 		if f != nil && !f.Static && !f.Platform {
-			out = append(out, defaultBody{name: f.JVM(), desc: funDesc(f), params: f.Params, ret: f.Ret, abstract: f.Abstract, owner: s, hidden: f.Hidden})
+			out = append(out, defaultBody{name: f.JVM(), desc: funDesc(f), params: f.Params, ret: f.Ret, abstract: f.Abstract, owner: s, hidden: f.Hidden}.of(f))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
@@ -616,9 +639,20 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			add(f)
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(s.ExtMethods)) {
+		for _, f := range s.ExtMethods[name] {
+			add(f)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(s.KProps)) {
 		add(s.KProps[name].Getter)
 		add(s.KProps[name].Setter)
+	}
+	for _, name := range slices.Sorted(maps.Keys(s.ExtProps)) {
+		for _, f := range s.ExtProps[name] {
+			add(f)
+			add(f.ExtSetter)
+		}
 	}
 	return out
 }
@@ -673,12 +707,17 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			ref := c.LastMethod()
 			g.bridgeAnnotations(ref, m)
 			nullability(methodAdder(ref), m.ret)
+			lead := 0
+			if m.recv != nil {
+				nullability(paramAdder(ref, 0), *m.recv)
+				lead = 1
+			}
 			for i, p := range m.params {
-				nullability(paramAdder(ref, i), p.Type)
+				nullability(paramAdder(ref, lead+i), p.Type)
 			}
 			code.Line(cd.P.Line)
 			code.AllocLocal("L" + cls.Name + ";")
-			pds := descParams(m.desc)
+			pds := cf.DescParams(m.desc)
 			slots := make([]int, len(pds))
 			for j, pd := range pds {
 				slots[j] = code.AllocLocal(pd)
@@ -691,7 +730,7 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 				code.Local(loadOpOf(pd), slots[j])
 			}
 			code.InvokeSpecialInterface(i.Name, m.name, m.desc)
-			code.Op(returnOpOf(m.desc[strings.IndexByte(m.desc, ')')+1:]))
+			code.Op(returnOpOf(cf.RetDesc(m.desc)))
 			if err := code.Err(); err != nil {
 				panic(err)
 			}

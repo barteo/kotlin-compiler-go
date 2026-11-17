@@ -28,7 +28,8 @@ func BenchmarkUpdate(b *testing.B) {
 }
 
 // BenchmarkUpdateEdit times an Update after an edit of one file's body,
-// KA_BENCH_EDIT's (the first file by default): a comment added at its end.
+// KA_BENCH_EDIT's (the first file by default): a comment added at its end,
+// or, with KA_BENCH_SIGNATURE set, a function, named after the run.
 func BenchmarkUpdateEdit(b *testing.B) {
 	s, sources := benchModule(b)
 	defer s.Close()
@@ -46,6 +47,9 @@ func BenchmarkUpdateEdit(b *testing.B) {
 	for b.Loop() {
 		n++
 		text := string(data) + "\n// edit " + strconv.Itoa(n) + "\n"
+		if os.Getenv("KA_BENCH_SIGNATURE") != "" {
+			text = string(data) + "\nfun kcEdit" + strconv.Itoa(n) + "(): Int { return 1 }\n"
+		}
 		sources[i].Text = &text
 		m, err := s.Update(context.Background(), sources)
 		if err != nil {

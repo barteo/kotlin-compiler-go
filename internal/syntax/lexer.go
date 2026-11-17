@@ -175,6 +175,9 @@ func (lx *lexer) next() {
 		case !ok && lx.peekByte(0) == '@':
 			// A label: loop@ for (...), lit@{ ... }.
 			lx.advance(1)
+			if strings.Trim(word, "_") == "" {
+				lx.errorf(p, "names _, __, ___, ... are reserved in Kotlin")
+			}
 			lx.emit(LABEL, p, word)
 		case !ok:
 			lx.emit(IDENT, p, word)
@@ -260,6 +263,11 @@ func (lx *lexer) next() {
 			return
 		}
 	}
+	// Kotlin's lexer reads ;; as one token, DOUBLE_SEMICOLON, which
+	// separates nothing: println(1);; is an error wherever it is.
+	if strings.HasPrefix(lx.src[lx.off:], ";;") {
+		lx.errorf(p, "expected newline or ';', found ';;'")
+	}
 	// A callable reference on a nullable type, String?::plus, is ? and ::,
 	// not ?: and :.
 	if strings.HasPrefix(lx.src[lx.off:], "?::") {
@@ -316,7 +324,8 @@ func (lx *lexer) number(p Pos) {
 		k = DOUBLE
 	}
 	switch lx.peekByte(0) {
-	case 'L':
+	case 'L', 'l':
+		// 1l is a Long, with an error IntLiteralErrors reports.
 		if isDouble {
 			lx.errorf(p, "invalid Long literal")
 		}
@@ -326,12 +335,40 @@ func (lx *lexer) number(p Pos) {
 		k = FLOAT
 	case 'u', 'U':
 		lx.advance(1)
-		if lx.peekByte(0) == 'L' {
+		if c := lx.peekByte(0); c == 'L' || c == 'l' {
 			lx.advance(1)
 		}
 		k = UNSIGNED
 	}
+	if illegalUnderscore(lx.src[start:lx.off]) {
+		lx.errorf(p, "illegal underscore")
+	}
 	lx.emit(k, p, lx.src[start:lx.off])
+}
+
+// illegalUnderscore reports whether a numeric literal has an underscore
+// that doesn't separate digits: one that starts or ends a group of
+// digits, as in 1_, 0x_f, 1_.1 and 1.0e_1.
+// IllegalUnderscore is illegalUnderscore, for the psi frontend.
+func IllegalUnderscore(text string) bool { return illegalUnderscore(text) }
+
+func illegalUnderscore(text string) bool {
+	if !strings.Contains(text, "_") {
+		return false
+	}
+	text = strings.TrimRight(text, "LluU")
+	if len(text) > 2 && text[0] == '0' && strings.ContainsRune("xXbB", rune(text[1])) {
+		body := text[2:]
+		return body == "" || body[0] == '_' || body[len(body)-1] == '_'
+	}
+	text = strings.TrimRight(text, "fF")
+	groups := strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-' })
+	for _, g := range groups {
+		if g[0] == '_' || g[len(g)-1] == '_' {
+			return true
+		}
+	}
+	return false
 }
 
 // char lexes a character literal: 'a', '\n', '\u0041'.

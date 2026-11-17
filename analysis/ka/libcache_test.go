@@ -99,6 +99,27 @@ func TestSharedLibrary(t *testing.T) {
 	}
 }
 
+// TestMissingClassPathEntry checks that a class path entry that doesn't
+// exist is left out, and the library is still shared.
+func TestMissingClassPathEntry(t *testing.T) {
+	cfg := withStdlib(t)
+	src := "package p\nfun f() = listOf(1).first()\n"
+	s1 := Open(cfg)
+	defer s1.Close()
+	want := updateSession(t, s1, src)
+	missing := filepath.Join(t.TempDir(), "classes")
+	cfg.ClassPath = append(cfg.ClassPath, missing)
+	cfg.FriendPaths = []string{missing}
+	s2 := Open(cfg)
+	defer s2.Close()
+	if got := updateSession(t, s2, src); got != want {
+		t.Errorf("model with a missing class path entry differs:\n%s\nwant:\n%s", got, want)
+	}
+	if s1.lib != s2.lib {
+		t.Error("a missing class path entry makes a library of its own")
+	}
+}
+
 // TestLibraryKey checks that a changed jar gets a library of its own, and
 // that unused libraries are closed past maxIdle.
 func TestLibraryKey(t *testing.T) {

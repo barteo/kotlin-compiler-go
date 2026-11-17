@@ -1,6 +1,7 @@
 package check
 
 import (
+	"path"
 	"slices"
 	"strings"
 
@@ -56,8 +57,38 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 	return nil
 }
 
+// ambiguousLabel reports whether label names the receivers of more than
+// one declaration, as kotlinc's AMBIGUOUS_LABEL: an extension function's
+// and a class's, or two extension functions'. The label of a lambda with
+// a receiver shadows those around it instead.
+func (c *Checker) ambiguousLabel(label string) bool {
+	n := 0
+	if c.cls != nil && simpleName(c.cls) == label {
+		n++
+	}
+	innermost := true
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		r := &c.recvs[i]
+		if r.label != label {
+			continue
+		}
+		if _, lambda := r.owner.(*syntax.Lambda); lambda {
+			if innermost {
+				return false
+			}
+			continue
+		}
+		innermost = false
+		n++
+	}
+	return n > 1
+}
+
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
+	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
+		c.errorf(x.P, "ambiguous label: %s", x.Label)
+	}
 	r := c.receiverFor(x)
 	if obj := c.headerThis(x, r); obj != nil {
 		x.Obj = obj
@@ -231,11 +262,22 @@ func propParam(v *types.VarSym) *types.VarSym {
 // recvCall rewrites an unqualified call f(args) to a call on the innermost
 // implicit receiver that has a function f that takes the arguments: a
 // member or an extension. It reports false if none has.
+//
+// As in Kotlin, a receiver whose members can't take the arguments' types
+// gives way to an outer one that has the function: raise("") in
+// with(a) { with(b) { raise("") } } for a Thrower<String> and a
+// Thrower<Double> is a's raise(String). Without one, it is the inner
+// receiver's call, an error.
 func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
+	var inner *syntax.Member
+	var ts []types.Type
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
-		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
-			return false // the object's own
+		if r.outer && c.cls != nil && (c.hasFun(c.cls.This(), id.Name, x) || c.ownStaticTakes(id.Name, x)) {
+			// The object's own, or a static method of its Java
+			// superclass: foo() in an inner class B : A() is A.foo(),
+			// not the outer class's foo().
+			return false
 		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
@@ -243,8 +285,127 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
+		if i > 0 && !c.explicitRecvFits(t, id.Name, x) {
+			// function<A>() for fun <T> T.function() is an outer A
+			// receiver's, not an inner B's.
+			if inner == nil {
+				inner = m
+			}
+			continue
+		}
+		if inner == nil && i > 0 && c.onlyMembers(t, id.Name, x) {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			if !c.membersTake(t, id.Name, x, ts) {
+				inner = m
+				continue
+			}
+		}
 		if !c.extensionsGiveWay(t, id.Name, x) {
 			c.rewriteFun(x, m)
+			return true
+		}
+	}
+	if inner != nil {
+		c.rewriteFun(x, inner)
+		return true
+	}
+	return false
+}
+
+// explicitRecvFits reports whether a receiver of type t may take call x
+// with explicit type arguments: false only if all the functions it may
+// take are extensions whose receiver's type, with those arguments,
+// isn't t's.
+func (c *Checker) explicitRecvFits(t types.Type, name string, x *syntax.Call) bool {
+	if len(x.TypeArgs) == 0 || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+		return true
+	}
+	var args []types.Type
+	n := len(c.errs)
+	defer func() { c.errs = c.errs[:n] }()
+	for _, a := range x.TypeArgs {
+		if a.Variance == types.Star || a.Type == nil {
+			return true
+		}
+		at := c.resolveType(a.Type)
+		if at.K == types.Invalid {
+			return true
+		}
+		args = append(args, at)
+	}
+	found := false
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		f := cl.f
+		if !c.mayTake(f, x) {
+			continue
+		}
+		found = true
+		if len(f.TypeParams) != len(args) {
+			return true
+		}
+		sub := types.Subst{}
+		for i, p := range f.TypeParams {
+			sub[p] = types.Arg{T: args[i]}
+		}
+		if c.subtype(t, sub.ApplyIn(f.Recv)) {
+			return true
+		}
+	}
+	return !found
+}
+
+// onlyMembers reports whether the functions that a receiver of type t has
+// that may take call x are all members: no extension or property of a
+// function type.
+func (c *Checker) onlyMembers(t types.Type, name string, x *syntax.Call) bool {
+	if !c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+		return false
+	}
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			return false
+		}
+	}
+	return true
+}
+
+// membersTake reports whether a member function of a receiver of type t
+// may take call x's arguments of types ts, as argTypes returns them, with
+// the parameter types seen through t: Thrower<Double>'s raise(r: F) takes
+// a Double.
+func (c *Checker) membersTake(t types.Type, name string, x *syntax.Call, ts []types.Type) bool {
+	cls := c.classOf(t.Flex())
+	if cls == nil || types.MayBeNull(t.Flex()) {
+		return true
+	}
+	fs := c.accessible(cls, c.javaMethods(cls, name))
+	if len(fs) == 0 {
+		return true // a built-in, or an inner class's constructor
+	}
+	for _, f := range fs {
+		amap, ok := mapArgs(f, x)
+		if !ok || f.Unsupported || !c.mayTake(f, x) {
+			continue
+		}
+		cl := callee{f: f, amap: amap, names: x.Names}
+		sub := c.memberSubst(t.Flex(), f.Owner)
+		fits := true
+		for i, at := range ts {
+			p := sub.Apply(cl.argType(i, x.Args))
+			if at.K == types.Invalid || p.K == types.Invalid || p.HasParams() || p.HasVars() || at.HasVars() {
+				continue
+			}
+			if lit, ok := x.Args[i].(*syntax.IntLit); ok && fitsLit(lit, p) {
+				continue
+			}
+			if _, sam := c.samValue(at, p); !sam && !c.subtype(at, p) {
+				fits = false
+				break
+			}
+		}
+		if fits {
 			return true
 		}
 	}
@@ -302,6 +463,22 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 
 // memberFun is hasFun without extensions: a member, built-in or inner
 // class constructor that may take the call.
+// innerMemberTakes reports whether the receiver of a lambda nested in the
+// scope at depth, which declares a variable, has a member function name
+// that may take call x.
+func (c *Checker) innerMemberTakes(name string, x *syntax.Call, depth int) bool {
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		r := &c.recvs[i]
+		if r.outer || r.depth <= depth {
+			continue
+		}
+		if c.memberFun(c.scope.narrowed(r.sym), name, x) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Checker) memberFun(t types.Type, name string, x *syntax.Call) bool {
 	t = t.Flex()
 	fits := func(fs []*types.FunSym) bool {
@@ -437,6 +614,9 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 			fs = append(fs, cl.f)
 		}
 	}
+	if len(fs) > 0 && c.sameScopeTopFun(name, x, fs) {
+		return false
+	}
 	if len(fs) == 0 || !hasLambda(x.Args) {
 		return len(fs) > 0
 	}
@@ -446,6 +626,36 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 	// message) gives way to the top-level log(tag: String, priority,
 	// message) in log(TAG, INFO) { }.
 	return c.takeTypes(fs, x, c.argTypes(x))
+}
+
+// sameScopeTopFun reports whether a top-level function that isn't an
+// extension may take call x, in the package of each of extensions fs:
+// K2 tries a scope's functions before its extensions of implicit
+// receivers, so run { } in a class is kotlin's run(block), not
+// this.run { }, whose lambda would read the class's properties through
+// its own receiver, without their smart casts.
+func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSym) bool {
+	pkgs := map[string]bool{}
+	var ts []types.Type
+	for _, f := range append(slices.Clip(c.topFuns(name)), c.kotlinFuns(name, false)...) {
+		if !f.Ext && f.Facade != "" && c.mayTake(f, x) {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			if c.takeTypes([]*types.FunSym{f}, x, ts) {
+				pkgs[path.Dir(f.Facade)] = true
+			}
+		}
+	}
+	if len(pkgs) == 0 {
+		return false
+	}
+	for _, f := range fs {
+		if f.Facade == "" || !pkgs[path.Dir(f.Facade)] {
+			return false
+		}
+	}
+	return true
 }
 
 // lowPriorityGivesWay drops the members marked
@@ -771,6 +981,12 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 // object expression in a class with one too.
 func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 	rt, ok := c.peekType(fn.X)
+	if lit, isLit := fn.X.(*syntax.IntLit); isLit && !lit.Unsigned {
+		rt, ok = types.IntType, true // 5.b()
+		if lit.Long {
+			rt = types.LongType
+		}
+	}
 	if !ok {
 		if !simpleExpr(fn.X) {
 			return false
@@ -805,6 +1021,12 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		if !cls.External && c.userProp(cls, fn.Name) != nil || cls.External && c.hasProp(cls, fn.Name) {
 			return true
 		}
+	}
+	if c.topExtFuncVar(fn.Name) && c.extPropInvoked(fn, rt, c.classOf(rt.NonNull()), x) {
+		// A top-level val b: Int.() -> Int gives way to an extension
+		// property of the receiver, invoked: 5.b() is val Int.b: () ->
+		// String's, as in K2 (KT-64891).
+		return true
 	}
 	if v, vd := c.scope.find(fn.Name); v != nil {
 		// A local extension function as close as the local, as in
@@ -933,6 +1155,29 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 	if b == t || x.Names != nil {
 		return b
 	}
+	if t.IsIntersection() && len(x.Args) > 0 {
+		// An intersection's members are those of all its components, of
+		// which a call picks one that takes its arguments: x.add(1) for
+		// an x of StringSet & ArrayList (raw) is the raw list's.
+		var others []types.Type
+		for _, o := range t.Param().Bounds {
+			if o = o.NonNull(); o != b {
+				if cls := c.classOf(o); cls != nil && has(cls) {
+					others = append(others, o)
+				}
+			}
+		}
+		if len(others) > 0 {
+			ts := c.argTypes(x)
+			if !c.membersTake(b, name, x, ts) {
+				for _, o := range others {
+					if c.membersTake(o, name, x, ts) {
+						return o
+					}
+				}
+			}
+		}
+	}
 	ret := func(b types.Type) (types.Type, bool) {
 		cls := c.classOf(b)
 		if cls == nil {
@@ -964,4 +1209,22 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 		}
 	}
 	return best
+}
+
+// topExtFuncVar reports whether the function value with a receiver that
+// x.name() would call is a top-level property: no implicit receiver nor
+// enclosing class has a property of the name.
+func (c *Checker) topExtFuncVar(name string) bool {
+	if v, _ := c.scope.find(name); v != nil && v.Kind != types.Global || v == nil && c.topVar(name) == nil {
+		return false
+	}
+	if c.cls != nil && c.memberProp(c.cls, name) != nil {
+		return false
+	}
+	for _, r := range c.recvs {
+		if cls := c.classOf(r.sym.Type); cls != nil && c.hasProp(cls, name) {
+			return false
+		}
+	}
+	return true
 }

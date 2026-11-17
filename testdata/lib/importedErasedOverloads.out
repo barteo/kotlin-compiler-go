@@ -1,0 +1,13 @@
+pause for 5
+pause for a span of 7
+points 1 2 0.5
+spans 3 4 0.25
+longs 5 6 1.0
+points 8 9 0.0
+a
+pause for a span of 2
+b
+pause for 3
+list true
+array true
+map true

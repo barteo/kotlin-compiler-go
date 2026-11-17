@@ -40,8 +40,8 @@ fun types(): String {
 }
 
 fun missing(): Int {
-    fun noReturn(): Int { // ERROR missing return statement
-    }
+    fun noReturn(): Int {
+    } // ERROR missing return statement
     return noReturn()
 }
 

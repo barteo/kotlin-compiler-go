@@ -22,10 +22,14 @@ type Error struct {
 	// Feature is set when the error is about a Kotlin feature kc doesn't
 	// support, to a stable name such as "interface" or "modifier data".
 	Feature string
-	// Code is the name of kotlinc's diagnostic the error is, as
-	// UNRESOLVED_REFERENCE, if kc knows it; "" if not.
-	Code string
-	// Data holds what a quick fix needs, per code: for a coded error,
+	// Severity is SevError, or SevWarning for a warning, which doesn't
+	// stop the compile.
+	Severity Severity
+	// Name is the name kotlinc gives the diagnostic, as DEPRECATION or
+	// UNRESOLVED_REFERENCE, if kc knows it; "" if not. Every warning has
+	// one. @Suppress names it.
+	Name string
+	// Data holds what a quick fix needs, per name: for a named error,
 	// the message's arguments, types with fully qualified names; for
 	// ABSTRACT_MEMBER_NOT_IMPLEMENTED and its class and enum entry
 	// variants, and for MANY_IMPL_MEMBER_NOT_IMPLEMENTED of a function, the
@@ -35,12 +39,33 @@ type Error struct {
 	Data []string
 }
 
-// Same reports whether e and f report the same error.
+// Same reports whether e and f report the same diagnostic.
 func (e *Error) Same(f *Error) bool {
-	return e.File == f.File && e.Pos == f.Pos && e.Msg == f.Msg && e.Feature == f.Feature && e.Code == f.Code && slices.Equal(e.Data, f.Data)
+	return e.File == f.File && e.Pos == f.Pos && e.Msg == f.Msg && e.Feature == f.Feature && e.Severity == f.Severity && e.Name == f.Name && slices.Equal(e.Data, f.Data)
 }
 
+// Severity is a diagnostic's severity.
+type Severity uint8
+
+const (
+	SevError Severity = iota
+	SevWarning
+)
+
+func (s Severity) String() string {
+	if s == SevWarning {
+		return "warning"
+	}
+	return "error"
+}
+
+// IsWarning reports whether e is a warning.
+func (e *Error) IsWarning() bool { return e.Severity == SevWarning }
+
 func (e *Error) Error() string {
+	if e.IsWarning() {
+		return fmt.Sprintf("%s:%d:%d: warning: %s", e.File, e.Pos.Line, e.Pos.Col, e.Msg)
+	}
 	return fmt.Sprintf("%s:%d:%d: %s", e.File, e.Pos.Line, e.Pos.Col, e.Msg)
 }
 

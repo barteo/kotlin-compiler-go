@@ -5,24 +5,24 @@
 class G<T>
 
 class PropAndFun {
-    val x = 1
+    val x = 1 // ERROR platform declaration clash
     fun getX() = 2 // ERROR platform declaration clash
-    var y = 1
+    var y = 1 // ERROR platform declaration clash
     fun setY(v: Int) {} // ERROR platform declaration clash
 }
 
-val topX = 1
+val topX = 1 // ERROR platform declaration clash
 fun getTopX() = 2 // ERROR platform declaration clash
 
-val aa = 1
+val aa = 1 // ERROR platform declaration clash
 val Aa = 2 // ERROR platform declaration clash
 
-val <T> G<T>.ext: Int get() = 1
+val <T> G<T>.ext: Int get() = 1 // ERROR platform declaration clash
 val G<String>.ext: Int get() = 2 // ERROR platform declaration clash
 
 fun local() {
     class L {
-        val x = 1
+        val x = 1 // ERROR platform declaration clash
         fun getX() = 2 // ERROR platform declaration clash
     }
 }

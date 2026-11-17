@@ -3,11 +3,14 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,13 +25,20 @@ import (
 // It is built sequentially and is read-only during the parallel
 // body-checking phase, except for Java classes, which are loaded on demand.
 type Universe struct {
-	Pkgs     map[string]*Package // by dotted name; "" is the default package
-	prefixes map[string]bool     // the packages and their prefixes: a and a.b for a.b
+	Pkgs map[string]*Package // by dotted name; "" is the default package
+	// only is Options.Only, and late is set for the parallel phase of a
+	// check of only some files (lazily).
+	only     map[*syntax.File]bool
+	late     *lateInfer
+	prefixes map[string]bool // the packages and their prefixes: a and a.b for a.b
 	ext      *classTable
 	// local holds what ext's caches would but for the program's symbols,
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
 	local caches
+	// defaults is ext's defaults for the methods of the program's Java
+	// sources loaded over a shared library: see inheritExtDefaults.
+	defaults sync.Map
 	// memberExts is set if a class of the program declares extension
 	// functions, which calls with lambdas' implicit receivers then look
 	// for in their classes.
@@ -201,13 +211,35 @@ type Checker struct {
 	// Results of name lookups that search the class path, which are the
 	// same throughout the file. They spare the shared tables' locks.
 	classCache map[string]classifier
-	funCache   map[funKey][]*types.FunSym
-	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
-	looked     lookups                      // the lookups recorded (see lookups.go)
-	errs       []*syntax.Error
+	starCache  map[string][]classifier // see starClassifiers
+	// starFallback is set where a name that star imports give two
+	// classifiers of isn't ambiguous: see classLitType.
+	starFallback bool
+	funCache     map[funKey][]*types.FunSym
+	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
+	looked       lookups                      // the lookups recorded (see lookups.go)
+	errs         []*syntax.Error
+	// warns are the file's warnings, apart from errs, which speculative
+	// checks roll back and count. Warnings are found by passes over the
+	// checked code (see warnf).
+	warns  []*syntax.Error
+	warned map[warnKey]bool
+	// maybeNull are the x!! and x ?: y whose x some check of them found
+	// may be null: checked again, x may be smart cast by the first check.
+	maybeNull map[syntax.Expr]bool
+	// refLHS is set while the type on a callable reference's left side
+	// is resolved, where an inner class's type arguments may go on to
+	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
+	refLHS bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
+	// branchLambdas are the lambdas that are the values of branches of an
+	// if or when, which, as K2's synthetic call's postponed arguments, may
+	// take an expected receiver as their first parameter.
+	branchLambdas map[*syntax.Lambda]bool
+	// stubDepth is the number of stubInference runs in progress.
+	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse
@@ -215,7 +247,7 @@ type Checker struct {
 	// allow, reported once checked, and markers the markers of classes
 	// (see dsl.go).
 	dslUses map[dslKey]shadowedUse
-	markers map[*types.ClassSym][]*types.ClassSym
+	markers map[*types.ClassSym][]string
 	// accessed names the properties with context parameters whose
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
@@ -240,8 +272,19 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
+	// stubHints are the values that stubInference gave the variables of
+	// the calls in a builder's lambda that it inferred with the builder's
+	// (see stubHint).
+	stubHints map[stubHintKey]types.Type
+	// stubCapts are the variables of calls in a builder's lambda that
+	// capture an out projection of one of the builder's variables: see
+	// system.subArgs.
+	stubCapts map[stubHintKey]bool
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
+	// origSAM is set while candidates compare by the fun interfaces
+	// lambdas convert to, not their function types (see funInterfaceView).
+	origSAM bool
 	// trial is set while stubInference checks a lambda, to undo what the
 	// check changes outside the lambda.
 	trial *trial
@@ -260,10 +303,20 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
+	unitElvis  syntax.Expr    // see unitBody
+	varTarget  *syntax.Member // see propBound
+	// branchArg is set with branchSink for an if or a when that is a
+	// call's argument, whose lambda branches are then the call's
+	// postponed arguments (see branch). lambdaSink is set while the
+	// branches of such an if or when are checked.
+	branchArg, lambdaSink bool
 	// inferAliasArgs are the calls of typealiases' constructors that
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// nothingTail is set while the value of the return that a lambda's
+	// last when gives is checked: see lambdaResult.nothingTail.
+	nothingTail bool
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef
@@ -276,12 +329,16 @@ type Checker struct {
 	noCapture *types.VarSym
 	// Smart casts of local vars (see flow.go): where each is declared,
 	// whether code outside a frame reading it assigns it, the types that
-	// nested code assigns it, the next block's exit to record, and the
-	// statement being checked.
+	// nested code assigns it, and that each frame does, the next block's
+	// exit to record, and the statement being checked.
 	varSites      map[*types.VarSym]varSite
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
-	assignsMemo   map[any][]string
+	frameAssigns  map[varFrame][]types.Type
+	// siblingAssigns has, for a lambda argument, the names of the locals
+	// the call's other lambda arguments assign, which may run before it.
+	siblingAssigns map[*syntax.Lambda]map[string]bool
+	assignsMemo    map[any][]string
 	// loopKept has the vars that the loops being checked keep smart cast
 	// to their types, as loopVars has them.
 	loopKept map[*types.VarSym]types.Type
@@ -293,9 +350,13 @@ type Checker struct {
 	// and false imply, those of its value, as K2's for
 	// val ok = x != null; if (ok) x.length.
 	conds map[*types.VarSym][2][]narrow
+	// sameAs has, for a local or a stable value, the values that hold the
+	// same value (see alias).
+	sameAs map[flowKey][]narrow
 	// paths has the values of the stable properties of stable values,
 	// a.b of a.b.c, that smart casts are of.
-	paths map[[2]*types.VarSym]*types.VarSym
+	paths      map[[2]*types.VarSym]*types.VarSym
+	objectSyms map[*types.ClassSym]*types.VarSym // see objectSym
 	// blockScope is the scope of the block checked last, after it.
 	blockScope *scope
 	exitWatch  *branchExit
@@ -321,6 +382,7 @@ type state struct {
 	fn         *types.FunSym // nil in property initializers and init blocks
 	retType    types.Type
 	retAllowed bool
+	exprRets   *[]exprRet // see exprBodyReturn
 	loops      []*loopCtx
 	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
@@ -336,6 +398,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
+	// inInlineFun is set in the body of an inline function, and in its
+	// lambdas and local functions, which can't declare local functions.
+	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -439,6 +504,27 @@ func (l *Library) EnableSerialization() {
 
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
+
+// WithSources returns a library of the classes of cp, an overlay of l's
+// class path (see classpath.Path.Overlay) with the program's Java sources.
+// It shares l's classes and what checking computes from them, keeps the
+// classes of the sources, and what is computed from them, to itself, and
+// has l's settings. l never sees the sources, so a source class that has
+// the name of a class of l's class path doesn't replace it in l's
+// classes' signatures, as it would in kotlinc's.
+func (l *Library) WithSources(cp *classpath.Path) *Library {
+	w := *l
+	w.t = l.t.withSources(cp)
+	return &w
+}
+
+// Clone returns a library that shares l's classes and what checking
+// computes from them, with a copy of l's settings, which the copy's
+// owner can change for its own checks.
+func (l *Library) Clone() *Library {
+	c := *l
+	return &c
+}
 
 // KeepHidden has every Java class keep the members Kotlin can't use, the
 // package-private and private ones, in types.ClassSym.JavaHidden, as the
@@ -586,6 +672,15 @@ type Options struct {
 	// An analysis that keeps the earlier results of the others
 	// (analysis/ka) checks only the files that changed.
 	Only map[*syntax.File]bool
+	// Infer is, with Only, the names of the declarations of the files not
+	// checked whose omitted types are inferred up front, with the
+	// operators': those the checked files name. One that isn't is inferred
+	// when a checked file needs it, one at a time (lazily).
+	Infer map[string]bool
+	// Warnings is set to return the warnings, after the errors, among
+	// the diagnostics: Severity tells them apart. Without it, only the
+	// errors are returned.
+	Warnings bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -632,12 +727,17 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.boxedReturns()
 	}
 	conflicts(checkers)
+	multifileSynthetic(checkers)
 	for _, c := range checked {
 		c.checkClashes()
 	}
 
 	if r, ok := rec.(PhaseRecorder); ok {
 		r.Bodies()
+	}
+	if opts.Only != nil {
+		u.only, u.late = opts.Only, &lateInfer{}
+		defer func() { LateInferences.Add(u.late.count.Load()) }()
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -698,17 +798,35 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 
 	optInErrors(checkers)
 	localClassNames(checkers)
-	var errs []*syntax.Error
+	var errs, warns []*syntax.Error
 	for _, c := range checked {
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
+		c.exposeBoxedPrivate(c.file.Decls, false)
+		for _, d := range c.aliases {
+			c.aliasArrayNothing(d)
+		}
 		c.checkModifiers()
-		sort.SliceStable(c.errs, func(i, j int) bool {
-			a, b := c.errs[i].Pos, c.errs[j].Pos
-			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
-		})
+		c.classPathChecks()
+		c.jvmDefaultModeAnnotations()
+		if !opts.Signatures {
+			c.localWarnings()
+		}
+		c.suppressErrors()
+		byPos := func(ds []*syntax.Error) {
+			sort.SliceStable(ds, func(i, j int) bool {
+				a, b := ds[i].Pos, ds[j].Pos
+				return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
+			})
+		}
+		byPos(c.errs)
+		byPos(c.warns)
 		errs = append(errs, c.errs...)
+		warns = append(warns, c.warns...)
+	}
+	if opts.Warnings {
+		errs = append(errs, warns...)
 	}
 	return errs, nil
 }
@@ -729,8 +847,8 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
 			jumps:    map[*syntax.Lambda]inlineJumps{},
-			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
-			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
+			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, frameAssigns: map[varFrame][]types.Type{}, assignsMemo: map[any][]string{},
+			classCache: map[string]classifier{}, starCache: map[string][]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
 		if opts.Only != nil && !opts.Only[f] {
 			checkers[i].looked.off = true // its lookups are those of its last check
@@ -800,6 +918,14 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	for _, c := range checked {
 		c.inferAll()
 	}
+	if opts.Only != nil {
+		named := func(name string) bool { return opts.Infer[name] || isOperatorName(name) }
+		for _, c := range checkers {
+			if !opts.Only[c.file] {
+				c.inferNamed(named)
+			}
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -851,12 +977,12 @@ func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 			data = append(data, argData(a))
 		}
 	}
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Name: code, Data: data})
 }
 
 // errorData reports an error with its code and fix data given.
 func (c *Checker) errorData(p syntax.Pos, code string, data []string, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Name: code, Data: data})
 }
 
 // argData is a message argument as fix data: a type with fully
@@ -881,6 +1007,28 @@ func qualifiedClassName(c *types.ClassSym) string {
 		return strings.ReplaceAll(c.KotlinName, "/", ".")
 	}
 	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
+}
+
+// warnf reports a warning, which kotlinc names name. It is for the passes
+// over checked code, after speculative checks are done: a warning isn't
+// rolled back with errors. A warning at the same place, with the same
+// name, is reported once.
+func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	k := warnKey{p, name, msg}
+	if c.warned[k] {
+		return
+	}
+	if c.warned == nil {
+		c.warned = map[warnKey]bool{}
+	}
+	c.warned[k] = true
+	c.warns = append(c.warns, &syntax.Error{File: c.file.Path, Pos: p, Msg: msg, Severity: syntax.SevWarning, Name: name})
+}
+
+type warnKey struct {
+	p         syntax.Pos
+	name, msg string
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support,
@@ -914,7 +1062,8 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
-	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
+	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
+	c.javaBoundCycle(ref, t)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -940,11 +1089,19 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Outer != nil {
 		return c.innerType(ref)
 	}
+	if c.lookupTypeParam(ref.Name) == nil {
+		c.starAmbiguity(ref.Name, ref.P)
+	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
-		return c.expandAlias(a, ref)
+		c.aliasRepeatedAnnotations(ref, a)
+		t := c.expandAlias(a, ref)
+		if !c.noBoundChecks {
+			c.arrayNothingRef(ref, t)
+		}
+		return t
 	}
 	var t types.Type
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
@@ -1121,7 +1278,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	if cls.Inner && cls.OuterParams > 0 {
 		return c.innerType(ref) // Inner in its outer class's code
 	}
-	ps := cls.TypeParams
+	ps, hidden := localOwnParams(cls)
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1137,10 +1294,10 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		return types.InvalidType
 	}
-	if len(ps) == 0 {
+	if len(ps) == 0 && hidden == nil {
 		return c.nullable(types.ClassType(cls), ref)
 	}
-	args := make([]types.Arg, len(ps))
+	args := make([]types.Arg, len(ps), len(ps)+len(hidden))
 	for i, a := range ref.Args {
 		args[i] = types.Arg{V: a.Variance}
 		if a.Variance == types.Star {
@@ -1154,9 +1311,10 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
 		}
 	}
-	t := types.GenericType(cls, args)
+	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
+		c.arrayNothingRef(ref, t)
 	}
 	return c.nullable(t, ref)
 }
@@ -1177,11 +1335,27 @@ func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
+			// A bound on a star-projected parameter, C : B in
+			// Constrain<U, *, in T>, says nothing to check against.
+			if b.Has(func(u types.Type) bool { return u.IsParam() && starOf(t, u.Param()) }) {
+				continue
+			}
 			if b = s.Apply(b); !c.subtype(a.T, b) {
 				c.errorf(p, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 			}
 		}
 	}
+}
+
+// starOf reports whether t's argument for its class's type parameter p
+// is a star projection.
+func starOf(t types.Type, p *types.TypeParamSym) bool {
+	for i, q := range t.C.TypeParams {
+		if q == p {
+			return i < len(t.A.List) && t.A.List[i].V == types.Star
+		}
+	}
+	return false
 }
 
 // lookupTypeParam finds a type parameter in scope by name.
@@ -1217,6 +1391,14 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
 		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
+		for _, a := range d.Annotations {
+			// As imported: @OnlyInputTypes for kotlin.internal's.
+			if !d.Sym.OnlyInput && strings.HasSuffix(a.Name, "OnlyInputTypes") {
+				if cls := c.lookupClass(a.Name); cls != nil && cls.Name == "kotlin/internal/OnlyInputTypes" {
+					d.Sym.OnlyInput = true
+				}
+			}
+		}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")
@@ -1267,6 +1449,7 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	if saved {
 		return
 	}
+	c.checkBoundSets(decls)
 	for _, d := range decls {
 		if len(refs[d]) != len(d.Sym.Bounds) {
 			continue // a cyclic bound was dropped
@@ -1291,7 +1474,7 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 		switch {
 		case b.IsParam():
 			c.errorf(refs[i].P, "type parameter cannot have any other bounds if it's bounded by another type parameter")
-		case b.K == types.Class && !b.C.Interface:
+		case classUpperBound(b):
 			if classes++; classes == 2 {
 				c.errorf(refs[i].P, "only one of the upper bounds can be a class")
 			}
@@ -1385,7 +1568,7 @@ func (c *Checker) declare() {
 			}
 			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; dup || c.pkg.Aliases[d.Name] != nil {
+			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
@@ -1403,6 +1586,7 @@ func (c *Checker) declare() {
 func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.ClassSym) *types.ClassSym {
 	c.funModifiers(d.Modifiers, d.P, "class")
 	c.expectMembers(d)
+	c.javaRedeclaration(d, name)
 	if d.Annotation {
 		c.annotationClass(d)
 	}
@@ -1514,7 +1698,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			c.declareClass(md, name+"$"+md.Name, sym)
 			continue
 		}
-		if _, dup := sym.Nested[md.Name]; dup || sym.Aliases[md.Name] != nil {
+		if _, dup := sym.Nested[md.Name]; (dup || sym.Aliases[md.Name] != nil) && md.Name != "<no name provided>" {
 			c.errorf(md.P, "redeclaration: class %s", md.Name)
 		}
 		n := c.declareClass(md, name+"$"+md.Name, sym)
@@ -1775,6 +1959,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			sym.Once[i] = d.Once[p.Name]
 		}
 	}
+	if d.InPlace != nil {
+		sym.InPlace = make([]bool, len(d.Params))
+		for i, p := range d.Params {
+			sym.InPlace[i] = d.InPlace[p.Name]
+		}
+	}
 	c.contractEffects(d, sym)
 	if d.Infix {
 		c.checkInfix(d, owner)
@@ -1782,10 +1972,11 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
+		sym.NoInferRet = d.Ret.NoInfer
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
-		sym.Infer = func() { c.inferFun(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferFun(d) })
 	}
 	if d.Operator {
 		c.checkOperatorDecl(d, owner)
@@ -1811,13 +2002,16 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // of declared type t. A vararg parameter's type is an array of t.
 func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSym {
 	sym := &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: decl, Default: p.Default != nil,
-		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance}
+		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type), Exact: p.Type != nil && p.Type.Exact}
 	if p.External {
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}
 	if p.Vararg {
 		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
 			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+		}
+		if nothingLike(t) {
+			c.errorf(varargPos(p), "forbidden vararg parameter type: %s", t)
 		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
@@ -2073,7 +2267,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = types.InvalidType, true
 		}
 	default:
-		sym.Infer = func() { c.inferProp(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferProp(d) })
 	}
 	c.backingFieldType(d, owner)
 }
@@ -2200,6 +2394,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.enumMembers(d)
 	}
 	c.checkClassVariance(d)
+	c.checkClassTypeParams(d)
 }
 
 // enumMembers declares an enum class's entries, as static fields, and its
@@ -2519,15 +2714,25 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 }
 
 func (c *Checker) inferAll() {
+	c.inferNamed(func(string) bool { return true })
+}
+
+// inferNamed infers the omitted types of the file's top-level and member
+// functions and properties whose names named reports.
+func (c *Checker) inferNamed(named func(string) bool) {
 	for _, d := range c.file.Decls {
 		if c.u.cancelled() {
 			return
 		}
 		switch d := d.(type) {
 		case *syntax.FunDecl:
-			ensureFun(d.Sym)
+			if named(d.Name) {
+				ensureFun(d.Sym)
+			}
 		case *syntax.PropDecl:
-			ensureVar(d.Sym)
+			if named(d.Name) {
+				ensureVar(d.Sym)
+			}
 		}
 	}
 	for _, d := range c.classes {
@@ -2537,11 +2742,83 @@ func (c *Checker) inferAll() {
 			}
 			switch m := m.(type) {
 			case *syntax.FunDecl:
-				ensureFun(m.Sym)
+				if named(m.Name) {
+					ensureFun(m.Sym)
+				}
 			case *syntax.PropDecl:
-				ensureVar(m.Sym)
+				if named(m.Name) {
+					ensureVar(m.Sym)
+				}
 			}
 		}
+	}
+}
+
+// isOperatorName reports whether a function called name may be called by
+// an operator, a for loop, a destructuring or a delegation, which don't
+// name it.
+func isOperatorName(name string) bool {
+	switch name {
+	case "plus", "minus", "times", "div", "rem", "mod", "rangeTo", "rangeUntil", "contains", "get", "set", "invoke",
+		"compareTo", "equals", "inc", "dec", "unaryPlus", "unaryMinus", "not", "iterator", "next", "hasNext",
+		"getValue", "setValue", "provideDelegate", "plusAssign", "minusAssign", "timesAssign", "divAssign", "remAssign", "modAssign":
+		return true
+	}
+	return strings.HasPrefix(name, "component")
+}
+
+// LateInferences counts the omitted types of files not checked that
+// checks of only some files inferred in their parallel phase (lazily),
+// for tests.
+var LateInferences atomic.Int64
+
+// lateInfer lets one goroutine at a time infer omitted types in the files
+// not checked, re-entrantly.
+type lateInfer struct {
+	mu    sync.Mutex
+	owner atomic.Uint64 // the goroutine holding mu
+	count atomic.Int64
+}
+
+func (l *lateInfer) lock() (unlock func()) {
+	g := goroutineID()
+	if l.owner.Load() == g {
+		return func() {}
+	}
+	l.mu.Lock()
+	l.owner.Store(g)
+	l.count.Add(1)
+	return func() {
+		l.owner.Store(0)
+		l.mu.Unlock()
+	}
+}
+
+// goroutineID returns the calling goroutine's ID, from its stack trace's
+// first line: "goroutine 12 [running]:".
+func goroutineID() uint64 {
+	var buf [32]byte
+	n := runtime.Stack(buf[:], false)
+	b := bytes.TrimPrefix(buf[:n], []byte("goroutine "))
+	id, _ := strconv.ParseUint(string(b[:bytes.IndexByte(b, ' ')]), 10, 64)
+	return id
+}
+
+// lazily returns infer, which infers the omitted type of a declaration
+// that resolved reports the resolution of, made safe for the parallel
+// phase of a check of only some files: there, a checked file may need the
+// type of a declaration of a file not checked that isn't inferred up front
+// (Options.Infer), which that file's checker infers, one goroutine at a
+// time, as a checker is used by one at a time.
+func (c *Checker) lazily(resolved *bool, infer func()) func() {
+	return func() {
+		if l := c.u.late; l != nil && !c.u.only[c.file] {
+			defer l.lock()()
+			if *resolved {
+				return
+			}
+		}
+		infer()
 	}
 }
 
@@ -2576,6 +2853,19 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Property == "" {
+		c.implicitNothingRet(d)
+	}
+}
+
+// implicitNothingRet reports an expression-bodied function whose inferred
+// return type is Nothing, as kotlinc's IMPLICIT_NOTHING_RETURN_TYPE: it
+// never returns, which kotlinc wants written. An override's is its
+// overridden function's.
+func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
+	if d.Ret == nil && d.ExprBody != nil && !d.Override && d.Sym.Ret.K == types.Nothing {
+		c.errorf(d.P, "return type 'Nothing' needs to be specified explicitly")
+	}
 }
 
 func (c *Checker) inferProp(d *syntax.PropDecl) {
@@ -2590,7 +2880,9 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.trial = c.trialOf(sym.Owner)
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
+		restore := getterKeepsAnon(d, sym.Owner)
 		c.inferFun(d.Getter)
+		restore()
 		sym.Type = d.Getter.Sym.Ret
 		unitGetter(d.Getter.Sym)
 	} else {
@@ -2603,6 +2895,10 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if d.Setter != nil {
 		d.Setter.Sym.Params[0].Type = sym.Type
 		c.setterParamType(d)
+	}
+	if d.Type == nil && d.DelegateOf == nil && !d.Override && sym.Type.K == types.Nothing {
+		// As implicitNothingRet, kotlinc's IMPLICIT_NOTHING_PROPERTY_TYPE.
+		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
 	c.onUndo(func() { delete(c.done, d) })
@@ -2750,6 +3046,10 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		c.classRules(d)
+		if d.Interface {
+			c.methodsOfAny(d)
+		}
 		if d.Fun {
 			c.checkFunInterface(d)
 		}
@@ -2846,6 +3146,20 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 // Java's charAt.
 var builtinOperators = map[string]bool{"get": true, "set": true, "contains": true, "iterator": true, "next": true, "hasNext": true, "charAt": true}
 
+// declaredPublic reports whether o, an overridden function, is public by
+// its own declaration, and not an override that has the visibility of the
+// functions it overrides.
+func declaredPublic(o *types.FunSym) bool {
+	if o.Protected || o.Module != "" {
+		return false
+	}
+	od, ok := o.Decl.(*syntax.FunDecl)
+	if !ok {
+		return o.Decl == nil
+	}
+	return od.Visibility == syntax.Public && (od.Explicit || !od.Override)
+}
+
 func (c *Checker) inheritDefaults() {
 	for _, d := range c.classes {
 		c.inheritModule(d)
@@ -2859,7 +3173,13 @@ func (c *Checker) inheritDefaults() {
 					c.errorf(p.Default.Pos(), "an overriding function is not allowed to specify default values for its parameters")
 				}
 			}
-			for _, o := range c.overridden(d.Sym, fd.Sym) {
+			c.multipleDefaults(fd)
+			over := c.overridden(d.Sym, fd.Sym)
+			// An override declared without a visibility has the widest of
+			// the overridden functions': public where one of them is, as
+			// the clone() of a Java interface that extends Cloneable.
+			public := slices.ContainsFunc(over, declaredPublic)
+			for _, o := range over {
 				// As in Kotlin, an override of an operator or infix
 				// function is one too.
 				fd.Sym.Operator = fd.Sym.Operator || o.Operator || o.Owner != nil && o.Owner.Name == charSequence && o.Name == "charAt"
@@ -2881,7 +3201,7 @@ func (c *Checker) inheritDefaults() {
 				if kotlinOp || (o.Name == "equals" || o.Name == "compareTo") && len(o.Params) == 1 {
 					fd.Sym.KotlinOperator = true
 				}
-				if !fd.Explicit && fd.Sym.Inherited == 0 {
+				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
 					case o.Protected || od != nil && od.Visibility == syntax.Protected:
 						fd.Sym.Inherited = types.InheritProtected
@@ -2954,6 +3274,45 @@ func (c *Checker) inheritModule(d *syntax.ClassDecl) {
 }
 
 // funDeclaresDefaults reports whether a function declares default values.
+// multipleDefaults reports the parameters of override fd that inherit
+// default values from more than one function of its direct supertypes: an
+// override inherits a default value, and only a function that overrides
+// nothing declares one.
+func (c *Checker) multipleDefaults(fd *syntax.FunDecl) {
+	over := c.overridden(fd.Sym.Owner, fd.Sym)
+	for _, o := range over {
+		c.inheritExtDefaults(o)
+	}
+	for i, p := range fd.Params {
+		n := 0
+		for _, o := range over {
+			// Only a direct supertype's; one inherited through another
+			// supertype is a deprecation warning in Kotlin 2.4.
+			if i < len(o.Params) && declaresDefault(o, i) && directSupertype(fd.Sym.Owner, o.Owner) {
+				n++
+			}
+		}
+		if n > 1 {
+			c.errorf(p.P, "more than one overridden descriptor declares a default value for '%s'", p.Name)
+		}
+	}
+}
+
+// directSupertype reports whether class s is a superclass or an interface
+// that class cls names in its supertypes.
+func directSupertype(cls, s *types.ClassSym) bool {
+	return cls != nil && s != nil && (cls.Super == s || slices.Contains(cls.Interfaces, s))
+}
+
+// declaresDefault reports whether function f declares a default value for
+// its parameter i, rather than inheriting one.
+func declaresDefault(f *types.FunSym, i int) bool {
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return i < len(d.Params) && d.Params[i].Default != nil
+	}
+	return f.Decl == nil && f.DefaultsOf == nil && f.Params[i].Default
+}
+
 func funDeclaresDefaults(d *syntax.FunDecl) bool {
 	for _, p := range d.Params {
 		if p.Default != nil {
@@ -3017,6 +3376,9 @@ func usesField(a *syntax.FunDecl) bool {
 	if a == nil {
 		return false
 	}
+	if fieldShadowedByParam(a) {
+		return false
+	}
 	found := false
 	var f func(n any) bool
 	f = func(n any) bool {
@@ -3025,6 +3387,9 @@ func usesField(a *syntax.FunDecl) bool {
 			if n.Name == "field" {
 				found = true
 			}
+		case *syntax.Block:
+			fieldInBlock(n, f)
+			return false
 		case *syntax.ObjectExpr:
 			// An object literal's code sees the accessor's field, but its
 			// properties' accessors have their own.
@@ -3106,7 +3471,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -3132,8 +3497,12 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	if d.Body != nil {
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
+		return
+	}
+	if sym.Resolved && sym.Ret.K == types.Unit && delegateSetter(d) {
+		c.value(d.ExprBody, noWant) // whatever setValue returns
 		return
 	}
 	if sym.Resolved {
@@ -3141,11 +3510,15 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
-	t := c.expr(d.ExprBody, noWant)
+	rets := []exprRet{}
+	c.exprRets = &rets
+	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Ret = approx(c.approxIntersections(t))
 	}
@@ -3166,6 +3539,14 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
+	if p := d.DelegateOf; p != nil {
+		// The delegate sees the property's own type parameters.
+		for _, tp := range p.TypeParams {
+			if tp.Sym != nil {
+				c.tparams = append(slices.Clip(c.tparams), tp.Sym)
+			}
+		}
+	}
 	sym := d.Sym
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
@@ -3185,13 +3566,22 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		}
 		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
-		t = c.value(d.Init, want)
+		t = types.ApproxFlexNothing(c.value(d.Init, want))
+	}
+	if p := d.DelegateOf; p != nil && p.Recv != nil && len(p.TypeParams) > 0 {
+		c.delegateUsesTypeParam(d.Init, p, t)
 	}
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
+	}
+	if d.Const && sym.Type.P {
+		// A constant is never null: one of a Java constant has its type
+		// without the platform nullability.
+		sym.Type = sym.Type.NonNull()
 	}
 }
 
@@ -3219,7 +3609,11 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	if !c.providesDelegate(t, call) {
 		return t
 	}
+	init := d.Init
 	d.Init = call
+	// A builder's lambda that is checked again declares the property
+	// anew: provideDelegate is called on the delegate as written.
+	c.onUndo(func() { d.Init = init })
 	return c.value(call, want)
 }
 
@@ -3319,14 +3713,23 @@ func (c *Checker) delegateExprWant(x syntax.Expr, t, this types.Type) types.Type
 		}
 		return noWant
 	}
-	if id.Name != "lazy" {
+	lazy := c.u.ext.class("kotlin/Lazy")
+	if id.Name != "lazy" || lazy == nil || !c.stdlibLazy() {
 		return c.delegateFunWant(id.Name, t)
 	}
-	lazy := c.u.ext.class("kotlin/Lazy")
-	if lazy == nil {
-		return noWant
-	}
 	return types.GenericType(lazy, []types.Arg{{T: t}})
+}
+
+// stdlibLazy reports whether lazy is the standard library's, which returns
+// a Lazy, and not a function of the program's or imported that hides it.
+func (c *Checker) stdlibLazy() bool {
+	for _, f := range c.topFuns("lazy") {
+		ensureFun(f)
+		if f.Ret.K != types.Class || f.Ret.C.Name != "kotlin/Lazy" {
+			return false
+		}
+	}
+	return true
 }
 
 // passedThrough returns call's trailing lambda if every function with its
@@ -3476,3 +3879,37 @@ type workerPanic struct {
 }
 
 func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }
+
+// closing returns the position of b's closing brace, where kotlinc reports
+// what a block lacks at its end, or of b if it has none.
+func closing(b *syntax.Block) syntax.Pos {
+	if b.End.Line > 0 {
+		return b.End
+	}
+	return b.P
+}
+
+// nothingLike reports whether t is Nothing, Nothing? or a type parameter
+// bounded by one, which no array can hold elements of.
+func nothingLike(t types.Type) bool {
+	switch t.K {
+	case types.Nothing, types.Null:
+		return true
+	case types.TypeParam:
+		if tp := t.Param(); tp != nil {
+			return slices.ContainsFunc(tp.Bounds, func(b types.Type) bool { return b.K == types.Nothing || b.K == types.Null })
+		}
+	}
+	return false
+}
+
+// varargPos returns the position of p's vararg modifier, where kotlinc
+// reports what is wrong with a vararg parameter, or of p.
+func varargPos(p *syntax.Param) syntax.Pos {
+	for _, m := range p.Mods {
+		if m.Name == "vararg" {
+			return m.P
+		}
+	}
+	return p.P
+}

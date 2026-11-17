@@ -61,3 +61,26 @@ context(c: kotlin.coroutines.CoroutineContext) // ERROR context parameter of typ
 fun reservedContext() {}
 
 fun reservedType(f: context(kotlin.coroutines.CoroutineContext) () -> Unit) {} // ERROR context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved
+
+// Unlike a lambda, an anonymous function is never suspend, nor converted
+// to a suspend function type.
+
+fun takesSuspend(f: suspend () -> Unit) {}
+
+fun takesPlain(f: () -> Unit) {}
+
+fun anonymousForSuspend() {
+    takesSuspend(fun() {}) // ERROR inferred type is () -> Unit but suspend () -> Unit was expected
+    takesSuspend {}
+    val g: suspend () -> Unit = fun() {} // ERROR inferred type is () -> Unit but suspend () -> Unit was expected
+    val plain = fun() {}
+    takesSuspend(plain)
+}
+
+fun anonymousForShadowedSuspend() {
+    // The local function can't take it, but the top-level one can.
+    fun takesPlain(f: suspend () -> Unit) {}
+    takesPlain(fun() {})
+    fun takesSuspend(f: () -> Unit) {}
+    takesSuspend(fun() {})
+}

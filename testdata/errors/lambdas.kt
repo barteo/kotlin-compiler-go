@@ -76,3 +76,11 @@ fun receiverCalls(f: (Int) -> Int, g: Int.(Int) -> Int) {
     2.(g)(1)
     2.(f)() // ERROR no receiver can be passed to a value of type (Int) -> Int
 }
+
+// A parameter declared with a type bounds the variable of the expected
+// parameter type, which the result can't contradict: R is a String.
+fun <R> sameInOut(op: (R) -> R): R = TODO()
+fun declaredParamContradicted() {
+    sameInOut { s: String -> 1 } // ERROR type mismatch: inferred type is Int but String was expected
+    sameInOut { _: String -> } // ERROR type mismatch: inferred type is Unit but String was expected
+}

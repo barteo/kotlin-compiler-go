@@ -38,6 +38,7 @@ const (
 	mScope                 = "dev/zacsweers/metro/Scope"
 	mMapKey                = "dev/zacsweers/metro/MapKey"
 	mSingleIn              = "dev/zacsweers/metro/SingleIn"
+	mCloseableGraph        = "dev/zacsweers/metro/CloseableGraph"
 	mProvider              = "dev/zacsweers/metro/Provider"
 	mNothing               = "kotlin/Nothing"
 )

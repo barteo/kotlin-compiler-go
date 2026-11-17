@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -167,6 +168,93 @@ func (c *Checker) projectedAnnotationParams(d *syntax.ClassDecl) {
 				c.errorf(t.P, "projections are not allowed in types of annotation members")
 				break
 			}
+		}
+	}
+}
+
+// multifileSynthetic reports the parts of a multi-file class that aren't
+// annotated @file:JvmSynthetic when another part is, as kotlinc's
+// NOT_ALL_MULTIFILE_CLASS_PARTS_ARE_JVM_SYNTHETIC: the facade is either
+// synthetic or not.
+func multifileSynthetic(checkers []*Checker) {
+	synthetic := map[string]bool{}
+	for _, c := range checkers {
+		if f := c.file; f.Part != "" && fileAnnotation(f, "JvmSynthetic") != nil {
+			synthetic[f.Facade] = true
+		}
+	}
+	for _, c := range checkers {
+		f := c.file
+		if f.Part == "" || !synthetic[f.Facade] || fileAnnotation(f, "JvmSynthetic") != nil {
+			continue
+		}
+		if a := fileAnnotation(f, "JvmMultifileClass"); a != nil {
+			c.errorf(a.P, "not all parts of the multi-file class are annotated @JvmSynthetic")
+		}
+	}
+}
+
+// fileAnnotation returns file f's annotation of simple name name, or nil.
+func fileAnnotation(f *syntax.File, name string) *syntax.Annotation {
+	for i := range f.Annotations {
+		if a := &f.Annotations[i]; a.Is(name) {
+			return a
+		}
+	}
+	return nil
+}
+
+// exposeBoxedPrivate reports @JvmExposeBoxed on the declarations among ds
+// that are private, or in a private class if outer, as kotlinc's
+// JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE: Java can't call them.
+func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
+	report := func(as []syntax.Annotation, private bool, target string) {
+		if !private {
+			return
+		}
+		for _, a := range as {
+			if a.Is("JvmExposeBoxed") && a.Target == target {
+				c.errorf(a.P, "'@JvmExposeBoxed' cannot be applied to a private declaration")
+			}
+		}
+	}
+	for _, d := range ds {
+		switch d := d.(type) {
+		case *syntax.FunDecl:
+			report(d.Annotations, outer || d.Visibility == syntax.Private, "")
+			c.exposeBoxedSameName(d)
+		case *syntax.PropDecl:
+			private := outer || d.Visibility == syntax.Private
+			getter := false
+			for i, ms := range d.AccessorMods {
+				if !d.AccessorSets[i] && slices.ContainsFunc(ms, func(m syntax.Mod) bool { return m.Name == "private" }) {
+					getter = true
+				}
+			}
+			report(d.Annotations, private || getter, "get")
+			report(d.Annotations, private || d.SetterVis == syntax.Private, "set")
+		case *syntax.ClassDecl:
+			private := outer || d.Visibility == syntax.Private
+			report(d.Annotations, private, "")
+			report(d.CtorMods.Annotations, private || d.CtorMods.Visibility == syntax.Private, "")
+			for _, sc := range d.Secondaries() {
+				report(sc.Annotations, private || sc.Visibility == syntax.Private, "")
+			}
+			c.exposeBoxedPrivate(d.Members, private)
+		}
+	}
+}
+
+// exposeBoxedSameName reports a @JvmExposeBoxed name that is function d's
+// own, as kotlinc's JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME.
+func (c *Checker) exposeBoxedSameName(d *syntax.FunDecl) {
+	for i := range d.Annotations {
+		a := &d.Annotations[i]
+		if !a.Is("JvmExposeBoxed") || a.Target != "" {
+			continue
+		}
+		if name, ok := a.Str("jvmName"); ok && name == d.Name {
+			c.errorf(a.Arg(0, "jvmName").Toks[0].Pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
 		}
 	}
 }

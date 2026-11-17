@@ -2,15 +2,17 @@ package ka
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
-	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kasession"
 )
 
 // Libraries are kasession's, shared with the sessions of package analysis
 // that use the same options. What ka keeps with one, its models of the
-// class path's classes and its last checks, is attached to it: shared.
+// class path's classes and its last checks, is attached to it: shared. A
+// module's Java sources, whose classes the program's classes are found
+// through, are put over it for each check (library.withJava).
 
 // shared is what ka keeps with a library.
 type shared struct {
@@ -25,7 +27,7 @@ type attachment struct{}
 
 func attach(l *kasession.Library) *shared {
 	return l.Attach(attachment{}, func() any {
-		return &shared{l: l, lib: &library{cp: l.Path, lib: l.Lib, java: l.Java, decls: map[string]*Decl{}, params: map[string]map[string]string{}}}
+		return &shared{l: l, lib: &library{cp: l.Path, lib: l.Lib, decls: map[string]*Decl{}, params: map[string]map[string]string{}}}
 	}).(*shared)
 }
 
@@ -40,6 +42,8 @@ func libraryOptions(cfg Config) driver.Options {
 // acquire returns a library for cfg that the caller must release: a
 // shared one if there is one for cfg, else one it opens.
 func acquire(cfg Config) (*shared, error) {
+	cfg.ClassPath = existing(cfg.ClassPath)
+	cfg.FriendPaths = existing(cfg.FriendPaths)
 	l, err := kasession.Acquire(libraryOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("ka: %w", err)
@@ -47,14 +51,17 @@ func acquire(cfg Config) (*shared, error) {
 	return attach(l), nil
 }
 
-// acquireJava returns a library for cfg with the classes of the module's
-// Java sources files, which isn't shared, and their set.
-func acquireJava(cfg Config, files []*javasrc.File) (*shared, *driver.JavaSources, error) {
-	l, err := kasession.AcquireJava(libraryOptions(cfg), files)
-	if err != nil {
-		return nil, nil, fmt.Errorf("ka: %w", err)
+// existing returns the paths that exist. A build lists class path entries
+// that need not exist (an output directory nothing is written to), and
+// kotlinc and stock KSP leave those out.
+func existing(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			out = append(out, p)
+		}
 	}
-	return attach(l), l.Java, nil
+	return out
 }
 
 // retain adds a user to s.

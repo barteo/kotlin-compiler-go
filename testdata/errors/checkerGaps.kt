@@ -1,11 +1,11 @@
 // Errors of the checks added while checking kotlinpoet.
 
 class Writer {
-    fun emit(xs: java.util.ArrayList<String>) {}
+    fun emit(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
     fun emit(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
 }
 
-fun top(xs: java.util.ArrayList<String>) {}
+fun top(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
 fun top(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
 
 @JvmName("topNumbers")
@@ -34,7 +34,7 @@ class Hidden {
 }
 
 fun hidden() {
-    Hidden().old() // ERROR no function 'old' takes 0 arguments
+    Hidden().old() // ERROR unresolved reference: old
 }
 
 fun f(a: Int, b: Int = 0, c: Int = 0) {}

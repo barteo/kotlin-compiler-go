@@ -53,7 +53,7 @@ class B : A() { override fun f(): Any = "" }`, "RETURN_TYPE_MISMATCH_ON_OVERRIDE
 		}
 		found := false
 		for _, e := range errs {
-			if e.Code == tc.code {
+			if e.Name == tc.code {
 				found = true
 				if !slices.Equal(e.Data, tc.data) {
 					t.Errorf("%s: data %q, want %q", tc.code, e.Data, tc.data)

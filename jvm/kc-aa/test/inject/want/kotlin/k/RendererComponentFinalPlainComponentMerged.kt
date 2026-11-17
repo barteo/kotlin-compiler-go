@@ -1,0 +1,3 @@
+package k
+
+public interface RendererComponentFinalPlainComponentMerged

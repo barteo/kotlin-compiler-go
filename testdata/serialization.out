@@ -178,6 +178,7 @@ kotlin.collections.ArrayList(PrimitiveDescriptor(app.Sticker))?
 kotlin.collections.ArrayList(PrimitiveDescriptor(app.Tag))?
 "<c>"
 [Tag(d)]
+app.Tag "<e>" app.Tag app.Tag app.Tag?
 Encoded(plain=1, always=a, alwaysMode=2, never=[y], neverNamed=false) 5
 pet: {"type":"app.Pet.Zebra","stripes":3}
   back: Zebra(stripes=3) true

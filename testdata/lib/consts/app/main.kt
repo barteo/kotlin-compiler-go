@@ -20,4 +20,5 @@ fun main() {
     println("${Codes.FIRST_USER} ${Holder.SHIFTED}")
     println(Annotated::class.java.getAnnotation(Code::class.java).value)
     println("${month(12)} ${month(130)} ${month(1)}")
+    println("${PREFIX == "xml"} ${Holder.ATTRIBUTE == "xmlns"} ${PREFIX.length} ${Holder.ATTRIBUTE}")
 }

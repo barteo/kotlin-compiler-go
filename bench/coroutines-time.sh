@@ -3,7 +3,7 @@
 # with kc and kotlinc, and writes bench/results/time-coroutines.md.
 #
 #   bench/coroutines-time.sh                       # about 2 minutes
-#   RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/coroutines-time.sh
 #
 # Both compilers get the build's options: the module name and
 # -jvm-default=enable, and kotlinc also the others (explicit API mode,

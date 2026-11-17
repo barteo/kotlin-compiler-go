@@ -727,3 +727,72 @@ class K {
 		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// TestDataObject checks that a data object has no copy, which only a data
+// class has, as in FIR.
+func TestDataObject(t *testing.T) {
+	m := update(t, `package a
+data object None
+`)
+	defer m.Close()
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Kind != KindConstructor {
+			t.Errorf("member %s, want only the constructor", d.Name)
+		}
+	}
+}
+
+// TestDataCopyAnnotations checks that a data class's copy parameters have
+// the annotations of its constructor's parameters, without their use-site
+// targets, as in FIR.
+func TestDataCopyAnnotations(t *testing.T) {
+	m := update(t, `package a
+annotation class A
+data class D(@A val x: Int, @param:A val y: Int, @property:A val z: Int, @get:A val w: Int)
+`)
+	defer m.Close()
+	var got []string
+	for _, d := range m.Files[0].Decls[1].Members {
+		if d.Name != "copy" {
+			continue
+		}
+		for _, p := range d.Params {
+			for _, a := range p.Annotations {
+				got = append(got, p.Name+":"+a.ClassID+":"+a.Target)
+			}
+		}
+	}
+	if want := []string{"x:a/A:", "y:a/A:"}; !slices.Equal(got, want) {
+		t.Errorf("copy's parameters' annotations %v, want %v", got, want)
+	}
+}
+
+// TestDelegatedSupertype checks that a supertype a class implements by
+// delegation is marked, and the others aren't.
+func TestDelegatedSupertype(t *testing.T) {
+	m := update(t, `package a
+interface I
+interface J
+class C(i: I) : I by i, J
+`)
+	defer m.Close()
+	st := m.Files[0].Decls[2].Supertypes
+	if len(st) != 2 || !st[0].Delegated || st[1].Delegated {
+		t.Errorf("supertypes %v", st)
+	}
+}
+
+// TestAnnotationAlias checks that an annotation that names its class by a
+// typealias has the typealias's class ID, and its class's.
+func TestAnnotationAlias(t *testing.T) {
+	m := update(t, `package a
+annotation class A
+typealias B = A
+@B @A class C
+`)
+	defer m.Close()
+	as := m.Files[0].Decls[2].Annotations
+	if len(as) != 2 || as[0].ClassID != "a/A" || as[0].Alias != "a/B" || as[1].ClassID != "a/A" || as[1].Alias != "" {
+		t.Errorf("annotations %+v", as)
+	}
+}

@@ -9,21 +9,15 @@ import (
 )
 
 // primitives are the names of kc's built-in kinds of types.
-var primitives = [...]string{
-	types.Unit:    "kotlin.Unit",
-	types.Nothing: "kotlin.Nothing",
-	types.Null:    "kotlin.Nothing",
-	types.Bool:    "kotlin.Boolean",
-	types.Int:     "kotlin.Int",
-	types.Long:    "kotlin.Long",
-	types.Double:  "kotlin.Double",
-	types.Char:    "kotlin.Char",
-	types.Float:   "kotlin.Float",
-	types.Byte:    "kotlin.Byte",
-	types.Short:   "kotlin.Short",
-	types.String:  "kotlin.String",
-	types.Any:     "kotlin.Any",
-}
+var primitives = func() (out [types.Any + 1]string) {
+	for k := range out {
+		if n := types.Kind(k).Name(); n != "" {
+			out[k] = "kotlin." + n
+		}
+	}
+	out[types.Null] = out[types.Nothing]
+	return out
+}()
 
 // primitiveSupers are the supertypes of the built-in kinds.
 var primitiveSupers = map[types.Kind][]string{

@@ -266,7 +266,7 @@ func (g *gen) hashOf(load func(), t types.Type) {
 	}
 	if t.IsPrimitive() {
 		load()
-		g.code.Invoke(cf.INVOKESTATIC, boxClass[t.K], "hashCode", "("+desc(t)+")I")
+		g.code.Invoke(cf.INVOKESTATIC, boxClass(t.K), "hashCode", "("+desc(t)+")I")
 		return
 	}
 	owner := "java/lang/Object"

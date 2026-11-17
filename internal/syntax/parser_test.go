@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,6 +24,7 @@ func TestParseValid(t *testing.T) {
 		{"when subject", "fun f(x: Int) = when (x) {\n 1, 2 -> \"a\"\n in 3..4 -> \"b\"\n !in 0..9 -> \"c\"\n else -> \"d\"\n}"},
 		{"definitely non-nullable type", "fun <T> f(x: T & Any, l: List<T & Any>?): (T & Any) -> T = { it }"},
 		{"local extension function", "fun f() { fun Int.g() = 1 }"},
+		{"local function with expression body and semicolons", "fun f() { fun a() = 1; ; println(a()); fun b() { }; println(b()); fun c() = 2; }\nfun g() = 1; fun h() = 2"},
 		{"anonymous function", "fun f() = fun(x: Int) = x"},
 		{"anonymous function on next line", "val f =\n    fun (x: Int): Int { return x }"},
 		{"anonymous extension function", "fun f(x: Int) = when (x) {\n 0 -> null\n else -> fun Int.() { }\n}"},
@@ -127,7 +129,6 @@ func TestParseValid(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	tests := []struct{ src, pos, msg string }{
-		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
 		{"fun f() { 1 + }", "1:15", "expected expression"},
 		{"fun f() { val a = 1 val b = 2 }", "1:21", "expected newline or ';'"},
 		{"val <T> x = 1", "1:1", "type parameters of a property must be used in its receiver type"},
@@ -153,9 +154,13 @@ func TestParseErrors(t *testing.T) {
 		{"context(_: Any?) package p", "1:1", "context parameters are unsupported in this position"},
 		{"class C {\n  context(a: A)\n}", "2:3", "expected a declaration after the context parameters"},
 		{"context(a: A)", "1:1", "expected a declaration after the context parameters"},
+		{"fun f() { fun a() = 1; println(a()) }", "1:24", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() {\n  fun a() = 1\n  ; println(a())\n}", "3:5", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() { println(1);; }", "1:21", "expected newline or ';', found ';;'"},
+		{"val x = 1;;", "1:10", "expected newline or ';', found ';;'"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.msg, func(t *testing.T) {
+		t.Run(tt.src, func(t *testing.T) {
 			_, errs := Parse("t.kt", tt.src)
 			if len(errs) == 0 {
 				t.Fatal("expected an error")
@@ -165,6 +170,48 @@ func TestParseErrors(t *testing.T) {
 				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
 			}
 		})
+	}
+}
+
+// TestLaterErrors checks errors the parser reports and parses on after.
+func TestLaterErrors(t *testing.T) {
+	tests := []struct{ src, pos, msg string }{
+		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
+		{"fun f() { enum class E { A } }", "1:16", "local enum classes are not allowed"},
+		{"interface I<in in T>", "1:16", "repeated 'in'"},
+		{"interface I<in out T>", "1:13", "modifier 'in' is incompatible with 'out'"},
+		{"enum class E { public A }", "1:16", "modifier 'public' is not applicable to 'enum entry'"},
+		{"class C { constructor(val x: Int) }", "1:23", "'val' on secondary constructor parameter is not allowed"},
+		{"fun f(var x: Int) {}", "1:7", "'var' on function parameter is not allowed"},
+		{"val f: suspend (() -> Unit)? = null", "1:8", "modifier 'suspend' is not applicable to 'nullable type'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			f, errs := Parse("t.kt", tt.src)
+			if len(errs) > 0 {
+				t.Fatalf("unexpected error: %v", errs[0])
+			}
+			if len(f.Errors) == 0 {
+				t.Fatal("expected an error")
+			}
+			if e := f.Errors[0]; e.Pos.String() != tt.pos || !strings.Contains(e.Msg, tt.msg) {
+				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
+			}
+		})
+	}
+}
+
+// TestParseKeepsLaterErrors checks that a parse that stops returns the
+// error it stopped at first, then those it went on after before it.
+func TestParseKeepsLaterErrors(t *testing.T) {
+	_, errs := Parse("t.kt", "val a = 1l\nfun f() { 1 + }")
+	var got []string
+	for _, e := range errs {
+		got = append(got, e.Pos.String()+" "+e.Msg)
+	}
+	want := []string{"2:15 expected expression, found '}'", "1:9 use 'L' instead of 'l'"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

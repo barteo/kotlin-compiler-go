@@ -14,6 +14,9 @@ const val PI = Math.PI
 const val BUFFER = DEFAULT_BUFFER_SIZE * 2
 const val E = EULER
 
+// A String one has the type String, not the Java field's platform type.
+const val PREFIX = javax.xml.XMLConstants.XML_NS_PREFIX
+
 object Codes {
     const val FIRST_USER = java.net.HttpURLConnection.HTTP_OK + 1
 }
@@ -21,5 +24,6 @@ object Codes {
 class Holder {
     companion object {
         const val SHIFTED = java.awt.event.KeyEvent.VK_A shl 1
+        const val ATTRIBUTE = javax.xml.XMLConstants.XMLNS_ATTRIBUTE
     }
 }

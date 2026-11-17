@@ -98,6 +98,13 @@ type assignment struct {
 	// comp is the companion object of the enum class whose constructor
 	// code is walked, which isn't initialized before its entries are.
 	comp *types.ClassSym
+	// entries are the entries of the enum class whose constructor code
+	// is walked that aren't created yet: all of them in the class's own
+	// code, an entry and those after it in its arguments and its body.
+	entries map[*types.VarSym]bool
+	// inlined counts the lambdas walked that are passed to inline
+	// functions, which run where they are for the entries' check.
+	inlined int
 }
 
 // daOnce records the states at the returns from a lambda that its
@@ -179,14 +186,16 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	a.trackInits(d.Members)
 	s := newDAState()
 	switch {
-	case len(d.Entries) > 0 && d.Sym.Companion != nil:
+	case len(d.Entries) > 0:
 		a.enumEntries(d)
-	case d.EnumEntry && d.Sym.Super != nil && d.Sym.Super.Companion != nil:
+	case d.EnumEntry && d.Sym.Super != nil:
 		a.comp = d.Sym.Super.Companion // the entry's code runs first too
+		a.entries = entriesFrom(d.Sym.Super, d.Name)
 	}
 	a.supers(d, s)
 	a.inits(d.Members, s)
 	a.comp = nil
+	a.entries = nil
 	missing := map[*syntax.PropDecl]bool{}
 	check := func(end *daState) {
 		for _, pd := range props {
@@ -523,6 +532,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 			a.expr(x.Member, s) // a member of an outer class or an object
 			break
 		}
+		a.entry(x.Sym, x.P)
 		a.read(x.Sym, x.P, s)
 	case *syntax.StringLit:
 		for _, p := range x.Parts {
@@ -563,6 +573,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		if a.comp != nil && x.Object == a.comp {
 			a.companion(x.P)
 		}
+		a.entry(x.Field, x.P)
 		if x.Static != nil || x.Object != nil {
 			break
 		}
@@ -601,6 +612,12 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		for k, arg := range x.Args {
 			if l, ok := arg.(*syntax.Lambda); ok && calledOnce(x, k) {
 				a.inPlace(x, l, as)
+				continue
+			}
+			if _, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
+				a.inlined++
+				a.expr(arg, as)
+				a.inlined--
 				continue
 			}
 			a.expr(arg, as)
@@ -765,11 +782,40 @@ func (a *assignment) enumEntries(d *syntax.ClassDecl) {
 	s := newDAState()
 	for _, e := range d.Entries {
 		if e.Call != nil && e.Body == nil {
+			a.entries = entriesFrom(d.Sym, e.Name)
 			for _, arg := range e.Call.Args {
 				a.expr(arg, s)
 			}
 		}
 	}
+	a.entries = entriesFrom(d.Sym, "")
+}
+
+// entriesFrom returns the entries of enum class cls from the one named
+// name on, or all of them if name is empty.
+func entriesFrom(cls *types.ClassSym, name string) map[*types.VarSym]bool {
+	i := 0
+	if name != "" {
+		i = slices.Index(cls.Entries, name)
+		if i < 0 {
+			return nil
+		}
+	}
+	m := map[*types.VarSym]bool{}
+	for _, n := range cls.Entries[i:] {
+		if f := cls.Fields[n]; f != nil {
+			m[f] = true
+		}
+	}
+	return m
+}
+
+// entry reports a read of an enum entry that isn't created yet.
+func (a *assignment) entry(v *types.VarSym, p syntax.Pos) {
+	if v == nil || !a.entries[v] || a.quiet > 0 || a.lambdas > a.inlined {
+		return
+	}
+	a.c.errorf(p, "enum entry '%s' is uninitialized here", v.Name)
 }
 
 // companion reports an access of the enum's companion object in its

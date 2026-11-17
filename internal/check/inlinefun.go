@@ -37,7 +37,8 @@ func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // forwardInlinable makes a crossinline parameter of the program's inline
 // function a function object if the function passes it on to a parameter
 // of another inline function, of the call's name, that is one: of the
-// program's, or a top-level one of the class path whose body captures it.
+// program's, or a top-level one or an extension of the class path whose
+// body captures it.
 // kc doesn't copy a crossinline lambda into a nested lambda, as kotlinc
 // does, so clikt's convert(metavar, conversion), which passes its
 // conversion to convert(metavarGetter, conversion), whose lambda invokes
@@ -103,8 +104,14 @@ func forwardedToObject(d *syntax.FunDecl, name string, byName map[string][]*synt
 					found = true
 				}
 			}
-			if _, ok := x.Fun.(*syntax.Ident); ok && c != nil && len(byName[callee]) == 0 {
-				found = found || c.libTakesObject(callee, x, k)
+			if c != nil && len(byName[callee]) == 0 {
+				switch x.Fun.(type) {
+				case *syntax.Ident:
+					found = found || c.libTakesObject(callee, x, k, false)
+				case *syntax.Member:
+					// An extension's, as thenBy's in compareBy(f).thenBy(g).
+					found = found || c.libTakesObject(callee, x, k, true)
+				}
 			}
 		}
 		return !found
@@ -121,9 +128,10 @@ func forwardedToObject(d *syntax.FunDecl, name string, byName map[string][]*synt
 // libTakesObject reports whether a top-level inline function of the class
 // path, named name, that call x may call takes a function object for
 // argument k: its body captures the parameter, as a crossinline one in a
-// lambda.
-func (c *Checker) libTakesObject(name string, x *syntax.Call, k int) bool {
-	for _, fs := range c.kotlinFunLevels(name, false) {
+// lambda. ext is set for a call on a receiver, of an extension: before
+// the receiver's type is known, any of the name may be the one.
+func (c *Checker) libTakesObject(name string, x *syntax.Call, k int, ext bool) bool {
+	for _, fs := range c.kotlinFunLevels(name, ext) {
 		for _, f := range fs {
 			if f.Inline == nil {
 				continue
@@ -380,7 +388,7 @@ func hasReified(f *types.FunSym) bool {
 // reified type parameters: they must be known when the program runs, so
 // not type parameters, which are erased, unless reified in turn.
 func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, s *system) {
-	x.Reified = c.reifiedTypes(x.P, f, sub, s)
+	x.Reified = c.reifiedTypes(x.P, f, sub, s, x.TypeArgs)
 	c.serializerOf(x, f)
 	c.reifiedSerializers(x, f)
 }
@@ -388,17 +396,32 @@ func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, 
 // reifiedProp records the type arguments of a read x of an extension
 // property whose getter g has reified type parameters, as reifiedArgs.
 func (c *Checker) reifiedProp(x *syntax.Member, g *types.FunSym, sub types.Subst, s *system) {
-	x.Reified = c.reifiedTypes(x.P, g, sub, s)
+	x.Reified = c.reifiedTypes(x.P, g, sub, s, nil)
 }
 
-func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst, s *system) []types.Type {
+// reifiedTypes returns the type arguments of f in a call or read at pos,
+// whose written type arguments are written, and checks those of reified
+// type parameters.
+func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst, s *system, written []*syntax.TypeArg) []types.Type {
 	ts := make([]types.Type, len(f.TypeParams))
 	for i, tp := range f.TypeParams {
 		t := s.final(sub.Apply(types.ParamType(tp)))
 		ts[i] = t
-		if tp.Reified && t.IsParam() && !t.Param().Reified {
+		switch {
+		case tp.Reified && len(written) == len(f.TypeParams) && written[i].Type != nil && written[i].Type.And != nil:
+			c.errorf(written[i].P, "cannot use definitely-non-nullable type as a reified type argument")
+		case tp.Reified && t.IsParam() && !t.Param().Reified:
 			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
+		case tp.Reified && s != nil && s.captured(sub[tp]):
+			c.errorf(pos, "cannot use captured type as reified type parameter")
+		case tp.Reified && t.K == types.Nothing && !t.N:
+			// Nothing has no class; Nothing? is Void's.
+			c.errorf(pos, "cannot use 'Nothing' as reified type parameter")
 		}
+	}
+	if f.Builtin == types.TypeOf && hasSuspendFunc(ts[0]) {
+		// kotlin.reflect has no KType of a suspend function type.
+		c.errorf(pos, "suspend function types can't be used in 'typeOf'")
 	}
 	if f.Builtin == types.TypeOf {
 		if p := recursiveBound(ts[0], nil); p != nil {
@@ -553,4 +576,20 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 		}
 		c.errorf(id.P, "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", id.Name, d.Name)
 	}
+}
+
+// hasSuspendFunc reports whether t is or has as a type argument a suspend
+// function type.
+func hasSuspendFunc(t types.Type) bool {
+	if t.IsSuspendFunc() {
+		return true
+	}
+	if t.K == types.Class && t.A != nil {
+		for _, a := range t.A.List {
+			if a.V != types.Star && hasSuspendFunc(a.T) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -68,7 +68,7 @@ func JavaTargets(names []string) Targets {
 	for _, n := range names {
 		switch n {
 		case "TYPE":
-			t |= TargetClass | TargetAnnotationClass
+			t |= TargetClass | TargetAnnotationClass | TargetFile
 		case "ANNOTATION_TYPE":
 			t |= TargetAnnotationClass
 		case "FIELD":

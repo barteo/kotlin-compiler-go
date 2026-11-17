@@ -86,4 +86,22 @@ fun main() {
     m.releaseIntercepted()
     println(log)
     println(probed(m) === m)
+    localConstructors()
+}
+
+// A reference to a local class's constructor is a KFunction too, which
+// passes on what the class captures.
+fun localConstructors() {
+    var n = 3
+    class A
+    class B(val s: String) { fun get() = s + n }
+    val a: KFunction0<A> = ::A
+    val b: KFunction1<String, B> = ::B
+    n = 4
+    println("${a.name} ${a() is Any} ${b.name} ${b("k").get()} ${::A == ::A}")
+    class C {
+        val r = ::A
+        fun Int.ext() = ::A
+    }
+    println("${C().r.name} ${with(C()) { 1.ext() }.name}")
 }

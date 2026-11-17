@@ -60,6 +60,19 @@ func (p *sigParser) ident(delims string) string {
 	return ""
 }
 
+// sourceOwner reports whether a type parameter's owner is, or is a member
+// of, a class of a check's Java sources, which doesn't live as long as the
+// library.
+func sourceOwner(owner any) bool {
+	switch o := owner.(type) {
+	case *types.ClassSym:
+		return o.Source
+	case *types.FunSym:
+		return o.Owner != nil && o.Owner.Source
+	}
+	return false
+}
+
 // typeParams parses <T:bound;U::bound;> and returns the parameters. The
 // parameters are in scope in their own bounds.
 func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
@@ -72,7 +85,7 @@ func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
 	start := p.i
 	var ps []*types.TypeParamSym
 	for p.ok && p.peek() != '>' {
-		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner})
+		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner, Library: !sourceOwner(owner)})
 		for p.ok && p.peek() == ':' {
 			p.i++
 			if p.isTypeStart() {
@@ -148,25 +161,8 @@ func (p *sigParser) skipRef() {
 func (p *sigParser) javaType() types.Type {
 	c := p.peek()
 	p.i++
-	switch c {
-	case 'I':
-		return types.IntType
-	case 'J':
-		return types.LongType
-	case 'D':
-		return types.DoubleType
-	case 'Z':
-		return types.BoolType
-	case 'V':
-		return types.UnitType
-	case 'C':
-		return types.CharType
-	case 'F':
-		return types.FloatType
-	case 'B':
-		return types.ByteType
-	case 'S':
-		return types.ShortType
+	if k := types.DescKind(c); k != types.Invalid {
+		return types.Type{K: k} // a primitive, or V
 	}
 	p.i--
 	return p.refType()
@@ -255,17 +251,28 @@ func (t *classTable) classType(name string, args []types.Arg) types.Type {
 	case "java/lang/Object":
 		return types.AnyType.Platform()
 	}
-	for k, box := range boxes {
-		if name == box {
-			return types.Type{K: k}.Nullable().Platform()
-		}
+	if k := types.BoxKind(name); k != types.Invalid {
+		return types.Type{K: k}.Nullable().Platform()
 	}
 	c := t.class(name)
 	if c == nil {
 		return types.InvalidType
 	}
+	if covariantMapped[name] {
+		// Iterable<? super T> is a (Mutable)Iterable<in T>, which
+		// conflicts with its out T: a star projection.
+		for i, a := range args {
+			if a.V == types.In {
+				args[i] = types.Arg{V: types.Star}
+			}
+		}
+	}
 	return types.GenericType(c, args).Platform()
 }
+
+// covariantMapped are the Java classes Kotlin maps to classes whose type
+// parameter is out in both their read-only and mutable forms.
+var covariantMapped = map[string]bool{"java/lang/Iterable": true, "java/util/Iterator": true}
 
 // classSignature reads a class's type parameters and generic supertypes.
 // An inner class's outer type parameters, outer, are in scope and are its

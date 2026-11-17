@@ -62,6 +62,9 @@ type Type struct {
 	// and Contexts is its number of context parameters, which come first.
 	Extension bool
 	Contexts  int
+	// Delegated is set on a class's supertype that it implements by
+	// delegation, I by x.
+	Delegated bool
 	// Abbrev is the typealias type the type was written as, if it was:
 	// a TypeClass whose ClassID is the typealias's, with the typealias's
 	// type arguments and the type's nullability. The type is the
@@ -76,23 +79,6 @@ type Type struct {
 type TypeArg struct {
 	Variance Variance
 	Type     *Type // nil for Star
-}
-
-// primitives are the class IDs of kc's built-in kinds of types.
-var primitives = [...]string{
-	types.Unit:    "kotlin/Unit",
-	types.Nothing: "kotlin/Nothing",
-	types.Null:    "kotlin/Nothing",
-	types.Bool:    "kotlin/Boolean",
-	types.Int:     "kotlin/Int",
-	types.Long:    "kotlin/Long",
-	types.Double:  "kotlin/Double",
-	types.Char:    "kotlin/Char",
-	types.Float:   "kotlin/Float",
-	types.Byte:    "kotlin/Byte",
-	types.Short:   "kotlin/Short",
-	types.String:  "kotlin/String",
-	types.Any:     "kotlin/Any",
 }
 
 // kotlinClasses are the Kotlin classes that Java classes are, where kc
@@ -228,13 +214,17 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		}
 		out.DefinitelyNonNull = t.D
 	default:
-		if int(t.K) >= len(primitives) || primitives[t.K] == "" {
+		k := t.K
+		if k == types.Null {
+			k = types.Nothing
+		}
+		if k.ClassID() == "" {
 			out.Kind = TypeError
 			out.Name = t.String()
 			return out
 		}
 		out.Kind = TypeClass
-		out.ClassID = primitives[t.K]
+		out.ClassID = k.ClassID()
 	}
 	switch {
 	case t.P: // platform types are also N

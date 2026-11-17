@@ -23,9 +23,9 @@ fun equalities(n: Number, s: String, d: Double, cs: CharSequence, c: Comparable<
     println(d == c)
 }
 
-fun g(): Int { // ERROR missing return statement
+fun g(): Int {
     println("no return")
-}
+} // ERROR missing return statement
 
 fun h(flag: Boolean): Int = if (flag) 1 // ERROR 'if' must have both main and 'else' branches
 

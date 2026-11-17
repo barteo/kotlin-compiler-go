@@ -18,7 +18,9 @@ type Type struct {
 	Nullable  bool
 	Flags     int   // TypeSuspend, TypeDefinitelyNonNull
 	Upper     *Type // the upper bound of a flexible type, or nil
-	Outer     *Type // the outer class's type, for an inner class
+	// Raw is set on a raw Java type, List of Java's List: JvmProtoBuf.isRaw.
+	Raw   bool
+	Outer *Type // the outer class's type, for an inner class
 	// ExtFunc is set on a function type with a receiver, A.(B) -> C:
 	// kotlin.Function2<A, B, C> annotated @ExtensionFunctionType.
 	ExtFunc bool
@@ -172,19 +174,21 @@ var ComposeMetadata = PluginData{Plugin: "androidx.compose.compiler.plugins.kotl
 // Implies is a contract's returns(value) implies (p != null), (p is T)
 // or (p) effect: if the function returns Returns, the parameter at Param
 // (-1: the extension receiver) isn't null, is an Is if that isn't nil, or
-// is true if Holds. Returns is ReturnsTrue, ReturnsFalse or ReturnsAny,
-// for returns().
+// is true if Holds. Returns is ReturnsTrue, ReturnsFalse, ReturnsAny,
+// for returns(), or ReturnsNotNull, for returnsNotNull().
 type Implies struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool
+	Negated        bool // with Holds: the parameter is false, implies (!p)
 }
 
 // The values of Implies.Returns.
 const (
-	ReturnsTrue  = 0
-	ReturnsFalse = 1
-	ReturnsAny   = -1
+	ReturnsTrue    = 0
+	ReturnsFalse   = 1
+	ReturnsAny     = -1
+	ReturnsNotNull = -3
 )
 
 // InPlace is a contract's callsInPlace(lambda, kind) effect: the lambda
@@ -327,7 +331,7 @@ type TypeAlias struct {
 	Underlying *Type
 	Expanded   *Type
 	// Annotations are its annotations, which metadata keeps, as a type
-	// alias has nothing on the JVM to annotate. Decoding leaves them out.
+	// alias has nothing on the JVM to annotate.
 	Annotations []*Annotation
 }
 
@@ -518,6 +522,8 @@ func (s scope) typ(msg []byte) *Type {
 			t.Abbrev = s.typ(d.bytes())
 		case 14:
 			t.Abbrev = s.typeID(d.int())
+		case 101: // JvmProtoBuf.isRaw
+			t.Raw = d.bool()
 		case 100: // JvmProtoBuf.typeAnnotation
 			a := d.bytes()
 			switch s.annotationClass(a) {
@@ -833,18 +839,46 @@ func (s scope) contract(msg []byte) ([]InPlace, []Implies) {
 				e.skip(w)
 			}
 		}
+		if typ == 2 && args == 0 {
+			// RETURNS_NOT_NULL: returnsNotNull() implies its conclusion.
+			typ, returns = 0, ReturnsNotNull
+		}
 		switch {
 		case typ == 1 && param >= -1:
 			out = append(out, InPlace{Param: param, Kind: kind})
-		case typ == 0 && args <= 1 && returns != -2 && hasConclusion && conclusion.param >= -1 &&
-			(conclusion.flags == 3 && conclusion.is == nil || conclusion.flags == 0 && conclusion.is != nil):
-			implies = append(implies, Implies{Returns: returns, Param: conclusion.param, Is: conclusion.is})
-		case typ == 0 && args <= 1 && returns != -2 && hasConclusion && conclusion.param >= 0 &&
-			conclusion.flags == 0 && conclusion.is == nil && conclusion.constant < 0:
-			implies = append(implies, Implies{Returns: returns, Param: conclusion.param, Holds: true})
+		case typ == 0 && args <= 1 && returns != -2 && hasConclusion:
+			// A conjunction holds part by part; all of them must be
+			// conditions kc reads, and none an or.
+			parts := append([]expression{conclusion}, conclusion.ands...)
+			var ims []Implies
+			for _, x := range parts {
+				im, ok := impliedBy(returns, x)
+				if !ok {
+					ims = nil
+					break
+				}
+				ims = append(ims, im)
+			}
+			implies = append(implies, ims...)
 		}
 	}
 	return out, implies
+}
+
+// impliedBy returns the effect of a contract's conclusion x, one part of
+// a conjunction, if function returns returns: p != null, p is T or p.
+func impliedBy(returns int, x expression) (Implies, bool) {
+	switch {
+	case x.or:
+		return Implies{}, false
+	case x.param >= -1 && (x.flags == 3 && x.is == nil || x.flags == 0 && x.is != nil):
+		return Implies{Returns: returns, Param: x.param, Is: x.is}, true
+	case x.param >= 0 && x.flags == 0 && x.is == nil && x.constant < 0:
+		return Implies{Returns: returns, Param: x.param, Holds: true}, true
+	case x.param >= 0 && x.flags == 1 && x.is == nil && x.constant < 0:
+		return Implies{Returns: returns, Param: x.param, Holds: true, Negated: true}, true
+	}
+	return Implies{}, false
 }
 
 // expression is the part of a contract's Expression message that kc
@@ -853,6 +887,11 @@ func (s scope) contract(msg []byte) ([]InPlace, []Implies) {
 type expression struct {
 	flags, param, constant int
 	is                     *Type
+	// ands are the and_arguments, which hold with it: kotlinc's
+	// (x is Int && y is String). or is set if it has or_arguments, of
+	// which kc reads none, since only one of them need hold.
+	ands []expression
+	or   bool
 }
 
 func (s scope) expression(msg []byte) expression {
@@ -871,6 +910,11 @@ func (s scope) expression(msg []byte) expression {
 			x.is = s.typ(d.bytes())
 		case 5:
 			x.is = s.typeID(d.int())
+		case 6:
+			x.ands = append(x.ands, s.expression(d.bytes()))
+		case 7:
+			x.or = true
+			d.skip(w)
 		default:
 			d.skip(w)
 		}
@@ -1101,6 +1145,8 @@ func (s scope) typeAlias(msg []byte) *TypeAlias {
 			a.Expanded = s.typ(d.bytes())
 		case 7:
 			a.Expanded = s.typeID(d.int())
+		case 8:
+			a.Annotations = append(a.Annotations, s.annotation(d.bytes()))
 		default:
 			d.skip(w)
 		}

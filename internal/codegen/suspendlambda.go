@@ -169,7 +169,7 @@ func (g *gen) suspendSAM(x *syntax.Lambda) bool {
 		code = mg.code
 		code.AllocLocal(self)
 		code.Local(cf.ALOAD, 0)
-		jvm := descParams(desc)
+		jvm := cf.DescParams(desc)
 		for i, p := range params {
 			code.Local(loadOpOf(jvm[i]), code.AllocLocal(jvm[i]))
 			if jvm[i] == objectDesc && p.Type.K == types.Unit {

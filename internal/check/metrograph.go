@@ -255,6 +255,15 @@ func (gr *mGraph) setup(a *mAnn, factoryAnn, factoryName string) bool {
 		gr.errorf("%s must be an interface or an abstract class", cls.DisplayName())
 		return false
 	}
+	closeable := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		closeable = s.Name == mCloseableGraph
+		return !closeable
+	})
+	if closeable {
+		gr.unsupported("Metro graph lifecycle callbacks (CloseableGraph) are not supported")
+		return false
+	}
 	// The graph itself.
 	if k, ok := keyOf(cls.This(), ""); ok {
 		gr.add(&mBinding{key: k, t: cls.This(), what: cls.DisplayName(), expr: func([]string) string { return "this" }})

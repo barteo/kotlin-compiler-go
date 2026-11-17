@@ -19,4 +19,11 @@ interface WithDefaults {
     @Marked
     @Deprecated("old")
     fun twice(@Arg n: Int): Int = n * 2
+
+    @Marked("extension")
+    fun String.tagged(@Arg times: Int): String = "<$this>".repeat(times)
+
+    @get:Marked("half")
+    val Int.half: Int
+        get() = this / 2
 }

@@ -13,11 +13,17 @@ import (
 // copy can't be called; a public one is called instead. It marks the
 // lambdas the function calls exactly once too.
 func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
+	var lambdas []*syntax.Lambda
 	for k, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
 			i := cl.paramIndex(k)
 			l.Once = i >= 0 && i < len(cl.f.Once) && cl.f.Once[i]
+			l.InPlace = i >= 0 && i < len(cl.f.InPlace) && cl.f.InPlace[i]
+			lambdas = append(lambdas, l)
 		}
+	}
+	if len(lambdas) > 1 && c.hasVars() {
+		c.siblings(lambdas)
 	}
 	c.forwardedArgs(x, cl)
 	if cl.f.Builtin == types.SuspendIntrinsic {
@@ -58,6 +64,27 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 	for k, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
 			c.markInline(l, cl.f, b, cl.paramIndex(k))
+		}
+	}
+}
+
+// siblings records the locals that each of the lambdas passed to a call
+// assigns for the others, which it may run in any order.
+func (c *Checker) siblings(lambdas []*syntax.Lambda) {
+	for _, l := range lambdas {
+		for _, o := range lambdas {
+			if o == l {
+				continue
+			}
+			for name := range assignedNames(o) {
+				if c.siblingAssigns == nil {
+					c.siblingAssigns = map[*syntax.Lambda]map[string]bool{}
+				}
+				if c.siblingAssigns[l] == nil {
+					c.siblingAssigns[l] = map[string]bool{}
+				}
+				c.siblingAssigns[l][name] = true
+			}
 		}
 	}
 }

@@ -106,6 +106,9 @@ type TypeRef struct {
 	Params []*TypeRef
 	Ret    *TypeRef
 	Recv   *TypeRef
+	// Named are the positions of the names of a function type's named
+	// parameters, (x: A) -> R, which a supertype can't have.
+	Named []Pos
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
 	// Contexts are the context parameters' types of a context function
@@ -124,6 +127,9 @@ type TypeRef struct {
 	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
 	// doesn't infer a call's type arguments.
 	NoInfer bool
+	// Exact is set on a type annotated @kotlin.internal.Exact: a
+	// parameter's argument must be of that type, not a subtype.
+	Exact bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).
@@ -255,6 +261,92 @@ type Modifiers struct {
 type Mod struct {
 	Name string
 	P    Pos
+}
+
+// Set records modifier keyword name, written at p, in m: in Written, and
+// in its flag and position. It reports false if name is no modifier. Both
+// front ends read modifiers with it.
+func (m *Modifiers) Set(name string, p Pos) bool {
+	flag, pos := m.modifier(name)
+	if flag == nil {
+		return false
+	}
+	*flag = true
+	if pos != nil {
+		*pos = p
+	}
+	if v, ok := visibilities[name]; ok {
+		m.Visibility = v
+	}
+	m.Written = append(m.Written, Mod{Name: name, P: p})
+	return true
+}
+
+// noModifiers is only read, by isModifier.
+var noModifiers Modifiers
+
+// isModifier reports whether s is a modifier keyword.
+func isModifier(s string) bool {
+	flag, _ := noModifiers.modifier(s)
+	return flag != nil
+}
+
+// modifier returns the flag of modifier keyword name in m, and the field
+// of its position if m keeps one; nil if name is no modifier.
+func (m *Modifiers) modifier(name string) (flag *bool, pos *Pos) {
+	switch name {
+	case "private", "public", "internal", "protected":
+		return &m.Explicit, nil
+	case "open":
+		return &m.Open, nil
+	case "abstract":
+		return &m.Abstract, nil
+	case "override":
+		return &m.Override, nil
+	case "final":
+		return &m.Final, nil
+	case "companion":
+		return &m.Companion, nil
+	case "data":
+		return &m.Data, nil
+	case "enum":
+		return &m.Enum, nil
+	case "sealed":
+		return &m.Sealed, nil
+	case "const":
+		return &m.Const, nil
+	case "vararg":
+		return &m.Vararg, &m.VarargP
+	case "operator":
+		return &m.Operator, nil
+	case "infix":
+		return &m.Infix, nil
+	case "expect":
+		return &m.Expect, &m.ExpectP
+	case "actual":
+		return &m.Actual, nil
+	case "annotation":
+		return &m.Annotation, nil
+	case "value":
+		return &m.Value, nil
+	case "inline":
+		return &m.Inline, nil
+	case "noinline":
+		return &m.Noinline, nil
+	case "crossinline":
+		return &m.Crossinline, nil
+	case "suspend":
+		return &m.Suspend, nil
+	case "lateinit":
+		return &m.Lateinit, nil
+	case "tailrec":
+		return &m.Tailrec, nil
+	case "inner":
+		return &m.Inner, nil
+	case "external":
+		return &m.External, &m.ExternalP
+	}
+	return nil, nil
 }
 
 // Has reports whether name is among the written modifiers.
@@ -402,7 +494,10 @@ func (m *Modifiers) Hidden() bool {
 
 type FunDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
@@ -435,6 +530,9 @@ type FunDecl struct {
 	// Once names the parameters that the function's contract, which the
 	// checker drops, says it calls exactly once.
 	Once map[string]bool
+	// InPlace names those it says it calls in place, callsInPlace of
+	// any kind.
+	InPlace map[string]bool
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
@@ -465,7 +563,10 @@ func SourceInline(f *types.FunSym) *FunDecl {
 
 type PropDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	Name       string
 	Mutable    bool
 	TypeParams []*TypeParam // only on an extension property: val <T> List<T>.x
@@ -474,11 +575,16 @@ type PropDecl struct {
 	Init       Expr       // nil for an abstract property, or one with a getter
 	Getter     *FunDecl   // get() = ..., or nil
 	SetterVis  Visibility // private set, ...
+	// SetterVisP is the position of the setter's visibility modifier, if
+	// it has one.
+	SetterVisP Pos
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
 	// AccessorMods are the modifiers written on each accessor.
 	AccessorMods [][]Mod
+	// AccessorSets tells which of AccessorMods are a setter's.
+	AccessorSets []bool
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -540,7 +646,10 @@ type CtorParam struct {
 
 type ClassDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool
@@ -1081,14 +1190,15 @@ type CharLit struct {
 }
 
 // Implies is a contract's returns(value) implies (p != null) or (p is T)
-// effect: Returns is 1 for returns(true), 0 for returns(false) and -1 for
-// returns(); Param names the parameter, "this" the extension receiver;
+// effect: Returns is 1 for returns(true), 0 for returns(false), -1 for
+// returns() and 2 for returnsNotNull(); Param names the parameter, "this" the extension receiver;
 // Is is T, or nil for p != null.
 type Implies struct {
 	Returns int
 	Param   string
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
+	Negated bool // with Holds, implies (!p): p is false
 }
 
 type BoolLit struct {
@@ -1318,10 +1428,10 @@ type Call struct {
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
 	Value Expr
-	// Serializers are set by the checker on a call of a library's inline
-	// function with reified type parameters, by their names: the
-	// serializers of their type arguments, which its copied bytecode's
-	// serializer<T>() becomes, as the serialization plugin replaces it.
+	// Serializers are set by the checker on a call of an inline function
+	// with reified type parameters, by their names: the serializers of
+	// their type arguments, which serializer<T>() in its copy becomes, as
+	// the serialization plugin replaces it.
 	Serializers map[string]Expr
 	trailing    bool // has a trailing lambda, or passes the last argument last
 }
@@ -1406,6 +1516,9 @@ type Lambda struct {
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
 	Once bool
+	// InPlace is set by the checker on a lambda passed to a function
+	// whose contract says it calls it in place, any number of times.
+	InPlace bool
 	// Ref is set on a callable reference, which is parsed as a lambda: the
 	// checker gives it parameters and a body that calls the function, or
 	// reads the property, it names.

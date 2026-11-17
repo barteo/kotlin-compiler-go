@@ -271,11 +271,11 @@ func (g *gen) restartLambda(fd *syntax.FunDecl) {
 	captures := ""
 	if c.impl != "" {
 		// A name$default method's arguments: its parameters.
-		ps := descParams(c.impl)
+		ps := cf.DescParams(c.impl)
 		for i, slot := 0, 0; i < len(ps)-1-len(c.changed)-len(c.defaults); i++ {
 			g.code.Local(loadOpOf(ps[i]), slot)
 			captures += ps[i]
-			slot += descSize(ps[i])
+			slot += cf.KindOf(ps[i]).Size
 		}
 	} else {
 		if c.this {
@@ -317,7 +317,7 @@ func (g *gen) restartLambda(fd *syntax.FunDecl) {
 func (g *gen) restartMethod(fd *syntax.FunDecl, name, implDesc string) {
 	f := fd.Sym
 	g.code = g.cls.NewMethod(cf.AccPrivate|cf.AccStatic|cf.AccFinal|cf.AccSynthetic, name, implDesc)
-	ps := descParams(implDesc)
+	ps := cf.DescParams(implDesc)
 	slots := make([]int, len(ps))
 	for i, d := range ps {
 		slots[i] = g.code.AllocLocal(d)
@@ -801,7 +801,7 @@ func composeDefaultsOf(f *types.FunSym) *types.FunSym {
 // change flags and the masks.
 func composeDefaultsDesc(f *types.FunSym) string {
 	d := funDesc(f)
-	ps := descParams(d)
+	ps := cf.DescParams(d)
 	recv := ""
 	if f.Ext {
 		recv, ps = ps[0], ps[1:]
@@ -816,7 +816,7 @@ func composeDefaultsDesc(f *types.FunSym) string {
 // receiver are: the arguments, the object, the receiver, the Composer,
 // the change flags and the masks.
 func (g *gen) composeDefaultsArgs(x *syntax.Call, f, df *types.FunSym) {
-	ps := descParams(composeDefaultsDesc(df))
+	ps := cf.DescParams(composeDefaultsDesc(df))
 	n := len(f.Params)
 	recv := -1
 	if f.Ext {
@@ -983,7 +983,7 @@ func (g *gen) composeDefaultsStub(fd *syntax.FunDecl) {
 	}}, true)
 	m.Annotate(cf.Annotation{Type: "Landroidx/compose/runtime/Composable;"}, false)
 	self := code.AllocLocal("L" + g.cls.Name + ";")
-	ps := descParams(stub)
+	ps := cf.DescParams(stub)
 	slots := make([]int, len(ps))
 	for j, p := range ps {
 		slots[j] = code.AllocLocal(p)
@@ -1015,12 +1015,4 @@ func paramIdent(p *types.VarSym) *syntax.Ident {
 	x := &syntax.Ident{Name: p.Name, Sym: p}
 	x.T = p.Type
 	return x
-}
-
-// descSize returns the number of locals a value of descriptor d takes.
-func descSize(d string) int {
-	if d == "J" || d == "D" {
-		return 2
-	}
-	return 1
 }

@@ -4,19 +4,31 @@
 #
 #	jvm/kc-aa/build.sh [test|stock|ksp|members|kotlinpoet]
 #
-# It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
+# It writes build/kc-aa.jar and build/libkc.so, and build/kc-ksp, the
+# directory that tools/gradle/use-kc.init.gradle.kts takes as KC_KSP to run
+# a Gradle build's KSP tasks on kc (gradle.sh tests it): the jar of
+# loader/, which KSP's Gradle plugin calls, KSP's API, libkc.so, and in
+# lib/ the KSP fork, kc-aa and their libraries. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
-# test/moshi/want, and Dagger's, Room's and Hilt's the same way, over
-# test/{dagger,room,hilt}/src, and checks incremental processing's dirty
-# set over test/ic. "stock" does what "test" does, and then runs
+# test/moshi/want, and Dagger's, Room's, Hilt's and kotlin-inject's (with
+# kotlin-inject-anvil's) the same way, over
+# test/{dagger,room,hilt,hilt-android,inject}/src, runs Moshi's and Dagger's
+# in class loaders of one JVM (test/Loaders.java), checks incremental
+# processing's dirty set over test/ic, what a Java source's class literals
+# name in each of two rounds (test/rounds), and that a run a processor
+# fails (test/errors) reports the processor's errors only. "stock" does what
+# "test" does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
+# It also runs test/dump/Dump.kt over test/dump/src on both and compares
+# their outputs with each other.
 # Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
-# rest from Maven Central (MAVEN_REPO).
+# rest from Maven Central (MAVEN_REPO). hilt-android is an Android archive,
+# whose classes.jar unzip extracts.
 #
 # "ksp" runs KSP's own unit tests (its kotlin-analysis-api test suite, with
 # the processors of its test-utils) on the kc backend with ksptest/KspSuite.kt,
@@ -98,6 +110,20 @@ rm -f "$out/kc-aa.jar"
 (cd "$classes" && jar cf "$out/kc-aa.jar" .)
 echo "$out/kc-aa.jar"
 
+# build/kc-ksp. Its lib/ has no class of the jars a processor shares with
+# KSP, so it is the same whether its class loader or its parent comes first.
+home=$out/kc-ksp
+rm -rf "$home" "$out/loader-classes"
+mkdir -p "$home/lib" "$out/loader-classes"
+javac --release 17 -cp "$m2/symbol-processing-common-deps-2.3.13.jar" -d "$out/loader-classes" \
+	"$here/loader/com/google/devtools/ksp/impl/KSPLoader.java"
+(cd "$out/loader-classes" && jar cf "$home/kc-ksp-loader.jar" .)
+cp "$kspwork/symbol-processing-api.jar" "$out/libkc.so" "$home/"
+cp "$out/kc-aa.jar" "$kspwork/ksp-aa-kc.jar" "$aa" "$lib/kotlin-compiler-2.4.21.jar" "$lib/kotlin-reflect-2.4.21.jar" \
+	"$lib/kotlinx-coroutines-core-jvm-1.8.0.jar" "$lib/annotations-23.0.0.jar" "$lib/caffeine-2.9.3.jar" \
+	"$m2/kotlinx-serialization-core-jvm-1.6.3.jar" "$m2/kotlinx-serialization-json-jvm-1.6.3.jar" "$home/lib/"
+echo "$home"
+
 MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
 GMAVEN=${GOOGLE_MAVEN_REPO:-https://dl.google.com/dl/android/maven2}
 mkdir -p "$out/m2"
@@ -125,6 +151,15 @@ jars() {
 		cp=$cp:$out/m2/$a-$v.jar
 	done
 	echo "$cp"
+}
+# aar GROUP:ARTIFACT:VERSION fetches that Android archive and prints the
+# path of its classes.jar.
+aar() {
+	local g a v
+	IFS=: read -r g a v <<< "$1"
+	fetch "${g//.//}/$a/$v/$a-$v.aar"
+	[ -s "$out/m2/$a-$v-classes.jar" ] || unzip -p "$out/m2/$a-$v.aar" classes.jar > "$out/m2/$a-$v-classes.jar"
+	echo "$out/m2/$a-$v-classes.jar"
 }
 
 mode=${1:-}
@@ -251,12 +286,12 @@ if [ "$mode" = stock ]; then
 	diff -u "$here/test/slice/stock.diff" "$out/stock-slice.diff"
 	echo "slice: stock KSP differs as recorded"
 fi
-# stock NAME SRC LIBS PROCS runs PROCS on stock KSP over SRC, with
-# libraries LIBS, and compares the output with test/NAME/want.
+# stock NAME SRC LIBS PROCS [JAVA_OPTS] runs PROCS on stock KSP over SRC,
+# with libraries LIBS, and compares the output with test/NAME/want.
 stock() {
 	[ "$mode" = stock ] || return 0
 	rm -rf "$out/stock-$1"
-	java -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
+	java ${5:-} -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
 	rm -rf "$out/stock-$1/caches" "$out/stock-$1/classes"
 	diff -ru "$here/test/$1/want" "$out/stock-$1"
 	echo "$1: stock KSP ok"
@@ -274,6 +309,7 @@ for jar in com/squareup/moshi/moshi-kotlin-codegen/1.15.2/moshi-kotlin-codegen-1
 	procs=$procs:$out/m2/$(basename "$jar")
 done
 
+moshiprocs=$procs
 rm -rf "$out/runksp-classes" "$out/moshi"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/runksp-classes" -jvm-target 17 -nowarn "$here/test/RunKsp.kt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
@@ -356,6 +392,28 @@ echo "dagger: ok"
 stock dagger "$here/test/dagger/src" \
 	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" "$procs"
 
+# Moshi's and Dagger's runs in one JVM, each in a class loader of its own
+# (test/Loaders.java), as a build tool's daemon has a class loader for each
+# KSP class path: both at once, and then Moshi's again in a new class
+# loader after those two are dropped, as the daemon's next build runs it.
+# The class loaders share the one libkc a JVM loads, which closes what a
+# dropped class loader left open.
+rm -rf "$out/loaders" "$out/loaders-classes"
+javac -d "$out/loaders-classes" "$here/test/Loaders.java"
+moshirun=("$out/runksp-classes:$out/kc-aa.jar:$deps$moshiprocs" "$here/test/moshi/src")
+moshilibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-Djava.awt.headless=true -XX:SoftRefLRUPolicyMSPerMB=0 -cp "$out/loaders-classes" Loaders "$out/kc-aa.jar" \
+	"${moshirun[@]}" "$out/loaders/moshi" "$moshilibs" \
+	"$out/runksp-classes$procs:$out/kc-aa.jar:$deps" "$here/test/dagger/src" "$out/loaders/dagger" \
+	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" \
+	"${moshirun[@]}" "$out/loaders/moshi-again" "$moshilibs" > "$out/loaders.txt"
+rm -rf "$out"/loaders/*/caches
+diff -ru "$here/test/moshi/want" "$out/loaders/moshi"
+diff -ru "$here/test/dagger/want" "$out/loaders/dagger"
+diff -ru "$here/test/moshi/want" "$out/loaders/moshi-again"
+echo "loaders: ok"
+
 # Room's processor (XProcessing, KotlinPoet output) over test/room/src,
 # and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
 # resolves for room-compiler 2.8.4 and hilt-compiler 2.59.2, but for KSP's
@@ -400,3 +458,104 @@ rm -rf "$out/hilt/caches" "$out/hilt/classes"
 diff -ru "$here/test/hilt/want" "$out/hilt"
 echo "hilt: ok"
 stock hilt "$here/test/hilt/src" "$hiltlibs" "$procs"
+
+# Hilt's Android processors over test/hilt-android/src, with the options
+# Hilt's Gradle plugin passes: @AndroidEntryPoint and @HiltAndroidApp
+# without a base class, which Hilt reads from the annotation's default
+# (Void.class) in hilt-android's class file, and the Java sources Hilt
+# generates for a @HiltViewModel and a non-public module, whose class
+# literals name Kotlin source classes. test/hilt-android/stubs stands in
+# for the Android classes Hilt looks up. A library and a source root that
+# don't exist are listed, as a build lists an output directory nothing is
+# written to and a source set without sources.
+rm -rf "$out/hilt-android" "$out/hilt-android-stubs"
+mkdir -p "$out/hilt-android-stubs"
+javac -d "$out/hilt-android-stubs" $(find "$here/test/hilt-android/stubs" -name '*.java')
+androidlibs=$hiltlibs:$(aar com.google.dagger:hilt-android:2.59.2):$out/hilt-android-stubs:$out/hilt-android-missing
+androidsrc=$here/test/hilt-android/src:$here/test/hilt-android/missing
+androidopts="-Dksp.arg.dagger.hilt.android.internal.disableAndroidSuperclassValidation=true"
+androidopts="$androidopts -Dksp.arg.dagger.hilt.internal.useAggregatingRootProcessor=false"
+LD_PRELOAD=$java_home/lib/libjsig.so java $androidopts -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$androidsrc" "$out/hilt-android" "$androidlibs" \
+	> "$out/hilt-android.txt"
+rm -rf "$out/hilt-android/caches" "$out/hilt-android/classes"
+diff -ru "$here/test/hilt-android/want" "$out/hilt-android"
+echo "hilt-android: ok"
+stock hilt-android "$androidsrc" "$androidlibs" "$procs" "$androidopts"
+
+# kotlin-inject's processor with kotlin-inject-anvil's over
+# test/inject/src: typealiased qualifiers and function types, assisted and
+# function injection, generated components that later rounds merge.
+. "$here/inject-jars.sh"
+injectlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${inject_libs[@]}")
+procs=$(jars "${inject_procs[@]}")
+rm -rf "$out/inject"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/inject/src" "$out/inject" "$injectlibs" \
+	> "$out/inject.txt"
+rm -rf "$out/inject/caches" "$out/inject/classes"
+diff -ru "$here/test/inject/want" "$out/inject"
+echo "inject: ok"
+stock inject "$here/test/inject/src" "$injectlibs" "$procs"
+
+# test/rounds/Rounds.kt over test/rounds/src: the class literals in a Java
+# source's annotation that name Kotlin source classes, one of which the
+# processor generates in its first round and the second round must find.
+rm -rf "$out/rounds-classes" "$out/rounds"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/rounds-classes" -jvm-target 17 -nowarn \
+	"$here/test/rounds/Rounds.kt"
+mkdir -p "$out/rounds-classes/META-INF/services"
+echo RoundsProvider > "$out/rounds-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/rounds-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/rounds/src" "$out/rounds" \
+	"$lib/kotlin-stdlib-2.4.21.jar" > "$out/rounds.txt"
+diff -u "$here/test/rounds/want.txt" "$out/rounds/resources/rounds.txt"
+echo "rounds: ok"
+if [ "$mode" = stock ]; then
+	rm -rf "$out/stock-rounds"
+	java -cp "$out/runksp-stock:$out/rounds-classes$stockcp" RunKspKt "$here/test/rounds/src" "$out/stock-rounds" \
+		"$lib/kotlin-stdlib-2.4.21.jar" > "$out/stock-rounds.txt"
+	diff -u "$here/test/rounds/want.txt" "$out/stock-rounds/resources/rounds.txt"
+	echo "rounds: stock KSP ok"
+fi
+
+# A run that a processor fails: test/errors/Fail.kt reports an error for
+# each class of test/errors/src it is asked to. KSP then checks the
+# sources, and must report nothing more for a Java source that names
+# Kotlin classes, passes a reference to a method with checked exceptions
+# and calls a method whose result has wildcard arguments. Stock KSP 2.3.13
+# fails in that check (it lacks an IntelliJ extension point), so it isn't
+# run.
+rm -rf "$out/errors-classes" "$out/errors"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/errors-classes" -jvm-target 17 -nowarn \
+	"$here/test/errors/Fail.kt"
+mkdir -p "$out/errors-classes/META-INF/services"
+echo FailProvider > "$out/errors-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+if LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/errors-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/errors/src" "$out/errors" \
+	"$lib/kotlin-stdlib-2.4.21.jar" > "$out/errors.txt" 2> "$out/errors.err"; then
+	echo "build.sh: test/errors: KSP didn't fail" >&2
+	exit 1
+fi
+{ grep -E '^(e: |KSP exited|Exception|[a-zA-Z.]+(Exception|Error))' "$out/errors.err" || true; } > "$out/errors.got"
+diff -u "$here/test/errors/want.txt" "$out/errors.got"
+echo "errors: ok"
+
+# test/dump/Dump.kt over test/dump/src, on kc and on stock KSP: what
+# KSP says about each declaration, and the files in the order KSP lists
+# them, which is the order their directories list them in, so the two
+# are compared with each other rather than with a recorded want.
+if [ "$mode" = stock ]; then
+	rm -rf "$out/dump-classes" "$out/dump" "$out/stock-dump"
+	kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/symbol-processing-api-2.3.13.jar" -d "$out/dump-classes" -jvm-target 17 -nowarn \
+		"$here/test/dump/Dump.kt"
+	mkdir -p "$out/dump-classes/META-INF/services"
+	echo DumpProvider > "$out/dump-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+	LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+		-cp "$out/runksp-classes:$out/dump-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/dump/src" "$out/dump" \
+		"$lib/kotlin-stdlib-2.4.21.jar" > "$out/dump.txt"
+	java -cp "$out/runksp-stock:$out/dump-classes$stockcp" RunKspKt "$here/test/dump/src" \
+		"$out/stock-dump" "$lib/kotlin-stdlib-2.4.21.jar" > "$out/stock-dump.txt"
+	diff -u "$out/stock-dump/resources/dump.txt" "$out/dump/resources/dump.txt"
+	echo "dump: same as stock KSP ($(wc -l < "$out/dump/resources/dump.txt") lines)"
+fi

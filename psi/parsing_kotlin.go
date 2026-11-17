@@ -2079,6 +2079,29 @@ func (p *kotlinParsing) parseTypeRefFull(extraRecoverySet tokenSet, allowSimpleI
 	typeRefMarker.Done(KindTYPE_REFERENCE)
 }
 
+// parseParenthesizedType parses "(" type ")" and reports true, or leaves
+// the position as it was and reports false when the "(" starts a function
+// type, whose parameters are parsed from the same text again.
+func (p *kotlinParsing) parseParenthesizedType() bool {
+	return p.try(parenthesizedType, func() bool {
+		functionOrParenthesizedType := p.mark()
+
+		// This may be a function parameter list or just a parenthesized type
+		p.advance()                                                                     // LPAR
+		p.parseTypeRefContents(kpEmpty /* allowSimpleIntersectionTypes */, true).Drop() // parenthesized types, no reference element around it is needed
+
+		if p.at(KindRPAR) && p.lookahead(1) != KindARROW {
+			// It's a parenthesized type
+			//    (A)
+			p.advance()
+			functionOrParenthesizedType.Drop()
+			return true
+		}
+		functionOrParenthesizedType.RollbackTo()
+		return false
+	})
+}
+
 // The extraRecoverySet is needed for the foo(bar<x, 1, y>(z)) case, to tell whether we should stop
 // on expression-indicating symbols or not
 func (p *kotlinParsing) parseTypeRefContents(extraRecoverySet tokenSet, allowSimpleIntersectionTypes bool) Marker {
@@ -2107,23 +2130,11 @@ func (p *kotlinParsing) parseTypeRefContents(extraRecoverySet tokenSet, allowSim
 	} else if p.at(KindIDENTIFIER) || p.at(KindPACKAGE_KEYWORD) || p.atParenthesizedMutableForPlatformTypes(0) {
 		p.parseUserType()
 	} else if p.at(KindLPAR) {
-		functionOrParenthesizedType := p.mark()
-
-		// This may be a function parameter list or just a parenthesized type
-		p.advance()                                                                     // LPAR
-		p.parseTypeRefContents(kpEmpty /* allowSimpleIntersectionTypes */, true).Drop() // parenthesized types, no reference element around it is needed
-
-		if p.at(KindRPAR) && p.lookahead(1) != KindARROW {
-			// It's a parenthesized type
-			//    (A)
-			p.advance()
-			functionOrParenthesizedType.Drop()
-		} else {
+		if !p.parseParenthesizedType() {
 			// This must be a function type
 			//   (A, B) -> C
 			// or
 			//   (a : A) -> C
-			functionOrParenthesizedType.RollbackTo()
 			p.parseFunctionType(contextReceiversStart.Precede())
 			wasFunctionTypeParsed = true
 		}
@@ -2466,7 +2477,11 @@ func (p *kotlinParsing) valueParameterLoop(inFunctionTypeContext bool, recoveryS
  *   ;
  */
 func (p *kotlinParsing) tryParseValueParameter(typeRequired bool) bool {
-	return p.parseValueParameterRB(true, typeRequired)
+	what := valueParameter
+	if typeRequired {
+		what = typedValueParameter
+	}
+	return p.try(what, func() bool { return p.parseValueParameterRB(true, typeRequired) })
 }
 
 func (p *kotlinParsing) parseValueParameter(typeRequired bool) {

@@ -1,0 +1,2 @@
+round 1: value = [r.Kept, r.Kept.Part, error type, error type]
+round 2: value = [r.Kept, r.Kept.Part, r.Made, r.Made.Part]

@@ -1,0 +1,1 @@
+-keep,allowobfuscation,allowshrinking class a.Flow.StepModel

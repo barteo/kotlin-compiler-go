@@ -1,0 +1,9 @@
+kotlin.String! false true
+kotlin.String false false
+kotlin.String? true true
+kotlin.collections.(Mutable)List<kotlin.String!>! false true
+kotlin.collections.List<kotlin.String!> false false
+kotlin.collections.(Mutable)Map<kotlin.String!, kotlin.Int!>! false true
+kotlin.collections.List<kotlin.Int!>
+false
+true

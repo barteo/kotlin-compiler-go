@@ -2,6 +2,7 @@ package ka
 
 import (
 	"cmp"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -20,6 +22,9 @@ type library struct {
 	cp   *classpath.Path
 	lib  *check.Library
 	java *driver.JavaSources // the module's Java sources' classes, or nil
+	// base is set with java: the library of the class path that java's
+	// classes are over, which models the other classes (withJava).
+	base *library
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -40,6 +45,9 @@ type library struct {
 // files, by class ID: the built-in classes, as kotlin/String and
 // kotlin/collections/List, that have no class files of their own.
 func (l *library) builtinClasses() map[string]*kmeta.Class {
+	if l.base != nil {
+		return l.base.builtinClasses()
+	}
 	l.builtinsOnce.Do(func() {
 		l.builtins = map[string]*kmeta.Class{}
 		for _, name := range l.cp.Resources(".kotlin_builtins") {
@@ -73,6 +81,24 @@ func (m *Model) Class(id string) *Decl {
 	l := m.lib
 	if l == nil {
 		return nil
+	}
+	return l.decl(id)
+}
+
+// withJava returns a library of the classes of l's class path and the
+// module's Java sources files, for one check. It models the sources'
+// classes and leaves the others to l, which checks of other sources go on
+// sharing.
+func (l *library) withJava(files []*javasrc.File) *library {
+	java := driver.AddJavaSources(l.cp, files)
+	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l,
+		decls: map[string]*Decl{}, params: map[string]map[string]string{}}
+}
+
+// decl returns the model of the class with class ID id: see Model.Class.
+func (l *library) decl(id string) *Decl {
+	if l.base != nil && !l.cp.IsSource(internalName(id)) {
+		return l.base.decl(id)
 	}
 	l.mu.Lock()
 	d, ok := l.decls[id]
@@ -125,8 +151,12 @@ func (l *library) class(id string) *Decl {
 	}
 	cls := l.lib.Class(id)
 	if cls == nil {
-		if jid, ok := javaPrimitiveClasses[id]; ok {
-			cls = l.lib.Class(jid)
+		// A Kotlin class that kc treats as a type has its Java class's
+		// supertypes.
+		if k := types.IDKind(id); k == types.String {
+			cls = l.lib.Class("java/lang/String")
+		} else if box := types.PrimOf(k).Box; box != "" {
+			cls = l.lib.Class(box)
 		}
 	}
 	if cls != nil && cls.Decl != nil {
@@ -139,11 +169,24 @@ func (l *library) class(id string) *Decl {
 		if j, ok := jvmMapped[id]; ok {
 			l.jvmMappedMembers(d, j)
 		}
-		// Kotlin adds java/io/Serializable to the classes it maps whose
-		// Java classes are.
-		if cls != nil && !cls.Missing && d.Kind != KindInterface &&
-			slices.ContainsFunc(javaSupertypes(&fileBuilder{}, cls, d.Kind, nonNull), func(t *Type) bool { return t.ClassID == "java/io/Serializable" }) {
-			d.Supertypes = append([]*Type{{Kind: TypeClass, ClassID: "java/io/Serializable"}}, d.Supertypes...)
+		if arrayClass.MatchString(id) {
+			// A JVM array is Cloneable and Serializable, and its clone()
+			// returns its own type, as FIR's JVM built-ins have it.
+			d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Cloneable"}, {Kind: TypeClass, ClassID: "java/io/Serializable"}}
+			self := &Type{Kind: TypeClass, ClassID: id}
+			for _, tp := range d.TypeParams {
+				self.Args = append(self.Args, TypeArg{Type: &Type{Kind: TypeParameter, Name: tp.Name}})
+			}
+			d.Members = append(d.Members, &Decl{Kind: KindFunction, Name: "clone", Visibility: Public, Modality: ModalityFinal,
+				Flags: FlagOverride, Type: self})
+			return d
+		}
+		// Kotlin adds java/io/Serializable, last, to the classes it maps
+		// whose Java classes are serializable, kotlin/Int's through
+		// java/lang/Number too, as FIR's JVM built-ins do.
+		if cls != nil && !cls.Missing && d.Kind != KindInterface && serializable(cls) {
+			d.Supertypes = slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
+			d.Supertypes = append(d.Supertypes, &Type{Kind: TypeClass, ClassID: "java/io/Serializable"})
 		}
 		return d
 	}
@@ -195,6 +238,20 @@ func (l *library) class(id string) *Decl {
 	return d
 }
 
+// arrayClass matches the class IDs of Kotlin's built-in array classes.
+var arrayClass = regexp.MustCompile(`^kotlin/(Boolean|Byte|Char|Short|Int|Long|Float|Double)?Array$`)
+
+// serializable reports whether Java class cls is java/io/Serializable or
+// inherits from it.
+func serializable(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = classID(s) == "java/io/Serializable"
+		return !found
+	})
+	return found
+}
+
 // isFunctionClass reports whether id is a function type's class:
 // kotlin/FunctionN or kotlin/coroutines/SuspendFunctionN.
 func isFunctionClass(id string) bool {
@@ -211,20 +268,6 @@ func isFunctionClass(id string) bool {
 		}
 	}
 	return true
-}
-
-// javaPrimitiveClasses maps the Kotlin classes that kc treats as types,
-// not classes, to the Java classes whose supertypes they have.
-var javaPrimitiveClasses = map[string]string{
-	"kotlin/String":  "java/lang/String",
-	"kotlin/Int":     "java/lang/Integer",
-	"kotlin/Long":    "java/lang/Long",
-	"kotlin/Short":   "java/lang/Short",
-	"kotlin/Byte":    "java/lang/Byte",
-	"kotlin/Char":    "java/lang/Character",
-	"kotlin/Boolean": "java/lang/Boolean",
-	"kotlin/Float":   "java/lang/Float",
-	"kotlin/Double":  "java/lang/Double",
 }
 
 // builtinVariance returns the declared variance of type parameter i of n
@@ -403,14 +446,15 @@ func (l *library) kotlinDecl(kc *kmeta.Class, info *classfile.Info, det *classfi
 			}
 		}
 	}
-	for _, p := range kc.Props {
-		if p.Flags.MemberKind() != 1 {
-			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
-		}
-	}
+	// Functions before properties, as FIR's deserialized classes have them.
 	for _, f := range kc.Funcs {
 		if f.Flags.MemberKind() != 1 {
 			d.Members = append(d.Members, l.kfunction(f, scope, bySig))
+		}
+	}
+	for _, p := range kc.Props {
+		if p.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
 		}
 	}
 	for _, e := range kc.EnumEntries {
@@ -1378,10 +1422,48 @@ func (l *library) annotations(as []classfile.Annotation, kotlin bool) []Annotati
 				continue
 			}
 			emptyArraysLast(a)
+			for _, arg := range a.Args {
+				kotlinLiterals(arg.Value)
+			}
 		}
 		out = append(out, *a)
 	}
 	return out
+}
+
+// kotlinLiterals rewrites the class literals in v, an argument of an
+// annotation on a Kotlin declaration, as FIR's loader of Kotlin class
+// files has them: a collection is its read-only Kotlin class, and neither
+// the type nor an array's element is a platform type. classLiteral gives
+// them as the Java loader does, which reads Java declarations'
+// annotations and every annotation parameter's default.
+func kotlinLiterals(v *Value) {
+	if v == nil {
+		return
+	}
+	switch v.Kind {
+	case ValueClass:
+		for t := v.Type; t != nil && t.Kind == TypeClass; {
+			t.Flexible = false
+			if strings.HasPrefix(t.ClassID, "kotlin/collections/Mutable") {
+				t.ClassID = strings.ReplaceAll(t.ClassID, "Mutable", "")
+			}
+			if len(t.Args) != 1 {
+				break
+			}
+			t = t.Args[0].Type
+		}
+	case ValueArray:
+		for _, e := range v.Elems {
+			kotlinLiterals(e)
+		}
+	case ValueAnnotation:
+		if v.Annotation != nil {
+			for _, arg := range v.Annotation.Args {
+				kotlinLiterals(arg.Value)
+			}
+		}
+	}
 }
 
 // emptyArraysLast moves the empty array arguments of annotation a, of a
@@ -1504,6 +1586,9 @@ func descClassID(desc string) string {
 // name: what tells an unsigned argument from a signed one in a class
 // file.
 func (l *library) paramTypes(id string) map[string]string {
+	if l.base != nil {
+		return l.base.paramTypes(id) // a Kotlin class's: see load
+	}
 	l.mu.Lock()
 	pt, ok := l.params[id]
 	l.mu.Unlock()
@@ -1608,7 +1693,7 @@ func (l *library) value(v *classfile.ElementValue, hint string, depth int) *Valu
 	case 'e':
 		return &Value{Kind: ValueEnum, ClassID: descClassID(v.Enum[0]), Entry: v.Enum[1]}
 	case 'c':
-		return &Value{Kind: ValueClass, Type: descType(v.Class)}
+		return classLiteral(v.Class)
 	case '@':
 		if v.Ann == nil {
 			return &Value{Kind: ValueUnsupported}
@@ -1624,66 +1709,58 @@ func (l *library) value(v *classfile.ElementValue, hint string, depth int) *Valu
 	return &Value{Kind: ValueUnsupported}
 }
 
-// primitiveDescs are the Kotlin classes of the JVM's primitive types, and
-// the arrays of them.
-var primitiveDescs = map[byte][2]string{
-	'Z': {"kotlin/Boolean", "kotlin/BooleanArray"},
-	'C': {"kotlin/Char", "kotlin/CharArray"},
-	'B': {"kotlin/Byte", "kotlin/ByteArray"},
-	'S': {"kotlin/Short", "kotlin/ShortArray"},
-	'I': {"kotlin/Int", "kotlin/IntArray"},
-	'J': {"kotlin/Long", "kotlin/LongArray"},
-	'F': {"kotlin/Float", "kotlin/FloatArray"},
-	'D': {"kotlin/Double", "kotlin/DoubleArray"},
-}
-
 // javaKotlin are the Kotlin classes of Java classes a class literal in a
-// class file may name.
+// class file may name, but the boxes of primitives: a collection is its
+// mutable Kotlin class, as FIR reads a Java type's lower bound.
+// java/lang/Void is itself: only the descriptor V is kotlin/Unit.
 var javaKotlin = map[string]string{
 	"java/lang/String":       "kotlin/String",
-	"java/lang/Integer":      "kotlin/Int",
-	"java/lang/Long":         "kotlin/Long",
-	"java/lang/Short":        "kotlin/Short",
-	"java/lang/Byte":         "kotlin/Byte",
-	"java/lang/Character":    "kotlin/Char",
-	"java/lang/Boolean":      "kotlin/Boolean",
-	"java/lang/Float":        "kotlin/Float",
-	"java/lang/Double":       "kotlin/Double",
-	"java/lang/Void":         "kotlin/Unit",
-	"java/util/List":         "kotlin/collections/List",
-	"java/util/Set":          "kotlin/collections/Set",
-	"java/util/Map":          "kotlin/collections/Map",
-	"java/util/Collection":   "kotlin/collections/Collection",
-	"java/lang/Iterable":     "kotlin/collections/Iterable",
-	"java/util/Iterator":     "kotlin/collections/Iterator",
-	"java/util/Map$Entry":    "kotlin/collections/Map.Entry",
-	"java/util/ListIterator": "kotlin/collections/ListIterator",
+	"java/util/List":         "kotlin/collections/MutableList",
+	"java/util/Set":          "kotlin/collections/MutableSet",
+	"java/util/Map":          "kotlin/collections/MutableMap",
+	"java/util/Collection":   "kotlin/collections/MutableCollection",
+	"java/lang/Iterable":     "kotlin/collections/MutableIterable",
+	"java/util/Iterator":     "kotlin/collections/MutableIterator",
+	"java/util/Map$Entry":    "kotlin/collections/MutableMap.MutableEntry",
+	"java/util/ListIterator": "kotlin/collections/MutableListIterator",
+}
+
+// classLiteral returns the model of a class file's class literal with
+// descriptor desc, as FIR's Java loader has it: the Java type, a platform
+// type, whose lower bound is the literal's type (a raw type, for a generic
+// class).
+func classLiteral(desc string) *Value {
+	t := descType(desc)
+	t.Flexible = t.Kind == TypeClass
+	return &Value{Kind: ValueClass, Type: t}
 }
 
 // descType returns the type a class literal's descriptor names, as
 // Kotlin sees it: Ljava/lang/String; is kotlin/String, [I kotlin/IntArray.
 func descType(desc string) *Type {
 	switch {
-	case desc == "V":
-		return &Type{Kind: TypeClass, ClassID: "kotlin/Unit"}
 	case len(desc) == 1:
-		if p, ok := primitiveDescs[desc[0]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[0]}
+		if k := types.DescKind(desc[0]); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()} // a primitive, or V
 		}
 	case len(desc) == 2 && desc[0] == '[':
-		if p, ok := primitiveDescs[desc[1]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[1]}
+		if k := types.DescKind(desc[1]); types.IsPrimitiveKind(k) {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID() + "Array"}
 		}
 	case strings.HasPrefix(desc, "["):
 		elem := descType(desc[1:])
 		if elem.Kind != TypeClass {
 			return elem
 		}
+		elem.Flexible = true
 		return &Type{Kind: TypeClass, ClassID: "kotlin/Array", Args: []TypeArg{{Type: elem}}}
 	case strings.HasPrefix(desc, "L") && strings.HasSuffix(desc, ";"):
 		name := desc[1 : len(desc)-1]
 		if k, ok := javaKotlin[name]; ok {
 			return &Type{Kind: TypeClass, ClassID: k}
+		}
+		if k := types.BoxKind(name); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()}
 		}
 		return &Type{Kind: TypeClass, ClassID: descClassID(desc)}
 	}

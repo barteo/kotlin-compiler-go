@@ -41,6 +41,8 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		d.Inline = false
 	case d.Inline:
 		c.errorf(d.P, "local inline functions are not yet supported")
+	case c.inInlineFun:
+		c.errorf(d.P, "local functions are not yet supported in inline functions")
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
 		c.unsupported(d.P, "compose", "local composable functions are not supported")
 	}
@@ -125,18 +127,22 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	case d.Body != nil:
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 	case sym.Resolved:
 		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 	default:
 		sym.InProgress = true
-		t := c.expr(d.ExprBody, noWant)
+		rets := []exprRet{}
+		c.exprRets = &rets
+		t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+		defer c.checkExprReturns(rets, t, d.Name)
 		if t.K == types.Range {
 			c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 			t = types.InvalidType
 		}
 		sym.Ret, sym.Resolved, sym.InProgress = t, true, false
+		c.implicitNothingRet(d)
 	}
 	if d.Tailrec {
 		c.tailCalls(d)

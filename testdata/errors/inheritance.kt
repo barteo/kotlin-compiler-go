@@ -1,57 +1,183 @@
-interface I {
+// The checks of inherited members: visibility, default values and
+// interfaces that implement Any's methods.
+
+interface Shape {
+    val area: Int
+    var name: String
+    fun draw()
+}
+
+class Square : Shape {
+    internal override val area: Int = 1 // ERROR cannot weaken access privilege 'public'
+    override var name: String = ""
+        private set // ERROR cannot weaken access privilege 'public'
+    protected override fun draw() {} // ERROR cannot weaken access privilege 'public'
+}
+
+open class Base {
+    protected open fun f() {}
+    internal open fun g() {}
+}
+
+class Derived : Base() {
+    internal override fun f() {} // ERROR cannot change access privilege 'protected'
+    protected override fun g() {} // ERROR cannot change access privilege 'internal'
+}
+
+// An override without a visibility has the overridden member's.
+open class Mid : Base() {
+    override fun g() {}
+}
+
+class Leaf : Mid() {
+    internal override fun g() {}
+}
+
+interface X {
+    fun foo(a: Int = 1)
+}
+
+interface Y {
+    fun foo(a: Int = 2)
+}
+
+class XY : X, Y {
+    override fun foo(a: Int) {} // ERROR more than one overridden descriptor declares a default value for 'a'
+}
+
+interface WithAny {
+    override fun toString(): String = "" // ERROR an interface may not implement a method of 'Any'
+    override fun equals(other: Any?): Boolean // abstract: allowed
+    fun hashCode(x: Int): Int = x // not Any's
+}
+
+// Members inherited from more than one supertype.
+interface HasFoo {
+    fun foo(): Int = 1
+}
+
+interface AlsoFoo {
+    fun foo(): Int = 2
+}
+
+interface AbstractFoo {
+    fun foo(): Int
+}
+
+open class OpenFoo {
+    open fun foo(): Int = 3
+}
+
+class TwoDefaults : HasFoo, AlsoFoo // ERROR must override 'foo' because it inherits multiple interface methods
+
+class DefaultAndAbstract : HasFoo, AbstractFoo // ERROR must override 'foo' because it inherits multiple interface methods
+
+class ClassAndDefault : OpenFoo(), HasFoo // ERROR must override 'foo' because it inherits many implementations
+
+class ClassAndAbstract : OpenFoo(), AbstractFoo
+
+open class ResolvedFoo : HasFoo, AlsoFoo { // ERROR must override 'foo'
+}
+
+class FromResolved : ResolvedFoo() // checked in ResolvedFoo
+
+interface StrF {
+    fun f(): String
+}
+
+open class SeqF {
+    open fun f(): CharSequence = ""
+}
+
+class SeqStr : SeqF(), StrF // ERROR return types of inherited members 'f' are incompatible
+
+interface IntF {
     fun f(): Int
+}
+
+abstract class StrInt : StrF, IntF // ERROR return types of inherited members 'f' are incompatible
+
+interface StrP {
     val p: String
 }
 
-open class A {
-    open fun g(): Int = 1
-    fun h(): Int = 2
-    open var v: Int = 0
-    final override fun toString(): String = "A"
+interface IntP {
+    val p: Int
 }
 
-class B : A() {
-    fun g(): Int = 3 // ERROR 'g' hides member of supertype 'A' and needs 'override' modifier
-    override fun h(): Int = 4 // ERROR 'h' in 'A' is final and cannot be overridden
-    override fun k(): Int = 5 // ERROR 'k' overrides nothing
-    override val v: Int = 1 // ERROR val-property cannot override var-property 'v'
-    override fun toString(): String = "B" // ERROR 'toString' in 'A' is final and cannot be overridden
+abstract class StrIntP : StrP, IntP // ERROR the types of the inherited property 'p' don't match
+
+open class InternalP {
+    internal val q: Int get() = 1
 }
 
-class C : I { // ERROR class 'C' is not abstract and does not implement abstract member 'f'
+interface PublicQ {
+    val q: Int
 }
 
-class D : I {
-    override fun f(): String = "" // ERROR return type of 'f' is not a subtype of the return type of the overridden member
-    override val p: String = ""
+abstract class Weakened : InternalP(), PublicQ // ERROR cannot weaken access privilege 'internal' for 'q'
+
+interface Defaults1 {
+    fun g(x: Int = 1)
 }
 
-class Final
-class E : Final() // ERROR this type is final, so it cannot be inherited from
-class F : A(), Final() // ERROR only one class may appear in a supertype list
-class G : A // ERROR this type has a constructor, and thus must be initialized here
-class H : I() // ERROR this type has no constructor, and thus must not be called
-interface J : A() // ERROR an interface cannot inherit from a class
-
-open class Cycle1 : Cycle2() // ERROR there's a cycle in the inheritance hierarchy for this type
-open class Cycle2 : Cycle1() // ERROR there's a cycle in the inheritance hierarchy for this type
-
-abstract class K {
-    abstract fun m(): Int
-    fun n(): Int = 1
+open class Defaults2 {
+    open fun g(x: Int = 2) {}
 }
 
-class L : K() {
-    override fun m(): Int = super.m() // ERROR abstract member cannot be accessed directly
+class BothDefaults : Defaults2(), Defaults1 // ERROR more than one inherited member declares a default value
+
+abstract class AbstractInClass {
+    abstract fun h(): String
 }
 
-class M {
-    abstract fun m(): Int // ERROR abstract function 'm' in non-abstract class 'M'
-    fun noBody(): Int // ERROR function 'noBody' must have a body
+interface DefaultH {
+    fun h(): String = ""
 }
 
-fun make() {
-    val i = I() // ERROR cannot create an instance of an interface: I
-    val k = K() // ERROR cannot create an instance of an abstract class: K
-    val s = super.toString() // ERROR 'super' is not
+abstract class AbstractH : AbstractInClass(), DefaultH
+
+class CallsAbstract : AbstractH() {
+    override fun h(): String = super.h() // ERROR abstract member cannot be accessed directly
 }
+
+interface First {
+    operator fun component1(): Int = 1
+}
+
+data class Pair1(val a: Int) : First // ERROR overrides an implementation of a componentN function
+
+// Members that delegation implements.
+interface AnyFoo {
+    fun foo(): Any
+    val bar: Any
+}
+
+interface StrFoo : AnyFoo {
+    override fun foo(): String
+    override val bar: String
+}
+
+class DelegatesAny(a: AnyFoo) : AnyFoo by a, StrFoo // ERROR which delegation implements, isn't a subtype
+
+interface IntFoo {
+    fun foo(): Int
+}
+
+abstract class DelegatesStr(s: StrFoo) : StrFoo by s, IntFoo // ERROR return types of inherited members 'foo' are incompatible
+
+interface VarX {
+    var x: Int
+}
+
+interface ValX {
+    val x: Int
+}
+
+class ValXImpl : ValX {
+    override val x: Int get() = 1
+}
+
+abstract class DelegatesVal : VarX, ValX by ValXImpl() // ERROR var 'x' is overridden by a val that delegation implements
+
+class DelegatesStrOk(s: StrFoo) : StrFoo by s, AnyFoo

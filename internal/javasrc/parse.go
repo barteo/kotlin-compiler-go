@@ -40,6 +40,7 @@ const (
 type Modifiers struct {
 	Flags       uint16 // classfile access flags: public, static, final and so on
 	Default     bool   // an interface's default method
+	Sealed      bool   // a sealed class or interface, not a non-sealed one
 	Annotations []*Annotation
 }
 
@@ -58,6 +59,7 @@ type Class struct {
 	TypeParams []*TypeParam
 	Extends    []*Type // a class's superclass, or an interface's superinterfaces
 	Implements []*Type
+	Permits    []*Type  // a sealed class's permitted subclasses
 	Components []*Param // a record's
 	Fields     []*Field
 	Methods    []*Method
@@ -241,7 +243,9 @@ func (p *parser) compilationUnit() {
 	if p.isWord("package") {
 		p.next()
 		p.file.Package = p.qualified()
-		p.semi()
+		// As Kotlin's Java parser, a missing ; after the package
+		// declaration is no error: kotlinc's EnumEntryVsStaticAmbiguity4.
+		p.accept(";")
 		mods = p.modifiers()
 	}
 	for p.isWord("import") {
@@ -300,6 +304,7 @@ func (p *parser) modifiers() Modifiers {
 			p.next()
 			m.Default = true
 		case t.kind == tIdent && (t.text == "sealed" || t.text == "non") && p.sealedModifier():
+			m.Sealed = m.Sealed || t.text == "sealed"
 		default:
 			return m
 		}
@@ -410,7 +415,7 @@ func (p *parser) typeDecl(mods Modifiers, outer *Class) *Class {
 			continue
 		case p.isWord("permits"):
 			p.next()
-			p.typeList()
+			c.Permits = p.typeList()
 			continue
 		}
 		break
@@ -530,6 +535,9 @@ func (p *parser) typeArgs() []*TypeArg {
 
 // classBody parses { members }, with an enum's constants first.
 func (p *parser) classBody(c *Class) {
+	if p.tok().kind == tEOF {
+		return // public interface I, at the end of the file: kotlinc's Java parser reads an empty body
+	}
 	p.expect("{")
 	if c.Kind == KindEnum {
 		for {
@@ -622,6 +630,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	tps := p.typeParams()
+	if tps != nil {
+		// <T> @NotNull T: a return type's annotations, as the method's.
+		mods.Annotations = append(mods.Annotations, p.modifiers().Annotations...)
+	}
 	// A constructor, or a record's compact canonical constructor. A
 	// method without a return type is a misnamed constructor, as
 	// IntelliJ's Java PSI reads it.

@@ -32,6 +32,11 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 		c.probeType(&syntax.TypeRef{Name: a.Name, P: a.P})
 	}
 	cls := c.lookupClass(a.Name)
+	if r, ok := c.u.rec.(AnnotationAliasRecorder); ok && cls != nil {
+		if al := c.lookupAlias(a.Name); al != nil && c.aliasClass(al) == cls {
+			r.AnnotationAlias(c.file, a, al)
+		}
+	}
 	c.lookupCls = saved
 	if cls != nil {
 		// A class path class loads its members, Retention among them,

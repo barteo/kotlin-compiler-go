@@ -95,7 +95,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 	locals := map[string]bool{} // the names of the classes declared in d
 	depth := 0                  // the classes declared in d the code is in
 	protected := func(p syntax.Pos, recv syntax.Expr, owner *types.ClassSym, m *syntax.Modifiers, what, name string) {
-		if protectedAPI || m == nil || m.Visibility != syntax.Protected || owner == nil || !publicAPIClass(owner) {
+		if protectedAPI || owner == nil || !(m != nil && m.Visibility == syntax.Protected && publicAPIClass(owner) || m == nil && javaProtected(owner)) {
 			return
 		}
 		if recv == nil && depth > 0 || recv != nil && localType(recv.Type()) {
@@ -130,12 +130,20 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 		case *syntax.Ident:
 			if v := n.Sym; v != nil && v.Kind == types.Prop && n.Member == nil {
 				protected(n.P, nil, v.Owner, varModifiers(v), "property", v.Name)
+			} else if v != nil && v.Protected && n.Member == nil {
+				protected(n.P, nil, v.Owner, nil, "field", v.Name)
+			} else if m := n.Member; m != nil && m.Field != nil && m.Field.Protected {
+				protected(n.P, nil, m.Field.Owner, nil, "field", m.Field.Name)
 			}
 		case *syntax.Member:
 			if v := n.Prop; v != nil && v.Kind == types.Prop {
 				if _, ok := n.X.(*syntax.Super); !ok {
 					protected(n.P, n.X, v.Owner, varModifiers(v), "property", v.Name)
 				}
+			} else if v != nil && v.Protected {
+				protected(n.P, n.X, v.Owner, nil, "field", v.Name)
+			} else if v := n.Field; v != nil && v.Protected {
+				protected(n.P, nil, v.Owner, nil, "field", v.Name)
 			}
 		case *syntax.Call:
 			f := n.Sym
@@ -154,6 +162,11 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 				recv := receiver(n.Fun)
 				if _, ok := recv.(*syntax.Super); !ok {
 					protected(n.P, recv, f.Owner, &fd.Modifiers, "function", f.Name)
+				}
+			} else if f.Decl == nil && f.Protected {
+				recv := receiver(n.Fun)
+				if _, ok := recv.(*syntax.Super); !ok {
+					protected(n.P, recv, f.Owner, nil, "function", f.Name)
 				}
 			}
 		}
@@ -755,10 +768,29 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 		if !d.Inline || p.Noinline || !t.IsFunc() {
 			continue
 		}
+		if t.IsSuspendFunc() {
+			switch {
+			case !d.Suspend && !p.Crossinline:
+				c.errorf(p.P, "an inline suspend lambda parameter of a non-suspend function must be 'noinline' or 'crossinline'")
+			case p.Default != nil:
+				c.errorf(p.P, "suspend functional parameters with default values are not yet supported in inline functions")
+			}
+		}
 		if t.N {
 			c.errorf(p.P, "inline-parameter '%s' of '%s' must not be nullable. Add 'noinline' modifier to the parameter declaration or make its type not nullable", p.Name, d.Name)
-		} else if _, ok := p.Default.(*syntax.Call); ok {
+		} else if invalidInlineDefault(p.Default) {
 			c.errorf(p.Default.Pos(), "invalid default value for an inline functional parameter: only lambdas, anonymous functions and callable references are supported")
 		}
 	}
+}
+
+// invalidInlineDefault reports whether x, the default value of an inline
+// functional parameter, isn't a lambda, an anonymous function or a
+// callable reference, which the inliner can't inline.
+func invalidInlineDefault(x syntax.Expr) bool {
+	switch x.(type) {
+	case *syntax.Call, *syntax.Ident, *syntax.Member:
+		return true
+	}
+	return false
 }

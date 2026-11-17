@@ -34,6 +34,10 @@ func (v Variance) String() string {
 type Arg struct {
 	V Variance
 	T Type
+	// Raw is set in the substitution of a raw Java type's parameter,
+	// whose members Kotlin erases: the parameter is T, its erasure, and
+	// the members' generic types are raw, as List<T> is List.
+	Raw bool
 }
 
 func (a Arg) String() string { return a.Format(nil) }
@@ -54,9 +58,9 @@ func (a Arg) Format(name func(*ClassSym) string) string {
 type Args struct {
 	List  []Arg
 	param *TypeParamSym // set instead of List in a parameter's own Args
-	// local is set if the list holds a symbol of one compilation: see
+	// life is how long the longest-lived part the list holds lives: see
 	// MakeArgs.
-	local bool
+	life life
 	// lists holds the interned lists whose table is this one's: see
 	// MakeArgs.
 	lists argsTable
@@ -77,14 +81,52 @@ type argsKey struct {
 //
 // So a list is kept in a table that belongs to one of its parts, which
 // the list can't outlive: its tail, its head type's arguments and its
-// head type's class. The table is that of the first of these that is
-// local, a symbol of one compilation or a list holding one. Equal lists
-// have the same parts, so they are found in the same table, and a list is
-// collected with the compilation it belongs to. Symbols are local unless
-// they are among the few that package-level variables declare for all
-// compilations (see ClassSym.Global and TypeParamSym.Global). Lists of
-// only those and of types without symbols, such as Int, are in a table
-// for the process, globalArgs.
+// head type's class. The table is that of the part that lives the
+// shortest (life), so that the table doesn't keep the others: a symbol of
+// one compilation lives as long as it, one of the class path as long as
+// the library that loads it, which serves compilation after compilation
+// (analysis/ka), and those that package-level variables declare for all
+// compilations (see ClassSym.Global and TypeParamSym.Global) as long as
+// the process. Equal lists have the same parts, so they are found in the
+// same table, and a list is collected with the part it belongs to. Lists
+// of only the process's symbols and of types without symbols, such as
+// Int, are in a table for the process, globalArgs.
+
+// life is how long a symbol or a list lives, shortest last.
+type life uint8
+
+const (
+	processLife life = iota
+	libraryLife      // ClassSym.External, TypeParamSym.Library
+	checkLife
+)
+
+func (c *ClassSym) life() life {
+	switch {
+	case c == nil || c.Global:
+		return processLife
+	case c.External && !c.Source:
+		return libraryLife
+	}
+	return checkLife
+}
+
+func (p *TypeParamSym) life() life {
+	switch {
+	case p.Global:
+		return processLife
+	case p.Library:
+		return libraryLife
+	}
+	return checkLife
+}
+
+func (a *Args) lifetime() life {
+	if a == nil {
+		return processLife
+	}
+	return a.life
+}
 
 // argsTable interns lists of arguments: argsKey -> *Args. Checking in
 // parallel looks lists up far more often than it adds them, which
@@ -103,19 +145,20 @@ func (t *argsTable) get() *sync.Map {
 // globalArgs interns the lists that hold no local symbols.
 var globalArgs sync.Map
 
-func (a *Args) isLocal() bool { return a != nil && a.local }
-
-// table returns the table that interns the list k.
-func (k *argsKey) table() *sync.Map {
-	switch {
-	case k.tail.isLocal():
-		return k.tail.lists.get()
-	case k.head.T.A.isLocal():
-		return k.head.T.A.lists.get()
-	case k.head.T.C != nil && !k.head.T.C.Global:
-		return k.head.T.C.lists.get()
+// table returns the table that interns the list k, and how long the list
+// lives.
+func (k *argsKey) table() (*sync.Map, life) {
+	tab, l := &globalArgs, processLife
+	if a := k.tail; a.lifetime() > l {
+		tab, l = a.lists.get(), a.life
 	}
-	return &globalArgs
+	if a := k.head.T.A; a.lifetime() > l {
+		tab, l = a.lists.get(), a.life
+	}
+	if c := k.head.T.C; c.life() > l {
+		tab, l = c.lists.get(), c.life()
+	}
+	return tab, l
 }
 
 // MakeArgs returns the interned list for args, or nil if it is empty.
@@ -127,7 +170,7 @@ func MakeArgs(args []Arg) *Args {
 			a.T = Type{}
 		}
 		k := argsKey{a, tail}
-		tab := k.table()
+		tab, l := k.table()
 		n, ok := tab.Load(k)
 		if !ok {
 			list := make([]Arg, 0, len(args)-i)
@@ -135,7 +178,7 @@ func MakeArgs(args []Arg) *Args {
 			if tail != nil {
 				list = append(list, tail.List...)
 			}
-			n, _ = tab.LoadOrStore(k, &Args{List: list, local: tab != &globalArgs})
+			n, _ = tab.LoadOrStore(k, &Args{List: list, life: l})
 		}
 		tail = n.(*Args)
 	}
@@ -174,6 +217,9 @@ type TypeParamSym struct {
 	// variable declares for all compilations in the process, such as
 	// kotlin.Array's T: see MakeArgs.
 	Global bool
+	// Library is set on a parameter of a symbol of the class path, which
+	// lives as long as the library that loads it: see MakeArgs.
+	Library bool
 	// Intersection is set on the parameter that stands for an
 	// intersection type, A & B, a value that is each of its Bounds: see
 	// Intersect. It has no Owner, and erases as a parameter does.
@@ -194,7 +240,7 @@ func (p *TypeParamSym) Redeclare(q *TypeParamSym) {
 func (t Type) Param() *TypeParamSym { return t.A.param }
 
 func (p *TypeParamSym) args() *Args {
-	p.once.Do(func() { p.self = &Args{param: p, local: !p.Global} })
+	p.once.Do(func() { p.self = &Args{param: p, life: p.life()} })
 	return p.self
 }
 
@@ -230,7 +276,9 @@ func (p *TypeParamSym) ErasureBound() Type {
 
 // Bound returns the first upper bound, or Any? if there is none.
 func (p *TypeParamSym) Bound() Type {
-	if len(p.Bounds) == 0 {
+	if len(p.Bounds) == 0 || p.Bounds[0].IsParam() && ParamCycle(p) {
+		// No bound, or bounds that are each other's parameters, as Java
+		// sources can declare (<A extends B, B extends A>): Any?.
 		return AnyType.Nullable()
 	}
 	return p.Bounds[0]
@@ -372,7 +420,7 @@ func (s Subst) ApplyArg(t Type) Type {
 			if args == nil {
 				args = slices.Clone(r.A.List)
 			}
-			args[i] = Arg{c.V, withFlags(c.T, a.T)}
+			args[i] = Arg{V: c.V, T: withFlags(c.T, a.T)}
 		}
 	}
 	if args != nil {
@@ -409,12 +457,27 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		if !ok {
 			return t, false
 		}
+		if a.Raw {
+			if !t.P && !t.N && !jdkParam(t.Param()) {
+				// An enhanced @NotNull T: its erasure, non-null. Not a T of
+				// the JDK, which has no such annotations: there T is K2's
+				// predefined enhancement, and a raw type's erasure Any!.
+				return withFlags(a.T.NonNull(), t), false
+			}
+			return withFlags(a.T, t), false
+		}
 		var r Type
 		switch {
 		case a.V == Inv:
 			r = a.T
 		case pos == Out && a.V == Out:
 			r = a.T
+			if t.P && t.K == TypeVar && r.N && !r.P && r.K != Null && r.K != Nothing {
+				// A Java F! read through the capture of out X?, as K2
+				// approximates it: X!. F of wait(Future<F>) for a
+				// CompletableFuture<*> of S : CharSequence?.
+				r = r.Platform()
+			}
 		case pos == In && a.V == In:
 			r = a.T
 		case pos == In:
@@ -426,12 +489,46 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			// B<*, Int>.
 			p := t.Param()
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
+		case a.V == Star && pos == Out && ParamCycle(t.Param()):
+			// Bounds that are each other's parameters, Java's <A extends
+			// B, B extends A>, which kotlinc reads as Any!: substituting
+			// the bound would never end.
+			r = AnyType.Nullable().Platform()
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
+			if r.K == Class && r.A == nil && !r.C.Array && r.C.Raw() {
+				// A raw bound, as B<E extends A>'s: the projection's
+				// approximation is flexible, not raw, an A<Any!>.
+				args := make([]Arg, len(r.C.TypeParams))
+				for i, tp := range r.C.TypeParams {
+					// Each parameter's bound, erased: a StubElement<T
+					// extends CharSequence>'s is CharSequence!.
+					b := tp.Bound()
+					switch {
+					case b.IsParam():
+						b = AnyType
+					case b.K == Class && !b.C.Array:
+						b.A = nil
+					}
+					args[i] = Arg{T: b.Platform()}
+				}
+				r.A = MakeArgs(args)
+				r = r.Platform()
+			}
+			if (t.P || !t.N && javaParam(t.Param())) && r.N && !r.P {
+				// A Java T!, or an enhanced T of a Java class, whose bound
+				// is Any!: the value read has a platform type, as kotlinc's
+				// capture of the projection. Supplier<*>'s get() is Any!.
+				r = r.Platform()
+			}
 		}
 		return withFlags(r, t), a.V == Out || a.V == In
 	case Class:
 		if t.A == nil {
+			return t, false
+		}
+		if !t.C.Array && s.erases(t) {
+			t.A = nil // raw, as Java erases it; an array is not
 			return t, false
 		}
 		args := make([]Arg, len(t.A.List))
@@ -457,7 +554,7 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				// argument is Kotlin's captured type, which only Nothing
 				// is a subtype of: Continuation<*>.resumeWith takes a
 				// Result<Nothing>.
-				args[i] = Arg{Out, withFlags(NothingType, a.T)}
+				args[i] = Arg{V: Out, T: withFlags(NothingType, a.T)}
 			}
 			changed = changed || args[i] != a
 		}
@@ -468,6 +565,28 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		return t, approx
 	}
 	return t, false
+}
+
+// erases reports whether s is a raw type's substitution (see Arg.Raw),
+// which erases the generic types of its members, as Java does, and t is
+// one: a raw B's foo(Map<String, String>) takes a raw Map. As in K2, a
+// type with a generic method's own parameter isn't: <E> foo(ML<E>) still
+// takes an ML<E>.
+func (s Subst) erases(t Type) bool {
+	raw := false
+	for _, a := range s {
+		if a.Raw {
+			raw = true
+			break
+		}
+	}
+	return raw && !t.Has(func(u Type) bool {
+		if !u.IsParam() {
+			return false
+		}
+		a, ok := s[u.Param()]
+		return !ok || !a.Raw
+	})
 }
 
 // projected reports whether t is a parameter that s replaces by an out or
@@ -524,7 +643,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				// through a Base<*> of Base<T : Base<T>>, a List<T> is a
 				// List<out Base<*>>.
 				if b, ok := starBound(a.T.Param()); ok {
-					return Arg{Out, withFlags(b, a.T)}, r.V == Out || r.V == In
+					return Arg{V: Out, T: withFlags(b, a.T)}, r.V == Out || r.V == In
 				}
 				if p := a.T.Param(); a.T.D && len(p.Bounds) <= 1 {
 					// T & Any is within the bound made not null.
@@ -532,31 +651,41 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					if len(p.Bounds) == 1 {
 						b = p.Bounds[0].NonNull()
 					}
-					return Arg{Out, b}, true
+					return Arg{V: Out, T: b}, true
 				}
 				if p := a.T.Param(); len(p.Bounds) > 1 {
 					// Kotlin's is the intersection of its bounds, as
 					// is the parameter itself: E of Exp<*> for an
 					// Exp<E> where E : Enum<E>, E : Variant.
-					return Arg{Out, a.T}, r.V == Out || r.V == In
+					return Arg{V: Out, T: a.T}, r.V == Out || r.V == In
 				}
 				return r, true
+			case pos == In && r.V == In && a.V == In:
+				// Written to, in of an in projection's capture is in its
+				// parameter's bound: B<in CharSequence>.foo(x: A<in E>)
+				// takes an A<in Any?>.
+				if p := a.T.Param(); len(p.Bounds) == 0 {
+					return Arg{V: In, T: withFlags(AnyType.Nullable(), a.T)}, true
+				} else if len(p.Bounds) == 1 && !p.Bounds[0].HasParams() {
+					return Arg{V: In, T: withFlags(p.Bounds[0], a.T)}, true
+				}
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, true
 			case r.V == Star:
 				// Read, a star in an invariant argument is a capture
 				// approximated, which makes the argument out: T of
 				// B<*, *> for B<R, T : B<List<R>, T>> is B<out List<*>, *>.
 				return r, pos == Out
 			case r.V == Inv:
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In && r.V == Out && a.V != In:
-				return Arg{Out, withFlags(NothingType, a.T)}, r.V == Out || r.V == In
+				return Arg{V: Out, T: withFlags(NothingType, a.T)}, r.V == Out || r.V == In
 			case a.V == Inv || a.V == r.V:
-				return Arg{r.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: r.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In:
 				// Written to, an argument projected the other way than
 				// its capture is within the projection's type: Optional<out
 				// E>.map takes a Function<in E, …>.
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			}
 			return Arg{V: Star}, false
 		}
@@ -566,7 +695,44 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 		pos = Out + In - pos
 	}
 	t, approx := s.applyA(a.T, pos, exact)
-	return Arg{a.V, t}, approx
+	return Arg{V: a.V, T: t}, approx
+}
+
+// javaParam reports whether p is a type parameter of a Java class without
+// bounds, whose bound is Any!.
+func javaParam(p *TypeParamSym) bool {
+	c, ok := p.Owner.(*ClassSym)
+	return ok && len(p.Bounds) == 0 && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
+}
+
+// jdkParam reports whether p is a type parameter of a JDK class or of
+// one of its methods.
+func jdkParam(p *TypeParamSym) bool {
+	var c *ClassSym
+	switch o := p.Owner.(type) {
+	case *ClassSym:
+		c = o
+	case *FunSym:
+		c = o.Owner
+	}
+	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
+}
+
+// ParamCycle reports whether the bounds of p, followed through the type
+// parameters they are, lead back to p.
+func ParamCycle(p *TypeParamSym) bool {
+	seen := map[*TypeParamSym]bool{}
+	for q := p; len(q.Bounds) > 0 && q.Bounds[0].IsParam(); {
+		q = q.Bounds[0].Param()
+		if q == p {
+			return true
+		}
+		if seen[q] {
+			return false
+		}
+		seen[q] = true
+	}
+	return false
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.
@@ -619,7 +785,7 @@ func starred(t Type, ps map[*TypeParamSym]bool) Type {
 		case a.T.IsParam() && ps[a.T.Param()]:
 			args[i] = Arg{V: Star}
 		default:
-			args[i] = Arg{a.V, starred(a.T, ps)}
+			args[i] = Arg{V: a.V, T: starred(a.T, ps)}
 		}
 	}
 	t.A = MakeArgs(args)
@@ -638,15 +804,43 @@ func withFlags(r, occ Type) Type {
 		return r
 	case occ.N && !occ.P:
 		return r.Nullable()
+	case occ.P && occ.D && occ.K == TypeVar:
+		// An inference variable's (T & Any .. T?): see check's
+		// system.sub.
+		if r.K == Nothing || r.K == Null {
+			return NullType.Platform()
+		}
+		if r.P || r.K == Unit {
+			return r
+		}
+		return r.NonNull().Platform()
 	case occ.D:
 		return r.NonNull()
 	case occ.P:
-		if r.N || r.K == Unit || r.K == Nothing {
+		if r.K == Nothing {
+			// Kotlin's Nothing!, of a Java T for a T inferred from null:
+			// a platform Nothing?, which takes null and is a Nothing, but
+			// returns, unlike Nothing: set(key, null) of a Java <T> T
+			// set(String, T) isn't the end of the code.
+			return NullType.Platform()
+		}
+		if r.N || r.K == Unit {
 			return r
 		}
 		r.N, r.P, r.D = true, true, false
 	}
 	return r
+}
+
+// ApproxFlexNothing returns t, the type of a declaration or a
+// variable's bound, with Kotlin's Nothing! (see withFlags) as the Nothing?
+// it approximates to: val x = set(key, null) of a Java <T> T set(String,
+// T) is a Nothing?, not a Nothing that a String takes.
+func ApproxFlexNothing(t Type) Type {
+	if t.K == Null && t.P {
+		return NullType
+	}
+	return t
 }
 
 // TypeParamsString formats type parameters as in a declaration: <K, V>.

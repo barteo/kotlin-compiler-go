@@ -26,7 +26,10 @@ func (c *Checker) suspendScope() (l *syntax.Lambda, ok, critical bool) {
 		switch {
 		case l.Suspend:
 			return l, true, critical
-		case l.Inline && !j.crossinline:
+		case l.Inline && !j.crossinline && l.Ref == nil:
+			// Not a reference's, whose function a suspend one isn't
+			// for a function type that isn't suspend: go1(x::id) in a
+			// suspend lambda.
 			critical = critical || j.callee == "synchronized"
 			continue
 		}

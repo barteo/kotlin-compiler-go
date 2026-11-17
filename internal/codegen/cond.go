@@ -131,8 +131,8 @@ func negate(op syntax.Kind) syntax.Kind {
 }
 
 var (
-	intCmp  = map[syntax.Kind]byte{syntax.EQ: cf.IF_ICMPEQ, syntax.NE: cf.IF_ICMPNE, syntax.LT: cf.IF_ICMPLT, syntax.GE: cf.IF_ICMPGE, syntax.GT: cf.IF_ICMPGT, syntax.LE: cf.IF_ICMPLE}
-	zeroCmp = map[syntax.Kind]byte{syntax.EQ: cf.IFEQ, syntax.NE: cf.IFNE, syntax.LT: cf.IFLT, syntax.GE: cf.IFGE, syntax.GT: cf.IFGT, syntax.LE: cf.IFLE}
+	intCmp  = [...]byte{syntax.EQ: cf.IF_ICMPEQ, syntax.NE: cf.IF_ICMPNE, syntax.LT: cf.IF_ICMPLT, syntax.GE: cf.IF_ICMPGE, syntax.GT: cf.IF_ICMPGT, syntax.LE: cf.IF_ICMPLE}
+	zeroCmp = [...]byte{syntax.EQ: cf.IFEQ, syntax.NE: cf.IFNE, syntax.LT: cf.IFLT, syntax.GE: cf.IFGE, syntax.GT: cf.IFGT, syntax.LE: cf.IFLE}
 )
 
 // branchCompare compares the two values of type t on the stack and jumps
@@ -366,6 +366,17 @@ func (g *gen) inRange(eval, load0 func(), vt types.Type, r *syntax.Binary, in bo
 	t := types.IntType
 	if vt.Flex() == types.LongType || r.X.Type().Flex() == types.LongType || r.Y.Type().Flex() == types.LongType {
 		t = types.LongType
+	}
+	if vt.IsIntersection() {
+		// A T smart cast to Char, a Char & T: unboxed as a Char.
+		for _, b := range vt.Param().Bounds {
+			if b.IsPrimitive() {
+				l := load0
+				load0 = func() { l(); g.castErased(types.AnyType.Nullable(), b) }
+				vt = b
+				break
+			}
+		}
 	}
 	load := func() {
 		load0()

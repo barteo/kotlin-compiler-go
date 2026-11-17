@@ -110,14 +110,14 @@ func TestLibraryClass(t *testing.T) {
   8 imports v0 m0 f0x0: kotlin/Array<out kotlin/String>
 1 AbstractList [kotlin/collections/AbstractList] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.1") <out E> : kotlin/collections/AbstractCollection<E> kotlin/collections/List<E>
   10 <init> v2 m0 f0x1000000
-  8 size v0 m2 f0x0: kotlin/Int
   7 get v0 m2 f0x200 (index: kotlin/Int): E
+  8 size v0 m2 f0x0: kotlin/Int
 1 AbstractCoroutineContextKey [kotlin/coroutines/AbstractCoroutineContextKey] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.3") @kotlin/ExperimentalStdlibApi() @kotlin/Deprecated(message = "Polymorphic coroutine context keys are error-prone, difficult to implement correctly, and can encourage depending on implementation details. Prefer retrieving the element by its base key and casting it explicitly when needed or introducing a dedicated extension property.") @kotlin/DeprecatedSinceKotlin(warningSince = "2.4") <B : kotlin/coroutines/CoroutineContext.Element> <E : B> : kotlin/coroutines/CoroutineContext.Key<E>
   10 <init> v0 m0 f0x1000000 (baseKey: kotlin/coroutines/CoroutineContext.Key<B>, safeCast: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>)
-  8 safeCast v1 m0 f0x2000000: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
-  8 topmostKey v1 m0 f0x2000000: kotlin/coroutines/CoroutineContext.Key<*>
   7 tryCast v3 m0 f0x0 (element: kotlin/coroutines/CoroutineContext.Element): E?
   7 isSubKey v3 m0 f0x0 (key: kotlin/coroutines/CoroutineContext.Key<*>): kotlin/Boolean
+  8 safeCast v1 m0 f0x2000000: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
+  8 topmostKey v1 m0 f0x2000000: kotlin/coroutines/CoroutineContext.Key<*>
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -216,7 +216,7 @@ func TestLibraryBuiltins(t *testing.T) {
 	defer m.Close()
 	var sb strings.Builder
 	for _, id := range []string{"kotlin/Any", "kotlin/String", "kotlin/Int", "kotlin/collections/List",
-		"kotlin/collections/Map", "kotlin/Comparable", "kotlin/Function1"} {
+		"kotlin/collections/Map", "kotlin/Comparable", "kotlin/Function1", "kotlin/Array", "kotlin/IntArray"} {
 		d := m.Class(id)
 		if d == nil {
 			t.Fatalf("%s: nil", id)
@@ -232,17 +232,16 @@ func TestLibraryBuiltins(t *testing.T) {
   7 equals v0 m1 f0x200 (other: kotlin/Any?): kotlin/Boolean
   7 hashCode v0 m1 f0x0: kotlin/Int
   7 toString v0 m1 f0x0: kotlin/String
-1 String [kotlin/String] v0 m0 f0x0 : java/io/Serializable kotlin/Comparable<kotlin/String> kotlin/CharSequence
-  8 length v0 m1 f0x0: kotlin/Int
+1 String [kotlin/String] v0 m0 f0x0 : kotlin/Comparable<kotlin/String> kotlin/CharSequence java/io/Serializable
   7 get v0 m1 f0x200 (index: kotlin/Int): kotlin/Char
+  8 length v0 m1 f0x0: kotlin/Int
   3 Companion [kotlin/String.Companion] v0 m0 f0x800001 : kotlin/Any
-1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int>
+1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int> java/io/Serializable
   7 inc v0 m0 f0x200: kotlin/Int
   7 toLong v0 m1 f0x0: kotlin/Long
   3 Companion [kotlin/Int.Companion] v0 m0 f0x800001 : kotlin/Any
     8 MAX_VALUE v0 m0 f0x2000: kotlin/Int
 2 List [kotlin/collections/List] v0 m2 f0x0 <out E> : kotlin/collections/Collection<E>
-  8 size v0 m2 f0x0: kotlin/Int
   7 isEmpty v0 m2 f0x0: kotlin/Boolean
   7 contains v0 m2 f0x200 (element: E): kotlin/Boolean
   7 iterator v0 m2 f0x200: kotlin/collections/Iterator<E>
@@ -253,19 +252,20 @@ func TestLibraryBuiltins(t *testing.T) {
   7 listIterator v0 m2 f0x0: kotlin/collections/ListIterator<E>
   7 listIterator v0 m2 f0x0 (index: kotlin/Int): kotlin/collections/ListIterator<E>
   7 subList v0 m2 f0x0 (fromIndex: kotlin/Int, toIndex: kotlin/Int): kotlin/collections/List<E>
+  8 size v0 m2 f0x0: kotlin/Int
   7 spliterator v0 m1 f0x400000: java/util/Spliterator<E!>!
   7 getFirst v0 m1 f0x400000: E!
   7 getLast v0 m1 f0x400000: E!
 2 Map [kotlin/collections/Map] v0 m2 f0x0 <K> <out V> : kotlin/Any
-  8 size v0 m2 f0x0: kotlin/Int
-  8 keys v0 m2 f0x0: kotlin/collections/Set<K>
-  8 values v0 m2 f0x0: kotlin/collections/Collection<V>
-  8 entries v0 m2 f0x0: kotlin/collections/Set<kotlin/collections/Map.Entry<K, V>>
   7 isEmpty v0 m2 f0x0: kotlin/Boolean
   7 containsKey v0 m2 f0x0 (key: K): kotlin/Boolean
   7 containsValue v0 m2 f0x0 (value: V): kotlin/Boolean
   7 get v0 m2 f0x200 (key: K): V?
   7 getOrDefault v0 m1 f0x0 (key: K, defaultValue: V): V
+  8 size v0 m2 f0x0: kotlin/Int
+  8 keys v0 m2 f0x0: kotlin/collections/Set<K>
+  8 values v0 m2 f0x0: kotlin/collections/Collection<V>
+  8 entries v0 m2 f0x0: kotlin/collections/Set<kotlin/collections/Map.Entry<K, V>>
   7 forEach v0 m1 f0x400000 (p0: java/util/function/BiConsumer<in K!, in V!>!): kotlin/Unit
   2 Entry [kotlin/collections/Map.Entry] v0 m2 f0x800000 <out K> <out V> : kotlin/Any
     8 key v0 m2 f0x0: K
@@ -273,6 +273,21 @@ func TestLibraryBuiltins(t *testing.T) {
 2 Comparable [kotlin/Comparable] v0 m2 f0x0 <in T> : kotlin/Any
   7 compareTo v0 m2 f0x200 (other: T): kotlin/Int
 2 Function1 [kotlin/Function1] v0 m2 f0x0 <in P1> <out R> : kotlin/Function<R>
+1 Array [kotlin/Array] v0 m0 f0x0 <T> : kotlin/Cloneable java/io/Serializable
+  10 <init> v0 m0 f0x0 (size: kotlin/Int, init: kotlin/Function1<kotlin/Int, T>)
+  7 get v0 m0 f0x200 (index: kotlin/Int): T
+  7 set v0 m0 f0x200 (index: kotlin/Int, value: T): kotlin/Unit
+  7 iterator v0 m0 f0x200: kotlin/collections/Iterator<T>
+  8 size v0 m0 f0x0: kotlin/Int
+  7 clone v0 m0 f0x100000: kotlin/Array<T>
+1 IntArray [kotlin/IntArray] v0 m0 f0x0 : kotlin/Cloneable java/io/Serializable
+  10 <init> v0 m0 f0x1000000 (size: kotlin/Int)
+  10 <init> v0 m0 f0x0 (size: kotlin/Int, init: kotlin/Function1<kotlin/Int, kotlin/Int>)
+  7 get v0 m0 f0x200 (index: kotlin/Int): kotlin/Int
+  7 set v0 m0 f0x200 (index: kotlin/Int, value: kotlin/Int): kotlin/Unit
+  7 iterator v0 m0 f0x200: kotlin/collections/IntIterator
+  8 size v0 m0 f0x0: kotlin/Int
+  7 clone v0 m0 f0x100000: kotlin/IntArray
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -300,7 +315,7 @@ class Base {}
 class Orphan extends Gone implements Runnable { public void run() {} }
 abstract class Mixed implements Runnable, Lost, Comparable<String> {}
 `
-	kotlin := "package j\nclass UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
+	kotlin := "package j\ninternal class UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
 	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
 	s := Open(withJDK(t))
 	defer s.Close()
@@ -582,5 +597,34 @@ func TestLibraryPrivateNested(t *testing.T) {
 		if _, ok := slices.BinarySearch(got, name); !ok {
 			t.Errorf("private nested class %s missing; have %v", name, got)
 		}
+	}
+}
+
+// TestJavaSelfBound checks that a generic Java class whose supertype's
+// argument is the class's own type loads, with a member that a Kotlin
+// collection declares and without.
+func TestJavaSelfBound(t *testing.T) {
+	java := `package j;
+
+public class Node<T> implements Comparable<Node<T>> {
+    public int compareTo(Node<T> other) { return 0; }
+}
+
+class Bag<T> implements Comparable<Bag<T>> {
+    public int compareTo(Bag<T> other) { return 0; }
+    public boolean contains(Object o) { return false; }
+}
+`
+	kotlin := "package j\nprivate fun f(n: Node<String>, b: Bag<String>) = n.compareTo(n) + b.compareTo(b)\n"
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Node.java", Text: &java}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	for _, d := range m.Diagnostics {
+		t.Errorf("diagnostic: %+v", d)
 	}
 }

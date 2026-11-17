@@ -190,6 +190,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Setter = ss
 	}
 	c.propContexts(d, sym)
+	c.unusedPropTypeParams(d, gs.Recv, sym.Contexts)
 	switch {
 	case d.Type != nil:
 		sym.Type, sym.Resolved = c.resolveType(d.Type), true
@@ -204,7 +205,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Type, sym.Resolved = types.InvalidType, true
 		gs.Ret, gs.Resolved = types.InvalidType, true
 	default:
-		sym.Infer = func() { c.inferProp(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferProp(d) })
 		gs.Infer = func() { ensureVar(sym) }
 	}
 	if g.Inline {
@@ -282,7 +283,11 @@ func (c *Checker) overriddenExtProps(cls *types.ClassSym, name string, f *types.
 		}
 		for _, g := range s.ExtProps[name] {
 			ensureFun(g)
-			if r := c.memberSubst(this, g.Owner).Apply(g.Recv); c.sameType(r, f.Recv) {
+			// The type parameters of generic ones correspond by position.
+			if len(g.TypeParams) != len(f.TypeParams) {
+				continue
+			}
+			if r := c.overrideSubst(this, f, g).Apply(g.Recv); c.sameType(r, f.Recv) {
 				out = append(out, g)
 			}
 		}
@@ -327,6 +332,22 @@ func (c *Checker) checkExtPropOverrides(d *syntax.ClassDecl) {
 			}
 		}
 	}
+}
+
+// mayHaveMemberExts reports whether class cls may declare or inherit
+// member extensions: a class of the class path, any class if the program
+// declares some, or a class of the program with a supertype from the
+// class path, which may declare them.
+func (c *Checker) mayHaveMemberExts(cls *types.ClassSym) bool {
+	if cls.External || c.u.memberExts {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.External && (len(s.ExtMethods) > 0 || len(s.ExtProps) > 0)
+		return !found
+	})
+	return found
 }
 
 // memberExtProps returns the getters of the extension properties named
@@ -427,4 +448,40 @@ func (c *Checker) thisExtProp(x *syntax.Ident) (types.Type, bool) {
 	m.P = x.P
 	x.Member = m
 	return c.expr(m, noWant), true
+}
+
+// unusedPropTypeParams reports the type parameters of an extension
+// property that neither its receiver type nor its context parameters
+// mention, directly or through the bounds of those they mention, as
+// kotlinc's TYPE_PARAMETER_OF_PROPERTY_NOT_USED_IN_RECEIVER and
+// INCORRECT_TYPE_PARAMETER_OF_PROPERTY: a read couldn't infer them.
+func (c *Checker) unusedPropTypeParams(d *syntax.PropDecl, recv types.Type, ctxs []*types.VarSym) {
+	if len(d.TypeParams) == 0 || recv.K == types.Invalid {
+		return
+	}
+	used := map[*types.TypeParamSym]bool{}
+	var mark func(t types.Type)
+	mark = func(t types.Type) {
+		t.Has(func(u types.Type) bool {
+			if !u.IsParam() {
+				return false
+			}
+			if p := u.Param(); p != nil && !used[p] {
+				used[p] = true
+				for _, b := range p.Bounds {
+					mark(b)
+				}
+			}
+			return false
+		})
+	}
+	mark(recv)
+	for _, v := range ctxs {
+		mark(v.Type)
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Sym != nil && !used[tp.Sym] {
+			c.errorf(tp.P, "type parameter of a property must be used in its receiver type or context parameters")
+		}
+	}
 }

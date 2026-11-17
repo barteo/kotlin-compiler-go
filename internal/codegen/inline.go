@@ -160,6 +160,24 @@ type inliner struct {
 	typed map[int]bool
 }
 
+// nullable reports whether a marked operation's type is nullable: the
+// marker's, T?, or the call's type argument for T, String?.
+func (in *inliner) nullable(r inline.Reified) bool {
+	t, ok := in.g.reifiedTypes[r.Param]
+	return r.Nullable || ok && t.N
+}
+
+// nullableInstanceOf generates x is C? for x on the stack: true for null
+// too, as kotlinc's reifier does, without branches, as a template's copy
+// does it in place (see inline.Template.Instantiate).
+func nullableInstanceOf(c *cf.Code, cls string) {
+	c.Op(cf.DUP)
+	c.Invoke(cf.INVOKESTATIC, "java/util/Objects", "isNull", "(Ljava/lang/Object;)Z")
+	c.Op(cf.SWAP)
+	c.InstanceOf(cls)
+	c.Op(cf.IOR)
+}
+
 // cls returns the class that the copy refers to for class name.
 func (in *inliner) cls(name string) string {
 	if n, ok := in.renamed[name]; ok {
@@ -177,23 +195,34 @@ func (in *inliner) desc(d string) string {
 }
 
 // instantiate generates the copy of template t that the body's
-// instruction creates, as kotlinc names it: Class$method$$inlined$f$N.
-func (in *inliner) instantiate(t *inline.Template) {
+// instruction creates, as kotlinc names it: Class$method$$inlined$f$N. It
+// reports whether the copy still operates on reified type parameters, of
+// the inline function whose method this is: the copy keeps its markers,
+// and is created after a needClassReification call, so that the
+// function's copiers, in other modules too, copy it with their type
+// arguments, as kotlinc's are.
+func (in *inliner) instantiate(t *inline.Template) bool {
 	g := in.g
 	method := strings.TrimSuffix(g.prefix, "$lambda")
 	key := g.cls.Name + "$" + method + "$$inlined$" + in.b.Name
 	g.shared.count[key]++
 	name := key + "$" + strconv.Itoa(g.shared.count[key])
 	reified, cloned := in.reified, false
-	for p, cls := range in.reified {
-		if strings.HasPrefix(cls, "?") {
-			// A reified type parameter of the inline function whose method
-			// this is: kc copies the object erased, where kotlinc would
-			// copy it with markers for its callers.
+	for p, typ := range g.reifiedTypes {
+		if cls, ok := reified[p]; ok && typ.N && !strings.HasPrefix(cls, "?") && !strings.HasSuffix(cls, "?") {
+			// A nullable type argument, whose checks are true for null.
 			if !cloned {
 				reified, cloned = maps.Clone(in.reified), true
 			}
-			reified[p] = "java/lang/Object"
+			reified[p] = cls + "?"
+		}
+	}
+	// The names of non-null type arguments, for the messages of the null
+	// checks of casts to them.
+	names := map[string]string{}
+	for p, typ := range g.reifiedTypes {
+		if cls, ok := reified[p]; ok && !strings.HasPrefix(cls, "?") && !types.MayBeNull(typ) {
+			names[p] = kotlinName(typ)
 		}
 	}
 	sigs := map[string]string{}
@@ -204,7 +233,19 @@ func (in *inliner) instantiate(t *inline.Template) {
 			sigs[p] = w.String()
 		}
 	}
-	copies, err := t.Instantiate(name, reified, sigs)
+	reifiable := t.Reifiable(reified)
+	copies, err := t.Instantiate(name, reified, sigs, names)
+	if err != nil && reifiable {
+		// A class whose markers kc can't keep: a copy erased, which the
+		// function's copiers can't copy.
+		reified, reifiable = maps.Clone(reified), false
+		for p, cls := range reified {
+			if strings.HasPrefix(cls, "?") {
+				reified[p] = "java/lang/Object"
+			}
+		}
+		copies, err = t.Instantiate(name, reified, sigs, names)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -215,6 +256,10 @@ func (in *inliner) instantiate(t *inline.Template) {
 		in.renamed = map[string]string{}
 	}
 	in.renamed[t.Name] = name
+	if reifiable && g.reifiedUse != nil {
+		*g.reifiedUse = true // copies of the enclosing class create copies of this one
+	}
+	return reifiable
 }
 
 // inline copies the body b in place of a call whose arguments are on the
@@ -230,6 +275,9 @@ func (g *gen) inline(b *inline.Body, x *syntax.Call) {
 		saved, savedTypes, savedSers := g.reified, g.reifiedTypes, g.serializers
 		g.reified, g.reifiedTypes = g.reifiedClasses(x)
 		g.serializers = x.Serializers
+		if x.Sym != nil {
+			g.serializers = g.callSerializers(x, x.Sym)
+		}
 		defer func() { g.reified, g.reifiedTypes, g.serializers = saved, savedTypes, savedSers }()
 	}
 	in := &inliner{g: g, c: c, b: b, x: x, locals: map[localKey]int{}, refs: map[int]cf.VType{}, reified: g.reified,
@@ -511,8 +559,8 @@ func (in *inliner) insn(i int) {
 		}
 		in.g.mark(inline.FakeContinuation) // still a placeholder, in a copy that is inlined in turn
 	}
-	if t := b.Templates[i]; t != nil {
-		in.instantiate(t)
+	if t := b.Templates[i]; t != nil && in.instantiate(t) {
+		c.Invoke(cf.INVOKESTATIC, intrinsics, "needClassReification", "()V")
 	}
 	if t := b.Copies[i]; t != nil && in.g.publicInline && in.renamed[t.Name] == "" {
 		// In the method of a public inline function, which kotlinc's
@@ -587,6 +635,10 @@ func (in *inliner) insn(i int) {
 		case inline.NewArray:
 			c.ANewArray(cls)
 		case inline.As:
+			if t, ok := in.g.reifiedTypes[r.Param]; ok && !r.Nullable && !types.MayBeNull(t) {
+				// x as String throws for null, as kotlinc's reifier has it.
+				in.g.checkCastNotNull(t)
+			}
 			c.Checkcast(cls)
 		case inline.SafeAs:
 			// x as? C: x if it is a C, else null.
@@ -601,7 +653,11 @@ func (in *inliner) insn(i int) {
 			c.Checkcast(cls)
 			c.Place(end)
 		case inline.Is:
-			c.InstanceOf(cls)
+			if in.nullable(r) {
+				nullableInstanceOf(c, cls)
+			} else {
+				c.InstanceOf(cls)
+			}
 		case inline.JavaClass:
 			c.LdcClass(cls)
 		case inline.Enum:

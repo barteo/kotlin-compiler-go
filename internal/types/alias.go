@@ -17,6 +17,11 @@ type AliasSym struct {
 	Decl      any // *syntax.TypeAliasDecl
 	// Private and Internal are the alias's visibility.
 	Private, Internal bool
+	// Annotations are the descriptors of the annotations of a typealias
+	// of the class path, which its metadata keeps, and Deprecated its
+	// deprecation: what the opt-in and deprecation checks know of it.
+	Annotations []string
+	Deprecated  *Deprecation
 }
 
 // Expand returns the type the alias stands for with these type

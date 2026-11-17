@@ -332,8 +332,10 @@ func (c *Checker) unify(cls *types.ClassSym, sup, s types.Type, args []types.Arg
 			if j < 0 {
 				continue
 			}
-			if a.T.N && v.V != types.Star {
-				v.T = v.T.NonNull() // T? and String? give T = String
+			if a.T.N && !a.T.P && v.V != types.Star {
+				// T? and String? give T = String; a Java supertype's
+				// E! and String? give E = String?.
+				v.T = v.T.NonNull()
 			}
 			if set[j] && (args[j].V != v.V || v.V != types.Star && !c.sameType(args[j].T, v.T)) {
 				conflict = true
@@ -393,7 +395,14 @@ func (c *Checker) stable(v *types.VarSym) bool {
 		return isVar(v) && c.varStable(v, types.Type{})
 	}
 	switch v.Kind {
-	case types.Local, types.Param, types.BackingField:
+	case types.Param:
+		if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp && cp.PropSym != nil {
+			// As kotlinc has it, x of class C(var x: Int?) is the
+			// property in the initializers, which may change.
+			return c.stableOn(cp.PropSym, c.thisType())
+		}
+		return true
+	case types.Local, types.BackingField:
 		return true
 	case types.Prop:
 		return c.stableOn(v, c.thisType())
@@ -406,6 +415,9 @@ func (c *Checker) stable(v *types.VarSym) bool {
 // narrowSym returns the variable that a smart cast of x narrows: a stable
 // variable, or this. It returns nil if x can't be smart cast.
 func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
+	if obj := objectNamed(x); obj != nil {
+		return c.objectSym(obj) // an object is stable: Obj.y is Int
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {
@@ -455,9 +467,32 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 // T leaves a T & Any (see declaredIfNull). An interface unrelated to a
 // class type gives their intersection, as in Kotlin: an a: A? that is a B
 // is an A & B, whatever expression it is passed through.
+// otherInstance reports whether b is, or is a subclass of, another
+// instance of generic class type a's class than a.
+func (c *Checker) otherInstance(b, a types.Type) bool {
+	if b.C == a.C {
+		return b.A != nil && !c.subtype(b, a)
+	}
+	sup, ok := c.asSuper(b, a.C)
+	return ok && sup.A != nil && !c.subtype(sup, a)
+}
+
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
+	return c.narrowedTo(cur, t, true)
+}
+
+// narrowedTo is isNarrowed; subclass is whether a subclass of another
+// instance of cur's generic class is intersected with cur, as after an
+// is or a cast, not an identity, which kc's overload resolution by a
+// lambda's result would then see differently from K2's.
+func (c *Checker) narrowedTo(cur, t types.Type, subclass bool) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
+			if t.IsParam() && !c.subtype(cur, t) && (c.subtype(t, cur) || cur.K == types.Null || cur.K == types.Nothing) {
+				// t: T? is T & T?, a T, after t is T, as a t known
+				// to be null is a Nothing? & T.
+				return t
+			}
 			return cur
 		}
 		return cur.NonNull()
@@ -468,22 +503,92 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if i, ok := c.narrowedIntersection(cur, t); ok {
 		return i
 	}
+	if i, ok := c.paramIntersection(cur, t); ok {
+		return i
+	}
+	if a, b := cur.Flex().NonNull(), t.NonNull(); a.K == types.Class && b.K == types.Class && a.A != nil && (subclass || a.C == b.C) && c.otherInstance(b, a) {
+		// Two instances of a generic class, Inv<T> & Inv<A> for an f of
+		// Inv<T> after f as Inv<A>, the cast's type first: K2's fork of
+		// them takes the first that leaves no errors; so is a subclass
+		// of another instance, B & A<T> for an a of A<T> after a is B, for
+		// a B : A<Int>.
+		i := c.intersect([]types.Type{b, a})
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
+		return i
+	}
 	return t
+}
+
+// paramIntersection returns t & cur for a smart cast of a value of a type
+// parameter's type cur to a class type t, as K2 has it: o of type T is
+// a String & T after o is String, which is still a T, as listOf(o) for
+// an expected Collection<T> needs. Not to a primitive type or a value
+// class, whose values are represented otherwise.
+func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
+	a, b := cur.Flex(), t.NonNull()
+	if a.K != types.TypeParam || a.IsIntersection() || types.IsValue(b) {
+		return types.InvalidType, false
+	}
+	switch {
+	case b.K == types.String, types.IsPrimitiveKind(b.K):
+	case b.K == types.Class:
+		b.C.Ensure()
+		if b.C.Func || b.HasVars() {
+			return types.InvalidType, false
+		}
+	default:
+		return types.InvalidType, false
+	}
+	i := c.intersect([]types.Type{b, a.NonNull()})
+	if types.MayBeNull(t) && types.MayBeNull(cur) {
+		i = i.Nullable()
+	}
+	return i, true
 }
 
 // narrowedIntersection returns cur & t for a smart cast of a value of
 // type cur to an unrelated t, where one of them is an interface, both are
-// Kotlin or Java class types without type parameters, and t is no
-// subclass of cur's class: t & cur.
+// Kotlin or Java class types without type parameters, or final builtin
+// types (String, Int), and t is no subclass of cur's class: t & cur. An
+// intersection of a final class with an unrelated one has no values, but
+// K2 types it so: after x !is A, x !is B and x is Int, x is an Int & A &
+// B, and after a as UByte, a String a is a UByte & String.
 func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 	a, b := cur.Flex().NonNull(), t.NonNull()
-	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
-		a.C.Func || b.C.Func || c.subtype(b, a) {
+	if a.IsIntersection() && (b.K == types.Class && intersectable(b) && !b.C.Func || finalBuiltin(b)) && !c.subtype(b, a) {
+		// A further smart cast of an intersection adds to it: b of a
+		// class B that is an A and a C is a C & A & B. Each component
+		// must be intersectable with the target.
+		ensureClass(b)
+		for _, u := range a.Param().Bounds {
+			if !(u.K == types.Class && intersectable(u) || finalBuiltin(u)) {
+				return types.InvalidType, false
+			}
+			if c.subtype(u, b) {
+				continue
+			}
+			ensureClass(u)
+			if !isInterface(u) && !isInterface(b) && !c.subtype(b, u) {
+				return types.InvalidType, false
+			}
+		}
+		i := c.intersect(append([]types.Type{b}, a.Param().Bounds...))
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
+		return i, true
+	}
+	classLike := func(t types.Type) bool {
+		return t.K == types.Class && intersectable(t) && !t.C.Func || finalBuiltin(t)
+	}
+	if !classLike(a) || !classLike(b) || c.subtype(b, a) {
 		return types.InvalidType, false
 	}
-	a.C.Ensure()
-	b.C.Ensure()
-	if !a.C.Interface && !b.C.Interface {
+	ensureClass(a)
+	ensureClass(b)
+	if !isInterface(a) && !isInterface(b) && !c.disjointClasses(a, b) {
 		return types.InvalidType, false
 	}
 	// The target first, whose members win, as they did when the value
@@ -493,6 +598,22 @@ func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 		i = i.Nullable()
 	}
 	return i, true
+}
+
+// finalBuiltin reports whether t is String or a primitive type, final
+// classes that kc represents as builtin types.
+func finalBuiltin(t types.Type) bool {
+	return t.K == types.String || types.IsPrimitiveKind(t.K)
+}
+
+func ensureClass(t types.Type) {
+	if t.K == types.Class {
+		t.C.Ensure()
+	}
+}
+
+func isInterface(t types.Type) bool {
+	return t.K == types.Class && t.C.Interface
 }
 
 // needsCast reports whether a value read as type from needs a cast to be
@@ -559,6 +680,16 @@ type coverage struct {
 	null, isTrue, isFalse bool
 	entries               map[string]bool   // enum entries
 	classes               []*types.ClassSym // is checks, and objects compared with
+	// owned are the enum entries by their enum, for an enum below a
+	// sealed type: C.A and C.B of an enum C : Base, for a Base subject.
+	owned map[*types.ClassSym]map[string]bool
+	// types are the types of is checks, which cover a subject of a
+	// subtype: is Int, with null, an Int?, and is List<*> a List<T>.
+	types []types.Type
+	// not are the classes of !is checks, which cover the subclasses of
+	// a sealed type that aren't theirs, as K2 has it: is First and
+	// !is First cover a Sealed.
+	not []*types.ClassSym
 }
 
 // add records a condition that compares the subject with x.
@@ -579,6 +710,7 @@ func (cv *coverage) add(x syntax.Expr) {
 		}
 		if x.Sym != nil && x.Sym.Kind == types.Static {
 			cv.entry(x.Sym.Name)
+			cv.ownedEntry(x.Sym.Owner, x.Sym.Name)
 		}
 	case *syntax.Member:
 		if x.Object != nil {
@@ -586,8 +718,22 @@ func (cv *coverage) add(x syntax.Expr) {
 		}
 		if x.Field != nil {
 			cv.entry(x.Field.Name)
+			cv.ownedEntry(x.Field.Owner, x.Field.Name)
 		}
 	}
+}
+
+func (cv *coverage) ownedEntry(cls *types.ClassSym, name string) {
+	if cls == nil {
+		return
+	}
+	if cv.owned == nil {
+		cv.owned = map[*types.ClassSym]map[string]bool{}
+	}
+	if cv.owned[cls] == nil {
+		cv.owned[cls] = map[string]bool{}
+	}
+	cv.owned[cls][name] = true
 }
 
 func (cv *coverage) entry(name string) {
@@ -605,34 +751,59 @@ func (cv *coverage) merge(o *coverage) {
 	for e := range o.entries {
 		cv.entry(e)
 	}
+	for cls, es := range o.owned {
+		for e := range es {
+			cv.ownedEntry(cls, e)
+		}
+	}
 	cv.classes = append(cv.classes[:len(cv.classes):len(cv.classes)], o.classes...)
+	cv.types = append(cv.types[:len(cv.types):len(cv.types)], o.types...)
+	cv.not = append(cv.not[:len(cv.not):len(cv.not)], o.not...)
 }
 
 // empty reports whether cv covers nothing.
 func (cv *coverage) empty() bool {
-	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0
+	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0 && len(cv.types) == 0 && len(cv.not) == 0
 }
 
 // covers reports whether the branches cover every value of a subject of
 // type t: true and false, every enum entry, or every subclass of a sealed
 // class, and null if t is nullable.
 func (c *Checker) covers(t types.Type, cv *coverage) bool {
-	if types.MayBeNull(t) && !t.P && !cv.null {
-		return false
+	if t.K == types.Nothing {
+		return true // no value: when (n) {} for an n: Nothing
+	}
+	if types.MayBeNull(t) && !t.P && !cv.null && !slices.ContainsFunc(cv.types, types.AcceptsNull) {
+		return false // is String? covers null
 	}
 	if t.K == types.Null {
 		return true // a subject known to be null, which null covers
 	}
 	t = t.NonNull()
+	for _, it := range cv.types {
+		// An is check of a supertype: is Int of an Int?, with null.
+		if c.subtype(t, it) {
+			return true
+		}
+	}
 	switch {
 	case t.K == types.Bool:
 		return cv.isTrue && cv.isFalse
+	case t.IsIntersection():
+		// A subject smart cast to A & B is covered as an A or a B: as a
+		// sealed I1 after require(x is I2).
+		for _, b := range t.Param().Bounds {
+			if c.covers(b, cv) {
+				return true
+			}
+		}
+		return false
 	case t.K != types.Class:
 		return false
 	}
 	cls := t.C
 	cls.Ensure()
-	if cls.Entries != nil {
+	if cls.Entries != nil && !slices.ContainsFunc(cv.classes, cls.IsSubclassOf) {
 		for _, e := range cls.Entries {
 			if !cv.entries[e] {
 				return false
@@ -640,23 +811,47 @@ func (c *Checker) covers(t types.Type, cv *coverage) bool {
 		}
 		return true
 	}
-	return c.sealedCovered(cls, cv.classes)
+	return c.sealedCovered(cls, cv, nil)
 }
 
-// sealedCovered reports whether the classes that is checks name cover
-// every instance of cls: cls or one of its supertypes is among them, or
-// cls is sealed and each of its subclasses is covered.
-func (c *Checker) sealedCovered(cls *types.ClassSym, classes []*types.ClassSym) bool {
-	for _, k := range classes {
+// sealedCovered reports whether the branches cover every instance of cls:
+// cls or one of its supertypes is among the classes of is checks, cls is
+// an enum whose entries are all compared with, or cls is sealed and each
+// of its subclasses is covered. A subclass of a sealed type, among those
+// of root, is covered by a !is check of a class it isn't related to.
+func (c *Checker) sealedCovered(cls *types.ClassSym, cv *coverage, root *types.ClassSym) bool {
+	for _, k := range cv.classes {
 		if cls.IsSubclassOf(k) {
 			return true
 		}
 	}
+	if root != nil {
+		for _, n := range cv.not {
+			if !cls.IsSubclassOf(n) && !n.IsSubclassOf(cls) {
+				return true
+			}
+		}
+	}
+	cls.Ensure()
+	if root != nil && cls.Entries != nil {
+		for _, e := range cls.Entries {
+			if !cv.owned[cls][e] {
+				return false
+			}
+		}
+		return true
+	}
 	if !cls.Sealed {
 		return false
 	}
+	if root == nil {
+		if len(cls.Subclasses) == 0 {
+			return false // kotlinc wants else in a when over a sealed class with no subclasses
+		}
+		root = cls
+	}
 	for _, s := range cls.Subclasses {
-		if !c.sealedCovered(s, classes) {
+		if !c.sealedCovered(s, cv, root) {
 			return false
 		}
 	}
@@ -705,7 +900,7 @@ func (c *Checker) missingCases(t types.Type, cv *coverage) []string {
 				}
 			}
 		} else {
-			out = c.missingSubclasses(cls, cv.classes, out)
+			out = c.missingSubclasses(cls, cv, nil, out)
 		}
 	}
 	if types.MayBeNull(t) && !t.P && !cv.null {
@@ -714,8 +909,20 @@ func (c *Checker) missingCases(t types.Type, cv *coverage) []string {
 	return out
 }
 
-func (c *Checker) missingSubclasses(cls *types.ClassSym, classes []*types.ClassSym, out []string) []string {
-	if c.sealedCovered(cls, classes) {
+// missingSubclasses adds to out the subclasses of cls, a sealed class or
+// one below root, that cv doesn't cover (sealedCovered), and for an enum
+// below root, its entries cv doesn't.
+func (c *Checker) missingSubclasses(cls *types.ClassSym, cv *coverage, root *types.ClassSym, out []string) []string {
+	if c.sealedCovered(cls, cv, root) {
+		return out
+	}
+	cls.Ensure()
+	if root != nil && cls.Entries != nil {
+		for _, e := range cls.Entries {
+			if !cv.owned[cls][e] {
+				out = append(out, qualifiedClassName(cls)+"."+e)
+			}
+		}
 		return out
 	}
 	if !cls.Sealed {
@@ -724,8 +931,11 @@ func (c *Checker) missingSubclasses(cls *types.ClassSym, classes []*types.ClassS
 		}
 		return append(out, "is "+qualifiedClassName(cls))
 	}
+	if root == nil {
+		root = cls
+	}
 	for _, s := range cls.Subclasses {
-		out = c.missingSubclasses(s, classes, out)
+		out = c.missingSubclasses(s, cv, root, out)
 	}
 	return out
 }

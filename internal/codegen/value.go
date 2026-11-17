@@ -577,7 +577,7 @@ func (g *gen) valueBridge(name, d string, f *types.FunSym) {
 	g.code = g.cls.NewMethod(cf.AccPublic, name, d)
 	g.code.AllocLocal("L" + cls.Name + ";")
 	fd := funDesc(f)
-	from, to := descParams(d), descParams(fd)
+	from, to := cf.DescParams(d), cf.DescParams(fd)
 	slots := make([]int, len(from))
 	for i, pd := range from {
 		slots[i] = g.code.AllocLocal(pd)
@@ -595,8 +595,8 @@ func (g *gen) valueBridge(name, d string, f *types.FunSym) {
 		g.convertDesc(pd, to[i])
 	}
 	g.code.Invoke(cf.INVOKESTATIC, cls.Name, f.JVM(), "("+ud+fd[1:])
-	ret := d[strings.IndexByte(d, ')')+1:]
-	g.convertDesc(fd[strings.IndexByte(fd, ')')+1:], ret)
+	ret := cf.RetDesc(d)
+	g.convertDesc(cf.RetDesc(fd), ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
 }

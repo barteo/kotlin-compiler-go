@@ -17,7 +17,7 @@ const (
 	Unit
 	Nothing
 	Null // the type of the literal `null`, i.e. Nothing?
-	Bool
+	Bool // Bool to Short are the primitives (IsPrimitiveKind)
 	Int
 	Long
 	Double
@@ -152,14 +152,8 @@ func (t Type) IsNumeric() bool {
 func (t Type) IsPrimitive() bool { return !t.N && IsPrimitiveKind(t.K) }
 
 // IsPrimitiveKind reports whether values of kind k are JVM primitives
-// when they are not nullable.
-func IsPrimitiveKind(k Kind) bool {
-	switch k {
-	case Int, Long, Double, Bool, Char, Float, Byte, Short:
-		return true
-	}
-	return false
-}
+// when they are not nullable: the kinds from Bool to Short.
+func IsPrimitiveKind(k Kind) bool { return Bool <= k && k <= Short }
 
 // IsIntLike reports whether a primitive of type t is an int on the JVM's
 // stack: Int, Char, Byte, Short and Boolean.
@@ -193,32 +187,10 @@ func (t Type) format(name func(*ClassSym) string) string {
 	switch t.K {
 	case Invalid:
 		return "<error>"
-	case Unit:
-		s = "Unit"
-	case Nothing:
-		s = "Nothing"
 	case Null:
 		return "Nothing?"
-	case Bool:
-		s = "Boolean"
-	case Int:
-		s = "Int"
-	case Long:
-		s = "Long"
-	case Double:
-		s = "Double"
-	case Char:
-		s = "Char"
-	case Float:
-		s = "Float"
-	case Byte:
-		s = "Byte"
-	case Short:
-		s = "Short"
-	case String:
-		s = "String"
-	case Any:
-		s = "Any"
+	case Unit, Nothing, Bool, Int, Long, Double, Char, Float, Byte, Short, String, Any:
+		s = kindNames[t.K]
 	case Class:
 		if t.IsFunc() {
 			if fs, ok := funcString(t, name); ok {
@@ -286,15 +258,24 @@ const (
 
 // VarSym is a local, parameter, top-level property or class property.
 type VarSym struct {
-	Name    string
-	Type    Type
-	Kind    VarKind
-	Mutable bool
+	Name string
+	// Ambiguous is set on a Java class's field when the class declares
+	// another of the name, which only broken code does: a use of it is
+	// ambiguous, as in K2.
+	Ambiguous bool
+	Type      Type
+	Kind      VarKind
+	Mutable   bool
 	// Captured is set when a lambda uses a Local or Param. A captured var
 	// is kept in a one-element array that the lambda shares.
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	// Annotations are the descriptors of the annotations of a top-level
+	// property of the class path, and Deprecated its deprecation: what
+	// the opt-in and deprecation checks know of it.
+	Annotations []string
+	Deprecated  *Deprecation
 	// Part is set on a Global of a multi-file class's part that isn't
 	// private: the part, whose field and accessors the facade's call.
 	Part string
@@ -322,10 +303,14 @@ type VarSym struct {
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
 
-	// NoInfer is set on a context parameter whose type, or one of its
-	// type arguments, is annotated @NoInfer: its argument is chosen by the
+	// NoInfer is set on a parameter whose type, or one of its type
+	// arguments, is annotated @NoInfer: its argument is chosen by (a
+	// context parameter's) or checked against (a value parameter's) the
 	// call's type arguments, not used to infer them.
 	NoInfer bool
+	// Exact is set on a parameter whose type is annotated
+	// @kotlin.internal.Exact: its argument's type must be that type.
+	Exact bool
 
 	// Shadowed is set on a local or parameter declared with the name of
 	// a local or parameter of an enclosing scope, which it hides: as
@@ -381,6 +366,9 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// MaybeConst is set on a static final field of a Java source with no
+	// Constant only because it reads a Kotlin class's const val.
+	MaybeConst bool
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
@@ -526,13 +514,15 @@ func (v *VarSym) UnitLocal() bool { return v.Kind == Local && v.Type.K == Unit &
 
 // FunSym is a top-level function, method, constructor or builtin.
 // Effect is a contract's returns(value) implies (p != null) or (p is
-// T): if the function returns true (Returns 1), false (Returns 0) or at
-// all (Returns -1), its parameter at Param (-1: the extension receiver)
-// isn't null, or is an Is when that isn't nil.
+// T): if the function returns true (Returns 1), false (Returns 0), at
+// all (Returns -1) or a value that isn't null (Returns 2), its parameter
+// at Param (-1: the extension receiver) isn't null, or is an Is when that
+// isn't nil.
 type Effect struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool // the parameter, a Boolean, is true: its argument's smart casts
+	Negated        bool // with Holds, it is false: the smart casts of its argument being false
 }
 
 type FunSym struct {
@@ -553,7 +543,11 @@ type FunSym struct {
 	Operator bool   // can be called by an operator, as get by x[i]: Java methods and Kotlin operator funs
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
-	Recv     Type   // Invalid if kc doesn't support the receiver's type
+	// NoInferRet is set when the result type is annotated
+	// @kotlin.internal.NoInfer: the expected type doesn't constrain the
+	// call's variables.
+	NoInferRet bool
+	Recv       Type // Invalid if kc doesn't support the receiver's type
 	// Contexts are the context parameters of a function of the program,
 	// context(a: A) fun f(), which calls pass implicitly. On the JVM,
 	// it takes them first, before the extension receiver.
@@ -574,7 +568,12 @@ type FunSym struct {
 	// program's functions have their declaration's.
 	Annotations []string
 	Deprecated  *Deprecation
-	Why         string // why it is unsupported, if not for its types
+	// PropAnnotations are, for an accessor of a property of the class
+	// path, the descriptors of the property's annotations, which kotlinc
+	// keeps on its $annotations method: its opt-in markers apply to the
+	// accessors' uses.
+	PropAnnotations []string
+	Why             string // why it is unsupported, if not for its types
 	// Feature is the feature that Why reports unsupported, if it isn't
 	// an inline-only call.
 	Feature string
@@ -651,7 +650,9 @@ type FunSym struct {
 	// BoxedParams are the indexes of the parameters of type Result, whose
 	// functions keep their names, that an overridden function takes as
 	// another type, as T: as with kotlinc, they are passed boxed and the
-	// function unboxes them.
+	// function unboxes them. On a Java method, they are the parameters of
+	// a primitive's wrapper class that an annotation makes non-null: a
+	// @NonNull Long is a Long to Kotlin, passed boxed.
 	BoxedParams []int
 	// DefaultsOf is set on an override that inherits default values: the
 	// overridden method, whose name$default method supplies them.
@@ -671,6 +672,10 @@ type FunSym struct {
 	// once, as its contract says, callsInPlace(f, EXACTLY_ONCE): definite
 	// assignment follows the lambda's body as the call's code.
 	Once []bool
+	// InPlace marks the parameters whose lambdas it calls in place, any
+	// number of times, callsInPlace(f) of any kind: they don't run after
+	// it returns.
+	InPlace []bool
 
 	// Implies are the effects of the function's contract that say what a
 	// parameter is if it returns: returns(false) implies (this != null)
@@ -826,7 +831,14 @@ type ClassSym struct {
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
 	External bool
-	Missing  bool // not found or unreadable
+	// Source is set, with External, on a class of the program's Java
+	// sources that a check loads over a library it shares with other
+	// checks: it lives as long as the check.
+	Source  bool
+	Missing bool // not found or unreadable
+	// FromKotlin is set on a class of the class path that Kotlin
+	// compiled, read from its metadata.
+	FromKotlin bool
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
@@ -838,6 +850,9 @@ type ClassSym struct {
 	// visibility, which only code in its package sees, as its
 	// package-private members.
 	PackagePrivate bool
+	// ProtectedNested is set on a protected nested Java class, which
+	// only its package and the subclasses of the class it is in see.
+	ProtectedNested bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool
@@ -868,6 +883,12 @@ type ClassSym struct {
 	// Subclasses are their direct subclasses.
 	Sealed     bool
 	Subclasses []*ClassSym
+	// JavaSealed is set on a sealed Java class or interface, which no
+	// Kotlin class may extend.
+	JavaSealed bool
+	// RecordComponents are the names of a Java record's components, which
+	// are its properties to Kotlin, read by their accessors.
+	RecordComponents []string
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.
@@ -963,6 +984,12 @@ type ClassSym struct {
 	StabilityInferred int
 	// Deprecated is the deprecation of a class of the class path.
 	Deprecated *Deprecation
+	// OptInLevel is the level of the @RequiresOptIn of an annotation
+	// class of the class path, ERROR or WARNING, or "" if it isn't an
+	// opt-in requirement marker; SubclassOptIn are the internal names of
+	// the markers of a class's @SubclassOptInRequired.
+	OptInLevel    string
+	SubclassOptIn []string
 
 	// Global is set on a class that a package-level variable declares for
 	// all compilations in the process, such as kotlin.Array: see MakeArgs.
@@ -988,6 +1015,13 @@ func NewExternal(name string, load func(*ClassSym)) *ClassSym {
 }
 
 // Ensure loads a Java class's members. It is safe for concurrent use.
+// Raw reports whether c's type without arguments is a raw type: whether
+// c is generic and not an array class.
+func (c *ClassSym) Raw() bool {
+	c.Ensure()
+	return !c.Array && len(c.TypeParams) > 0
+}
+
 func (c *ClassSym) Ensure() {
 	if c.load != nil {
 		c.once.Do(func() { c.load(c) })
@@ -1214,16 +1248,101 @@ func OperatorFunType(name string, recv, arg Type) (op, result Type, ok bool) {
 	return InvalidType, InvalidType, false
 }
 
-// Boxes are the classes that hold primitives as objects, by kind.
-var Boxes = map[Kind]string{
-	Int:    "java/lang/Integer",
-	Long:   "java/lang/Long",
-	Double: "java/lang/Double",
-	Bool:   "java/lang/Boolean",
-	Char:   "java/lang/Character",
-	Float:  "java/lang/Float",
-	Byte:   "java/lang/Byte",
-	Short:  "java/lang/Short",
+// kindNames are the simple names of the kinds' built-in classes: Int.
+var kindNames = [...]string{
+	Unit: "Unit", Nothing: "Nothing", Bool: "Boolean", Int: "Int", Long: "Long", Double: "Double",
+	Char: "Char", Float: "Float", Byte: "Byte", Short: "Short", String: "String", Any: "Any",
+}
+
+// kindIDs are the class ids of the kinds' built-in classes, kotlin/Int,
+// and idKinds the kinds by class id.
+var kindIDs, idKinds = func() (ids [len(kindNames)]string, kinds map[string]Kind) {
+	kinds = map[string]Kind{}
+	for k, n := range kindNames {
+		if n != "" {
+			ids[k] = "kotlin/" + n
+			kinds[ids[k]] = Kind(k)
+		}
+	}
+	return ids, kinds
+}()
+
+// Name returns the simple name of kind k's built-in class, Int, and ""
+// if it has none.
+func (k Kind) Name() string {
+	if int(k) < len(kindNames) {
+		return kindNames[k]
+	}
+	return ""
+}
+
+// ClassID returns the class id of kind k's built-in class, kotlin/Int,
+// and "" if it has none.
+func (k Kind) ClassID() string {
+	if int(k) < len(kindIDs) {
+		return kindIDs[k]
+	}
+	return ""
+}
+
+// IDKind returns the kind whose built-in class has class id id, and
+// Invalid if there is none.
+func IDKind(id string) Kind { return idKinds[id] }
+
+// Prim describes a kind whose non-null values are JVM primitives.
+type Prim struct {
+	Desc  string // the JVM descriptor: I
+	Box   string // the class that holds it as an object: java/lang/Integer
+	Unbox string // the box's method that returns the value: intValue
+}
+
+// prims are the primitive kinds' descriptions, by kind; the others' are
+// zero.
+var prims = [...]Prim{
+	Bool:   {"Z", "java/lang/Boolean", "booleanValue"},
+	Int:    {"I", "java/lang/Integer", "intValue"},
+	Long:   {"J", "java/lang/Long", "longValue"},
+	Double: {"D", "java/lang/Double", "doubleValue"},
+	Char:   {"C", "java/lang/Character", "charValue"},
+	Float:  {"F", "java/lang/Float", "floatValue"},
+	Byte:   {"B", "java/lang/Byte", "byteValue"},
+	Short:  {"S", "java/lang/Short", "shortValue"},
+}
+
+// PrimKinds are the primitive kinds, in the order of their kinds.
+var PrimKinds = []Kind{Bool, Int, Long, Double, Char, Float, Byte, Short}
+
+// PrimOf describes kind k, all of whose fields are empty if k isn't
+// primitive.
+func PrimOf(k Kind) *Prim {
+	if int(k) < len(prims) {
+		return &prims[k]
+	}
+	return &prims[Invalid]
+}
+
+// descKinds are the primitive kinds, and Unit, by JVM descriptor.
+var descKinds = func() (t [128]Kind) {
+	for _, k := range PrimKinds {
+		t[prims[k].Desc[0]] = k
+	}
+	t['V'] = Unit
+	return t
+}()
+
+// DescKind returns the kind of one-byte JVM descriptor d, a primitive's or
+// V, Unit, and Invalid for any other.
+func DescKind(d byte) Kind { return descKinds[d&127] }
+
+// BoxKind returns the primitive kind that JVM class name boxes, and
+// Invalid if it boxes none.
+func BoxKind(name string) Kind {
+	for _, k := range PrimKinds {
+		if prims[k].Box == name {
+			return k
+		}
+	}
+	return Invalid
 }
 
 // CharMethods are Char functions that the standard library declares
@@ -1247,10 +1366,11 @@ func Desc(t Type) (string, bool) {
 	if t.IsParam() {
 		return Desc(Erase(t))
 	}
-	if t.N {
-		if box, ok := Boxes[t.K]; ok {
-			return "L" + box + ";", true
+	if IsPrimitiveKind(t.K) {
+		if t.N {
+			return "L" + prims[t.K].Box + ";", true
 		}
+		return prims[t.K].Desc, true
 	}
 	switch t.K {
 	case Unit:
@@ -1261,22 +1381,6 @@ func Desc(t Type) (string, bool) {
 		return "Ljava/lang/Void;", true
 	case Any:
 		return "Ljava/lang/Object;", true
-	case Int:
-		return "I", true
-	case Long:
-		return "J", true
-	case Double:
-		return "D", true
-	case Bool:
-		return "Z", true
-	case Char:
-		return "C", true
-	case Float:
-		return "F", true
-	case Byte:
-		return "B", true
-	case Short:
-		return "S", true
 	case String:
 		return "Ljava/lang/String;", true
 	case Class:

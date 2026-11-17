@@ -400,13 +400,20 @@ func (w *writer) function(f *Function) []byte {
 			var conclusion, eff enc
 			if im.Is == nil && !im.Holds {
 				conclusion.int(1, 3) // negated null check: p != null
+			} else if im.Holds && im.Negated {
+				conclusion.int(1, 1) // negated: !p
 			}
 			conclusion.int(2, im.Param+1)
 			if im.Is != nil {
 				conclusion.msg(4, w.typ(im.Is))
 			}
-			eff.int(1, 0) // RETURNS_CONSTANT
-			if im.Returns != ReturnsAny {
+			switch im.Returns {
+			case ReturnsNotNull:
+				eff.int(1, 2) // RETURNS_NOT_NULL
+			default:
+				eff.int(1, 0) // RETURNS_CONSTANT
+			}
+			if im.Returns != ReturnsAny && im.Returns != ReturnsNotNull {
 				var x enc
 				x.int(3, im.Returns)
 				eff.msg(2, x.b)
@@ -640,6 +647,9 @@ func (w *writer) typ(t *Type) []byte {
 	}
 	if t.Abbrev != nil {
 		e.msg(13, w.typ(t.Abbrev))
+	}
+	if t.Raw {
+		e.bool(101, true) // JvmProtoBuf.isRaw
 	}
 	if t.Composable {
 		var a enc

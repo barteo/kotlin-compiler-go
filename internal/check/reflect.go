@@ -11,12 +11,6 @@ import (
 
 // Class literals.
 
-// builtinTypeNames are the Kotlin types resolveType knows by name.
-var builtinTypeNames = map[string]bool{
-	"Int": true, "Long": true, "Double": true, "Boolean": true, "Char": true, "Float": true,
-	"Byte": true, "Short": true, "String": true, "Unit": true, "Nothing": true, "Any": true,
-}
-
 // classLit checks X::class or x::class, and with java, X::class.java,
 // which is the java.lang.Class itself and needs no standard library.
 func (c *Checker) classLit(x *syntax.ClassLit, java bool) types.Type {
@@ -88,7 +82,7 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 		parts[i], parts[j] = parts[j], parts[i]
 	}
 	name := strings.Join(parts, ".")
-	if len(parts) == 1 && (builtinTypeNames[name] || c.lookupTypeParam(name) != nil) {
+	if len(parts) == 1 && (kotlinTypes[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
 	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
@@ -99,6 +93,10 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 // star-projected: List::class is a KClass<List<*>>. In class literals,
 // only arrays take other type arguments.
 func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
+	// As in K2, a name that star imports give two classifiers of isn't
+	// ambiguous here: HashMap::class is kotlin.collections.HashMap's.
+	defer func(old bool) { c.starFallback = old }(c.starFallback)
+	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
@@ -106,18 +104,30 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
-	if ref.Args == nil && !builtinTypeNames[ref.Name] {
+	written := ref.Args != nil
+	if ref.Args == nil && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
-		} else if cls != nil && len(cls.TypeParams) > 0 {
-			stars := make([]*syntax.TypeArg, len(cls.TypeParams))
+		} else if own, _ := localOwnParams(cls); cls != nil && len(cls.TypeParams) > 0 {
+			n := len(own)
+			if a := c.lookupAlias(ref.Name); a != nil {
+				// A typealias takes its own type parameters, none for
+				// typealias Direct = Pair<String, Int>.
+				n = len(a.TypeParams)
+			}
+			stars := make([]*syntax.TypeArg, n)
 			for i := range stars {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
 			}
-			ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+			if n > 0 {
+				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+			}
 		}
 	}
+	old := c.refLHS
+	c.refLHS = callable && written
 	t := c.resolveType(ref)
+	c.refLHS = old
 	if t.K != types.Invalid && !t.IsArray() && !callable {
 		for _, a := range ref.Args {
 			if a.Variance != types.Star {
@@ -221,6 +231,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	switch {
 	case r.Type != nil:
 		recvType = c.classLitType(r.Type, true)
+		if recvType.K == types.Class && isJavaClass(recvType.C) {
+			static = recvType.C // JavaClass<*>::staticMethod
+		}
 	case r.X == nil:
 	case r.Bound != nil:
 		recv = func() syntax.Expr { return ident(r.Bound.Name) }
@@ -233,6 +246,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				break
 			}
 			if cls := c.lookupClass(name + "." + r.Name); cls != nil && !ensured(cls).Object && !cls.Inner {
+				if e := c.lookupClass(name); r.Name == "entries" && e != nil && e.Entries != nil && c.u.ext.kotlin {
+					// An enum's entries and its nested class entries's
+					// constructor: as in K2, neither wins.
+					c.errorf(p, "overload resolution ambiguity: %s is both the entries of %s and the constructor of its nested class", refString(r), e.DisplayName())
+					return nil, types.InvalidType, false
+				}
 				nested = cls
 				break
 			}
@@ -261,6 +280,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		return nil, types.InvalidType, false
 	}
 	if r.X == nil && r.Type == nil {
+		if v, _ := c.scope.find(r.Name); v != nil && c.variableRef(v, r.Name) {
+			c.errorf(p, "references to variables aren't supported yet")
+			return nil, types.InvalidType, false
+		}
 		// Only a Kotlin fun interface has a constructor to refer to.
 		if cls := c.lookupClass(r.Name); cls != nil && !cls.Fun && cls.KotlinName == "" && c.sam(cls) != nil {
 			c.errorf(p, "Java SAM interface constructor references are prohibited: %s", refString(r))
@@ -295,8 +318,26 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}}
 	}
 	staticForm := func(ps []types.Type) refForm {
-		return refForm{params: ps, body: func() syntax.Expr { return call(member(r.X, r.Name), ps, 0) }}
+		return refForm{params: ps, body: func() syntax.Expr {
+			x := r.X
+			if x == nil { // JavaClass<*>::staticMethod
+				for i, n := range strings.Split(r.Type.Name, ".") {
+					if i == 0 {
+						x = ident(n)
+					} else {
+						x = member(x, n)
+					}
+				}
+			}
+			return call(member(x, r.Name), ps, 0)
+		}}
 	}
+	// A Java class's static field, or an enum's entries, is a property
+	// without a receiver: JavaClass::staticField is a KProperty0, as
+	// Some::entries. An enum's entry isn't: My::V is unsupported, as in
+	// K2.
+	staticProp := static != nil && r.X != nil && (static.Entries == nil && c.staticFieldOf(static, r.Name) != nil || r.Name == "entries" && static.Entries != nil && c.u.ext.kotlin)
+	staticPropForm := refForm{body: func() syntax.Expr { return member(r.X, r.Name) }}
 	switch {
 	case nested != nil:
 		// Outer.Nested(...), with the expected parameters or else those of
@@ -318,6 +359,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 		forms = append(forms, staticForm(ps))
 	case w.prop:
+		if staticProp && !w.prop1 {
+			return c.kpropLambda(x, staticPropForm, false)
+		}
 		var ps []types.Type
 		if unbound {
 			ps = []types.Type{recvType}
@@ -345,6 +389,8 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				forms = append(forms, propForm(ps))
 			}
 			forms = append(forms, funForm(ps))
+		case len(ps) == 0 && staticProp:
+			forms = append(forms, staticPropForm)
 		}
 		if static != nil {
 			forms = append(forms, staticForm(ps))
@@ -359,7 +405,16 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if unbound {
 			ps = []types.Type{recvType}
 		}
-		if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
+		if staticProp {
+			if w.kprop {
+				n := len(c.errs)
+				if ps, rt, ok := c.kpropLambda(x, staticPropForm, false); ok && len(c.errs) == n {
+					return ps, rt, ok
+				}
+				c.errs, x.KProp = c.errs[:n], nil
+			}
+			forms = append(forms, staticPropForm)
+		} else if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
 			if w.kprop {
 				// A property's reference is a KProperty object, as in
 				// Kotlin, if kc can make one, and otherwise a function.
@@ -519,7 +574,7 @@ func (c *Checker) refRecvType(r *syntax.CallableRef) (types.Type, bool) {
 			return types.Type{}, false
 		}
 		cls := c.lookupClass(name)
-		if cls != nil && (ensured(cls).Object || cls.Companion != nil) {
+		if cls != nil && (ensured(cls).Object || cls.Companion != nil && !c.hasCallable(cls, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0) {
 			return types.Type{}, false // may be bound to the object
 		}
 		if c.lookupClass(name+"."+r.Name) != nil {
@@ -625,12 +680,39 @@ func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool 
 // can name, nil if it names none (it may name a property), and reports
 // an error and false if it names several.
 func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) (*types.FunSym, bool) {
+	fs := c.refFuns(r, recvType, static, bound)
+	if len(fs) > 1 {
+		if f := c.mostSpecificFun(fs); f != nil {
+			fs = []*types.FunSym{f}
+		}
+	}
+	switch {
+	case len(fs) == 0:
+		return nil, true
+	case len(fs) > 1:
+		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
+		return nil, false
+	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
+		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
+		return nil, false
+	}
+	return fs[0], true
+}
+
+// refFuns returns the functions reference r may name: a receiver's,
+// recvType's or the bound one's, or else those of its name in scope.
+func (c *Checker) refFuns(r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) []*types.FunSym {
 	var fs []*types.FunSym
 	switch {
 	case recvType.K != types.Invalid || bound:
 		rt := recvType
 		if bound {
 			rt = r.Bound.Type
+		}
+		if never(rt) {
+			// A receiver that never completes, (break)::toString, has
+			// Any's members, as Nothing is a subtype of Any.
+			rt = types.AnyType
 		}
 		if cls := c.classOf(rt.NonNull()); cls != nil {
 			ms := c.accessible(cls, c.javaMethods(cls, r.Name))
@@ -705,17 +787,74 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 			}
 		}
 	}
-	switch {
-	case len(fs) == 0:
-		return nil, true
-	case len(fs) > 1:
-		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
-		return nil, false
-	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
-		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
-		return nil, false
+	if slices.ContainsFunc(fs, func(f *types.FunSym) bool { return f.Hidden }) {
+		fs = slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Hidden })
+		if len(fs) == 0 && recvType.K == types.Invalid && !bound {
+			// Hidden ones give way to the scopes outside: ::foo in an
+			// object nested in one with a foo().
+			fs = c.outerObjectFuns(r.Name)
+		}
 	}
-	return fs[0], true
+	return fs
+}
+
+// mostSpecificFun returns the most specific of functions fs, which a
+// reference without an expected type may name, nil if none is: as in
+// Kotlin, B::foo names fun B.foo() rather than fun A.foo() for B : A,
+// and ::bar fun bar(a: Int) rather than fun bar(a: Any).
+func (c *Checker) mostSpecificFun(fs []*types.FunSym) *types.FunSym {
+	var best *types.FunSym
+	for _, f := range fs {
+		if !slices.ContainsFunc(fs, func(g *types.FunSym) bool { return g != f && !c.funMoreSpecific(f, g) }) {
+			if best != nil {
+				return nil
+			}
+			best = f
+		}
+	}
+	return best
+}
+
+// funMoreSpecific reports whether f is at least as specific as g, as
+// mostSpecific decides for candidates: g takes f's receiver and
+// parameters. f's type parameters are kept, g's are inferred within
+// their bounds.
+func (c *Checker) funMoreSpecific(f, g *types.FunSym) bool {
+	ensureFun(f)
+	ensureFun(g)
+	return c.paramsMoreSpecific(f, g)
+}
+
+// paramsMoreSpecific is funMoreSpecific without inferring the functions'
+// return types, which comparing them doesn't need: a function being
+// inferred can compare itself, as fun A(b: B?) = A(b!!) next to a class
+// A(b: B) does.
+func (c *Checker) paramsMoreSpecific(f, g *types.FunSym) bool {
+	if len(f.Params) != len(g.Params) || f.Ext != g.Ext || len(f.Contexts) > 0 || len(g.Contexts) > 0 {
+		return false
+	}
+	sys := newSystem(c)
+	sub := sys.fresh(g.TypeParams, nil, syntax.Pos{})
+	for _, p := range g.TypeParams {
+		v := sub[p].T
+		for _, b := range v.Param().Bounds {
+			sys.sub(v, b)
+		}
+	}
+	for i, q := range f.Params {
+		fa, ga := q.Type, sub.ApplyIn(g.Params[i].Type)
+		if q.Vararg != g.Params[i].Vararg || boxedPrimitive(fa, ga) {
+			return false
+		}
+		if numberMoreSpecific(fa, ga) {
+			continue
+		}
+		sys.sub(fa, ga)
+	}
+	if f.Ext {
+		sys.sub(f.Recv, sub.ApplyIn(g.Recv))
+	}
+	return sys.ok
 }
 
 // recvTypeArgsOK reports whether the type arguments of f, the extension
@@ -838,7 +977,7 @@ func wantsKProp(x *syntax.Lambda, t types.Type) bool {
 // expected, the reference may be a function's, a KFunctionN: ::box.
 func (c *Checker) kpropRef(x *syntax.Lambda, want types.Type) types.Type {
 	n := len(c.errs)
-	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true, prop1: strings.HasSuffix(want.Flex().NonNull().C.Name, "Property1")})
 	if (!ok || rt.K == types.Invalid) && len(c.errs) > n && want.Flex().NonNull().C.Name == "kotlin/reflect/KCallable" {
 		errs := c.errs[n:]
 		c.errs, x.KProp = c.errs[:n], nil
@@ -903,6 +1042,10 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 		case e.Dispatch != nil:
 		case e.Prop != nil && e.Prop.Kind == types.Prop:
 			k.Prop, mutable = e.Prop, e.Prop.Mutable && (!e.Prop.SetterPrivate || c.inside(e.Prop.Owner))
+		case e.Static != nil && !e.Entries && e.Getter != nil && e.Getter.Static && e.Getter.Name == "getEntries":
+			// A Kotlin enum's entries, whose getter is the class's static
+			// getEntries(). A Java enum's (Entries) has no getter.
+			k.Getter = e.Getter
 		case e.Getter != nil && e.Getter.Ext && e.Getter.Owner == nil:
 			k.Getter, mutable = e.Getter, e.Getter.ExtSetter != nil
 		case e.Getter != nil && !e.Getter.Ext && e.Getter.Owner != nil:
@@ -913,6 +1056,9 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 			} else if e.Getter.Owner.External {
 				k.Getter, mutable = e.Getter, e.Setter != nil
 			}
+		case e.Field != nil:
+			// A Java class's static field.
+			k.Prop, mutable = e.Field, e.Field.Mutable
 		case e.Builtin == types.StrLength:
 			if s := c.u.ext.class("java/lang/String"); s != nil {
 				k.Getter = &types.FunSym{Name: "length", Owner: s, Desc: "()I", Ret: types.IntType, Resolved: true}
@@ -922,12 +1068,23 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 		switch {
 		case e.Sym != nil && e.Sym.Kind == types.Global && e.Getter == nil && e.Member == nil:
 			k.Prop, mutable = e.Sym, e.Sym.Mutable
+		case e.Member != nil && e.Member.Field != nil:
+			// A Java class's static field, imported or inherited.
+			k.Prop, mutable = e.Member.Field, e.Member.Field.Mutable
 		case !bound && e.Member == nil && c.cls != nil &&
 			(e.Sym != nil && e.Sym.Kind == types.Prop && c.cls.IsSubclassOf(e.Sym.Owner) || e.Getter != nil && e.Getter.Owner != nil && c.cls.IsSubclassOf(e.Getter.Owner) ||
 				e.Sym != nil && e.Sym.Kind == types.Param && c.userProp(c.cls, e.Name) != nil && c.userProp(c.cls, e.Name).Kind == types.Prop):
 			// ::p for a property of this class is this::p, also where p
 			// is a constructor's parameter, which a reference can't name.
 			this := &syntax.This{Class: true}
+			this.P = p
+			x.Ref.X = this
+			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+		case !bound && e.Member != nil && implicitRecvThis(e.Member.X) != nil:
+			// ::p for a property of an implicit receiver, a lambda's, is
+			// that receiver's this::p: bar(::a) in myBuilder { }.
+			r := implicitRecvThis(e.Member.X)
+			this := &syntax.This{Recv: r.Recv, Implicit: true, Label: r.Label}
 			this.P = p
 			x.Ref.X = this
 			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
@@ -1028,7 +1185,7 @@ func kfunCall(x *syntax.Lambda) *syntax.Call {
 		return nil // not resolved
 	}
 	call, ok := x.Body.Stmts[0].(*syntax.ExprStmt).X.(*syntax.Call)
-	if !ok || call.Sym == nil || call.Invoke || x.KProp != nil || call.Ctor != nil && (call.Ctor.Value || call.Ctor.Annotation || call.Ctor.Local) {
+	if !ok || call.Sym == nil || call.Invoke || x.KProp != nil || call.Ctor != nil && (call.Ctor.Value || call.Ctor.Annotation) {
 		return nil
 	}
 	if x.Suspend && x.SAM == nil && call.Sym.Suspend && refStateMachine(x, call.Sym) {
@@ -1052,4 +1209,35 @@ func refStateMachine(x *syntax.Lambda, f *types.FunSym) bool {
 // named name.
 func (c *Checker) hasCallable(cls *types.ClassSym, name string) bool {
 	return len(c.javaMethods(cls, name)) > 0 || c.hasProp(cls, name)
+}
+
+// implicitRecvThis returns x if it is the implicit this of a receiver
+// that isn't the class's, as a lambda's, or nil.
+func implicitRecvThis(x syntax.Expr) *syntax.This {
+	if t, ok := x.(*syntax.This); ok && t.Implicit && t.Recv != nil {
+		return t
+	}
+	return nil
+}
+
+// variableRef reports whether ::name, which finds local v, refers to v:
+// a local, a parameter or a property's field, which Kotlin can't refer
+// to. A function or a property of the name wins, as K2 resolves callable
+// references: a constructor parameter's property, a member's or a
+// top-level one.
+func (c *Checker) variableRef(v *types.VarSym, name string) bool {
+	switch v.Kind {
+	case types.BackingField:
+		return true
+	case types.Local, types.Param:
+		if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp {
+			return false
+		}
+		if c.nonLocalVar(name) {
+			return false
+		}
+		fs, _ := c.scope.findFuns(name)
+		return len(fs) == 0 && len(c.topFuns(name)) == 0 && (!c.u.ext.kotlin || len(c.kotlinFuns(name, false)) == 0)
+	}
+	return false
 }

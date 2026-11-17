@@ -15,24 +15,35 @@ import (
 // listOf(id { a -> }) for an expected List<(String) -> Unit> is below
 // listOf's E, which is below (String) -> Unit. As in Kotlin, a lambda
 // passed for T takes its parameter types from it, or from a declared
-// bound, as A's of fun <A : (Int) -> Unit> take(x: A).
+// bound, as A's of fun <A : (Int) -> Unit> take(x: A). If the function
+// type is another argument's, a lower bound of a variable tv is below,
+// only its inputs are tv's: see openResult.
 func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 	if slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper) {
 		return types.InvalidType, false
+	}
+	type bound struct {
+		t     types.Type
+		lower bool
 	}
 	seen := map[*tvar]bool{tv: true}
 	queue := []*tvar{tv}
 	for len(queue) > 0 {
 		v := queue[0]
 		queue = queue[1:]
-		bounds := slices.Concat(v.upper, v.v.Bounds)
+		var bounds []bound
+		for _, u := range slices.Concat(v.upper, v.v.Bounds) {
+			bounds = append(bounds, bound{u, false})
+		}
 		if v != tv {
 			// Or a function type another argument is: { this } of
-			// select(id { this }, fun Int.() = this) is an Int.() -> Int.
-			bounds = append(bounds, v.lower...)
+			// select(id { this }, fun Int.() = this) is an Int.() -> R.
+			for _, u := range v.lower {
+				bounds = append(bounds, bound{u, true})
+			}
 		}
-		for _, u := range bounds {
-			u = s.apply(u)
+		for _, b := range bounds {
+			u := s.apply(b.t)
 			if w := s.unfixedVar(u); w != nil {
 				if !seen[w] {
 					seen[w] = true
@@ -41,11 +52,34 @@ func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 				continue
 			}
 			if !u.HasVars() && u.Flex().IsFunc() {
+				if b.lower {
+					u = s.openResult(u.Flex(), tv.pos)
+				}
 				return u, true
 			}
 		}
 	}
 	return types.InvalidType, false
+}
+
+// openResult returns function type t with a new variable for its result.
+// As in Kotlin, a lambda passed for a variable whose bounds relate it to
+// another argument's function type takes its receiver and parameter types
+// from it, but has a result of its own: the second id's T of
+// select(id { B() }, id { C() }) is a () -> C, and select's K a () -> A,
+// for B and C both A, not the () -> B the second lambda would fail.
+func (s *system) openResult(t types.Type, pos syntax.Pos) types.Type {
+	n := len(t.A.List) - 1
+	if n < 0 {
+		return t
+	}
+	r := &types.TypeParamSym{Name: "R"}
+	sub := s.fresh([]*types.TypeParamSym{r}, nil, pos)
+	s.byVar[sub[r].T.Param()].synth = true
+	args := slices.Clone(t.A.List)
+	args[n] = types.Arg{T: sub[r].T}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // openVar reports whether t is an unfixed variable without proper
@@ -105,7 +139,11 @@ func (c *Checker) takeBranchSink() *system {
 func (c *Checker) sinkBranches(sink *system, pending []pendingBranch, result types.Type) types.Type {
 	for _, p := range pending {
 		bt := p.t
-		if p.sys != nil {
+		if p.sunk {
+			bt = c.sinkLambda(sink, p)
+		} else if p.lambda {
+			bt = c.branchLambda(p, result, noWant)
+		} else if p.sys != nil {
 			sink.merge(p.sys)
 			body, t := p.body, p.t
 			sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(t) })
@@ -113,6 +151,8 @@ func (c *Checker) sinkBranches(sink *system, pending []pendingBranch, result typ
 			p.body.T = bt
 		}
 		switch {
+		case (result.K == types.Null || result.K == types.Nothing && result.N) && p.sunk:
+			result = bt.Nullable() // if (b) { -> } else null
 		case result.K == types.Nothing || result.K == types.Invalid:
 			result = bt
 		case result.HasVars() || bt.HasVars():
@@ -152,7 +192,7 @@ func (c *Checker) readyFirst(s *system) {
 	if len(s.lambdas) < 2 {
 		return
 	}
-	var ready, rest []pendingLambda
+	var ready, rest, late []pendingLambda
 	for _, pl := range s.lambdas {
 		// An anonymous function whose parameters have types has a type
 		// of its own, which the others passed for its variable then take:
@@ -163,13 +203,15 @@ func (c *Checker) readyFirst(s *system) {
 		for _, p := range c.inputs(s, pl) {
 			ok = ok && s.known(p)
 		}
-		if ok {
+		if c.returnedInputsOpen(s, pl) {
+			late = append(late, pl)
+		} else if ok {
 			ready = append(ready, pl)
 		} else {
 			rest = append(rest, pl)
 		}
 	}
-	s.lambdas = append(ready, rest...)
+	s.lambdas = slices.Concat(ready, rest, late)
 }
 
 // untypedDelegate reports whether p is a property without a type whose
@@ -201,4 +243,71 @@ func (s *system) funcShape(tv *tvar, p types.Type) types.Type {
 // foo(1, id(fun(x: Int) = x)) does.
 func untypedResult(l *syntax.Lambda) bool {
 	return l.Anon && l.AnonRet == nil && !l.AnonUnit && len(l.Params) == 0 && l.AnonRecv == nil
+}
+
+// sinkLambda makes the lambda of branch p a postponed argument of sink,
+// for a variable of its own, and returns the variable.
+func (c *Checker) sinkLambda(sink *system, p pendingBranch) types.Type {
+	l := p.body.Stmts[0].(*syntax.ExprStmt).X.(*syntax.Lambda)
+	k := &types.TypeParamSym{Name: "K"}
+	v := sink.fresh([]*types.TypeParamSym{k}, nil, l.P)[k].T
+	sink.lambdas = append(sink.lambdas, pendingLambda{l, v, p.scope})
+	body := p.body
+	sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(v) })
+	return v
+}
+
+// returnedInputsOpen reports whether pending lambda pl returns a lambda it
+// ends with for a result variable whose function-typed upper bound takes
+// inputs that aren't known yet: as in Kotlin, the call's other lambdas,
+// which may give them, go first. F of foo({ a(this) }, run { { g(this) } })
+// for foo(a: Scope<F>.() -> Unit, b: Scope<F>.() -> Unit) is the type
+// that a's body gives it.
+func (c *Checker) returnedInputsOpen(s *system, pl pendingLambda) bool {
+	if !endsInLambda(pl.l) {
+		return false
+	}
+	_, r, ok := funcParts(s.apply(pl.p))
+	if r = s.apply(r); !ok || r.K != types.TypeVar || s.byVar[r.Param()] == nil {
+		return false
+	}
+	for _, u := range s.byVar[r.Param()].upper {
+		if ps, _, ok := funcParts(s.apply(u).NonNull()); ok && slices.ContainsFunc(ps, func(p types.Type) bool { return !s.known(p) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// deepFuncUpper returns a function type that variable v is below, whose
+// result, where it is a variable, is replaced by the function type that
+// variable is below, and so on, if that gives a proper type: as in
+// Kotlin, the expected type of the lambdas a lambda returns. (B) -> (A)
+// -> R for B2 <: (B) -> B1 and B1 <: (A) -> R, of { c -> { b -> { a ->
+// f(a, b, c) } } } passed to product(Foo<(C) -> B2>).
+func (s *system) deepFuncUpper(v types.Type, depth int) (types.Type, bool) {
+	tv := s.byVar[v.Param()]
+	if tv == nil || depth > 8 {
+		return types.InvalidType, false
+	}
+	for _, u := range tv.upper {
+		u = s.apply(u)
+		ps, r, ok := funcParts(u.Flex())
+		if !ok || slices.ContainsFunc(ps, types.Type.HasVars) {
+			continue
+		}
+		if r.K == types.TypeVar && !r.N {
+			if ru, ok := s.deepFuncUpper(r, depth+1); ok {
+				f := u.Flex()
+				args := slices.Clone(f.A.List)
+				args[len(args)-1] = types.Arg{T: ru}
+				f.A = types.MakeArgs(args)
+				return f, true
+			}
+		}
+		if !u.HasVars() {
+			return u, true
+		}
+	}
+	return types.InvalidType, false
 }

@@ -20,17 +20,21 @@ type diag struct {
 	file    string // as the test names it
 	line    int
 	feature string // the unsupported feature, or ""
-	code    string // kotlinc's diagnostic the error is, if kc knows it
 	msg     string
+	name    string // the diagnostic's name, if kc knows it: every warning's
 }
 
 // compileResult is what compiling a test's modules came to.
 type compileResult struct {
 	ok      bool
 	diags   []diag
+	warns   []diag // kc's warnings (see warnings.go)
 	crash   string // kc's panic: its message and where
 	other   string // another failure: the last line kc wrote
 	outDirs []string
+	// tried are the names of the files of the modules it compiled, or
+	// tried to: the modules after one that failed aren't compiled.
+	tried map[string]bool
 }
 
 // compiler compiles the test's modules into dir, each against the ones
@@ -40,7 +44,10 @@ type compiler struct {
 	kotlinc string   // the kotlinc command, used instead of kc if set
 	libs    []string // the standard library and kotlin-test
 	reflect string
+	javac   string // compiles the Java sources of a module others depend on
 	timeout time.Duration
+	// servers, if set, run kc's compiles, instead of a process each.
+	servers *kcPool
 }
 
 // libraries says which of the libraries a test compiles against.
@@ -55,14 +62,16 @@ type libraries struct {
 // infrastructure adds them to each module the directives apply to, and
 // those at the top of a test apply to all.
 func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries) (*compileResult, error) {
-	res := &compileResult{}
+	res := &compileResult{tried: map[string]bool{}}
 	byPath := map[string]string{}
 	for mi, m := range t.modules {
 		src := filepath.Join(dir, fmt.Sprintf("m%d", mi), "src")
 		out := filepath.Join(dir, fmt.Sprintf("m%d", mi), "out")
 		files := append(m.files[:len(m.files):len(m.files)], extra...)
-		var paths []string
+		var paths, javas []string
+		kotlin := false
 		for _, f := range files {
+			res.tried[f.name] = true
 			p := filepath.Join(src, filepath.FromSlash(f.name))
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 				return nil, err
@@ -72,6 +81,11 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			}
 			paths = append(paths, p)
 			byPath[p] = f.name
+			if isJava(f) {
+				javas = append(javas, p)
+			} else {
+				kotlin = true
+			}
 		}
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			return nil, err
@@ -83,35 +97,55 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if libs.reflect {
 			cp = append(cp, c.reflect)
 		}
-		cp = append(cp, res.outDirs...)
+		deps, friends := moduleDeps(t.modules[:mi], res.outDirs, m)
+		cp = append(cp, deps...)
 		args := []string{"-d", out, "-module-name", m.name}
 		if len(cp) > 0 {
 			args = append(args, "-cp", strings.Join(cp, string(os.PathListSeparator)))
 		}
 		name := c.kc
+		friendFlag := "-friend-paths"
 		if c.kotlinc != "" {
 			name = c.kotlinc
+			friendFlag = "-Xfriend-paths"
 			args = append(args, "-no-stdlib", "-no-reflect", "-nowarn")
 		} else {
 			args = append(args, "-features", "-j", "1")
 		}
+		if len(friends) > 0 {
+			args = append(args, friendFlag+"="+strings.Join(friends, ","))
+		}
 		for _, o := range libs.optIns {
 			args = append(args, "-opt-in="+o)
 		}
-		if t.anyOf("JVM_DEFAULT_MODE", "disable") {
-			args = append(args, "-jvm-default=disable")
+		if mode := jvmDefaultMode(t, m); mode != "" {
+			args = append(args, "-jvm-default="+mode)
 		}
 		args = append(args, paths...)
-		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-		cmd := exec.CommandContext(ctx, name, args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		cmd.Stdout = &stderr
-		err := cmd.Run()
-		timedOut := ctx.Err() != nil
-		cancel()
+		// The Java sources of a module the next ones depend on are
+		// compiled with javac, after the Kotlin ones, as the test
+		// infrastructure does; those of the last module are only read.
+		later := mi < len(t.modules)-1
+		if !kotlin {
+			res.outDirs = append(res.outDirs, out)
+			if later {
+				if err := c.compileJava(out, cp, javas); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+		output, failed, timedOut := c.run(name, args)
 		res.outDirs = append(res.outDirs, out)
-		if err == nil {
+		if c.kotlinc == "" {
+			res.warns = append(res.warns, kcWarnings(output, byPath)...)
+		}
+		if !failed {
+			if later && len(javas) > 0 {
+				if err := c.compileJava(out, append(cp, out), javas); err != nil {
+					return nil, err
+				}
+			}
 			continue
 		}
 		if timedOut {
@@ -119,16 +153,49 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			return res, nil
 		}
 		if c.kotlinc != "" {
-			if res.other = kotlincError(stderr.String()); res.other == "" {
+			if res.other = kotlincError(output); res.other == "" {
 				continue
 			}
 			return res, nil
 		}
-		parseKcOutput(stderr.String(), byPath, res)
+		parseKcOutput(output, byPath, res)
 		return res, nil
 	}
 	res.ok = true
 	return res, nil
+}
+
+// run runs the compiler command name with args, on a server if there
+// are servers, and returns its output and whether it failed or timed
+// out.
+func (c *compiler) run(name string, args []string) (out string, failed, timedOut bool) {
+	if c.servers != nil && c.kotlinc == "" {
+		code, out, timedOut := c.servers.compile(args, c.timeout)
+		return out, code != 0, timedOut
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stderr
+	err := cmd.Run()
+	return stderr.String(), err != nil, ctx.Err() != nil
+}
+
+// compileJava compiles the Java sources javas against the class path cp
+// into out.
+func (c *compiler) compileJava(out string, cp, javas []string) error {
+	args := []string{"-d", out, "-nowarn", "-proc:none"}
+	if len(cp) > 0 {
+		args = append(args, "-cp", strings.Join(cp, string(os.PathListSeparator)))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	if b, err := exec.CommandContext(ctx, c.javac, append(args, javas...)...).CombinedOutput(); err != nil {
+		return fmt.Errorf("javac: %v\n%s", err, b)
+	}
+	return nil
 }
 
 // parseKcOutput reads the diagnostics kc -features printed, or its
@@ -142,17 +209,9 @@ func parseKcOutput(out string, byPath map[string]string, res *compileResult) {
 		}
 	}
 	for _, line := range lines {
-		f := strings.SplitN(line, "\t", 5)
-		if len(f) != 5 {
-			continue
+		if d, warning, ok := parseKcLine(line, byPath); ok && !warning {
+			res.diags = append(res.diags, d)
 		}
-		var l, col int
-		fmt.Sscanf(f[1], "%d:%d", &l, &col)
-		name := byPath[f[0]]
-		if name == "" {
-			name = filepath.Base(f[0])
-		}
-		res.diags = append(res.diags, diag{file: name, line: l, feature: f[2], code: f[3], msg: f[4]})
 	}
 	if len(res.diags) == 0 {
 		res.other = lines[len(lines)-1]
@@ -211,6 +270,9 @@ func progress(done int64, total int) {
 func parseFeatures(files []*srcFile) []diag {
 	var ds []diag
 	for _, f := range files {
+		if isJava(f) {
+			continue
+		}
 		for _, e := range parseAll(f) {
 			ds = append(ds, diag{file: f.name, line: e.Pos.Line, feature: e.Feature, msg: e.Msg})
 		}
@@ -282,4 +344,49 @@ func template(msg string) string {
 		msg = t.re.ReplaceAllString(msg, t.repl)
 	}
 	return msg
+}
+
+// moduleDeps returns the class path of m's output directories of the
+// modules before it, outs[i] being mods[i]'s, and those of them that
+// are its friends. As the test infrastructure's, the class path holds
+// only the modules m's // MODULE: line names, its dependencies and then
+// its friends, in that order: of two modules that declare one class,
+// the one named first wins. It isn't transitive: a module that m's
+// dependency depends on isn't on m's class path unless m names it too,
+// and a module that names none gets none.
+func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string) {
+	dir := func(name string) string {
+		for i, mod := range mods {
+			if mod.name == name && i < len(outs) {
+				return outs[i]
+			}
+		}
+		return ""
+	}
+	for _, d := range m.deps {
+		if o := dir(d); o != "" && !slices.Contains(cp, o) {
+			cp = append(cp, o)
+		}
+	}
+	for _, f := range m.friends {
+		if o := dir(f); o != "" {
+			if !slices.Contains(cp, o) {
+				cp = append(cp, o)
+			}
+			friends = append(friends, o)
+		}
+	}
+	return cp, friends
+}
+
+// jvmDefaultMode returns the -jvm-default mode the JVM_DEFAULT_MODE
+// directive asks for in module m: its own, or the test's before its
+// first module, or "" for the default.
+func jvmDefaultMode(t *test, m *module) string {
+	for _, ds := range []map[string][]string{m.directives, t.global} {
+		if vs := ds["JVM_DEFAULT_MODE"]; len(vs) > 0 {
+			return strings.TrimSpace(vs[len(vs)-1])
+		}
+	}
+	return ""
 }

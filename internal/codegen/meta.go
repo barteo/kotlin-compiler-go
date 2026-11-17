@@ -191,12 +191,6 @@ var kotlinOfJava = map[string]string{
 	"java/lang/annotation/Annotation": "kotlin/Annotation",
 }
 
-var kindIDs = map[types.Kind]string{
-	types.Unit: "kotlin/Unit", types.Nothing: "kotlin/Nothing", types.Bool: "kotlin/Boolean", types.Int: "kotlin/Int",
-	types.Long: "kotlin/Long", types.Double: "kotlin/Double", types.Char: "kotlin/Char", types.Float: "kotlin/Float",
-	types.Byte: "kotlin/Byte", types.Short: "kotlin/Short", types.String: "kotlin/String", types.Any: "kotlin/Any",
-}
-
 // classID returns a class's Kotlin class id: packages separated by '/',
 // nested classes by '.'.
 func classID(c *types.ClassSym) string {
@@ -227,6 +221,26 @@ func classID(c *types.ClassSym) string {
 func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	if t.IsIntersection() {
 		t = types.Approx(t) // metadata has no intersection types
+	}
+	if t.K == types.Class && t.A == nil && t.C.Raw() {
+		// A raw Java type, as kotlinc writes it: flexible, from the
+		// class with its parameters' erasures to its star projection,
+		// both marked raw.
+		lower, upper := t, t
+		lower.P, lower.N = false, false
+		upper.P, upper.N = false, true
+		if upper.C.ReadOnly != nil {
+			upper.C = upper.C.ReadOnly
+		}
+		la, ua := make([]types.Arg, len(t.C.TypeParams)), make([]types.Arg, len(t.C.TypeParams))
+		for i := range la {
+			la[i], ua[i] = types.Arg{T: types.AnyType.Nullable()}, types.Arg{V: types.Star}
+		}
+		lower.A, upper.A = types.MakeArgs(la), types.MakeArgs(ua)
+		kt := s.typ(lower)
+		kt.Upper = s.typ(upper)
+		kt.Raw, kt.Upper.Raw = true, true
+		return kt
 	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
@@ -321,8 +335,8 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			}
 		}
 	default:
-		id, ok := kindIDs[t.K]
-		if !ok {
+		id := t.K.ClassID()
+		if id == "" {
 			panic("no metadata for type " + t.String())
 		}
 		kt.Class = id
@@ -541,12 +555,14 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		}
 	}
 	for _, e := range sym.Implies {
-		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds}
+		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds, Negated: e.Negated}
 		switch e.Returns {
 		case 1:
 			im.Returns = kmeta.ReturnsTrue
 		case 0:
 			im.Returns = kmeta.ReturnsFalse
+		case 2:
+			im.Returns = kmeta.ReturnsNotNull
 		}
 		if e.Is != nil {
 			im.Is = s.typ(*e.Is)

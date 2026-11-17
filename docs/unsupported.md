@@ -10,28 +10,77 @@ own tests.
 
 ## The language
 
+- Warnings: `kc` reports only `DEPRECATION`,
+  `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
+  `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
+  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON` and
+  `USELESS_ELVIS`, and those only where the types make them certain, so
+  that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
+  never of a platform type, a type parameter or a type it couldn't
+  resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
+  isn't reified, or to a generic type from `Any` or a star-projected
+  supertype. `@Suppress` silences a warning by its name, or all of them
+  with `"warnings"`.
+
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
-- Properties of a `@file:JvmMultifileClass` class that are neither
-  `private` nor `const`.
+- `lateinit` properties of a `@file:JvmMultifileClass` class that
+  aren't `private`.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
-  `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
-  program's own declarations: the markers and deprecations of the class
-  path, the standard library's included, aren't read from class files.
-- Builder inference that can't check a lambda's body with the type
-  variables open, as a member of a value of one of them whose type
-  nothing gives yet: it needs a type argument or an expected type.
+  `@Deprecated` are checked, the class path's read from its class files
+  and metadata. Markers and deprecations with level `WARNING` (Java's
+  `@Deprecated` among them) give the warnings `OPT_IN_USAGE` and
+  `DEPRECATION`. `@DeprecatedSinceKotlin` and
+  `@SinceKotlin` are read as if their versions were reached: `kc` acts
+  as the newest API version, as `kotlinc` does by default, and has no
+  `-api-version`. A class path's typealias opts in to nothing, as the
+  `@OptIn` it may have had in its source isn't in its class files: the
+  markers of what it expands to are required of its uses.
+- A class of the program with the name of a class of the class path
+  doesn't replace it in the class path's signatures and supertypes, as
+  it does in K2: a class path's class whose supertype is shadowed this
+  way still has the class path's supertype. Only the cycles of
+  supertypes this closes are reported.
+- Two classes of one name on the class path, from different modules,
+  are one class, the first; a signature that names the other with
+  other type arguments isn't reported.
+- Builder inference isn't K2's PCLA: a builder's lambda is checked with
+  its variables unfixed and then again with them fixed. A call in a
+  nested builder that combines both builders' variables, as
+  `select(this@outer.get(), get())`, is inferred with the inner
+  builder's first, the outer one's in the system but left unfixed, and
+  again with the outer one's. A fork of the constraint system over a
+  builder's variables waits for its lambda's constraints. Of K2's
+  fixation on demand, `kc` fixes a builder's variable for a member of a
+  value of its type and for a nested call's lambda that takes the
+  variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
+  not one in a type argument. A call's variable that captures an `out`
+  projection of a builder's variable is reported as uninferred, as K2
+  reports it, but kc infers its other captures of builders' variables,
+  which K2 may not. An `if` or `when` whose branches mention a builder's
+  variable joins them into its inference. A branch's generic call that
+  only the builder's variable, not yet bounded, gives a type to, as
+  `removeLast()` before `add(42)` in the other branch, takes the other
+  branches' join as its bound, as K2's fixation of the join's variable
+  first does; K2's own order of fixation isn't modeled otherwise, but
+  for KT-58232: a builder call returned by the one-branch `when` a
+  lambda ends with can't infer its variables, which are `Nothing`. A
+  builder's lambda that casts its receiver to a
+  star-projected subtype, `this as DerivedBuildee<*>`, infers the
+  variable as `Unit`, where K2 infers a captured type.
 
 ## Without the standard library
 
 Without `kotlin-stdlib` on the class path, only these of it are
-available, built in: `println`, `print`, `mutableListOf()`, `listOf()`
-and the other factories without arguments, `map[key] = value`, the
-array factories (`emptyArray`, `arrayOfNulls`, `toTypedArray()`),
-`Char(code)`, `String(chars)`, `String.trim()`, the `Char` functions
-that are `java.lang.Character` methods, and `require`, `check`, `error`
-and `TODO`. Use the Java classes directly for the rest. Also:
+available, built in: `println`, `print`, the array factories
+(`arrayOf`, `emptyArray`, `arrayOfNulls`), `Char(code)`,
+`String(chars)`, the `Char` functions that are `java.lang.Character`
+methods, and `require`, `check`, `error` and `TODO` (which throws an
+`UnsupportedOperationException`). Collection factories and types
+(`listOf`, `mutableListOf`, `MutableList`), `map[key] = value`,
+`toTypedArray()` and `String.trim()` need the standard library. Use the
+Java classes directly for the rest. Also:
 
 - Ranges work only in `for` loops and `in` checks; they aren't values
   (`val r = 1..10` needs `IntRange`).
@@ -45,7 +94,9 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 - A library's inline function whose body has an `invokedynamic` call
   other than `StringConcatFactory`'s, such as an indy lambda's
   (`LambdaMetafactory`) that refers to a private method of the library's
-  class, can't be inlined: the call is reported.
+  class, can't be inlined. A call of one with reified type parameters,
+  or of an inline-only one, is reported; another is called as a
+  function instead, and its lambdas can't return from the caller.
 - Inline functions that `kotlinc` compiled for JVM 9 and later, with
   `StringConcatFactory` string templates, are copied into `kc`'s version
   52 classes, which then need Java 9 to run. `kotlinc` refuses to inline
@@ -55,15 +106,21 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 
 - Two references of a suspend function type to the same suspend
   function aren't equal if they ignore its result, or are to an inline
-  suspend function or to one that returns a value class.
+  suspend function or to one that returns a value class of a reference
+  or nullable type (not `Int` or `Long`).
 
 ## kotlinx.serialization (`-serialization`)
 
 Not supported: generic classes; interfaces annotated `@Serializable`
-that aren't sealed; local classes; superclasses from other modules;
-more than 32 properties; some ways of naming serializers of properties
-(a generic class in `@Serializable(with = ...)` on a property, `@Contextual`,
-`@UseSerializers`); the annotations that formats read
+that aren't sealed; local and inner classes and companion objects;
+classes without a primary constructor or that delegate an interface
+(`by`); superclasses from other modules; more than 32 properties;
+properties in the class body that are `lateinit`, set in an `init` block
+rather than initialized, or have accessors of their own; some ways of
+naming serializers of properties (a generic class in `@Serializable(with
+= ...)` on a property, `@Contextual`, `@UseSerializers`,
+`@UseContextualSerialization`); `@Polymorphic`, `@KeepGeneratedSerializer`
+and `@MetaSerializable`; the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
 primitive types, `String`, enums, `@Serializable` classes, objects and
@@ -92,8 +149,14 @@ plugin finds no properties and crashes.
 
 Not supported yet:
 
+- suspend, `tailrec`, `@JvmStatic` and `@JvmOverloads` composable
+  functions, and those of value classes;
+- composable properties without a getter with a body, with an inline
+  getter, delegated, or of interfaces and value classes;
+- composable functions of an interface a class delegates (`by`);
 - non-local jumps from the lambdas of inline composables;
-- `key` with a spread array of keys;
+- `key` other than with keys and a lambda, such as with a spread array
+  of keys;
 - composable calls in `catch` and `finally` blocks and in local
   functions (calls in a `try` are an error, as with `kotlinc`);
 - references to composables;
@@ -110,17 +173,23 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 ## Metro (`-metro`)
 
-`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+`kc` implements Metro 1.6.0's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
 
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
-- `@Provides` extension functions;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`: among them `enable-derived-bindings` and a `companion-mode` other than `companion-object`;
+- `@Provides` extension functions, and `@Provides` members of an
+  interface or an abstract class outside its companion object;
 - graphs with type parameters, and graph factories that are abstract classes;
+- graph lifecycle callbacks: a graph that is a `CloseableGraph`, with its `@OnGraphInit` and `@OnGraphClose` functions;
+- injecting a generic class where the requested type's arguments are type
+  parameters, and contributed interfaces with type parameters;
 - javax, Jakarta, Dagger and Guice interop;
 - member injection into classes from the class path;
 - member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
+- graph members that are extensions, or functions with parameters that
+  neither inject members nor create a graph extension;
 - graph functions that create a graph extension from parameters, other than its factory's.
 
 `kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
@@ -132,32 +201,143 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 **Checking**
 
-- Intersection types (`A & B`) are inferred only for Kotlin classes'
-  shared supertypes, smart casts between a class type and an unrelated
-  interface, and incomparable upper bounds of a variable. The common
+- Intersection types (`A & B`) are inferred only for the shared
+  supertypes of Kotlin classes and generic Java ones (a Java class's
+  non-generic interfaces only when nothing else is shared), smart casts between a class type, `String` or a
+  primitive type and an unrelated interface (`Int & A`), or of such an intersection to another (`C & A & B`),
+  smart casts of a value of a type parameter's type to a class
+  type, a primitive type or `String` (`String & T`, `Int & T`), identity or safe equality of two
+  generic class types or a cast of one to the other (`Box<T> & Box<A>`),
+  an `is` check or cast of one to a subclass of another instance
+  (`B & A<T>` for a `B : A<Int>`), and incomparable upper bounds of a
+  variable. Other smart casts are to the target type alone: a class type
+  of a generic or Java type, a type parameter to another. A call on an
+  intersection takes the first component with a member of the name
+  whose parameters take its arguments, and a property read on one is
+  the intersection of its types only over components of the same class;
+  where a call's variable is constrained by an intersection whose
+  components are different instances of one class, inference forks
+  over them as K2 does, taking the first whose constraint system holds,
+  but only over the call's own constraints, not its value's use, and
+  with the cast's type first. A variable whose upper constraints don't meet its declared
+  bounds, as `T` of `fun <T : Foo> foo(): T?` for a `Bar?`, is inferred
+  from the constraints alone, where Kotlin infers `Foo & Bar`. A smart cast of a `T` to a value class is
+  that type alone, which a generic call expecting a `T` takes only
+  directly, as `listOf(o)`, not through another call, as `mapOf(o to o)`
+  for an `o` of a value class. The common
   supertype of two builtin types is `Any`, or `Number` for numbers (for
   `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
+- Variables are fixed in K2's readiness order, but their constraints
+  are bounds without K2's kinds and origins: an invariant argument is
+  two bounds rather than an equality, and of the origins only declared
+  bounds are told apart. A safe call passed to a generic call, whose
+  selector K2 completes on its own, is part of the outer call's system,
+  with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
-  infers some combinations of lambdas `kc` can't.
+  infers some combinations of lambdas `kc` can't. Of K2's ordering,
+  `kc` runs the lambdas whose parameter types are known first, and a
+  lambda that returns a lambda for a function type whose inputs aren't
+  known yet last. A lambda that declares
+  all its parameters' types is checked on its own only when its
+  variable has no function type among its bounds.
+- The branches of an `if` or `when` aren't K2's synthetic call: a
+  branch that is a lambda without its parameters' types takes them from
+  the other branches only when the `if` has no expected type, and one
+  takes an expected receiver as its first parameter only when it is a
+  branch's value. Only a branch lambda written without parameters
+  (`{ -> }`) of an `if` or `when` that is a generic call's argument is
+  postponed with the call, as K2's synthetic call's arguments are.
+- Conversions during inference are partial. A function value passed for
+  a suspend function type with variables gives the converted type's
+  constraint, and so does a generic call's result (`id(f)`) whose
+  variable has one lower bound. A lambda passed for a variable takes
+  its type from the variable's upper bound only when that is a suspend
+  function type or a Java SAM interface; a lambda passed through another
+  call (`id({ -> })`) isn't converted. A Java type parameter without
+  constraints is inferred as its bound only when that bound is one
+  class other than `Object`.
+- `kc` has no captured types: a projection a variable stands for is
+  approximated by its bounds where it is substituted. A variable that
+  captures a projection of an argument is inferred as that projection,
+  so a parameter of the argument's own or a supertype's type takes it
+  (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
+  error. A member's parameter whose type holds a projected argument
+  takes `Nothing` there, except a lambda's function type, whose `out`
+  projections are their bounds in its parameters and result, as K2
+  approximates them; a function value passed for it can't return the
+  capture, and a member's explicit type argument is checked against a
+  bound with a projection approximated as such a parameter is. Two reads
+  of one `Out<*>` value are the same type, where they are different
+  captures in Kotlin: only an elvis's left call, inferred with the right
+  side's type, sees a star of it as below its bound. A star for a
+  parameter with a recursive bound reads as that bound with a star for
+  the parameter (`Out3<*>` is an `Out3<Out3<*>>` for `Out3<out T :
+  Out3<T>>`), as K2 approximates its capture. The capture of an
+  `in` projection is checked against the variable's bounds only at the
+  top of an argument's type. A property written through a projected
+  receiver takes `Nothing` for a generic extension property's type
+  parameter its receiver projects out, and for an invariant argument of
+  a member property's type that a star captures, checked after the
+  value is inferred against the read type.
+- A lambda's result chooses between overloads of the program's
+  functions only when one of them is marked
+  `@OverloadResolutionByLambdaReturnType`, as in K2, but between
+  library functions' whether or not they are, since `kc` doesn't read
+  the mark from class files. `@HidesMembers` is read only on the
+  program's functions; the standard library's `forEach` hides only
+  members that just Java's collection interfaces declare.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
-  when the types a call's variable is constrained by have no platform
-  types, projections or captured types, and aren't literals.
-- Java module exports aren't checked, and the Java members Kotlin
-  replaces (`Number.intValue()`) aren't hidden.
+  when the types a call's variable is constrained by have no captured
+  types (star projections), and the inferred type isn't an
+  intersection's component.
+- Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
+  `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
+  `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
+  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
+  though named arguments take Kotlin's parameter names.
+- K2's predefined nullability of JDK members is applied to the members
+  of the classes it names, not to their overrides in other classes:
+  `Map`'s `compute` takes a function that may return null, `HashMap`'s
+  keeps Java's platform types.
+- Of the JDK classes K2 sees as purely implementing a Kotlin collection
+  type (`ArrayList`, `HashSet`, `HashMap` and others), `kc` gives the
+  members that override the collection type's the class's type
+  parameters as they are, not as platform types: an `ArrayList<String>`
+  takes no `null`. Their results keep platform types, and their
+  supertypes Java's flexible arguments: an `ArrayList<String>` is also a
+  `MutableList<String?>`.
+- A nullable argument for a Java method's `T!` makes `T` nullable,
+  except in an in-projected type argument, where kc's substituted
+  explicit type arguments stand for K2's equality constraints. Even
+  where the call's expected type would have `T` not null:
+  `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
+- Java module exports aren't checked.
+- jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
+  Java method's, parameter's or field's type, and `@NullMarked` and
+  `@NullUnmarked` only on the classes and methods of the program's Java
+  sources, not on packages, modules or class files.
+- A Kotlin override of a package-private Java method, declared without a
+  visibility, is visible to calls in its package, where K2 reports it as
+  invisible.
+- Of Java members, only those of the program's Java sources count
+  toward an inherited member that must be overridden because it has
+  several implementations; a class-path Java class's do not.
+- Java sources compiled with the program see the member classes a
+  Kotlin class inherits only through supertypes written without type
+  arguments: a Java subclass of `class K : Base<String>()` that names
+  `Inner`, declared in `Base<T>`, leaves the name unresolved in the
+  signatures `kc` reads, as the inner class's `T` would be lost.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- A value of function type `(A, B) -> R` is accepted for a context
-  function type `context(A) (B) -> R`, and the other way round, as it is
-  for an extension function type `A.(B) -> R`; `kotlinc` accepts only
-  references and lambdas there.
-- Where annotations are written, and whether they repeat, isn't checked
-  for Java annotations without `@Target` or from Java sources, nor for
+- Where annotations are written isn't checked for Java annotations
+  without `@Target` or from Java sources, nor whether they repeat on a
+  property or with a use-site target, nor, for any annotation, for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
-  `typealias T = @A Int`) or in `where` clauses. The arguments of a
+  `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants, nor are annotations on setter parameters, `set(@A v)`.
 
@@ -169,12 +349,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `kotlinc`'s take the lambda's own types and let `LambdaMetafactory`
   box. They take the enclosing object before the captures, and lambdas in
   objects take the object rather than read `INSTANCE`. A local function
-  in an `init` block captures the constructor parameters it uses.
+  in an `init` block, and a lambda in a property's initializer, take the
+  values of the `val` constructor parameters they use, where `kotlinc`'s
+  read their fields.
 - Function values (not lambdas) converted to Java SAM interfaces use
   `$sam$` wrapper classes, where `kotlinc` uses `invokedynamic`.
-- A reference to a library's inline function (`String::uppercase`) is a
-  lambda, with a lambda's `toString()` and `equals()`, and so is a
-  suspend reference whose `invoke` `kotlinc` makes a state machine (one
+- A reference to a library's inline function (`String::uppercase`), or
+  a property reference used as a function value (`val f: (P) -> Int =
+  P::x`), is a lambda, with a lambda's `toString()` and `equals()`, and
+  so is a suspend reference whose `invoke` `kotlinc` makes a state machine (one
   that ignores the result, or to an inline suspend function or one
   returning a value class).
 - A `when` over an enum compares entries with `equals`, not through a
@@ -187,8 +370,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   property of the same name, `kotlinc` renames the outer class's field
   (`x$1`); `kc` keeps the companion's field in the companion instead. An
   interface companion's fields are instance fields, not static ones, and
-  its lambdas and local functions are static methods of the interface.
-- No `PermittedSubclasses` attributes, and `InnerClasses` entries only
+  the lambdas and local functions of its initializers and `init` blocks
+  are static methods of the interface.
+- No `PermittedSubclasses` attributes, which `kotlinc` writes for
+  `-jvm-target 17` and later, and `InnerClasses` entries only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`
   boxes both values and calls `equals` rather than `equals-impl0`.
@@ -198,14 +383,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where used. The program's own inline `getValue` always gets a
   `KProperty`.
 - The spread operator copies with `clone()` and `System.arraycopy`, not
-  `Arrays.copyOf` and `SpreadBuilder`. `Array(n) { }` calls its init
+  `Arrays.copyOf` and `SpreadBuilder`. `Array(n, ::f)` calls its init
   function as an object; `kotlinc` inlines it.
 
 **Inlining**
 
-- Inlined lambdas take and return boxed `Object`s; arguments always go
-  through locals, with a cast after each reference load; and a
-  `$default` body's mask is tested at run time rather than folded.
+- A library's inline functions, inlined from their bytecode, have their
+  lambdas take and return boxed `Object`s, their arguments always go
+  through locals, with a cast after each reference load, and their
+  `$default` bodies' masks tested at run time rather than folded.
 - Lambdas passed for crossinline parameters are objects of the library's
   template classes (`ComparisonsKt__ComparisonsKt$thenBy$1`); `kotlinc`
   regenerates those classes with the lambda inlined. `kc` copies
@@ -216,19 +402,17 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - An object expression in the program's inline function is one class for
   all copies, using a crossinline lambda as a function object; `kotlinc`
   copies the class per call.
-- In the method of a function with a reified type parameter, a library
-  object that uses it (`filterIsInstance`'s `{ it is R }`) is copied
-  erased, so code in another module that copies the method filters
-  nothing; `typeOf<List<T>>()` there throws.
-- An open inline member and an inline member of an interface are
-  ordinary methods.
+- A library interface's inline member is called as an ordinary method.
+  In the program, open and interface inline members are errors, even
+  with `@Suppress("DECLARATION_CANT_BE_INLINED")`, which `kotlinc`
+  accepts.
 
 **Coroutines**
 
-- The dispatch is at the end of the method, and resume points restore
-  locals in reverse order.
+- The dispatch is at the end of the method.
 - Copied inline functions' locals are unnamed, so `@DebugMetadata`
-  doesn't list them, and they are saved only while live. The lines after
+  doesn't list them, and those dead at a suspension point are saved, not
+  nulled out as `kotlinc` does. The lines after
   suspension points come from `kc`'s line tables.
 
 **Debug information and metadata**
@@ -241,8 +425,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   declarations' annotations aren't repeated in metadata, as `kotlinc` 2.4
   does.
 - A value class's synthesized members' signatures are always the static
-  `-impl` methods; for an internal value class, and for one in common
-  (multiplatform) sources, `kotlinc` 2.4.20 writes the instance methods.
+  `-impl` methods; for one in common (multiplatform) sources, `kotlinc`
+  writes the instance methods.
 - Synthetic classes are named otherwise: `kotlinc` numbers every lambda
   of a function, `kc` only those that become classes, and `kc` copies
   an inline function's objects and continuations as its own classes
@@ -251,16 +435,17 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A local class's types that use the enclosing function's type
   parameters name them; `kotlinc` writes their ids, which the class
   doesn't declare.
-- An alias of an alias is written expanded: `kc` keeps no
-  abbreviations.
-- A private property initialized with an object expression has the
-  object's supertype, not its anonymous type.
+- Types written with a typealias, and an alias of an alias, are written
+  expanded: `kc` keeps no abbreviations.
+- A class's private property initialized with an object expression has
+  the type `Outer$1` in metadata, a class that doesn't exist, rather than
+  its anonymous class (`Outer$prop$1`).
 - A generic value class whose underlying type is a type parameter
   bounded by a primitive type (`value class W<T : Int>(val s: T)`) is
   unboxed as the boxed primitive (`Integer`); `kotlinc` passes the
   primitive (`int`) to its `-impl` methods.
-- Annotations on local variables, type parameters, types and
-  expressions aren't written, nor are `@[A B]` lists.
+- Annotations on type parameters and types aren't written, nor are
+  `@[A B]` lists.
 
 **Compiler plugins**
 

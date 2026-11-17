@@ -41,6 +41,9 @@ func skipPSIGrammar(t *testing.T, srcs ...string) {
 		return
 	}
 	for _, path := range srcs {
+		if !strings.HasSuffix(path, ".kt") {
+			continue
+		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -261,12 +264,17 @@ func kotlincFlags(path string) []string {
 	return strings.Fields(flags)
 }
 
-// flagOptions sets the options for kotlinc's flags -jvm-default and
-// -Xdebug among flags.
+// flagOptions sets the options for kotlinc's flags -jvm-default,
+// -Xdebug and -opt-in=<marker> among flags.
 func flagOptions(opts *Options, flags []string) {
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
+	for _, f := range flags {
+		if m, ok := strings.CutPrefix(f, "-opt-in="); ok {
+			opts.OptIns = append(opts.OptIns, m)
+		}
+	}
 }
 
 func sources(t *testing.T, dir string) []string {
@@ -538,7 +546,7 @@ func TestErrors(t *testing.T) {
 	lib := stdlib()
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
-			opts := Options{OutDir: t.TempDir(), Jobs: 1}
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true} // as kc
 			if usesStdlib(f) {
 				if lib == "" {
 					t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
@@ -548,52 +556,100 @@ func TestErrors(t *testing.T) {
 			srcs := []string{f}
 			if fi, err := os.Stat(f); err == nil && fi.IsDir() {
 				srcs, _ = filepath.Glob(filepath.Join(f, "*.kt"))
-			}
-			// By file name and line.
-			want := map[string]string{}
-			for _, src := range srcs {
-				b, err := os.ReadFile(src)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for i, line := range strings.Split(string(b), "\n") {
-					if m := errorComment.FindStringSubmatch(line); m != nil {
-						want[fmt.Sprintf("%s:%d", filepath.Base(src), i+1)] = m[1]
-					}
-				}
+				javas, _ := filepath.Glob(filepath.Join(f, "*.java")) // the module's Java sources
+				srcs = append(srcs, javas...)
 			}
 			skipPSIGrammar(t, srcs...)
-			err := Compile(srcs, opts)
-			if err == nil {
-				t.Fatal("expected errors, compiled successfully")
+			checkErrors(t, srcs, Compile(srcs, opts))
+		})
+	}
+}
+
+// checkErrors compares a compile's errors with the "// ERROR <substring>"
+// comments of srcs: every marked line has an error containing its
+// substring, and no other line has one.
+func checkErrors(t *testing.T, srcs []string, err error) {
+	t.Helper()
+	// By file name and line.
+	want := map[string]string{}
+	for _, src := range srcs {
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if m := errorComment.FindStringSubmatch(line); m != nil {
+				want[fmt.Sprintf("%s:%d", filepath.Base(src), i+1)] = m[1]
 			}
-			got := map[string][]string{}
-			for _, line := range strings.Split(err.Error(), "\n") {
-				// path:line:col: message
-				parts := strings.SplitN(line, ":", 4)
-				if len(parts) < 4 {
-					t.Errorf("malformed diagnostic: %s", line)
-					continue
-				}
-				at := filepath.Base(parts[0]) + ":" + parts[1]
-				got[at] = append(got[at], strings.TrimSpace(parts[3]))
+		}
+	}
+	if err == nil {
+		t.Fatal("expected errors, compiled successfully")
+	}
+	got := map[string][]string{}
+	for _, line := range strings.Split(err.Error(), "\n") {
+		// path:line:col: message
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) < 4 {
+			t.Errorf("malformed diagnostic: %s", line)
+			continue
+		}
+		at := filepath.Base(parts[0]) + ":" + parts[1]
+		got[at] = append(got[at], strings.TrimSpace(parts[3]))
+	}
+	for at, sub := range want {
+		found := false
+		for _, msg := range got[at] {
+			if strings.Contains(msg, sub) {
+				found = true
 			}
-			for at, sub := range want {
-				found := false
-				for _, msg := range got[at] {
-					if strings.Contains(msg, sub) {
-						found = true
-					}
+		}
+		if !found {
+			t.Errorf("%s: want error containing %q, got %q", at, sub, got[at])
+		}
+	}
+	for at, msgs := range got {
+		if _, ok := want[at]; !ok {
+			t.Errorf("%s: unexpected errors %q", at, msgs)
+		}
+	}
+}
+
+// TestLibraryErrors checks diagnostics about a library's declarations,
+// which kc reads from class files: testdata/liberrors/X/lib/ is compiled
+// first (its Java files by javac), then X/use/ against it, with
+// "// ERROR <substring>" comments as in TestErrors. A first line
+// "// kotlinc: <flags>" of either's first file gives its flags.
+func TestLibraryErrors(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	dirs, _ := filepath.Glob("../../testdata/liberrors/*")
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			libOut := t.TempDir()
+			libSrcs, _ := filepath.Glob(filepath.Join(dir, "lib", "*.kt"))
+			javas, _ := filepath.Glob(filepath.Join(dir, "lib", "*.java"))
+			libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: "lib"}
+			flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
+			if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
+				t.Fatalf("compile library: %v", err)
+			}
+			if len(javas) > 0 {
+				javac, err := exec.LookPath("javac")
+				if err != nil {
+					t.Skip("javac not found on PATH")
 				}
-				if !found {
-					t.Errorf("%s: want error containing %q, got %q", at, sub, got[at])
+				args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
+				if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+					t.Fatalf("javac: %v\n%s", err, out)
 				}
 			}
-			for at, msgs := range got {
-				if _, ok := want[at]; !ok {
-					t.Errorf("%s: unexpected errors %q", at, msgs)
-				}
-			}
+			srcs, _ := filepath.Glob(filepath.Join(dir, "use", "*.kt"))
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: []string{lib, libOut}}
+			flagOptions(&opts, kotlincFlags(srcs[0]))
+			checkErrors(t, srcs, Compile(srcs, opts))
 		})
 	}
 }
@@ -721,6 +777,170 @@ func TestSameModuleName(t *testing.T) {
 	}
 	if string(out) != "hello world\n" {
 		t.Errorf("output %q, want %q", out, "hello world\n")
+	}
+}
+
+// TestSupertypeCasts runs a program against a version of its library in
+// which a class no longer extends the class the program uses it as: the
+// program's class still verifies, since a value used as another class is
+// cast to it, as in kotlinc's code, and fails only where that code runs.
+func TestSupertypeCasts(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	compile := func(name, src string, cp ...string) string {
+		path := filepath.Join(tmp, name+".kt")
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(tmp, name)
+		if err := Compile([]string{path}, Options{OutDir: out, Jobs: 1, ClassPath: append([]string{lib}, cp...)}); err != nil {
+			t.Fatalf("compile %s: %v", name, err)
+		}
+		return out
+	}
+	const library = `package lib
+
+open class Descriptor
+
+class Adapter {
+    companion object%s
+}
+
+object Plain%s
+
+class Storage {
+    var last: Descriptor? = null
+
+    fun register(descriptor: Descriptor) {
+        last = descriptor
+    }
+}
+`
+	v1 := compile("v1", fmt.Sprintf(library, " : Descriptor()", " : Descriptor()"))
+	v2 := compile("v2", fmt.Sprintf(library, "", ""))
+	app := compile("main", `import lib.Adapter
+import lib.Descriptor
+import lib.Plain
+import lib.Storage
+
+class OldApi {
+    val first: Descriptor = Plain
+
+    fun register(storage: Storage) {
+        storage.register(Adapter)
+        storage.last = Plain
+    }
+
+    fun descriptor(): Descriptor = Adapter
+}
+
+fun main() {
+    val failed = try {
+        OldApi()
+        false
+    } catch (e: ClassCastException) {
+        true
+    }
+    println(failed)
+}
+`, v1)
+	for i, v := range []string{v1, v2} {
+		cp := strings.Join([]string{app, v, lib}, string(os.PathListSeparator))
+		out, err := exec.Command(java, "-Xverify:all", "-cp", cp, "MainKt").CombinedOutput()
+		if err != nil {
+			t.Fatalf("java, library %d: %v\n%s", i+1, err, out)
+		}
+		if want := fmt.Sprintln(i == 1); string(out) != want {
+			t.Errorf("library %d: output %q, want %q", i+1, out, want)
+		}
+	}
+}
+
+// TestCompanionAccessors checks that a companion object's code reads and
+// writes its properties whose fields the outer class holds through their
+// accessors, as kotlinc's does, so a mock of the companion answers for
+// them, and the fields of those with a private accessor directly.
+func TestCompanionAccessors(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "manager.kt")
+	if err := os.WriteFile(src, []byte(`class Manager {
+    companion object {
+        @JvmStatic
+        var existing: Manager? = null
+            private set
+
+        var count = 0
+
+        private var hidden = 0
+
+        fun viaGetter(): Manager? = existing
+
+        fun viaSetter() {
+            count = count + 1
+        }
+
+        fun direct() {
+            existing = Manager()
+            hidden = hidden + 1
+        }
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(tmp, "out")
+	if err := Compile([]string{src}, Options{OutDir: out, Jobs: 1, ClassPath: []string{lib}}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "Manager$Companion.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, err := classfile.ReadMethods(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"viaGetter": {"getExisting"},
+		"viaSetter": {"getCount", "setCount"},
+		"direct":    {"existing", "hidden", "hidden"},
+	}
+	for _, m := range ms {
+		names, ok := want[m.Name]
+		if !ok {
+			continue
+		}
+		insns, err := m.Decode()
+		if err != nil {
+			t.Fatalf("%s: %v", m.Name, err)
+		}
+		var got []string
+		for i := range insns {
+			switch in := &insns[i]; in.Op {
+			case classfile.INVOKEVIRTUAL, classfile.GETSTATIC, classfile.PUTSTATIC:
+				if in.Owner == "Manager" || in.Owner == "Manager$Companion" {
+					got = append(got, in.Name)
+				}
+			}
+		}
+		if !slices.Equal(got, names) {
+			t.Errorf("%s uses %v, want %v", m.Name, got, names)
+		}
+		delete(want, m.Name)
+	}
+	if len(want) > 0 {
+		t.Errorf("methods not found: %v", want)
 	}
 }
 
@@ -1219,7 +1439,7 @@ func TestSerialization(t *testing.T) {
 
 // metroJars returns Metro's runtime jar and its compiler plugin jar:
 // $KC_METRO_CP and $KC_METRO_PLUGIN, or the version that
-// testdata/metro.out was generated with, 1.5.2, in Gradle's cache. It
+// testdata/metro.out was generated with, 1.6.0, in Gradle's cache. It
 // returns "" for either if it isn't found.
 func metroJars() (runtimeJar, plugin string) {
 	runtimeJar, plugin = os.Getenv("KC_METRO_CP"), os.Getenv("KC_METRO_PLUGIN")
@@ -1229,12 +1449,12 @@ func metroJars() (runtimeJar, plugin string) {
 	}
 	cache := filepath.Join(home, ".gradle/caches/modules-2/files-2.1/dev.zacsweers.metro")
 	if runtimeJar == "" {
-		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.5.2/*/runtime-jvm-1.5.2.jar")); len(jars) > 0 {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.6.0/*/runtime-jvm-1.6.0.jar")); len(jars) > 0 {
 			runtimeJar = jars[0]
 		}
 	}
 	if plugin == "" {
-		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.5.2/*/compiler-1.5.2.jar")); len(jars) > 0 {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.6.0/*/compiler-1.6.0.jar")); len(jars) > 0 {
 			plugin = jars[0]
 		}
 	}
@@ -1260,7 +1480,7 @@ func TestMetro(t *testing.T) {
 	}
 	rt, plugin := metroJars()
 	if rt == "" || plugin == "" {
-		t.Skip("Metro 1.5.2 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
+		t.Skip("Metro 1.6.0 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
 	}
 	const dir = "../../testdata/metro"
 	want, err := os.ReadFile(dir + ".out")
@@ -1310,6 +1530,13 @@ func TestMetro(t *testing.T) {
 		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},
 		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
 			options: map[string]string{"custom-inject": "a/MyInject"}},
+		"derived bindings": {src: "@DependencyGraph interface G", feature: true, msg: "enable-derived-bindings",
+			options: map[string]string{"enable-derived-bindings": "true"}},
+		"companion blocks": {src: "@DependencyGraph interface G", feature: true, msg: "companion-mode",
+			options: map[string]string{"companion-mode": "companion-block"}},
+		"no companions": {src: "@DependencyGraph interface G", feature: true, msg: "companion-mode",
+			options: map[string]string{"companion-mode": "NONE"}},
+		"closeable graph":     {src: "@DependencyGraph interface G : CloseableGraph", feature: true, msg: "CloseableGraph"},
 		"dynamic graph":       {src: "@DependencyGraph interface G\nfun g() = createDynamicGraph<G>()", feature: true},
 		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
 		"member of its own type": {src: "@Inject class S { @Inject lateinit var s: Lazy<S> }\n@DependencyGraph interface G { val s: S }",
@@ -1325,8 +1552,35 @@ func TestMetro(t *testing.T) {
 				t.Errorf("compiled; want an error")
 			case tc.feature && (!errors.As(err, &se) || se.Feature != "metro"):
 				t.Errorf("got %v, want an unsupported Metro feature", err)
-			case !tc.feature && !strings.Contains(err.Error(), tc.msg):
+			case !strings.Contains(err.Error(), tc.msg):
 				t.Errorf("got %v, want %s", err, tc.msg)
+			}
+		})
+	}
+}
+
+// The options that Metro's Gradle plugin passes by default, in either
+// spelling of companion-mode, and the options that only shape Metro's own
+// graph implementations or diagnostics compile as no options do.
+func TestMetroOptions(t *testing.T) {
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
+	}
+	for name, options := range map[string]map[string]string{
+		"gradle defaults":       {"enable-derived-bindings": "false", "derived-binding-overlap-severity": "NONE"},
+		"companion-object":      {"companion-mode": "companion-object"},
+		"COMPANION_OBJECT":      {"companion-mode": "COMPANION_OBJECT"},
+		"provider getters":      {"force-provider-getters": "true"},
+		"overlap severity":      {"derived-binding-overlap-severity": "ERROR"},
+		"provider getters, off": {"force-provider-getters": "false"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte("import dev.zacsweers.metro.*\n\n@DependencyGraph interface G { val s: String\n@Provides fun s(): String = \"s\" }\n"), 0o644)
+			if err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: []string{lib, rt}, Metro: true, MetroOptions: options}); err != nil {
+				t.Error(err)
 			}
 		})
 	}
@@ -1338,7 +1592,7 @@ func TestMetroHints(t *testing.T) {
 	lib := stdlib()
 	rt, _ := metroJars()
 	if lib == "" || rt == "" {
-		t.Skip("kotlin-stdlib.jar or Metro 1.5.2's runtime not found")
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
 	}
 	for name, src := range map[string]string{
 		"default package": "import dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject class Impl : I\n",

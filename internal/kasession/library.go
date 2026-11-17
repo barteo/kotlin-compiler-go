@@ -16,7 +16,6 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
-	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 )
 
 // Libraries. Opening the class path is cheap, but reading its classes is
@@ -30,8 +29,9 @@ import (
 // The checker keeps what it learns of the class path's classes in the
 // library and what it learns of the program's in each check's own
 // Universe (check.Universe.cache), so checks one after another, or at the
-// same time, can share a library. A class path with Java sources, whose
-// classes the program's classes are found through, isn't shared.
+// same time, can share a library. A module's Java sources, whose classes
+// the program's classes are found through, are put over it for each
+// check by the library's user (as ka's library.withJava does).
 
 // MaxIdle is how many libraries nobody holds are kept.
 const MaxIdle = 2
@@ -40,7 +40,6 @@ const MaxIdle = 2
 type Library struct {
 	Path *classpath.Path
 	Lib  *check.Library
-	Java *driver.JavaSources // the module's Java sources' classes, or nil
 
 	key  string // "" if the library isn't shared
 	refs int    // guarded by libraries.mu
@@ -96,17 +95,6 @@ func Acquire(opts driver.Options) (*Library, error) {
 	libraries.list = append(libraries.list, l)
 	trimLocked()
 	return l, nil
-}
-
-// AcquireJava returns a library for opts with the classes of the module's
-// Java source files, which isn't shared.
-func AcquireJava(opts driver.Options, files []*javasrc.File) (*Library, error) {
-	opts.Jobs = max(opts.Jobs, 1)
-	cp, lib, err := driver.OpenLibrary(opts)
-	if err != nil {
-		return nil, err
-	}
-	return &Library{Path: cp, Lib: lib, Java: driver.AddJavaSources(cp, files), refs: 1}, nil
 }
 
 // Attach returns the value a user of the library keeps with it under key,

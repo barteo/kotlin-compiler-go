@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -16,6 +17,11 @@ func (c *Checker) pop()  { c.scope = c.scope.parent }
 func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.Type {
 	exit := c.exitWatch
 	c.exitWatch = nil
+	if lf, ok := braceless(b).(*syntax.LocalFun); ok {
+		// for (x in xs) fun f() {}: a body without braces is an
+		// expression, which a named function can't be.
+		c.errorf(lf.Decl.P, "anonymous functions with names are prohibited")
+	}
 	c.push()
 	t := c.stmts(b, want, valueUsed)
 	if exit != nil {
@@ -24,6 +30,15 @@ func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.
 	c.blockScope = c.scope
 	c.pop()
 	return t
+}
+
+// braceless returns the statement of a body without braces, as of if (c)
+// f(), or nil.
+func braceless(b *syntax.Block) syntax.Stmt {
+	if b.End.Line == 0 && len(b.Stmts) == 1 {
+		return b.Stmts[0]
+	}
+	return nil
 }
 
 // stmts checks a block's statements in the current scope.
@@ -36,8 +51,15 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 		}
 		last := i == len(b.Stmts)-1
 		c.site = varSite{b, i}
+		var branches syntax.Expr // an if or when the block ends with, inferred in sink
+		var sink *system
 		if last && b == c.tailBlock {
-			c.sink, c.tailBlock = c.tailSink, nil
+			if es, ok := s.(*syntax.ExprStmt); ok && valueUsed && branchValue(es.X) {
+				c.branchSink, branches, sink = c.tailSink, es.X, c.tailSink
+			} else {
+				c.sink = c.tailSink
+			}
+			c.tailBlock = nil
 		}
 		if rec := c.u.rec; rec != nil {
 			if nothing {
@@ -46,6 +68,12 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 			rec.Stmt(s, valueUsed && last)
 		}
 		st := c.stmt(s, valueUsed && last, want)
+		if branches != nil {
+			c.branchSink = nil
+			if st.HasVars() && sink.owns(st) {
+				sink.fixups = append(sink.fixups, func(s *system) { branches.SetType(s.final(st)) })
+			}
+		}
 		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true
 		}
@@ -212,27 +240,53 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 			c.scope.narrows = append(c.scope.narrows, k)
 		}
 	}
+	// A call anywhere in the statement that always returns before the
+	// statement ends: f(requireNotNull(x).y), val s: String = cast(x).
+	returned := func(call *syntax.Call) {
+		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
+	}
+	// f(v)!!: f returned, and not null.
+	notNull := func(x syntax.Expr) bool {
+		nn, ok := x.(*syntax.NotNull)
+		if !ok {
+			return false
+		}
+		call, ok := nn.X.(*syntax.Call)
+		if ok {
+			c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
+		}
+		return ok
+	}
 	switch s := s.(type) {
 	case *syntax.VarStmt:
 		if s.Init != nil {
-			alwaysCasts(s.Init, cast)
+			alwaysEvaluated(s.Init, cast, returned)
+			notNull(s.Init)
 		}
 	case *syntax.Assign:
-		alwaysCasts(s.Value, cast)
+		// Not of the target, v = f(v), where it would be of v's new value.
+		target, isKey := c.narrowKeyOf(s.Target)
+		alwaysEvaluated(s.Value, cast, func(call *syntax.Call) {
+			for _, k := range c.returnNarrows(call) {
+				if !isKey || k.recv != target.recv || k.sym != target.sym {
+					c.scope.narrows = append(c.scope.narrows, k)
+				}
+			}
+		})
 	}
 	es, ok := s.(*syntax.ExprStmt)
 	if !ok {
 		return
 	}
-	alwaysCasts(es.X, cast)
+	alwaysEvaluated(es.X, cast, returned)
 	if _, ok := es.X.(*syntax.As); ok {
 		return
 	}
-	if call, ok := es.X.(*syntax.Call); ok {
-		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
-		if len(call.Args) > 0 {
-			return
-		}
+	if notNull(es.X) {
+		return
+	}
+	if call, ok := es.X.(*syntax.Call); ok && len(call.Args) > 0 {
+		return
 	}
 	n, ok := es.X.(*syntax.If)
 	if !ok {
@@ -304,46 +358,67 @@ func (c *Checker) argScope(args []syntax.Expr, i int) *scope {
 // but not in lambdas, in branches, after a safe call or in the right
 // operand of &&, || and ?:.
 func alwaysCasts(e syntax.Expr, f func(*syntax.As)) {
+	alwaysEvaluated(e, f, func(*syntax.Call) {})
+}
+
+// alwaysEvaluated calls cast on the casts of alwaysCasts and call on the
+// calls that evaluating e always evaluates, each once what it evaluates
+// has been.
+func alwaysEvaluated(e syntax.Expr, cast func(*syntax.As), call func(*syntax.Call)) {
 	switch e := e.(type) {
 	case *syntax.As:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if !e.Safe {
-			f(e)
+			cast(e)
 		}
 	case *syntax.Call:
 		if e.Invoke {
-			alwaysCasts(e.Fun, f)
+			alwaysEvaluated(e.Fun, cast, call)
 		} else if m, ok := e.Fun.(*syntax.Member); ok {
-			alwaysCasts(m.X, f)
+			alwaysEvaluated(m.X, cast, call)
 			if hasSafeCall(m) {
 				return
 			}
 		}
 		for _, a := range e.Args {
-			alwaysCasts(a, f)
+			alwaysEvaluated(a, cast, call)
 		}
+		call(e)
 	case *syntax.Member:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 	case *syntax.Index:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if !hasSafeCall(e.X) {
 			for _, a := range e.Args {
-				alwaysCasts(a, f)
+				alwaysEvaluated(a, cast, call)
 			}
 		}
 	case *syntax.Binary:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS {
-			alwaysCasts(e.Y, f)
+			alwaysEvaluated(e.Y, cast, call)
 		}
 	case *syntax.Unary:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 	case *syntax.NotNull:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
+	case *syntax.If:
+		alwaysEvaluated(e.Cond, cast, call)
+	case *syntax.When:
+		// The subject, and the first condition, which always runs: x is
+		// an Int after when (x) { x as Int -> ...; else -> ... }.
+		if e.Subject != nil {
+			alwaysEvaluated(e.Subject, cast, call)
+		}
+		if len(e.Branches) > 0 && len(e.Branches[0].Conds) > 0 && !e.Branches[0].Else {
+			if cond := e.Branches[0].Conds[0]; cond.X != nil {
+				alwaysEvaluated(cond.X, cast, call)
+			}
+		}
 	case *syntax.StringLit:
 		for _, p := range e.Parts {
 			if p.X != nil {
-				alwaysCasts(p.X, f)
+				alwaysEvaluated(p.X, cast, call)
 			}
 		}
 	}
@@ -577,7 +652,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		t = c.resolveType(s.Type)
 		c.assignable(c.value(s.Init, t), t, s.Init.Pos())
 	default:
-		t = c.value(s.Init, noWant)
+		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.
@@ -595,9 +670,6 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	if s.Sym.Deferred {
 		c.deferred++
 	}
-	if !s.Mutable && s.Init != nil && types.MayBeNull(t) {
-		c.implyNonNull(s.Sym, s.Init)
-	}
 	if !s.Mutable && s.Init != nil && t.Flex() == types.BoolType {
 		c.condVal(s.Sym, s.Init)
 	}
@@ -607,6 +679,9 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	if narrowed.K != types.Invalid {
 		c.assignedVar(s.Sym, narrowed)
+	}
+	if s.Init != nil {
+		c.bindValue(s.Sym, s.Init, s.Type != nil)
 	}
 }
 
@@ -624,18 +699,22 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 	return d, true
 }
 
-// implyNonNull records the smart casts that v, a val of value x, not
-// being null implies: x's receivers of safe calls aren't null either,
-// when they are vals, nor is x when it's a stable val itself: val s = x
-// is an alias of x.
-func (c *Checker) implyNonNull(v *types.VarSym, x syntax.Expr) {
-	var ns []narrow
-	if k, ok := c.narrowKeyOf(x); ok && !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) && types.MayBeNull(k.t) {
-		k.t = k.t.NonNull()
-		ns = append(ns, k)
+// bindValue records the smart casts that local v, declared or assigned
+// with the value of x, shares with x, as kotlinc's: unless its type is
+// given (typed), v is an alias of x, a stable value or a local var (see
+// alias), and if v is a val, its not being null implies that the
+// receivers of x's safe calls aren't null either, as for val t = a?.b,
+// where t != null means a != null.
+func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
+	if k, ok := c.narrowKeyOf(x); ok && !typed && c.aliasable(k) {
+		c.alias(v, k)
 	}
+	if v.Mutable || !types.MayBeNull(v.Type) {
+		return
+	}
+	var ns []narrow
 	for _, k := range c.safeReceivers(x) {
-		if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
+		if c.aliasable(k) {
 			ns = append(ns, k)
 		}
 	}
@@ -850,6 +929,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
+		c.varTarget = x // see propBound
 		t := c.member(x)
 		x.T = t
 		c.dslTarget(x)
@@ -865,11 +945,17 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		case x.Getter != nil && x.Setter == nil:
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
+		case x.Getter != nil && !c.javaSetterVisible(x.Setter, x.X):
+			c.errorf(x.P, invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
+			return t, false
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class:
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.
 			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).Apply(x.Setter.Params[0].Type), true
 		case x.Getter != nil:
+			if c.extSetterProjectedOut(x) {
+				return types.NothingType, true
+			}
 			return t.Flex(), true
 		}
 		if x.Prop == nil {
@@ -895,6 +981,64 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	}
 	c.errorf(x.Pos(), "variable expected")
 	return types.InvalidType, false
+}
+
+// extSetterProjectedOut reports whether generic extension property x's
+// value is of a type parameter that its receiver projects out, which
+// only Nothing is of: list.p = v for var <T> MutableList<T>.p: T, of a
+// MutableList<out Any> list.
+func (c *Checker) extSetterProjectedOut(x *syntax.Member) bool {
+	g := x.Getter
+	if len(g.TypeParams) == 0 || g.Ret.K != types.TypeParam || g.Recv.K != types.Class || g.Recv.A == nil {
+		return false
+	}
+	rt, ok := c.asSuper(x.X.Type().NonNull(), g.Recv.C)
+	if !ok || rt.A == nil || rt.A.Len() != g.Recv.A.Len() {
+		return false
+	}
+	for i, a := range g.Recv.A.List {
+		if a.V == types.Inv && a.T.K == types.TypeParam && a.T.Param() == g.Ret.Param() {
+			if v := rt.A.List[i].V; v == types.Out || v == types.Star {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// starWrite reports value type vt that property target can't be set to
+// through a star projected receiver: an invariant argument of the
+// property's type that is the star's capture is one only Nothing fits,
+// t.v = t for var v: Tr<T> of a Tr<*> t.
+func (c *Checker) starWrite(target syntax.Expr, vt types.Type) {
+	x, ok := target.(*syntax.Member)
+	if !ok || x.Prop == nil || x.X == nil || vt.K == types.Null {
+		return
+	}
+	rt := x.X.Type().NonNull()
+	pt := x.Prop.Type.NonNull()
+	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || x.Prop.Owner == nil {
+		return
+	}
+	sub := c.memberSubst(rt, x.Prop.Owner)
+	wt := sub.ApplyIn(x.Prop.Type).NonNull()
+	if wt.K != types.Class || wt.C != pt.C || wt.A == nil || wt.A.Len() != pt.A.Len() {
+		return
+	}
+	var args []types.Arg
+	for i, a := range pt.A.List {
+		w := wt.A.List[i]
+		if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
+			if r, ok := sub[a.T.Param()]; ok && r.V == types.Star {
+				w = types.Arg{V: types.Out, T: types.NothingType}
+			}
+		}
+		args = append(args, w)
+	}
+	want := types.GenericType(wt.C, args)
+	if !c.subtype(vt.NonNull(), want) {
+		c.errorf(x.P, "type mismatch: inferred type is %s but %s was expected", vt, want)
+	}
 }
 
 // forIterator checks a loop over a collection, or anything else with an
@@ -1110,6 +1254,14 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
+	// What the check writes into an assignment is the check's: one that
+	// stubInference throws away may take another branch than the one
+	// that counts, as y += 1 does for a var y of a builder's E, which
+	// would leave its rewrite in Stmts.
+	if c.trial != nil {
+		stmts, opType, value := s.Stmts, s.OpType, s.Value
+		c.onUndo(func() { s.Stmts, s.OpType, s.Value = stmts, opType, value })
+	}
 	if recv, build, ok := safeTarget(s.Target); ok {
 		c.safeAssign(s, recv, build)
 		return
@@ -1135,7 +1287,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	c.rewrite(&s.Target, c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(s.Target)))))
 	n := len(c.errs)
 	var tt types.Type
-	var mutable bool
+	var mutable, notVar bool
 	switch t := s.Target.(type) {
 	case *syntax.Member:
 		if t.Paren && s.Op != syntax.ASSIGN {
@@ -1145,6 +1297,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			break
 		}
 		tt, mutable = c.lvalue(s.Target)
+		if s.Op != syntax.ASSIGN {
+			tt = c.projectedAssignOp(s, t, tt)
+		}
 	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)
@@ -1159,20 +1314,37 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// x += v on a value that isn't a variable calls x.plusAssign(v):
 		// ktor's this += bytes in an extension of its Digest.
 		tt = c.expr(s.Target, noWant)
+		notVar = true
 	}
 	if mutable && c.contextWrite(s) {
 		return
+	}
+	if s.Op != syntax.ASSIGN {
+		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
+		// element's type (see fixedStub).
+		tt = c.fixedStub(tt)
 	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {
 		v = id.Sym
 	}
 	if s.Op == syntax.ASSIGN {
+		n := len(c.errs)
 		vt := c.value(s.Value, tt)
 		c.assignable(vt, tt, s.Value.Pos())
+		if id, ok := s.Value.(*syntax.Ident); len(c.errs) == n && !(ok && strings.HasPrefix(id.Name, "$p")) {
+			// Not a property reference's set, which is mutable still,
+			// as kotlinc's: Klass<*>::mutableProperty.
+			c.starWrite(s.Target, vt)
+		}
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+			if slices.Contains(c.scope.vars, v) {
+				// Not in a branch, where another value of v may meet
+				// it, nor in a lambda.
+				c.bindValue(v, s.Value, false)
+			}
 		} else {
 			c.assignedVal(s.Target, vt)
 		}
@@ -1202,13 +1374,32 @@ func (c *Checker) assign(s *syntax.Assign) {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
 	}
-	if !builtinOperand(tt) || classBound(tt) {
+	if !builtinOperand(tt) || classBound(tt) || c.assignExt(tt, s) {
 		// x += v may call x.plusAssign(v), also on a val or a var whose
-		// setter the code can't see.
+		// setter the code can't see, and on a built-in type with an
+		// extension plusAssign, as Any.plusAssign for an Int.
 		if !mutable && len(c.errs) == n+1 && (c.errs[n].Msg == "val cannot be reassigned" || strings.HasPrefix(c.errs[n].Msg, invisibleSetterMsg)) {
 			c.errs = c.errs[:n]
 		}
-		c.compoundOp(s, tt, mutable)
+		want := tt // what x = x.plus(v) assigns to: a local's declared type
+		if v != nil {
+			want = v.Type
+		}
+		c.compoundOp(s, tt, want, mutable)
+		return
+	}
+	if c.opProperty(s.Target, tt, opNames[s.Op], s.Value) {
+		// An extension property plusAssign of a function type isn't an
+		// operator, though x.plusAssign(v) invokes it.
+		if mutable {
+			c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", opNames[s.Op], opNames[arithOf(s.Op)])
+		} else {
+			c.errorf(s.P, "property '%s' cannot be used as operator", opNames[s.Op])
+		}
+		return
+	}
+	if notVar {
+		c.errorf(s.Target.Pos(), "variable expected")
 		return
 	}
 	s.OpType = tt
@@ -1252,6 +1443,22 @@ func (c *Checker) namesObject(x syntax.Expr) bool {
 }
 
 // arithOf returns the arithmetic operator of a compound assignment.
+// assignExt reports whether a target of a built-in type tt has an
+// operator extension that x op= v may call, as Any.plusAssign for an Int.
+func (c *Checker) assignExt(tt types.Type, s *syntax.Assign) bool {
+	t := tt.Flex()
+	if t.K == types.Invalid || t.K == types.Nothing || t.IsParam() {
+		return false
+	}
+	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
+	for _, cl := range c.extCalleesFor(opNames[s.Op], t, probe) {
+		if cl.f.Operator && c.recvTakes(t, cl.f.Recv) && c.mayTake(cl.f, probe) {
+			return true
+		}
+	}
+	return false
+}
+
 func arithOf(k syntax.Kind) syntax.Kind {
 	switch k {
 	case syntax.PLUS_EQ:

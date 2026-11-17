@@ -159,6 +159,8 @@ internal class KcClassType(
     private val local: KaClassLikeSymbol? = null,
     /** The declaration of the local class this is the type of, if [local] isn't known yet. */
     private val localPsi: PsiElement? = null,
+    /** Set on a Java raw type that has its arguments, a class literal's: KSP lists none for it. */
+    val raw: Boolean = false,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
     private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
@@ -170,7 +172,7 @@ internal class KcClassType(
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
-        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi)
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi, raw)
     // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.localSymbol == localSymbol &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
@@ -416,7 +418,10 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
         arguments += KcTypeArgument(type, variance, token)
     }
 
-    fun build(round: KcRound, id: ClassId): KaType = KcClassType(round, id, arguments.toList(), isMarkedNullable)
+    /** The type of class [id]: a function type if it is a function class, as FIR's. */
+    fun build(round: KcRound, id: ClassId): KaType =
+        if (KcTypeContext.isFunctionClass(id.asString())) KcFunctionType(round, id, arguments.toList(), isMarkedNullable, false, 0)
+        else KcClassType(round, id, arguments.toList(), isMarkedNullable)
 
     /** The type of local class [c]: its class ID is local, as in FIR. */
     fun build(round: KcRound, c: KaClassLikeSymbol, pkg: FqName): KaType =

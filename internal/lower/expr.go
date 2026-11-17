@@ -114,6 +114,12 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindINTEGER_CONSTANT:
 		t := first(n)
 		text := t.Text()
+		if syntax.IllegalUnderscore(text) {
+			l.errorLater(l.pos(t), "illegal underscore")
+		}
+		for _, msg := range syntax.IntLiteralErrors(text) {
+			l.errorLater(l.pos(t), "%s", msg)
+		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
 			l.fail(t, "the value is out of range")
@@ -121,23 +127,14 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		return lit
 	case psi.KindFLOAT_CONSTANT:
 		t := first(n)
-		text := strings.ReplaceAll(t.Text(), "_", "")
-		if strings.HasSuffix(text, "f") || strings.HasSuffix(text, "F") {
-			v, err := strconv.ParseFloat(strings.TrimRight(text, "fF"), 32)
-			if err != nil {
-				l.fail(t, "invalid float literal")
-			}
-			f := &syntax.FloatLit{Val: float32(v)}
-			f.P = l.pos(t)
-			return f
+		if syntax.IllegalUnderscore(t.Text()) {
+			l.errorLater(l.pos(t), "illegal underscore")
 		}
-		v, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			l.fail(t, "invalid double literal")
+		lit, msg := syntax.FloatLiteral(l.pos(t), t.Text())
+		if msg != "" {
+			l.fail(t, "%s", msg)
 		}
-		d := &syntax.DoubleLit{Val: v}
-		d.P = l.pos(t)
-		return d
+		return lit
 	case psi.KindCHARACTER_CONSTANT:
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
@@ -259,6 +256,9 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	if !t.IsLeaf() || t.NumericKind() == psi.KindTHIS_KEYWORD || t.NumericKind() == psi.KindSUPER_KEYWORD {
 		l.fail(t, "unexpected %s", describeNode(t))
 	}
+	if p := n.Parent(); t.Text() != "_" || p.NumericKind() != psi.KindCALL_EXPRESSION || !has(p, psi.KindTYPE_ARGUMENT_LIST) {
+		l.underscoreRef(t)
+	}
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
@@ -270,7 +270,12 @@ func (l *lowerer) label(n psi.NodeRef) string {
 	if !q.Valid() {
 		return ""
 	}
-	return ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	name := ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	if n.NumericKind() == psi.KindLABELED_EXPRESSION && strings.Trim(name, "_") == "" {
+		// As the lexer, of a label's definition: __@{ }.
+		l.errorLater(l.pos(q), "names _, __, ___, ... are reserved in Kotlin")
+	}
+	return name
 }
 
 // annotationsOf lowers the annotations of an ANNOTATED_EXPRESSION.
@@ -306,6 +311,9 @@ func (l *lowerer) binary(n psi.NodeRef) syntax.Expr {
 		default:
 			m := &syntax.Member{X: l.expr(ops[0]), Name: ident(op)}
 			m.P = opPos
+			if op.Text() == "suspend" && ops[1].NumericKind() == psi.KindFUN {
+				l.errorLater(opPos, "modifier form for a non-built-in 'suspend' function is not allowed")
+			}
 			c := &syntax.Call{Fun: m, Args: []syntax.Expr{l.expr(ops[1])}, Infix: true}
 			c.P = opPos
 			syntax.LabelLambdas(c)
@@ -396,6 +404,7 @@ func (l *lowerer) memberExpr(x syntax.Expr, name psi.NodeRef, safe bool) *syntax
 	if t.NumericKind() != psi.KindIDENTIFIER {
 		l.fail(t, "expected a name")
 	}
+	l.underscoreRef(t)
 	m := &syntax.Member{X: x, Name: ident(t), Safe: safe}
 	m.P = l.pos(t)
 	return record(l, m, name)
@@ -565,6 +574,7 @@ func (l *lowerer) callableRef(n psi.NodeRef) syntax.Expr {
 	if name.NumericKind() != psi.KindREFERENCE_EXPRESSION {
 		l.failAt(l.end(cc), "expected a name")
 	}
+	l.underscoreRef(first(name))
 	return syntax.CallableRefLambda(l.pos(cc), &syntax.CallableRef{X: x, Type: ref, Name: ident(first(name))})
 }
 
@@ -769,7 +779,7 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 			continue
 		}
 		m := l.modifiers(child(p, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		name := child(p, psi.KindIDENTIFIER)
 		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name)}
 		if t := child(p, psi.KindTYPE_REFERENCE); t.Valid() {
@@ -816,6 +826,16 @@ func (l *lowerer) ifExpr(n psi.NodeRef) syntax.Expr {
 	return x
 }
 
+// confusingCond lowers x, a condition of w, reporting it as kc's parser
+// does if w has a subject and x is one kotlinc reserves (see confusing).
+func (l *lowerer) confusingCond(w *syntax.When, x psi.NodeRef) syntax.Expr {
+	e := l.expr(x)
+	if w.Subject != nil && confusing(x) {
+		l.errorLater(l.pos(x), confusingMsg)
+	}
+	return e
+}
+
 func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w := &syntax.When{}
 	w.P = l.pos(n)
@@ -845,14 +865,14 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 			case psi.KindWHEN_CONDITION_IN_RANGE:
 				wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
 				wc.NotIn = !wc.In
-				wc.X = l.expr(exprChild(c))
+				wc.X = l.confusingCond(w, exprChild(c))
 			case psi.KindWHEN_CONDITION_IS_PATTERN:
 				kw := first(c)
 				wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
 				wc.P = l.pos(kw)
 				wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
 			case psi.KindWHEN_CONDITION_EXPRESSION:
-				wc.X = l.expr(exprChild(c))
+				wc.X = l.confusingCond(w, exprChild(c))
 			case psi.KindWHEN_ENTRY_GUARD:
 				br.Guard = l.expr(exprChild(c))
 				continue

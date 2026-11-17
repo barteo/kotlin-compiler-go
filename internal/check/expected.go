@@ -135,3 +135,25 @@ func (c *Checker) branchTrial(s *system, t, target types.Type) *system {
 	}
 	return nil
 }
+
+// elvisRightFirst returns the type of y, the right side of an elvis whose
+// left call can't infer its variables on its own, which K2's elvis(x: K?,
+// y: K) fixes K from: a jump is Nothing, null Nothing?, and a simple
+// expression is checked on trial. ok is false if y has no proper type of
+// its own.
+func (c *Checker) elvisRightFirst(y syntax.Expr) (types.Type, bool) {
+	switch y.(type) {
+	case *syntax.Jump:
+		return types.NothingType, true
+	case *syntax.NullLit:
+		return types.NothingType.Nullable(), true
+	}
+	if !simpleExpr(y) {
+		return types.InvalidType, false
+	}
+	m := len(c.errs)
+	t := c.value(y, noWant)
+	ok := len(c.errs) == m && t.K != types.Invalid && !t.HasVars()
+	c.errs = c.errs[:m]
+	return t, ok
+}

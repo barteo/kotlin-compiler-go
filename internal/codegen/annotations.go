@@ -346,7 +346,7 @@ func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, 
 		access = cf.AccPublic | cf.AccStatic | cf.AccSynthetic
 	}
 	code := c.NewMethod(access, mname, d)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		code.AllocLocal(pd)
 	}
 	code.Op(cf.RETURN)
