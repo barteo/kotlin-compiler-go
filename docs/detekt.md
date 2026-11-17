@@ -1,98 +1,132 @@
 # detekt on kc
 
 detekt 2.0 resolves types through the Kotlin Analysis API (AA) in standalone
-mode. [`jvm/kc-detekt`](../jvm/kc-detekt) answers that API from `kc`'s
-[analysis facts](psi.md) instead of FIR. detekt-cli runs unchanged: only the
-jar of the AA's standalone mode is swapped on its class path.
+mode. [`jvm/detekt`](../jvm/detekt) builds detekt-cli from detekt's sources,
+with a few patches, on [kc's Analysis API](analysis-api.md) (`jvm/kc-aa`, the
+same implementation the KSP backend uses) instead of FIR. kc answers detekt's
+questions from its [analysis facts](psi.md).
 
 ## Results
 
-detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules`, with
-the same inputs and class path, on a 4-core machine. Each kc run took about
-one second inside `kc`.
+detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
+4-core machine. Stock is the released `detekt-cli-2.0.0-alpha.6-all.jar`. "On
+kc" is `jvm/detekt/run.sh`. Both runs used the same inputs, class path and
+`-opt-in`s.
 
 | Target | Files | Stock | On kc | Speedup | Findings that match |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.5–30 s | 9.1–9.3 s | 2.9–3.3× | 1583 of 1604 (98.7%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 45.6–60 s | 15.9–16.5 s | 2.9–3.7× | 2804 of 2834 (98.9%) |
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.5–28.3 s | 8.0–8.4 s | 3.2–3.5× | 1581 of 1597 (99.0%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 40.2 s | 13.8 s | 2.9× | 2730 of 2778 (98.3%) |
 
-With `--parallel` on kotlinx-coroutines-core, stock took 49 s and kc took
-13.4 s. kc's findings with `--parallel` are identical to its serial run.
+With `--parallel` on kotlinx-coroutines-core, stock took 34.6 s and
+kc took 10.9 s. kc's findings with `--parallel` are identical to its serial
+run. kc analyzes kotlinpoet in about 1.5 s of that.
 
 A finding matches when its file, line, column and rule are the same.
 
-- On kotlinpoet, stock has 21 findings that kc lacks, and kc has 8 that stock
+- On kotlinpoet, stock has 16 findings that kc lacks, and kc has 5 that stock
   lacks.
-- On kotlinx-coroutines-core, the counts are 30 and 55. There, stock's
-  single-module session rejects `expect` and `actual` declarations, which
-  causes 730 compiler errors in stock, including 224 overload resolution
-  ambiguities. Some of the differences are therefore stock's.
+- On kotlinx-coroutines-core, the counts are 48 and 57. There, stock's
+  single-module session rejects `expect` and `actual` declarations. So stock
+  reports, for example, `DefaultExecutor`'s private constants as unused, though
+  they are used. Some of the differences are therefore stock's.
 
-**Where the time goes.**
-
-| Phase | Stock | On kc |
-|:---|---:|---:|
-| `ValidateClasspath`: stock collects diagnostics on every file, which is full FIR resolution | 15–40 s | 0.05 s, because kc reports its errors when it analyzes |
-| `Analyzer`: running the rules | 9.0 s (kotlinpoet), 17.5 s (coroutines) | 6.7 s, 13 s |
-
-Light mode's `Analyzer`, with no types, takes 2.4 s on kotlinpoet and 7.1 s on
-coroutines. That is the floor. Most of the rest is the rules' own code
-running on a cold JVM: JIT compilation and deoptimization.
+Most of the time stock saves goes into detekt's `ValidateClasspath` step.
+Stock collects diagnostics on every file there, which is full FIR resolution.
+kc reports its errors when it analyzes the sources.
 
 ## How it works
 
 ```
-detekt-cli (unchanged)        jvm/kc-detekt                         Go: libkc.so
-  EnvironmentFacade ──► StandaloneAnalysisAPISessionBuilder (shim)
-                        Kt*ModuleBuilder (shim): records roots
-  rules: analyze(e){} ──► KcSessionProvider ─► KaSession proxy   JNI   internal/lintops
-                          KcAnalysis: calls, symbols, types   ◄──►      └─ analysis.Analyze
-                          real KtFile PSI ↔ kc psi node index            (psi.Parse, check)
+detekt-cli (patched)          jvm/kc-aa                              Go: libkc.so
+  EnvironmentAware ──► KcStandalone.open: PSI, project
+  rules: analyze(e){} ──► KcSessionProvider ─► KaSession proxy   JNI   internal/kaops
+                          KcAnalysis + KcLint: symbols,       ◄──►      └─ analysis/ka
+                          types, calls, facts                             (check + facts)
+                          real KtFile PSI ↔ kc psi node index
 ```
 
+**Build.**
+- `jvm/detekt/build.sh` fetches detekt at tag `v2.0.0-alpha.6` and applies
+  `jvm/detekt/patches` with `git am`.
+- It compiles the modules detekt-cli runs with kotlinc 2.4.21, one at a time,
+  against `jvm/aa-api`'s AA 2.4.21 jar and `kc-aa.jar`. The modules are the
+  API, core, parser, psi utilities, metrics, tooling, utils, the rule sets,
+  the reports and the command line.
+- No Gradle is involved. It does two things detekt's Gradle build does:
+  - It writes detekt-api's `BuildConfig`.
+  - It runs the Poko compiler plugin on detekt-api.
+- Kotlin 2.4.21 puts two compiler APIs detekt uses behind opt-ins, so the
+  build passes those `-opt-in`s.
+
+**The patches.** Each patch's message says why it's needed.
+- `0001` replaces detekt's `buildStandaloneAnalysisAPISession` with
+  `KcStandalone.open`. It passes the module's source roots, class path,
+  friend paths, JDK home, JVM target, `-opt-in`s and language settings, and
+  takes the session's `KtFile`s.
+- `0002` makes the rules that read a compiler warning match it by factory
+  name, such as `UNNECESSARY_SAFE_CALL`, not by FIR's `KaFirDiagnostic`
+  classes.
+- `0003` follows `JavaClassFinderImpl`'s constructor in kotlin-compiler 2.4.21.
+
 **Analysis.**
-- detekt builds its session with `buildStandaloneAnalysisAPISession`. That
-  function is inline, so detekt's bytecode calls the builder classes directly.
-- `kc-detekt` provides those classes. They record the source roots, the
-  binary roots, the JDK home and the `-opt-in`s of the source module.
-- On the first `analyze`, the libkc op `OpLintAnalyze` parses and checks all
-  the sources at once.
-  - If the sources don't compile, kc reports the errors and returns no facts,
-    so detekt's type-resolution rules see no types.
-  - Otherwise, each file's facts come back keyed by `psi` node: types,
-    symbols, resolved calls with argument mappings, smart casts, and whether
-    an expression is used as one.
+- On the first `analyze`, kc's ka operations open the module with facts on.
+  One check of all the sources builds both the model KSP uses and package
+  analysis's facts per file.
+  - If the sources don't compile, kc prints the errors and the session has
+    no facts, so detekt's type-resolution rules see no types.
+  - Otherwise, each file's facts are read when a rule first asks about the
+    file. The facts are keyed by `psi` node: types, symbols, resolved calls
+    with argument mappings, smart casts, and whether an expression is used
+    as one.
+- Symbols and types are kc-aa's own, the ones KSP sees. Source declarations
+  come from the round's PSI index. Library classes and callables come from the
+  class path.
+- `directDiagnostics` reports the warnings the facts tell:
+  - `DEPRECATION`
+  - `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION` and
+    `USELESS_ELVIS`, on values that can't be null
+  - `CAST_NEVER_SUCCEEDS`
+  - `UNREACHABLE_CODE`
+- Names, calls and other elements get the references FIR gives them. So
+  `mainReference.resolveToSymbol()` resolves through the session.
 
 **PSI.**
-- detekt's `KtFile`s are kotlin-compiler 2.4.10's PSI.
-- They map to `kc`'s nodes by preorder index. The trees have the same shape,
+- detekt's `KtFile`s are kotlin-compiler 2.4.21's PSI.
+- They map to kc's nodes by preorder index. The trees have the same shape,
   and a per-file hash of the kind sequence guards the mapping, as in
   [the KSP backend](analysis-api.md).
 
 **The Analysis API.**
-- `KaSession` is a dynamic proxy. Its members dispatch by name and parameter
-  types to `KcAnalysis`.
-- A member that `kc-detekt` doesn't implement returns an empty value: null,
-  false, 0 or an empty collection. Unimplemented members of symbols and
-  types do the same.
-- Under `-Dkc.trace=true`, the members that weren't answered are counted.
-  Under `-Dkc.strict=true`, they fail.
-- The AA classes come from detekt's own `detekt-kotlin-analysis-api` jar
-  (AA 2.4.10). AA 2.4.21 lacks a member detekt calls,
-  `resolveSymbol(KtNameReferenceExpression)`.
+- `KaSession` is kc-aa's dynamic proxy. Its members dispatch by name and
+  parameter types to `KcAnalysis`.
+- For a linter's session (`KcStandalone`), a member kc doesn't answer returns
+  an empty value: null, false, 0 or an empty collection. Unanswered members
+  of symbols and types do the same. KSP's session still fails on them.
+- Under `-Dkc.trace=true`, the unanswered members are counted. Under
+  `-Dkc.strict=true`, they fail.
 
 ## Running
 
 ```
-DETEKT_HOME=.../detekt-cli jvm/kc-detekt/build.sh
-DETEKT_HOME=.../detekt-cli jvm/kc-detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ...
+jvm/detekt/build.sh
+jvm/detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ... [-opt-in=...]
+jvm/detekt/build.sh test
 ```
 
-- `DETEKT_HOME` is a detekt-cli distribution, for example from
-  `./gradlew :detekt-cli:installDist`.
-- `run.sh` takes detekt-cli's arguments.
+- `run.sh` takes detekt-cli's arguments. Compiler options, such as
+  `-opt-in`, go last.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
   `libjsig.so`. That chains Go's signal handlers with the JVM's.
+- `build.sh test` runs detekt with `--all-rules` on the fixture in
+  `jvm/detekt/test/src`. It compares the findings with `test/want.txt`, which
+  is also what stock detekt finds there. CI runs it.
+
+**Changing detekt.**
+1. Edit the checkout in `jvm/detekt/build/detekt`.
+2. Commit there: amend the patch's commit, or add a new one.
+3. Run `jvm/detekt/build.sh patches`, which rewrites `patches/`.
+4. Run `jvm/detekt/build.sh`.
 
 ## Differences
 
@@ -102,15 +136,13 @@ These are the known causes of the differences that remain:
   `java.lang.String.substring`. kotlinc resolves it to the stdlib extension
   `kotlin.text.substring`, because Kotlin's `String` doesn't expose Java's
   members. `UnnamedParameterUse` skips Java callees, so it misses these calls
-  on kc: 14 of the 21 kotlinpoet findings that kc lacks.
-- **Unanswered members.** These count as unanswered under `-Dkc.trace`:
-  - `allOverriddenSymbols`, which detekt uses only against configured names.
-  - `findTopLevelCallables`.
-  - `expectedType`.
-  - A library property's `isVal`, a library class's `classKind` and
-    `modality`.
-  - A parameter's `generatedPrimaryConstructorProperty`.
-  - `annotationApplicableTargets`.
+  on kc: 14 of the 16 kotlinpoet findings that kc lacks.
+- **Warnings.** kc reports no warnings of its own. `directDiagnostics` reports
+  only what the facts tell, and some deprecations and unreachable code are
+  missing from them.
+- **Unanswered members.** On kotlinpoet, `-Dkc.trace` counts only these:
+  - a library property's `isVal`
+  - a library parameter's `hasDefaultValue`
 - **Subtyping.** `isSubtypeOf` uses kc's supertype lists. It compares type
   arguments only between types of the same class, by the declared variance
   of the stdlib's collections and of the sources' classes.

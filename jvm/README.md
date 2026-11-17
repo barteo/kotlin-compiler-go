@@ -10,3 +10,4 @@ Analysis API (AA) 2.4.21. Its first client is KSP2. See
 | `libkc/` | the Java side of the JNI bridge to `cmd/libkc`, and its stress test |
 | `ksp/` | `build.sh` checks out kc's fork of KSP2 (google/ksp's main, past release 2.3.13, and kc's commits, on branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend)) and compiles the `kotlin-analysis-api` module against the `aa-api` jar |
 | `kc-aa/` | the `kc` KSP backend: the Analysis API answered by kc through `libkc`; `build.sh test` runs KSP's processing loop on it over the slice, Moshi and Dagger projects; `build.sh stock` also runs them on stock KSP; both run in CI (`.github/workflows/analysis-api.yml`) |
+| `detekt/` | detekt 2.0.0-alpha.6 on kc: `build.sh` builds detekt-cli from detekt's sources with the changes in `patches/`, against `aa-api` and `kc-aa`; `run.sh` runs it; `build.sh test` checks its findings on a fixture, in CI ([docs/detekt.md](../docs/detekt.md)) |

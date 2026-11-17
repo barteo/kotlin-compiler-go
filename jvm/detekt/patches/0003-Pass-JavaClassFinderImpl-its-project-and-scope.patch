@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <kc@localhost>
+Date: Tue, 17 Nov 2026 07:47:59 +0000
+Subject: [PATCH] Pass JavaClassFinderImpl its project and scope
+
+kotlin-compiler 2.4.21 takes them in JavaClassFinderImpl's constructor;
+setScope and setProjectInstance are gone.
+---
+ .../dev/detekt/rules/potentialbugs/IgnoredReturnValue.kt     | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/detekt-rules-potential-bugs/src/main/kotlin/dev/detekt/rules/potentialbugs/IgnoredReturnValue.kt b/detekt-rules-potential-bugs/src/main/kotlin/dev/detekt/rules/potentialbugs/IgnoredReturnValue.kt
+index 13a80d5..2b8bfd0 100644
+--- a/detekt-rules-potential-bugs/src/main/kotlin/dev/detekt/rules/potentialbugs/IgnoredReturnValue.kt
++++ b/detekt-rules-potential-bugs/src/main/kotlin/dev/detekt/rules/potentialbugs/IgnoredReturnValue.kt
+@@ -159,10 +159,7 @@ class IgnoredReturnValue(config: Config) :
+         val origin = (this as? KaClassSymbol)?.origin
+         if (origin != KaSymbolOrigin.JAVA_SOURCE && origin != KaSymbolOrigin.JAVA_LIBRARY) return emptyList()
+         val packageFqName = this.classId?.packageFqName ?: return emptyList()
+-        val javaClassFinder = JavaClassFinderImpl(null).apply {
+-            setScope(scope)
+-            setProjectInstance(project)
+-        }
++        val javaClassFinder = JavaClassFinderImpl(null, project, scope)
+         return javaClassFinder.findPackage(packageFqName)?.annotations?.mapNotNull { it.classId }.orEmpty()
+     }
+ 
