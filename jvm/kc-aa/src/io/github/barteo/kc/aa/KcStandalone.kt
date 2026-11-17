@@ -20,6 +20,9 @@ import java.util.concurrent.Executors
  * Nothing here needs KSP on the class path.
  */
 object KcStandalone {
+    /** Whether kc's check starts before the session's environment is built (`-Dkc.prestart`, default true). */
+    private val prestart = System.getProperty("kc.prestart") != "false"
+
     /**
      * Opens a session over [config]'s module, which lasts until
      * [disposable] is disposed. kc starts analyzing the sources right
@@ -33,6 +36,26 @@ object KcStandalone {
 
     /** A module's session: its IntelliJ project, its files and kc's analysis of them. */
     class Session internal constructor(disposable: Disposable, private val config: KcModuleConfig) {
+        // Declared first: the check sets them from its thread, maybe before
+        // the initializers below run.
+        @Volatile private var handle = 0L
+        @Volatile private var model = 0L
+        private val start = System.nanoTime()
+
+        /**
+         * kc's check of the module, which reads the sources from their
+         * paths and needs no PSI: started before anything else, it runs
+         * while the session builds its IntelliJ environment
+         * (`KotlinCoreEnvironment` and the class path's index), and then
+         * the linter's own setup. `-Dkc.prestart=false` starts it after
+         * the environment, as before.
+         */
+        private val checked = CompletableFuture<KcModel>()
+
+        init {
+            if (prestart) startCheck()
+        }
+
         private val environment = KcEnvironment("standalone", config)
 
         init {
@@ -64,76 +87,104 @@ object KcStandalone {
                 .toList()
         }
 
-        private var handle = 0L
-        private var model = 0L
-
         /**
-         * kc's analysis of the module, run in the background from the
-         * moment the session is opened: kc reads the sources from disk, not
-         * the PSI, so it overlaps the linter's own setup, while a small pool
-         * parses the PSI for the round's index of it. As soon as kc's check
-         * is done, the pool decodes each file's facts, off the threads that
-         * run the rules.
+         * kc's analysis of the module: the check, from the moment the
+         * session is opened, while a small pool parses the PSI for the
+         * round's index of it. As soon as kc's check is done, the pool
+         * decodes each file's facts, off the threads that run the rules.
          */
         private val analysis = CompletableFuture<KaSession>()
 
         init {
             registerProjectService(org.jetbrains.kotlin.psi.KotlinReferenceProvidersService::class.java, KcReferenceProviders)
             environment.provider.lazySession = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+                val waitStart = System.nanoTime()
                 try {
                     analysis.join()
                 } catch (e: CompletionException) {
                     throw e.cause ?: e
+                } finally {
+                    KcStats.time("the first analyze call waited for kc's analysis", System.nanoTime() - waitStart)
                 }
             }
-            // A big stack: Go's runtime runs its calls on this thread's.
+            if (!prestart) startCheck()
             Thread(null, {
                 try {
                     analysis.complete(analyze())
                 } catch (e: Throwable) {
                     analysis.completeExceptionally(e)
                 }
-            }, "kc-analysis", 64L shl 20).apply { isDaemon = true }.start()
+            }, "kc-analysis", 16L shl 20).apply { isDaemon = true }.start()
+        }
+
+        /** Starts kc's check of the module's sources, on a thread of its own. */
+        private fun startCheck() {
+            // A big stack: Go's runtime runs its calls on this thread's.
+            Thread(null, {
+                try {
+                    checked.complete(check())
+                } catch (e: Throwable) {
+                    checked.completeExceptionally(e)
+                }
+            }, "kc-check", 64L shl 20).apply { isDaemon = true }.start()
+        }
+
+        /** kc's check of the sources, from their paths: the model, and the facts of its code. */
+        private fun check(): KcModel {
+            val t = KcTimer()
+            if (KcMissing.trace) {
+                val jvmStart = ProcessHandle.current().info().startInstant().orElse(null)
+                if (jvmStart != null) KcStats.time("from the JVM's start to kc's check", java.time.Duration.between(jvmStart, java.time.Instant.now()).toNanos())
+            }
+            val paths = config.sourceRoots.asSequence()
+                .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension == "kt" } }
+                .map { it.canonicalPath }
+                .distinct()
+                .sorted()
+                .toList()
+            handle = KcOps.open(
+                KcOps.Config(
+                    jdkHome = config.jdkHome?.path,
+                    noJdk = false,
+                    moduleName = config.moduleName,
+                    jobs = Runtime.getRuntime().availableProcessors(),
+                    classPath = (config.libraries + config.friends).map { it.path }.distinct(),
+                    friendPaths = config.friends.map { it.path },
+                    facts = true,
+                    optIns = config.optIns,
+                ),
+            )
+            t.mark("open")
+            val m = KcOps.update(handle, paths)
+            model = m.handle
+            t.mark("update")
+            t.print("check")
+            return m
         }
 
         /** kc's analysis of the module: its model, the round of it and the facts of its code. */
         private fun analyze(): KaSession {
             val t = KcTimer()
-            val start = System.nanoTime()
             val pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors().coerceIn(1, 4)) { r ->
                 Thread(null, r, "kc-pool", 16L shl 20).apply { isDaemon = true }
             }
             try {
                 // The PSI, every file's tree parsed, on the pool: kc checks
                 // the sources from disk meanwhile. kc takes the Kotlin files,
-                // not scripts.
-                val parsed = CompletableFuture.supplyAsync({ ktFiles.filter { !it.isScript() && it.virtualFile != null } }, pool)
+                // not scripts. A script is told by its extension: KtFile.isScript
+                // builds the file's stubs, which parses it a second time, and
+                // makes its PSI switch from the stubs to the tree later.
+                val parsed = CompletableFuture.supplyAsync({ ktFiles.filter { it.virtualFile != null && it.virtualFile.extension == "kt" } }, pool)
                     .thenCompose { files ->
                         CompletableFuture.allOf(*files.map { f -> CompletableFuture.runAsync({ KcRound.preorder(f.node) }, pool) }.toTypedArray())
                             .thenApply { files }
                     }
-                val paths = config.sourceRoots.asSequence()
-                    .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension == "kt" } }
-                    .map { it.canonicalPath }
-                    .distinct()
-                    .sorted()
-                    .toList()
-                handle = KcOps.open(
-                    KcOps.Config(
-                        jdkHome = config.jdkHome?.path,
-                        noJdk = false,
-                        moduleName = config.moduleName,
-                        jobs = Runtime.getRuntime().availableProcessors(),
-                        classPath = (config.libraries + config.friends).map { it.path }.distinct(),
-                        friendPaths = config.friends.map { it.path },
-                        facts = true,
-                        optIns = config.optIns,
-                    ),
-                )
-                t.mark("open")
-                val m = KcOps.update(handle, paths)
-                model = m.handle
-                t.mark("update")
+                val m = try {
+                    checked.join()
+                } catch (e: CompletionException) {
+                    throw e.cause ?: e
+                }
+                t.mark("check")
                 val errors = m.diagnostics
                 var facts: List<CompletableFuture<KcFileFacts>>? = null
                 if (errors.isEmpty()) {
@@ -160,6 +211,7 @@ object KcStandalone {
 
         private fun close() {
             // The analysis owns the handles until it ends.
+            runCatching { checked.join() }
             runCatching { analysis.join() }
             environment.provider.clear()
             if (model != 0L) KcOps.close(model)
