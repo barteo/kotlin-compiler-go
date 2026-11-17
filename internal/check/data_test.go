@@ -28,6 +28,11 @@ class Square : Poly()
 fun f(s: Shape?) = when (s) { is Circle -> 1 }`, "NO_ELSE_IN_WHEN", []string{"p.Empty", "is p.Square", "null"}},
 		{`fun f(b: Boolean) = when (b) { true -> 1 }`, "NO_ELSE_IN_WHEN", []string{"false"}},
 		{`package p
+sealed interface Base
+enum class C : Base { A, B }
+class D : Base
+fun f(b: Base) = when (b) { C.A -> 1; is D -> 2 }`, "NO_ELSE_IN_WHEN", []string{"p.C.B"}},
+		{`package p
 interface Source<T> { fun read(n: Int, vararg tags: String): T?
   val size: Int
   var name: String? }

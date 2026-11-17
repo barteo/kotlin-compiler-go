@@ -7,9 +7,11 @@ enumDefaults enumDefaults.kt:5:17 w
 importFromDefaultPackage importFromDefaultPackage.kt:10:1 Outer
 importFromDefaultPackage importFromDefaultPackage.kt:14:1 Host
 importFromDefaultPackage importFromDefaultPackage.kt:15:5 count
+inheritedMembers inheritedMembers.kt:75:5 r
 innerChainTypes innerChainTypes.kt:1:1 Foo
 labeledSuper labeledSuper.kt:6:1 Named
 mappedBuiltins mappedBuiltins.kt:20:19 size
+memberGivesWayToImportedMember memberGivesWayToImportedMember.kt:6:1 Utils
 nestedClassifiers main.kt:3:1 Widget
 safeAssign safeAssign.kt:2:13 value
 starImportValues defs.kt:13:1 AO
@@ -19,6 +21,7 @@ stdlibAnnotationNestedArgs stdlibAnnotationNestedArgs.kt:16:5 EmptyList
 stdlibAnnotationUnsigned stdlibAnnotationUnsigned.kt:9:1 ONE
 stdlibArgumentMapping stdlibArgumentMapping.kt:21:5 g
 stdlibBuilderInference stdlibBuilderInference.kt:175:9 onSend
+stdlibCallableRefResolution stdlibCallableRefResolution.kt:62:1 Direct
 stdlibContextInference stdlibContextInference.kt:28:9 a
 stdlibContextReferences stdlibContextReferences.kt:26:1 prop
 stdlibDelegatedExtensions stdlibDelegatedExtensions.kt:41:1 size
@@ -28,6 +31,7 @@ stdlibImportedFunctionOverObjectMethod stdlibImportedFunctionOverObjectMethod.kt
 stdlibJvmStaticExtensions stdlibJvmStaticExtensions.kt:9:1 Strings
 stdlibJvmStaticObjects stdlibJvmStaticObjects.kt:13:5 late
 stdlibKtorIo stdlibKtorIo.kt:123:1 Slot
+stdlibLambdaOverloads stdlibLambdaOverloads.kt:14:1 Invoker
 stdlibLateinit stdlibLateinit.kt:5:5 name
 stdlibLateinitCheckInReceiverLambda stdlibLateinitCheckInReceiverLambda.kt:8:5 value
 stdlibLateinitCheckInSuspendLambda stdlibLateinitCheckInSuspendLambda.kt:9:1 topLevel
@@ -40,6 +44,7 @@ stdlibParserGaps stdlibParserGaps.kt:4:5 sides
 stdlibReadyLambdasFirst stdlibReadyLambdasFirst.kt:21:1 TA
 stdlibReceiverCalls stdlibReceiverCalls.kt:51:5 d
 stdlibRefInference stdlibRefInference.kt:17:1 second
+stdlibResolutionSmartCasts stdlibResolutionSmartCasts.kt:59:1 Text
 stdlibSafeIndex stdlibSafeIndex.kt:10:5 row
 stdlibSafeIndex stdlibSafeIndex.kt:5:5 cells
 stdlibSafeInvokeProperty stdlibSafeInvokeProperty.kt:4:14 content
@@ -48,3 +53,4 @@ stdlibSerialization stdlibSerialization.kt:46:5 value
 stdlibSmartCastImplications stdlibSmartCastImplications.kt:90:36 a
 stdlibValueClasses stdlibValueClasses.kt:28:1 TagMap
 stdlibValueDelegation stdlibValueDelegation.kt:4:5 polite
+whenSeveralNonNullValues whenSeveralNonNullValues.kt:9:19 m

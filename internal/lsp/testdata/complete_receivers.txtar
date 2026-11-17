@@ -213,7 +213,7 @@ values method fun values(): Array<Color> => "values()"
 > complete src/Use.kt @enumMember 2
 dim method fun dim(): Color
 ordinal method fun ordinal(): Int
-... 3 more
+... 2 more
 > complete src/Use.kt @object 5
 LIMIT property Int
 register method fun register(s: Shape): Unit => "register("

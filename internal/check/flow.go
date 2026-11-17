@@ -937,7 +937,9 @@ func (c *Checker) assignedVal(target syntax.Expr, vt types.Type) {
 // read through either.
 func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 	if m, ok := x.(*syntax.Member); ok {
-		if m.Safe {
+		// x::p.isInitialized, checked as a Member of p (isInitialized),
+		// reads no property: it has no receiver for a top-level p.
+		if m.Safe || m.Builtin == types.IsInitialized {
 			return narrow{}, false
 		}
 		return c.memberKey(m, m.T)
