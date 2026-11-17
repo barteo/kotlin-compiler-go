@@ -4,7 +4,11 @@
 #
 #	jvm/kc-aa/build.sh [test|stock|ksp|members|kotlinpoet]
 #
-# It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
+# It writes build/kc-aa.jar and build/libkc.so, and build/kc-ksp, the
+# directory that tools/gradle/use-kc.init.gradle.kts takes as KC_KSP to run
+# a Gradle build's KSP tasks on kc (gradle.sh tests it): the jar of
+# loader/, which KSP's Gradle plugin calls, KSP's API, libkc.so, and in
+# lib/ the KSP fork, kc-aa and their libraries. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
@@ -105,6 +109,20 @@ cp "$root/psi/kinds.txt" "$classes/io/github/barteo/kc/aa/kinds.txt"
 rm -f "$out/kc-aa.jar"
 (cd "$classes" && jar cf "$out/kc-aa.jar" .)
 echo "$out/kc-aa.jar"
+
+# build/kc-ksp. Its lib/ has no class of the jars a processor shares with
+# KSP, so it is the same whether its class loader or its parent comes first.
+home=$out/kc-ksp
+rm -rf "$home" "$out/loader-classes"
+mkdir -p "$home/lib" "$out/loader-classes"
+javac --release 17 -cp "$m2/symbol-processing-common-deps-2.3.13.jar" -d "$out/loader-classes" \
+	"$here/loader/com/google/devtools/ksp/impl/KSPLoader.java"
+(cd "$out/loader-classes" && jar cf "$home/kc-ksp-loader.jar" .)
+cp "$kspwork/symbol-processing-api.jar" "$out/libkc.so" "$home/"
+cp "$out/kc-aa.jar" "$kspwork/ksp-aa-kc.jar" "$aa" "$lib/kotlin-compiler-2.4.21.jar" "$lib/kotlin-reflect-2.4.21.jar" \
+	"$lib/kotlinx-coroutines-core-jvm-1.8.0.jar" "$lib/annotations-23.0.0.jar" "$lib/caffeine-2.9.3.jar" \
+	"$m2/kotlinx-serialization-core-jvm-1.6.3.jar" "$m2/kotlinx-serialization-json-jvm-1.6.3.jar" "$home/lib/"
+echo "$home"
 
 MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
 GMAVEN=${GOOGLE_MAVEN_REPO:-https://dl.google.com/dl/android/maven2}
