@@ -36,7 +36,9 @@
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
-# Class.member"), so a member kc doesn't answer yet fails with its name.
+# Class.member"), so a member kc doesn't answer yet fails with its name; in
+# KcMissing's lenient mode, a linter's (jvm/detekt), they return an empty
+# value instead.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -48,7 +50,7 @@ java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)"
 
 # The KSP fork, the Analysis API jar and their dependencies.
 kspwork=$here/../ksp/build
-if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/build.sh" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
+if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/build.sh" "$here/../aa-api/build.sh" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
 	"$here/../ksp/build.sh" "$kspwork" >/dev/null
 fi
 lib=$kspwork/aa/m2
@@ -60,7 +62,7 @@ deps=$deps:$kspwork/symbol-processing-api.jar:$m2/symbol-processing-common-deps-
 deps=$deps:$m2/kotlinx-serialization-core-jvm-1.6.3.jar:$m2/kotlinx-serialization-json-jvm-1.6.3.jar
 kotlinc() { java -Xmx3g -cp "$runtime" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect "$@"; }
 
-optins="-opt-in=org.jetbrains.kotlin.config.CompilerConfiguration.Internals -opt-in=org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi -opt-in=org.jetbrains.kotlin.CoreEnvironmentDeprecation"
+optins="-opt-in=org.jetbrains.kotlin.psi.KtExperimentalApi -opt-in=org.jetbrains.kotlin.config.CompilerConfiguration.Internals -opt-in=org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi -opt-in=org.jetbrains.kotlin.CoreEnvironmentDeprecation"
 for m in KaImplementationDetail KaExperimentalApi KaNonPublicApi KaIdeApi KaPlatformInterface KaContextParameterApi KaSpiExtensionPoint; do
 	optins="$optins -opt-in=org.jetbrains.kotlin.analysis.api.$m"
 done
@@ -82,6 +84,10 @@ stubbed=(
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
 	symbols.pointers.KaSymbolPointer
+	symbols.KaLocalVariableSymbol symbols.KaAnonymousFunctionSymbol symbols.KaAnonymousObjectSymbol
+	resolution.KaSimpleFunctionCall resolution.KaSimpleVariableAccessCall resolution.KaPartiallyAppliedSymbol
+	resolution.KaSuccessCallInfo resolution.KaExplicitReceiverValue resolution.KaImplicitReceiverValue
+	resolution.KaSmartCastedReceiverValue signatures.KaFunctionSignature signatures.KaVariableSignature
 )
 rm -rf "$out/gen"
 kotlinc -cp "$runtime" -d "$out/gen" "$here/gen/GenStubs.kt" 2>&1 | grep -v '^warning' || true

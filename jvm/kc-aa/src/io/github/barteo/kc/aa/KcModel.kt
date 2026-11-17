@@ -13,6 +13,7 @@ internal object KcOps {
     const val CLOSE = 12
     const val CLASS = 13
     const val PACKAGE = 14
+    const val FACTS = 15
 
     class Config(
         val jdkHome: String?,
@@ -21,18 +22,34 @@ internal object KcOps {
         val classPath: List<String>,
         /** The entries of [classPath] whose internal declarations the module sees. */
         val friendPaths: List<String> = emptyList(),
+        /** Whether kc reads no JDK; without one and without a JDK home, kc finds the JDK as it does by default. */
+        val noJdk: Boolean = jdkHome == null,
+        /** Whether the session's models have the facts of the sources' code ([facts]): detekt's, not KSP's. */
+        val facts: Boolean = false,
+        /** The module's -opt-in markers. */
+        val optIns: List<String> = emptyList(),
     )
+
+    /**
+     * The facts of the file at [index] of model [model]'s files, which has
+     * [nodes] psi nodes: none unless the model's session was opened with
+     * [Config.facts] and its sources have no errors.
+     */
+    fun facts(model: Long, index: Int, nodes: Int): KcFileFacts =
+        KcFileFacts.read(Wire.Reader(KcNative.call(FACTS, Wire.Writer().writeInt(model).writeUint(index.toLong()).message())), nodes)
 
     fun open(cfg: Config): Long {
         val w = Wire.Writer()
             .writeString(cfg.jdkHome ?: "")
-            .writeBool(cfg.jdkHome == null)
+            .writeBool(cfg.noJdk)
             .writeString(cfg.moduleName)
             .writeUint(cfg.jobs.toLong())
             .writeUint(cfg.classPath.size.toLong())
         cfg.classPath.forEach { w.writeString(it) }
         w.writeUint(cfg.friendPaths.size.toLong())
         cfg.friendPaths.forEach { w.writeString(it) }
+        w.writeBool(cfg.facts).writeUint(cfg.optIns.size.toLong())
+        cfg.optIns.forEach { w.writeString(it) }
         return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
     }
 

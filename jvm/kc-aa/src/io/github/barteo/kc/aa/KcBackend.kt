@@ -59,12 +59,20 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
-/**
- * The module's source roots: Kotlin and Java sources are read from each of
- * them, whichever list names it, as stock KSP's source module does.
- */
-internal fun sourceRoots(config: KSPConfig): List<File> =
-    (config.sourceRoots + config.commonSourceRoots + (config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct()
+/** KSP's configuration as kc's. */
+internal fun KSPConfig.kcConfig(): KcModuleConfig {
+    val jvm = this as? KSPJvmConfig
+    return KcModuleConfig(
+        moduleName = moduleName,
+        sourceRoots = (sourceRoots + commonSourceRoots).distinct(),
+        javaSourceRoots = jvm?.javaSourceRoots.orEmpty(),
+        libraries = libraries,
+        friends = friends,
+        jdkHome = jvm?.jdkHome,
+        jvmTarget = jvm?.jvmTarget,
+        jvm = jvm != null,
+    )
+}
 
 /**
  * Each source's canonical path, by its path, kept by the process: a
@@ -82,11 +90,12 @@ class KcBackend : KspBackend {
     override fun open(config: KSPConfig, disposable: Disposable): KspBackendSession = KcSession(config, disposable)
 }
 
-private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMETER") disposable: Disposable) : KspBackendSession {
+private class KcSession(kspConfig: KSPConfig, @Suppress("UNUSED_PARAMETER") disposable: Disposable) : KspBackendSession {
     private val timer = KcTimer()
+    private val config = kspConfig.kcConfig()
 
     /** The Java sources the module starts with. */
-    private val javaSources: List<String> = sourceRoots(config).flatMap { root ->
+    private val javaSources: List<String> = config.allSourceRoots.flatMap { root ->
         root.walkTopDown().filter { it.isFile && it.extension == "java" }.map(::canonicalPath).toList()
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
@@ -101,7 +110,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val provider = environment.provider
     private val handle: Long = KcOps.open(
         KcOps.Config(
-            jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
+            jdkHome = config.jdkHome?.path,
             moduleName = config.moduleName,
             jobs = Runtime.getRuntime().availableProcessors(),
             classPath = (config.libraries + config.friends).map { it.path }.distinct(),
@@ -114,7 +123,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private lateinit var round: KcRound
 
     init {
-        sourceRoots(config).forEach { root ->
+        config.allSourceRoots.forEach { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }
                 .forEach { paths += canonicalPath(it) }
         }
@@ -227,37 +236,6 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 internal object KcModificationTrackers : KotlinModificationTrackerFactory {
     override fun createProjectWideSourceModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
     override fun createProjectWideLibraryModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
-}
-
-/** The module KSP processes. */
-internal class KcModule(override val project: Project, private val config: KSPConfig) : StubKaSourceModule() {
-    override val name: String get() = config.moduleName
-    override val targetPlatform: TargetPlatform
-        get() = (config as? KSPJvmConfig)?.jvmTarget?.let(JvmTarget::fromString)
-            ?.let(JvmPlatforms::jvmPlatformByTargetVersion) ?: JvmPlatforms.defaultJvmPlatform
-    override val languageVersionSettings: LanguageVersionSettings get() = LanguageVersionSettingsImpl.DEFAULT
-    override val directRegularDependencies: List<KaModule> get() = emptyList()
-    override val directDependsOnDependencies: List<KaModule> get() = emptyList()
-    override val directFriendDependencies: List<KaModule> get() = emptyList()
-    override val transitiveDependsOnDependencies: List<KaModule> get() = emptyList()
-    override fun toString() = "KcModule($name)"
-}
-
-/**
- * The module of every library symbol: kc puts the whole class path, JDK
- * included, in one.
- */
-internal class KcLibraryModule(override val project: Project, private val config: KSPConfig) : StubKaLibraryModule() {
-    override val libraryName: String get() = "kc-libraries"
-    override val binaryRoots: Collection<java.nio.file.Path> get() = config.libraries.map { it.toPath() }
-    override val isSdk: Boolean get() = false
-    override val librarySources get() = null
-    override val targetPlatform: TargetPlatform get() = JvmPlatforms.defaultJvmPlatform
-    override val directRegularDependencies: List<KaModule> get() = emptyList()
-    override val directDependsOnDependencies: List<KaModule> get() = emptyList()
-    override val directFriendDependencies: List<KaModule> get() = emptyList()
-    override val transitiveDependsOnDependencies: List<KaModule> get() = emptyList()
-    override fun toString() = "KcLibraryModule"
 }
 
 /** The FIR-only facts, as kc has them. */

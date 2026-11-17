@@ -47,6 +47,8 @@ class KcAnalysis internal constructor(
     internal val round: KcRound,
     private val module: KaModule,
     private val libraryModule: KaModule,
+    /** The facts of the sources' code, for a linter ([KcStandalone]); none for KSP. */
+    internal val lint: KcLint? = null,
 ) {
     fun getToken(): KaLifetimeToken = round.token
     fun getUseSiteModule(): KaModule = module
@@ -60,9 +62,26 @@ class KcAnalysis internal constructor(
     // KaSymbolProvider
     fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)
     fun getSymbol(declaration: KtDeclaration): KaDeclarationSymbol =
-        round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
-    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
-    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
+        round.byPsi[declaration] as? KaDeclarationSymbol ?: lint?.declarationSymbol(declaration) ?: noSymbol(declaration)
+    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol ?: lint?.declarationSymbol(c) as? KaClassSymbol
+    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? =
+        round.byPsi[c] as? KaNamedClassSymbol ?: lint?.declarationSymbol(c) as? KaNamedClassSymbol
+    // The symbols of declarations of a kind, which the Analysis API types more narrowly.
+    fun getSymbol(d: KtNamedFunction): KaFunctionSymbol = getSymbol(d as KtDeclaration) as KaFunctionSymbol
+    fun getSymbol(d: KtProperty): KaVariableSymbol = getSymbol(d as KtDeclaration) as KaVariableSymbol
+    fun getSymbol(d: KtParameter): KaVariableSymbol = getSymbol(d as KtDeclaration) as KaVariableSymbol
+    fun getSymbol(d: KtFunctionLiteral): KaAnonymousFunctionSymbol = getSymbol(d as KtDeclaration) as KaAnonymousFunctionSymbol
+    fun getSymbol(d: KtObjectLiteralExpression): KaAnonymousObjectSymbol =
+        (lint?.declarationSymbol(d) ?: noSymbol(d)) as KaAnonymousObjectSymbol
+    fun getSymbol(d: KtObjectDeclaration): KaClassSymbol = getSymbol(d as KtDeclaration) as KaClassSymbol
+    fun getSymbol(d: KtDestructuringDeclaration): KaDestructuringDeclarationSymbol =
+        getSymbol(d as KtDeclaration) as KaDestructuringDeclarationSymbol
+    fun getSymbol(d: KtTypeParameter): KaTypeParameterSymbol = getSymbol(d as KtDeclaration) as KaTypeParameterSymbol
+    fun getSymbol(d: KtConstructor<*>): KaConstructorSymbol = getSymbol(d as KtDeclaration) as KaConstructorSymbol
+    fun getSymbol(d: KtTypeAlias): KaTypeAliasSymbol = getSymbol(d as KtDeclaration) as KaTypeAliasSymbol
+    fun getSymbol(d: KtPropertyAccessor): KaPropertyAccessorSymbol = getSymbol(d as KtDeclaration) as KaPropertyAccessorSymbol
+    fun restoreSymbol(p: org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer<*>): KaSymbol? =
+        p.restoreSymbol(session(this))
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
         synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
@@ -94,7 +113,7 @@ class KcAnalysis internal constructor(
     fun getStaticMemberScope(s: KaDeclarationContainerSymbol): KaScope = when (s) {
         is KcClassSymbol -> KcScope(round.members(s).statics, round.token)
         is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
-        else -> unsupported("static member scope of $s")
+        else -> if (lint != null) KcScope(emptyList(), round.token) else unsupported("static member scope of $s")
     }
 
     /** Declared and inherited non-static callables, non-static nested classes and constructors. */
@@ -104,7 +123,7 @@ class KcAnalysis internal constructor(
             round.token,
         )
         is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
-        else -> unsupported("member scope of $s")
+        else -> if (lint != null) KcScope(members(s), round.token) else unsupported("member scope of $s")
     }
 
     // KaEvaluator: only the expressions kc evaluated, annotation arguments
@@ -141,7 +160,7 @@ class KcAnalysis internal constructor(
         is KcLibraryTypeParameterSymbol -> null
         is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
-        else -> unsupported("containingSymbol of $s")
+        else -> if (lint != null) KcLintAnalysis(this, lint).containingDeclaration(s) else unsupported("containingSymbol of $s")
     }
 
     /** The declaration [s] is in: its containing symbol, unless that's a file or package. */
@@ -235,6 +254,8 @@ class KcAnalysis internal constructor(
             return KcClassType(round, id, args)
         }
         round.typeOf(ref)?.let { return it }
+        // A type written in code, as the facts have it.
+        if (lint != null) return lintTypeOfRef(lint, ref) ?: KcErrorType(round, ref.text)
         // An argument of a type kc couldn't resolve, which has no arguments: KS<NotExist>.
         val outer = com.intellij.psi.util.PsiTreeUtil.getParentOfType(ref, KtTypeReference::class.java)
         if (outer != null && round.typeOf(outer) is KcErrorType) return KcErrorType(round, ref.text)
@@ -325,6 +346,9 @@ class KcAnalysis internal constructor(
      * support aren't errors in the file.
      */
     fun collectDiagnostics(file: KtFile, filter: KaDiagnosticCheckerFilter): Collection<KaDiagnosticWithPsi<*>> {
+        // A linter's session reports kc's errors itself (KcStandalone): it
+        // has no facts then, so its type-resolution rules see no types.
+        if (lint != null) return emptyList()
         val path = file.virtualFile?.path?.let { java.io.File(it).canonicalPath } ?: return emptyList()
         return round.diagnostics.filter { it.feature.isEmpty() && java.io.File(it.path).canonicalPath == path }
             .map { KcDiagnosticWithPsi(it, file, round.token) }
@@ -343,10 +367,102 @@ class KcAnalysis internal constructor(
     fun isSubtypeOf(a: KaType, s: KaClassLikeSymbol, policy: KaSubtypingErrorTypePolicy): Boolean =
         s.classId?.let { round.relations.isSubtype(a, it, policy == KaSubtypingErrorTypePolicy.LENIENT) } ?: false
 
+    // The members a linter (detekt) needs: what kc resolved in the code
+    // (KcLint's facts). They are KcLintAnalysis's; KSP has no facts.
+
+    private val linted: KcLintAnalysis by lazy { KcLintAnalysis(this, lint ?: unsupported("the code's facts: not a linter's session")) }
+
+    // KaExpressionTypeProvider
+    fun getExpressionType(e: KtExpression): KaType? = linted.expressionType(e)
+    fun getReturnType(d: KtDeclaration): KaType = when (val sym = getSymbol(d)) {
+        is KaCallableSymbol -> sym.returnType
+        else -> KcErrorType(round, "return type of ${d.name}")
+    }
+    fun getExpectedType(e: PsiElement): KaType? = KcMissing.miss("KaSession.expectedType", null)
+    fun isUsedAsExpression(e: KtExpression): Boolean = linted.isUsedAsExpression(e)
+
+    // KaResolver
+    fun resolveToCall(e: KtElement): org.jetbrains.kotlin.analysis.api.resolution.KaCallInfo? = linted.resolveToCall(e)
+    fun resolveCall(e: org.jetbrains.kotlin.resolution.KtResolvableCall): org.jetbrains.kotlin.analysis.api.resolution.KaSingleOrMultiCall? =
+        (e as? KtElement)?.let(linted::call) as? org.jetbrains.kotlin.analysis.api.resolution.KaSingleOrMultiCall
+    fun resolveCall(e: KtPropertyDelegate): org.jetbrains.kotlin.analysis.api.resolution.KaDelegatedPropertyCall? =
+        KcMissing.miss("KaSession.resolveCall(KtPropertyDelegate)", null)
+    fun resolveSymbol(e: KtNameReferenceExpression): KaDeclarationSymbol? = linted.referenced(e) as? KaDeclarationSymbol
+    fun resolveSymbol(e: org.jetbrains.kotlin.resolution.KtResolvable): KaSymbol? = linted.resolveSymbol(e)
+    fun resolveSymbols(e: org.jetbrains.kotlin.resolution.KtResolvable): Collection<KaSymbol> = listOfNotNull(resolveSymbol(e))
+    fun resolveToSymbol(r: org.jetbrains.kotlin.idea.references.KtReference): KaSymbol? = when (r) {
+        is org.jetbrains.kotlin.idea.references.KtSimpleNameReference -> linted.referenced(r.expression)
+        // A call's invoke reference resolves only when the call is an
+        // implicit invoke operator call: f() for a value f of a function
+        // type, or of a type with an operator invoke.
+        is org.jetbrains.kotlin.idea.references.KtInvokeFunctionReference -> calledSymbol(r.element)?.takeIf { s ->
+            s is org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol && s.name.asString() == "invoke" &&
+                (r.element.calleeExpression as? KtSimpleNameExpression)?.getReferencedName() != "invoke"
+        }
+        is org.jetbrains.kotlin.idea.references.KtArrayAccessReference -> calledSymbol(r.element)
+        else -> KcMissing.miss("KaSession.resolveToSymbol(${r.javaClass.simpleName})", null)
+    }
+
+    private fun calledSymbol(e: KtElement): KaSymbol? =
+        ((linted.resolveToCall(e) as? org.jetbrains.kotlin.analysis.api.resolution.KaSuccessCallInfo)?.call
+            as? org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall<*, *>)?.partiallyAppliedSymbol?.signature?.symbol
+    fun resolveToSymbols(r: org.jetbrains.kotlin.idea.references.KtReference): Collection<KaSymbol> = listOfNotNull(resolveToSymbol(r))
+
+    // KaTypeInformationProvider and KaTypeProvider
+    fun isUnitType(t: KaType) = linted.isClass(t, "kotlin.Unit")
+    fun isIntType(t: KaType) = linted.isClass(t, "kotlin.Int")
+    fun isLongType(t: KaType) = linted.isClass(t, "kotlin.Long")
+    fun isCharType(t: KaType) = linted.isClass(t, "kotlin.Char")
+    fun isBooleanType(t: KaType) = linted.isClass(t, "kotlin.Boolean")
+    fun isStringType(t: KaType) = linted.isClass(t, "kotlin.String")
+    fun isNothingType(t: KaType) = linted.isClass(t, "kotlin.Nothing")
+    fun isClassType(t: KaType, id: ClassId) = linted.classFq(t) == id.asFqNameString()
+    fun isPrimitive(t: KaType) = linted.classFq(t) in KcLintAnalysis.primitives && !isMarkedNullable(t)
+    fun getHasFlexibleNullability(t: KaType) = t is KcFlexibleType
+    fun isSuspendFunctionType(t: KaType) = linted.classFq(t)?.startsWith("kotlin.coroutines.SuspendFunction") == true
+    fun isFunctionType(t: KaType) = linted.classFq(t)?.matches(KcLintAnalysis.functionClass) == true
+    fun isFunctionalInterface(t: KaType): Boolean = linted.isFunctionalInterface(t)
+    fun isArrayOrPrimitiveArray(t: KaType) =
+        linted.classFq(t)?.let { it == "kotlin.Array" || it in KcLintAnalysis.primitiveArrays } == true
+    fun getArrayElementType(t: KaType): KaType? = linted.arrayElementType(t)
+    fun getAllSupertypes(t: KaType): Sequence<KaType> = getAllSupertypes(t, false)
+    fun getAllSupertypes(t: KaType, shouldApproximate: Boolean): Sequence<KaType> = linted.allSupertypes(t)
+    fun getDirectSupertypes(t: KaType, shouldApproximate: Boolean): Sequence<KaType> = directSupertypes(t, shouldApproximate)
+    fun getDefaultType(c: KaClassifierSymbol): KaType = linted.defaultType(c)
+    fun getSymbol(t: KaType): KaClassLikeSymbol? = (round.expand(t).let { (it as? KcFlexibleType)?.lowerBound ?: it } as? KaClassType)?.symbol
+
+    // KaTypeRelationChecker
+    fun isClassSubtypeOf(a: KaType, id: ClassId, policy: KaSubtypingErrorTypePolicy): Boolean =
+        round.relations.isSubtype(a, id, policy == KaSubtypingErrorTypePolicy.LENIENT)
+
+    // KaDiagnosticProvider: a linter's session reports kc's errors itself,
+    // and the warnings the facts tell on an element.
+    fun directDiagnostics(e: KtElement, filter: KaDiagnosticCheckerFilter): Collection<KaDiagnosticWithPsi<*>> = linted.directDiagnostics(e)
+
+    // KaSymbolInformationProvider
+    fun isPublicApi(sym: KaDeclarationSymbol): Boolean = linted.isPublicApi(sym)
+    fun getAnnotationApplicableTargets(c: KaClassSymbol): Set<org.jetbrains.kotlin.descriptors.annotations.KotlinTarget>? =
+        KcMissing.miss("KaSession.annotationApplicableTargets", null)
+
+    // KaScopeProvider: scope contexts, from PSI.
+    fun scopeContext(file: KtFile, position: KtElement): org.jetbrains.kotlin.analysis.api.components.KaScopeContext =
+        linted.scopeContext(file, position)
+    fun asCompositeScope(scopes: List<KaScope>): KaScope = KcScope(scopes.flatMap { it.declarations.toList() }, round.token)
+    fun getImportingScopeContext(file: KtFile): org.jetbrains.kotlin.analysis.api.components.KaScopeContext =
+        linted.importingScopeContext(file)
+
+    // KaRenderer: a declaration as its PSI's text up to its body.
+    fun render(sym: KaDeclarationSymbol, renderer: org.jetbrains.kotlin.analysis.api.renderer.declarations.KaDeclarationRenderer): String {
+        val psi = sym.psi as? KtDeclaration ?: return sym.toString()
+        val body = (psi as? KtDeclarationWithBody)?.bodyExpression ?: (psi as? KtClassOrObject)?.body
+        val text = if (body == null) psi.text else psi.text.substring(0, body.startOffsetInParent)
+        return text.trim()
+    }
+
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.let(round::declared) ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: lint?.let { KcLintAnalysis(this, it).members(s) } ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that
@@ -361,7 +477,7 @@ class KcAnalysis internal constructor(
 
         private val ANY = ClassId.fromString("kotlin/Any")
 
-        internal fun unsupported(what: String): Nothing = throw UnsupportedOperationException("kc: $what")
+        internal fun unsupported(what: String): Nothing = KcMissing.fail(what)
 
         /** The implementation behind a session made by [session]. */
         internal fun of(session: KaSession): KcAnalysis =
@@ -378,25 +494,52 @@ class KcAnalysis internal constructor(
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
                     "toString" -> if (a.isEmpty()) return "KcSession"
                 }
-                val impl = dispatch.computeIfAbsent(method) {
-                    try {
-                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes)
-                    } catch (_: NoSuchMethodException) {
-                        null
-                    }
-                }
+                val impl = dispatch.computeIfAbsent(method) { implementation(it) }
                 try {
                     return when {
                         impl != null -> impl.invoke(analysis, *a)
                         method.isDefault -> InvocationHandler.invokeDefault(proxy, method, *a)
-                        else -> unsupported(
-                            "KaSession.${method.name}(${method.parameterTypes.joinToString { it.simpleName }})",
-                        )
+                        else -> missing(method)
                     }
                 } catch (e: InvocationTargetException) {
                     throw e.targetException
                 }
             }
+
+            /** A member kc doesn't answer: its empty value in lenient mode ([KcMissing]); otherwise it throws. */
+            private fun missing(m: Method): Any? {
+                val what = "KaSession.${m.name}(${m.parameterTypes.joinToString { it.simpleName }})"
+                val r = m.returnType
+                val default: Any? = when {
+                    r == java.lang.Boolean.TYPE -> false
+                    r == Integer.TYPE -> 0
+                    r == java.lang.Void.TYPE -> null
+                    r.isPrimitive -> KcMissing.fail(what)
+                    List::class.java.isAssignableFrom(r) || r == Collection::class.java -> emptyList<Any>()
+                    r == Set::class.java -> emptySet<Any>()
+                    r == Map::class.java -> emptyMap<Any, Any>()
+                    r == Sequence::class.java -> emptySequence<Any>()
+                    else -> null
+                }
+                return KcMissing.miss(what, default)
+            }
+        }
+
+        /**
+         * The method of this class [m] dispatches to: the one with the same
+         * name and parameter types, or else the closest one whose parameter
+         * types [m]'s are assignable to and whose return type is [m]'s.
+         */
+        private fun implementation(m: Method): Method? {
+            try {
+                return KcAnalysis::class.java.getMethod(m.name, *m.parameterTypes)
+            } catch (_: NoSuchMethodException) {
+            }
+            return KcAnalysis::class.java.methods.filter { c ->
+                c.name == m.name && c.parameterCount == m.parameterCount &&
+                    c.parameterTypes.indices.all { i -> c.parameterTypes[i].isAssignableFrom(m.parameterTypes[i]) } &&
+                    m.returnType.isAssignableFrom(c.returnType)
+            }.minByOrNull { c -> c.parameterTypes.sumOf { p -> generateSequence<Class<*>>(p) { it.superclass }.count() } }
         }
     }
 }
@@ -409,9 +552,14 @@ internal class KcSessionProvider(project: Project) : KaSessionProvider(project) 
 
     fun clear() {
         session = null
+        lazySession = null
     }
 
-    private fun current(): KaSession = session ?: error("kc: no KSP run is using this environment")
+    /** The session made on first use, if [session] isn't set: a linter's ([KcStandalone]). */
+    @Volatile
+    var lazySession: Lazy<KaSession>? = null
+
+    private fun current(): KaSession = session ?: lazySession?.value ?: error("kc: no KSP run is using this environment")
     override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = current()
     override fun getAnalysisSession(useSiteModule: KaModule): KaSession = current()
     override fun beforeEnteringAnalysis(session: KaSession, useSiteElement: PsiElement) {}

@@ -1,7 +1,5 @@
 package io.github.barteo.kc.aa
 
-import com.google.devtools.ksp.processing.KSPConfig
-import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.intellij.diagnostic.PluginException
 import com.intellij.diagnostic.PluginProblemReporter
 import com.intellij.openapi.Disposable
@@ -31,14 +29,13 @@ import java.io.File
  * has changed. It owns its disposable, not the run's. One session uses it
  * at a time ([KcEnvironments.acquire]).
  */
-internal class KcEnvironment(val key: String, config: KSPConfig) {
+internal class KcEnvironment(val key: String, config: KcModuleConfig) {
     private val disposable: Disposable = Disposer.newDisposable("kc environment")
 
     val env: KotlinCoreEnvironment = run {
         val conf = CompilerConfiguration()
         conf.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
-        val jvm = config as? KSPJvmConfig
-        if (jvm != null) {
+        if (config.jvm) {
             // KSP reads Java sources through Java PSI, which resolves their
             // names (annotation classes, constants) against the class path
             // and the other Java sources, and it reads library class files
@@ -46,8 +43,8 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             // annotation defaults) through the Java file manager, which
             // must give PSI-backed classes (JavaClassImpl).
             conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
-            jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(sourceRoots(config))
+            config.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
+            conf.addJavaSourceRoots(config.allSourceRoots)
             conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
@@ -170,7 +167,7 @@ internal object KcEnvironments {
     private val enabled = System.getProperty("kc.keepEnvironment") != "false"
 
     @Synchronized
-    fun acquire(config: KSPConfig, javaSources: List<String>): KcEnvironment {
+    fun acquire(config: KcModuleConfig, javaSources: List<String>): KcEnvironment {
         val key = key(config, javaSources)
         if (enabled) {
             val i = idle.indexOfLast { it.key == key }
@@ -190,13 +187,12 @@ internal object KcEnvironments {
         while (idle.size > KEEP) idle.removeAt(0).dispose()
     }
 
-    private fun key(config: KSPConfig, javaSources: List<String>): String {
-        val jvm = config as? KSPJvmConfig
+    private fun key(config: KcModuleConfig, javaSources: List<String>): String {
         fun stamp(f: File) = "${f.path}:${f.length()}:${f.lastModified()}"
         return buildString {
             (config.libraries + config.friends).distinct().forEach { append(stamp(it)).append('\n') }
-            jvm?.jdkHome?.let { append(stamp(File(it, "lib/modules"))).append('\n') }
-            sourceRoots(config).forEach { append("root=").append(it.path).append('\n') }
+            config.jdkHome?.let { append(stamp(File(it, "lib/modules"))).append('\n') }
+            config.allSourceRoots.forEach { append("root=").append(it.path).append('\n') }
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }
