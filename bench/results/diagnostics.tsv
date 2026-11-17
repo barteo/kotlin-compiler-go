@@ -3764,7 +3764,7 @@ tests/generics/varProjection/setterProjectedOutAssign.kt	rejects invalid	on an e
 tests/generics/varProjection/setterProjectedOutNoPlusAssign.kt	rejects invalid	on an expected line	
 tests/generics/varProjection/setterProjectedOutPlusAssignDefined.kt	accepts valid		
 tests/generics/whereClauseSyntax.kt	rejects invalid	on an expected line	
-tests/generics/wildcardInValueParameter.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:3: ARGUMENT_TYPE_MISMATCH
+tests/generics/wildcardInValueParameter.kt	rejects invalid	on an expected line	
 tests/generics/wrongNumberOfTypeArgumentsDiagnostic.kt	rejects invalid	on an expected line	
 tests/headerMode/anonymousObjects.kt	skip	header mode	
 tests/headerMode/classDeclaration.kt	skip	header mode	
@@ -4234,7 +4234,7 @@ tests/inference/fixationOrder/reifiedFirst.kt	accepts valid
 tests/inference/fixationOrder/reifiedFirstSimple.kt	accepts valid		
 tests/inference/fixationOrder/revisableAtomVsPCLA.kt	rejects invalid	on an expected line	
 tests/inference/fixationOrderForProperConstraints.kt	accepts valid		
-tests/inference/flexibleConstraints.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	Test.kt:8: ARGUMENT_TYPE_MISMATCH
+tests/inference/flexibleConstraints.kt	rejects invalid	on an expected line	
 tests/inference/flexibleConstraints2.kt	rejects invalid	on an expected line	
 tests/inference/flexibleTypeAtRightSideOfElvis.kt	rejects invalid	on an expected line	
 tests/inference/flexibleTypesAsUpperBound.kt	accepts valid		
@@ -5298,7 +5298,7 @@ tests/j+k/deprecations/forFakeOverrides.kt	accepts valid
 tests/j+k/deprecations/forMixedOverride.kt	accepts valid		
 tests/j+k/deprecations/forOverrides.kt	accepts valid		
 tests/j+k/deprecations/hiddenJavaClass.kt	accepts valid		
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	accepts invalid	DEPRECATION_ERROR; UNRESOLVED_REFERENCE; VARIABLE_EXPECTED	main.kt:1: DEPRECATION_ERROR
+tests/j+k/deprecations/javaWithHiddenDeprecation.kt	rejects invalid	on an expected line	
 tests/j+k/differentFilename.kt	accepts invalid	MISSING_DEPENDENCY_CLASS; UNRESOLVED_REFERENCE	main.kt:2: MISSING_DEPENDENCY_CLASS
 tests/j+k/enumGetOrdinal.kt	accepts valid		
 tests/j+k/exceptionMessage.kt	accepts valid		
@@ -8008,7 +8008,7 @@ tests/scopes/protectedVisibility/withSmartcast.kt	rejects invalid	on an expected
 tests/scopes/publicJavaAndPrivateKotlinVar.kt	accepts valid		
 tests/scopes/sameClassNameResolve.kt	accepts valid		
 tests/scopes/singleIntersectionOverride.kt	accepts valid		
-tests/scopes/specialFunctionInJava_1.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:7: UNRESOLVED_REFERENCE
+tests/scopes/specialFunctionInJava_1.kt	rejects invalid	on an expected line	
 tests/scopes/specialFunctionInJava_2.kt	rejects invalid	on an expected line	
 tests/scopes/specialFunctionInJava_3.kt	accepts valid		
 tests/scopes/specialFunctionInJava_4.kt	accepts valid		
@@ -8270,7 +8270,7 @@ tests/smartCasts/inference/kt4415.kt	accepts valid
 tests/smartCasts/inference/kt6242.kt	accepts valid		
 tests/smartCasts/inference/smartCastOnReceiver.kt	accepts valid		
 tests/smartCasts/inference/stabilityOfSmartcastsAgainstGenericFunctions.kt	accepts valid		
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	p/test.kt:16: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	on an expected line	
 tests/smartCasts/inference/unstableSmartCastUnneededForConcreteProperty.kt	accepts valid		
 tests/smartCasts/inference/unstableSmartCastUnneededForGenericPropertyA.kt	accepts valid		
 tests/smartCasts/inference/unstableSmartCastUnneededForGenericPropertyB.kt	accepts valid		

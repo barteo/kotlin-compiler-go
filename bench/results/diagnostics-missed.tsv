@@ -1109,7 +1109,6 @@ tests/generics/tpAsReified/GenericArrayAsReifiedArgument.kt	GenericArrayAsReifie
 tests/generics/tpAsReified/InConstructor.kt	InConstructor.kt:10	TYPE_PARAMETER_AS_REIFIED	missing-check
 tests/generics/tpAsReified/InConstructor.kt	InConstructor.kt:9	TYPE_PARAMETER_AS_REIFIED	missing-check
 tests/generics/varProjection/setterProjectedOutAssign.kt	test.kt:15	ASSIGNMENT_TYPE_MISMATCH	missing-check
-tests/generics/wildcardInValueParameter.kt	main.kt:3	ARGUMENT_TYPE_MISMATCH	accepted
 tests/imports/ImportPrivateMember.kt	ImportPrivateMember.kt:36	INVISIBLE_REFERENCE	missing-check
 tests/imports/ImportPrivateMemberFromOtherFile.kt	C.kt:2	INVISIBLE_REFERENCE	missing-check
 tests/imports/ImportPrivateMemberFromOtherFile.kt	C.kt:3	INVISIBLE_REFERENCE	missing-check
@@ -1187,8 +1186,6 @@ tests/inference/completion/postponedArgumentsAnalysis/basic.kt	basic.kt:159	ARGU
 tests/inference/constraints/errorUpperBoundConstraint.kt	test.kt:4	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/expectedTypeFromCast.kt	expectedTypeFromCast.kt:9	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/expectedTypeFromCast.kt	expectedTypeFromCast.kt:9	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/flexibleConstraints.kt	Test.kt:12	ARGUMENT_TYPE_MISMATCH	accepted
-tests/inference/flexibleConstraints.kt	Test.kt:8	ARGUMENT_TYPE_MISMATCH	accepted
 tests/inference/genericInvokeInCompanion.kt	genericInvokeInCompanion.kt:13	CANNOT_INFER_PARAMETER_TYPE	syntax-error
 tests/inference/genericInvokeInCompanion.kt	genericInvokeInCompanion.kt:15	TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED	syntax-error
 tests/inference/genericInvokeInCompanion.kt	genericInvokeInCompanion.kt:15	UNRESOLVED_REFERENCE	syntax-error
@@ -1700,11 +1697,8 @@ tests/j+k/collectionOverrides/containsAll.kt	main.kt:31	ARGUMENT_TYPE_MISMATCH	a
 tests/j+k/collectionOverrides/containsAndOverload.kt	main.kt:2	ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE	missing-check
 tests/j+k/collectionOverrides/irrelevantImplMutableList.kt	X.kt:8	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/j+k/collectionOverrides/irrelevantImplMutableListKotlin.kt	X.kt:8	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:1	DEPRECATION_ERROR	accepted
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:2	UNRESOLVED_REFERENCE	accepted
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:4	UNRESOLVED_REFERENCE	accepted
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:5	UNRESOLVED_REFERENCE	accepted
-tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:5	VARIABLE_EXPECTED	accepted
+tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:5	UNRESOLVED_REFERENCE	missing-check
+tests/j+k/deprecations/javaWithHiddenDeprecation.kt	main.kt:5	VARIABLE_EXPECTED	missing-check
 tests/j+k/differentFilename.kt	main.kt:2	MISSING_DEPENDENCY_CLASS	accepted
 tests/j+k/differentFilename.kt	main.kt:2	UNRESOLVED_REFERENCE	accepted
 tests/j+k/differentFilename.kt	main.kt:3	MISSING_DEPENDENCY_CLASS	accepted
@@ -2329,10 +2323,6 @@ tests/scopes/protectedVisibility/withSmartcast.kt	withSmartcast.kt:25	INVISIBLE_
 tests/scopes/protectedVisibility/withSmartcast.kt	withSmartcast.kt:36	INVISIBLE_SETTER	missing-check
 tests/scopes/protectedVisibility/withSmartcast.kt	withSmartcast.kt:37	INVISIBLE_SETTER	missing-check
 tests/scopes/protectedVisibility/withSmartcast.kt	withSmartcast.kt:38	INVISIBLE_SETTER	missing-check
-tests/scopes/specialFunctionInJava_1.kt	main.kt:10	UNRESOLVED_REFERENCE	accepted
-tests/scopes/specialFunctionInJava_1.kt	main.kt:7	UNRESOLVED_REFERENCE	accepted
-tests/scopes/specialFunctionInJava_1.kt	main.kt:8	UNRESOLVED_REFERENCE	accepted
-tests/scopes/specialFunctionInJava_1.kt	main.kt:9	UNRESOLVED_REFERENCE	accepted
 tests/scopes/visibility2.kt	b.kt:11	INVISIBLE_REFERENCE	missing-check
 tests/scopes/visibility3.kt	file2.kt:5	INVISIBLE_REFERENCE	missing-check
 tests/secondaryConstructors/cyclicDelegationCalls.kt	cyclicDelegationCalls.kt:13	CYCLIC_CONSTRUCTOR_DELEGATION_CALL	missing-check
@@ -2355,7 +2345,6 @@ tests/settersGetters.kt	settersGetters.kt:6	ASSIGNMENT_TYPE_MISMATCH	missing-che
 tests/smartCasts/booleans/booleanOperators.kt	booleanOperators.kt:88	UNRESOLVED_REFERENCE	missing-check
 tests/smartCasts/castchecks/castInTryWithJump.kt	castInTryWithJump.kt:100	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/smartCasts/incDecToNull.kt	incDecToNull.kt:3	INAPPLICABLE_OPERATOR_MODIFIER	missing-check
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	p/test.kt:16	SMARTCAST_IMPOSSIBLE	accepted
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:17	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:28	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:43	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
