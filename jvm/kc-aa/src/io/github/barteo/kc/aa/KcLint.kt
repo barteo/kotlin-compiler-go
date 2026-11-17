@@ -256,10 +256,15 @@ internal class KcLint(
                 return keyed("c:${call.name}:${call.params.size}") { KcLintLibraryConstructorSymbol(this, call, decl) }
             }
         }
+        // The symbol answers from the call it is made of: its owner and
+        // flags (Java, stable parameter names, ...) are part of the key, or
+        // which call made it first, which depends on the order the rules
+        // visit the files in, would decide them.
         val key = buildString {
             append(call.name).append('(')
             call.params.forEach { append(it.type).append(',') }
-            append(')').append(call.declaredReceiver ?: "")
+            append(')').append(call.declaredReceiver ?: "").append(' ').append(call.ownerClassId).append(' ').append(call.flags)
+            if (sym != null) append(' ').append(sym.kind).append(sym.qualifiedName)
         }
         return keyed(key) {
             if (call.isConstructor) KcLintLibraryConstructorSymbol(this, call, null) else KcLintLibraryFunctionSymbol(this, call, sym)
