@@ -33,6 +33,11 @@ type callee struct {
 	// names are the call's argument names, with amap: a named argument
 	// of a vararg parameter is its array.
 	names []string
+	// given are the arguments of some of tparams that the call is given,
+	// as by explicit type arguments, but not written: a secondary
+	// constructor's super(...) call's, the superclass's, are the
+	// supertype's (see superCtorCands).
+	given types.Subst
 }
 
 // param returns the parameter argument i is passed to.
@@ -922,7 +927,22 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				cd.sub[p] = types.Arg{T: targs[j]}
 			}
 		default:
-			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
+			tps, base := cl.tparams, cl.recv
+			if cl.given != nil {
+				tps, base = nil, types.Subst{}
+				for p, a := range cl.recv {
+					base[p] = a
+				}
+				for p, a := range cl.given {
+					base[p] = a
+				}
+				for _, p := range cl.tparams {
+					if _, ok := cl.given[p]; !ok {
+						tps = append(tps, p)
+					}
+				}
+			}
+			cd.sub = cd.sys.fresh(tps, base, x.P)
 		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
