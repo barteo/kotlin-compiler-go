@@ -264,6 +264,11 @@ func (c *Checker) asSuper(t types.Type, target *types.ClassSym) (types.Type, boo
 	return st, ok
 }
 
+// platformArgs reports whether a type argument of t is of a platform type.
+func platformArgs(t types.Type) bool {
+	return t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.T.P })
+}
+
 func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (types.Type, bool) {
 	if depth > 50 {
 		return types.InvalidType, false
@@ -278,10 +283,24 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 			// callsInPlace(block) takes a Function<R>.
 			return types.GenericType(target, []types.Arg{{T: t.A.List[t.A.Len()-1].T}}), true
 		}
+		// A Java supertype's arguments are of platform types, which the
+		// program's own, through another supertype, are more precise
+		// than: class E : B(), A<String?>, for a Java B implementing
+		// A<String>, is an A<String?>.
+		var first types.Type
+		found := false
 		for _, s := range c.directSupers(t) {
 			if r, ok := c.asSuper1(s, target, depth+1); ok {
-				return r, true
+				if !platformArgs(r) {
+					return r, true
+				}
+				if !found {
+					first, found = r, true
+				}
 			}
+		}
+		if found {
+			return first, true
 		}
 	case types.TypeParam, types.TypeVar:
 		for _, b := range t.Param().Bounds {

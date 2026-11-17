@@ -137,6 +137,13 @@ func (p *parser) skipDecl() {
 	braces := false
 	p.next()
 	for {
+		// The lexer emits no NL after an unclosed ( or [, as in
+		// fun f(x: Int {, so a declaration that starts a line also ends
+		// the one skipped.
+		if prev := p.toks[p.i-1]; depth == 0 && prev.Kind != NL && prev.Kind != ASSIGN && p.tok().Pos.Line > prev.Pos.Line &&
+			startsDecl(p.tok()) && (braces || !p.primaryCtorAt(p.i)) && !p.accessorAt(p.i) {
+			return
+		}
 		switch p.tok().Kind {
 		case EOF:
 			return
@@ -953,12 +960,14 @@ func (p *parser) quests() bool {
 func (p *parser) parseParenType() *TypeRef {
 	pos := p.expect(LPAREN).Pos
 	var params []*TypeRef
+	var named []Pos
 	for {
 		p.skipNL()
 		if p.at(RPAREN) {
 			break
 		}
 		if p.at(IDENT) && p.toks[p.i+1].Kind == COLON {
+			named = append(named, p.toks[p.i].Pos)
 			p.i += 2
 		}
 		params = append(params, p.parseType())
@@ -970,7 +979,7 @@ func (p *parser) parseParenType() *TypeRef {
 	p.expect(RPAREN)
 	if p.peekPastNL() == ARROW {
 		p.op()
-		return &TypeRef{P: pos, Params: params, Ret: p.parseType()}
+		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named}
 	}
 	if len(params) != 1 {
 		p.unexpected("'->'")
@@ -1618,12 +1627,13 @@ func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
 	st.External, st.ExternalP = m.External, m.ExternalP
 	p.expect(LPAREN)
 	p.skipNL()
+	var anns []Annotation
 	for p.at(AT) {
-		p.annotation() // ignored, as on locals
+		anns = append(anns, p.annotation())
 		p.skipNL()
 	}
 	name := p.ident()
-	param := &Param{P: name.Pos, Name: name.Text}
+	param := &Param{P: name.Pos, Name: name.Text, Annotations: anns}
 	if p.at(COLON) {
 		p.next()
 		param.Type = p.parseType()

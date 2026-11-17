@@ -41,7 +41,13 @@ git -C "$repo" sparse-checkout set --no-cone \
 cd "$root"
 go build -o bin/kc ./cmd/kc
 go build -o "$TMPDIR/kc-conformance-harness" ./bench/conformance
+# The diagnostics mode also lists the expected errors kc misses, which
+# -missed-baseline compares a later run with.
+missed=
+if [ "$mode" = diagnostics ]; then
+	missed=bench/results/diagnostics-missed.tsv
+fi
 "$TMPDIR/kc-conformance-harness" -mode "$mode" -kotlin "$repo" -tag "$tag" -kc bin/kc \
 	-stdlib "$kotlin_home/lib/kotlin-stdlib.jar" -test "$kotlin_home/lib/kotlin-test.jar" -reflect "$kotlin_home/lib/kotlin-reflect.jar" \
 	-java "$JAVA_HOME/bin/java" -javac "$JAVA_HOME/bin/javac" \
-	-o "bench/results/$mode.md" -tsv "bench/results/$mode.tsv" "$@"
+	-o "bench/results/$mode.md" -tsv "bench/results/$mode.tsv" ${missed:+-missed "$missed"} "$@"

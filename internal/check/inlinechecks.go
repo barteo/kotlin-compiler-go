@@ -768,10 +768,29 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 		if !d.Inline || p.Noinline || !t.IsFunc() {
 			continue
 		}
+		if t.IsSuspendFunc() {
+			switch {
+			case !d.Suspend && !p.Crossinline:
+				c.errorf(p.P, "an inline suspend lambda parameter of a non-suspend function must be 'noinline' or 'crossinline'")
+			case p.Default != nil:
+				c.errorf(p.P, "suspend functional parameters with default values are not yet supported in inline functions")
+			}
+		}
 		if t.N {
 			c.errorf(p.P, "inline-parameter '%s' of '%s' must not be nullable. Add 'noinline' modifier to the parameter declaration or make its type not nullable", p.Name, d.Name)
-		} else if _, ok := p.Default.(*syntax.Call); ok {
+		} else if invalidInlineDefault(p.Default) {
 			c.errorf(p.Default.Pos(), "invalid default value for an inline functional parameter: only lambdas, anonymous functions and callable references are supported")
 		}
 	}
+}
+
+// invalidInlineDefault reports whether x, the default value of an inline
+// functional parameter, isn't a lambda, an anonymous function or a
+// callable reference, which the inliner can't inline.
+func invalidInlineDefault(x syntax.Expr) bool {
+	switch x.(type) {
+	case *syntax.Call, *syntax.Ident, *syntax.Member:
+		return true
+	}
+	return false
 }

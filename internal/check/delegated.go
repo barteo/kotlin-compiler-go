@@ -70,7 +70,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	id := &syntax.Ident{Name: s.DelegateSym.Name}
 	null := &syntax.NullLit{}
 	m := &syntax.Member{X: id, Name: "getValue"}
-	s.Get = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}}
+	s.Get = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 	id.P, null.P, m.P, s.Get.P = s.P, s.P, s.P, s.P
 	if s.Type != nil {
 		c.assignable(c.value(s.Get, t), t, s.Delegate.Pos())
@@ -86,7 +86,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		null := &syntax.NullLit{}
 		v := &syntax.Ident{Name: s.ValueSym.Name}
 		m := &syntax.Member{X: id, Name: "setValue"}
-		s.Set = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref, v}}
+		s.Set = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref, v}, Operator: true}
 		id.P, null.P, v.P, m.P, s.Set.P = s.P, s.P, s.P, s.P, s.P
 		c.value(s.Set, noWant)
 	}
@@ -329,4 +329,65 @@ func readsProperty(f *types.FunSym) bool {
 		i++ // after the dispatch receiver
 	}
 	return i >= len(b.Params) || b.Reads(i)
+}
+
+// delegateUsesTypeParam reports the delegate x, of type t, of extension
+// property p, if a type argument of t is a type parameter of p and the
+// delegate's class has a property of a generic type, which could keep a
+// value of one receiver's type for another (KT-24643), as kotlinc's
+// DELEGATE_USES_EXTENSION_PROPERTY_TYPE_PARAMETER.
+func (c *Checker) delegateUsesTypeParam(x syntax.Expr, p *syntax.PropDecl, t types.Type) {
+	params := map[*types.TypeParamSym]bool{}
+	for _, tp := range p.TypeParams {
+		if tp.Sym != nil {
+			params[tp.Sym] = true
+		}
+	}
+	if tp := usedTypeParam(t, params); tp != nil {
+		c.errorf(x.Pos(), "extension property type parameter '%s' cannot be used in delegates", tp.Name)
+	}
+}
+
+// usedTypeParam returns the first of params that is a type argument of t,
+// at any depth, of a class with a property of a generic type.
+func usedTypeParam(t types.Type, params map[*types.TypeParamSym]bool) *types.TypeParamSym {
+	if t.K != types.Class || t.A == nil {
+		return nil
+	}
+	for _, a := range t.A.List {
+		if a.V == types.Star {
+			continue
+		}
+		if a.T.IsParam() && params[a.T.Param()] && hasGenericProp(t.C, map[*types.ClassSym]bool{}) {
+			return a.T.Param()
+		}
+		if tp := usedTypeParam(a.T, params); tp != nil {
+			return tp
+		}
+	}
+	return nil
+}
+
+// hasGenericProp reports whether class cls, or a superclass of it, has a
+// property whose type mentions a type parameter.
+func hasGenericProp(cls *types.ClassSym, seen map[*types.ClassSym]bool) bool {
+	if cls == nil || seen[cls] {
+		return false
+	}
+	seen[cls] = true
+	cls.Ensure()
+	for _, v := range cls.Props {
+		if v.Type.Has(func(u types.Type) bool { return u.IsParam() }) {
+			return true
+		}
+	}
+	if hasGenericProp(cls.Super, seen) {
+		return true
+	}
+	for _, i := range cls.Interfaces {
+		if hasGenericProp(i, seen) {
+			return true
+		}
+	}
+	return false
 }

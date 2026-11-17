@@ -303,7 +303,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 			case v.Vararg:
 				// No arguments for a vararg parameter: kotlinc writes [].
 				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true, Omitted: true})
-			case !v.Default && (cls.Annotation || javaAnnotation(cls)):
+			case !v.Default && (cls.Annotation || javaAnnotation(cls) || cls.External && cls.FromKotlin && cls.AnnotationParams != nil):
 				c.errorf(p, "no value passed for parameter '%s'", v.Name)
 				ok = false
 			}
@@ -332,6 +332,13 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 				// vararg one by name: ReplaceWith(imports = ["a.b"])
 				if inner, ok := syntax.ArrayElems(elems[0]); ok {
 					elems = inner
+				} else if _, spread := elems[0].(*syntax.Spread); !spread {
+					if v.Vararg {
+						c.errorf(elems[0].Pos(), "assigning single elements to varargs in named form is prohibited")
+					} else {
+						c.errorf(elems[0].Pos(), "argument type mismatch: a single value is passed, but %s was expected", t)
+					}
+					ok = false
 				}
 			}
 			if val.Array {
@@ -411,10 +418,12 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
+		c.publishedApi(&d.Modifiers)
 		fun(d, funSite(owner))
 		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
+		c.publishedApi(&d.Modifiers)
 		c.annotations(d.Annotations, owner, propSite(owner))
 		if !d.Mutable {
 			c.setOnImmutable(d.Annotations)
@@ -437,6 +446,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
+		c.publishedApi(&d.Modifiers)
+		c.publishedApi(&d.CtorMods)
 		c.annotations(d.Annotations, cls, classSite(d))
 		if d.Annotation {
 			c.repeatableContainer(d)
@@ -451,6 +462,9 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
+			if cp.IsProp {
+				c.publishedApi(&cp.Modifiers)
+			}
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
 			if cp.IsProp && !cp.Mutable {
 				c.setOnImmutable(cp.Modifiers.Annotations)
@@ -467,6 +481,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.annotations(m.Annotations, cls, initSite)
 			case *syntax.SecondaryCtor:
 				c.noReceiver(m.Annotations)
+				c.publishedApi(&m.Modifiers)
 				c.annotations(m.Annotations, cls, ctorSite)
 				for _, p := range m.Params {
 					c.noReceiver(p.Annotations)

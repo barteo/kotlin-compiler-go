@@ -13,7 +13,7 @@ tests/BacktickNamesOld.kt	skip	LANGUAGE
 tests/Basic.kt	rejects invalid	on an expected line	
 tests/BinaryCallsOnNullableValues.kt	rejects invalid	on an expected line	
 tests/Bounds.kt	rejects invalid	on an expected line	
-tests/BreakContinue.kt	rejects invalid	elsewhere	
+tests/BreakContinue.kt	rejects invalid	on an expected line	
 tests/BreakContinueInWhen_after.kt	rejects invalid	on an expected line	
 tests/Builders.kt	accepts valid		
 tests/Casts.kt	rejects invalid	on an expected line	
@@ -68,7 +68,7 @@ tests/LiteralAsResult.kt	accepts valid
 tests/LocalClassAndShortSubpackageNames.kt	rejects invalid	on an expected line	
 tests/MultilineStringTemplates.kt	rejects invalid	on an expected line	
 tests/MultipleBounds.kt	rejects invalid	on an expected line	
-tests/NamedFunctionTypeParameterInSupertype.kt	accepts invalid	UNSUPPORTED	NamedFunctionTypeParameterInSupertype.kt:8: UNSUPPORTED
+tests/NamedFunctionTypeParameterInSupertype.kt	rejects invalid	on an expected line	
 tests/NestedOfAliasedType.kt	accepts valid		
 tests/NestedSuperType.kt	accepts valid		
 tests/Nullability.kt	rejects invalid	on an expected line	
@@ -102,14 +102,14 @@ tests/RedundantInterpolationPrefixCornerCases.kt	rejects invalid	on an expected 
 tests/ReserveYieldNoMore.kt	accepts valid		
 tests/ReserveYieldNoMore2.kt	skip	LANGUAGE	
 tests/ResolveOfJavaGenerics.kt	rejects invalid	on an expected line	
-tests/ResolveToJava.kt	rejects invalid	elsewhere	
+tests/ResolveToJava.kt	rejects invalid	on an expected line	
 tests/Return.kt	rejects invalid	on an expected line	
 tests/ReturnInFunctionWithoutBody.kt	rejects invalid	on an expected line	
 tests/SafeCallInvoke.kt	accepts valid		
 tests/SafeCallNonNullReceiver2.kt	accepts valid		
 tests/SafeCallNonNullReceiverReturnNull.kt	rejects invalid	on an expected line	
 tests/SafeCallOnFakePackage.kt	rejects invalid	on an expected line	
-tests/SafeCallOnSuperReceiver.kt	accepts invalid	UNEXPECTED_SAFE_CALL	SafeCallOnSuperReceiver.kt:10: UNEXPECTED_SAFE_CALL
+tests/SafeCallOnSuperReceiver.kt	rejects invalid	on an expected line	
 tests/SafeCallUnknownType.kt	rejects invalid	on an expected line	
 tests/Serializable.kt	rejects invalid	on an expected line	
 tests/SetterVisibility.kt	rejects invalid	on an expected line	
@@ -155,8 +155,8 @@ tests/alwaysRenderFullExpansions.kt	accepts valid
 tests/ambiguityNamedVararg.kt	rejects invalid	on an expected line	
 tests/ambiguityWithVararg.kt	accepts valid		
 tests/ambiguityWithVarargManyExamples.kt	rejects invalid	on an expected line	
-tests/ambiguousLabelInExtensionFunctionWithOuterClass.kt	accepts invalid	AMBIGUOUS_LABEL	ambiguousLabelInExtensionFunctionWithOuterClass.kt:5: AMBIGUOUS_LABEL
-tests/ambiguousLabelInSuper.kt	accepts invalid	AMBIGUOUS_LABEL	ambiguousLabelInSuper.kt:10: AMBIGUOUS_LABEL
+tests/ambiguousLabelInExtensionFunctionWithOuterClass.kt	rejects invalid	on an expected line	
+tests/ambiguousLabelInSuper.kt	rejects invalid	on an expected line	
 tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	rejects invalid	on an expected line	
 tests/annotatedPackageQualifiers.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotationArgumentWithAliasedArrayType.kt	accepts valid		
@@ -356,9 +356,9 @@ tests/annotations/options/targets/function.kt	rejects invalid	on an expected lin
 tests/annotations/options/targets/funtypeargs.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/incorrect.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/init.kt	rejects invalid	on an expected line	
-tests/annotations/options/targets/java.kt	accepts invalid	WRONG_ANNOTATION_TARGET	test/AnnotationTargets.kt:7: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/java.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/local.kt	rejects invalid	on an expected line	
-tests/annotations/options/targets/mixedTargeting.kt	accepts invalid	WRONG_ANNOTATION_TARGET; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	test/AnnotationTargets.kt:8: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/mixedTargeting.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/nested.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/property.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/returntype.kt	rejects invalid	on an expected line	
@@ -852,7 +852,7 @@ tests/callableReference/packageInLhs.kt	rejects invalid	on an expected line
 tests/callableReference/parsingPriorityOfGenericArgumentsVsLess.kt	rejects invalid	on an expected line	
 tests/callableReference/property/abstractPropertyViaSubclasses.kt	rejects invalid	on an expected line	
 tests/callableReference/property/accessViaSubclass.kt	accepts valid		
-tests/callableReference/property/backingField.kt	accepts invalid	UNSUPPORTED	backingField.kt:6: UNSUPPORTED
+tests/callableReference/property/backingField.kt	rejects invalid	on an expected line	
 tests/callableReference/property/classFromClass.kt	accepts valid		
 tests/callableReference/property/extensionFromTopLevel.kt	rejects invalid	on an expected line	
 tests/callableReference/property/extensionPropertyOnNullable.kt	accepts valid		
@@ -934,9 +934,9 @@ tests/callableReference/unitAdaptationForReferenceCompatibility.kt	rejects inval
 tests/callableReference/unsupported/callableReferenceToLocalVariable.kt	rejects invalid	on an expected line	
 tests/callableReference/unsupported/classLiteralsWithEmptyLHS.kt	rejects invalid	on an expected line	
 tests/callableReference/unsupported/javaOverridesKotlinProperty.kt	skip	LANGUAGE	
-tests/callableReference/unsupported/localVariable.kt	accepts invalid	UNSUPPORTED	localVariable.kt:7: UNSUPPORTED
-tests/callableReference/unsupported/localVariableWithSubstitution.kt	parse/unsupported	property reference	
-tests/callableReference/unsupported/parameterWithSubstitution.kt	parse/unsupported	property reference	
+tests/callableReference/unsupported/localVariable.kt	rejects invalid	on an expected line	
+tests/callableReference/unsupported/localVariableWithSubstitution.kt	rejects invalid	on an expected line	
+tests/callableReference/unsupported/parameterWithSubstitution.kt	rejects invalid	on an expected line	
 tests/callableReference/unsupported/referenceToKotlinPropertyViaIntermediateJavaClass.kt	skip	LANGUAGE	
 tests/callableReference/unsupported/syntheticProperties.kt	skip	LANGUAGE	
 tests/callableReference/unsupported/syntheticPropertiesOnJavaAnnotation.kt	skip	LANGUAGE	
@@ -1598,7 +1598,7 @@ tests/contextParameters/declarationAndUsages/inFunctionDeclaration.kt	accepts va
 tests/contextParameters/declarationAndUsages/inFunctionalType.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/inPropertyDeclaration.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/initializerInProperty.kt	rejects invalid	elsewhere	
-tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	rejects invalid	elsewhere	
+tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/memberUsageFromContextScope.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/moreThenOneContext.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/multipleContextsWithTheSameType.kt	rejects invalid	on an expected line	
@@ -1872,7 +1872,7 @@ tests/contracts/pos/1.kt	accepts valid
 tests/contracts/pos/14UserDefined.kt	rejects invalid	on an expected line	
 tests/contracts/substitutedFunctionWithContract.kt	accepts valid		
 tests/contracts/substitutedPropertyAccessorWithContract.kt	accepts valid		
-tests/contracts/suppressContractWarning.kt	accepts invalid	ANNOTATION_IN_CONTRACT_ERROR	suppressContractWarning.kt:27: ANNOTATION_IN_CONTRACT_ERROR
+tests/contracts/suppressContractWarning.kt	rejects invalid	on an expected line	
 tests/contracts/varCapturing/allowlistedDispatchers.kt	skip	LANGUAGE	
 tests/contracts/varCapturing/callsInPlaceExclusions.kt	skip	LANGUAGE	
 tests/contracts/varCapturing/crossReassignments.kt	skip	LANGUAGE	
@@ -1943,15 +1943,15 @@ tests/controlFlowAnalysis/deadCode/returnInDeadLambda.kt	accepts valid
 tests/controlFlowAnalysis/deadCode/smartCastAfterDeadCode.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/uninitializedMemberAfterUnreachableFunction.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/definiteReturn/InlineReturn.kt	accepts valid		
-tests/controlFlowAnalysis/definiteReturn/ReturnFromFunctionInObject.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/definiteReturn/ReturnFromFunctionInObject.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/definiteReturn/elvisOperator.kt	accepts valid		
-tests/controlFlowAnalysis/definiteReturn/kt3444_ReturnFromLocalFunctions.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/definiteReturn/kt3444_ReturnFromLocalFunctions.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/definiteReturn/kt4034.kt	accepts valid		
 tests/controlFlowAnalysis/definiteReturn/lambdaInTryFalsePositive.kt	accepts valid		
 tests/controlFlowAnalysis/definiteReturn/returnAliasedUnitNotRequired.kt	accepts valid		
 tests/controlFlowAnalysis/definiteReturn/simpleClass.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/definiteReturn/singleReturnFromTry.kt	rejects invalid	elsewhere	
-tests/controlFlowAnalysis/definiteReturnInWhen.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/definiteReturn/singleReturnFromTry.kt	rejects invalid	on an expected line	
+tests/controlFlowAnalysis/definiteReturnInWhen.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/delegatedConstructorArguments.kt	accepts valid		
 tests/controlFlowAnalysis/delegatedConstructorOrder.kt	accepts valid		
 tests/controlFlowAnalysis/delegatedMemberProperyWriteInInit.kt	rejects invalid	on an expected line	
@@ -1963,7 +1963,7 @@ tests/controlFlowAnalysis/enumCompanionInterdependence.kt	rejects invalid	on an 
 tests/controlFlowAnalysis/enumEntryAccessInCapturedBlock.kt	skip	LANGUAGE	
 tests/controlFlowAnalysis/enumEntryAccessInCapturedBlockWithProperAnalysis.kt	skip	LANGUAGE	
 tests/controlFlowAnalysis/enumEntryAssignment.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/enumInterdependence.kt	accepts invalid	UNINITIALIZED_ENUM_ENTRY	enumInterdependence.kt:3: UNINITIALIZED_ENUM_ENTRY
+tests/controlFlowAnalysis/enumInterdependence.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/fieldAsClassDelegate.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/fieldInitialization.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/initializationInLambda.kt	rejects invalid	on an expected line	
@@ -1993,10 +1993,10 @@ tests/controlFlowAnalysis/kt2369.kt	rejects invalid	on an expected line
 tests/controlFlowAnalysis/kt2845.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/kt2960.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/kt2972.kt	accepts valid		
-tests/controlFlowAnalysis/kt3444.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/kt3444.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/kt3501.kt	accepts valid		
 tests/controlFlowAnalysis/kt4126.kt	accepts valid		
-tests/controlFlowAnalysis/kt4405.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/kt4405.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/kt510.kt	accepts valid		
 tests/controlFlowAnalysis/kt52131.kt	accepts valid		
 tests/controlFlowAnalysis/kt607.kt	rejects invalid	on an expected line	
@@ -2013,7 +2013,7 @@ tests/controlFlowAnalysis/lambdaCaptureInitializedPropertyInOtherArgument.kt	rej
 tests/controlFlowAnalysis/lambdaCaptureUninitializedInOtherArgument.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/lambdaCaptureUninitializedLambda.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/lambdaCaptureUninitializedProperty.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/localClasses.kt	rejects invalid	elsewhere	
+tests/controlFlowAnalysis/localClasses.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/localObjectInConstructor.kt	accepts valid		
 tests/controlFlowAnalysis/loopWithNonTrivialBooleanConst.kt	accepts valid		
 tests/controlFlowAnalysis/mainWithWarningOnUnusedParam.kt	accepts valid		
@@ -2046,7 +2046,7 @@ tests/controlFlowAnalysis/tryWithAssignmentUsedInCatch.kt	accepts valid
 tests/controlFlowAnalysis/uninintializedProperyWithDirectAndDelayedInitialization.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/uninitializedCompanionOfEnum.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/uninitializedInLocalDeclarations.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/uninitializedQualifiedEnumEntry.kt	accepts invalid	UNINITIALIZED_ENUM_ENTRY	uninitializedQualifiedEnumEntry.kt:9: UNINITIALIZED_ENUM_ENTRY
+tests/controlFlowAnalysis/uninitializedQualifiedEnumEntry.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/unmappedArgs.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/unnecessaryLateinit/lateinitRecursiveInLambda.kt	accepts valid		
 tests/controlFlowAnalysis/unnecessaryLateinit/lateinitWithConstructor.kt	accepts valid		
@@ -2070,7 +2070,7 @@ tests/controlStructures/ForbidStatementAsDirectFunctionBody.kt	rejects invalid	o
 tests/controlStructures/breakContinueInCrossInlineLambda.kt	rejects invalid	on an expected line	
 tests/controlStructures/breakContinueInNoInlineLambda.kt	rejects invalid	on an expected line	
 tests/controlStructures/breakToLabel.kt	accepts valid		
-tests/controlStructures/catchGenerics.kt	accepts invalid	GENERIC_THROWABLE_SUBCLASS; TYPE_PARAMETER_IN_CATCH_CLAUSE	catchGenerics.kt:6: GENERIC_THROWABLE_SUBCLASS
+tests/controlStructures/catchGenerics.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchInnerClassesOfGenerics.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchOfTypeNothing.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchReifiedTypeAllowed.kt	accepts valid		
@@ -2410,7 +2410,7 @@ tests/dataFlowInfoTraversal/kt5155WhenBranches.kt	accepts valid
 tests/dataFlowInfoTraversal/kt5182WhenBranches.kt	accepts valid		
 tests/dataFlowInfoTraversal/smartcasts/SmartcastAmbiguitites.kt	accepts valid		
 tests/dataFlowInfoTraversal/smartcasts/SmartcastsForStableIdentifiers.kt	accepts valid		
-tests/dataObjects/overrideEqualsAndHashCode.kt	accepts invalid	DATA_OBJECT_CUSTOM_EQUALS_OR_HASH_CODE	overrideEqualsAndHashCode.kt:4: DATA_OBJECT_CUSTOM_EQUALS_OR_HASH_CODE
+tests/dataObjects/overrideEqualsAndHashCode.kt	rejects invalid	on an expected line	
 tests/declarationChecks/ComponentFunctionReturnTypeMismatch.kt	skip	LANGUAGE	
 tests/declarationChecks/ComponentFunctionReturnTypeMismatchOld.kt	skip	LANGUAGE	
 tests/declarationChecks/ConflictingAndRedundantProjections.kt	rejects invalid	on an expected line	
@@ -2475,7 +2475,7 @@ tests/declarationChecks/kt2631_MultipleDeclaration.kt	skip	LANGUAGE
 tests/declarationChecks/kt2631_MultipleDeclarationOld.kt	skip	LANGUAGE	
 tests/declarationChecks/kt2643MultiDeclInControlFlow.kt	skip	LANGUAGE	
 tests/declarationChecks/kt2643MultiDeclInControlFlowOld.kt	skip	LANGUAGE	
-tests/declarationChecks/kt47245.kt	accepts invalid	SINGLE_ANONYMOUS_FUNCTION_WITH_NAME_ERROR	kt47245.kt:5: SINGLE_ANONYMOUS_FUNCTION_WITH_NAME_ERROR
+tests/declarationChecks/kt47245.kt	rejects invalid	on an expected line	
 tests/declarationChecks/kt559.kt	rejects invalid	on an expected line	
 tests/declarationChecks/localDeclarationModifiers.kt	rejects invalid	on an expected line	
 tests/declarationChecks/localFunctionNoInheritVisibility.kt	rejects invalid	on an expected line	
@@ -2605,7 +2605,7 @@ tests/delegatedProperty/typeMismatchForGetWithGeneric.kt	rejects invalid	on an e
 tests/delegatedProperty/typeMismatchForSetParameter.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/typeMismatchForThisGetParameter.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/useTypeParameterOfExtensionProperty.kt	rejects invalid	on an expected line	
-tests/delegatedProperty/useTypeParameterOfExtensionProperty2.kt	accepts invalid	DELEGATE_USES_EXTENSION_PROPERTY_TYPE_PARAMETER_ERROR	useTypeParameterOfExtensionProperty2.kt:22: DELEGATE_USES_EXTENSION_PROPERTY_TYPE_PARAMETER_ERROR
+tests/delegatedProperty/useTypeParameterOfExtensionProperty2.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/useTypeParameterOfExtensionProperty3.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/withInvokes.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/wrongCountOfParametersInGet.kt	skip	LANGUAGE	
@@ -2727,7 +2727,7 @@ tests/deprecated/importJavaSamInterface.kt	accepts valid
 tests/deprecated/imports.kt	accepts valid		
 tests/deprecated/insideDeprecatedClass.kt	skip	LANGUAGE	
 tests/deprecated/iteratorUsage.kt	accepts valid		
-tests/deprecated/javaDeprecated.kt	accepts invalid	(no error marked)	
+tests/deprecated/javaDeprecated.kt	rejects invalid	on an expected line	
 tests/deprecated/javaDeprecatedHidden.kt	rejects invalid	on an expected line	
 tests/deprecated/javaDeprecatedInheritance.kt	accepts valid		
 tests/deprecated/javaDeprecatedOnStaticMethod.kt	accepts valid		
@@ -3021,7 +3021,7 @@ tests/enum/enumWithAnnotationKeyword.kt	rejects invalid	on an expected line
 tests/enum/enumWithEmptyName.kt	rejects invalid	on an expected line	
 tests/enum/equalityOfEnumAndParameter.kt	rejects invalid	on an expected line	
 tests/enum/equalityOfFlexibleTypeParameters.kt	rejects invalid	on an expected line	
-tests/enum/extendingEnumDirectly.kt	accepts invalid	CLASS_CANNOT_BE_EXTENDED_DIRECTLY	extendingEnumDirectly.kt:2: CLASS_CANNOT_BE_EXTENDED_DIRECTLY
+tests/enum/extendingEnumDirectly.kt	rejects invalid	on an expected line	
 tests/enum/extensionNamedAsEnumEntry.kt	accepts valid		
 tests/enum/genericWithEnumBound.kt	skip	LANGUAGE	
 tests/enum/giantEnumWithConstructor.kt	accepts valid		
@@ -3170,7 +3170,7 @@ tests/explicitDefinitelyNotNullableViaIntersection/notApplicable.kt	rejects inva
 tests/explicitDefinitelyNotNullableViaIntersection/overrides.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/overridesJavaAnnotated.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/recursiveBounds.kt	rejects invalid	on an expected line	
-tests/explicitDefinitelyNotNullableViaIntersection/reifiedArguments.kt	accepts invalid	DEFINITELY_NON_NULLABLE_AS_REIFIED	reifiedArguments.kt:6: DEFINITELY_NON_NULLABLE_AS_REIFIED
+tests/explicitDefinitelyNotNullableViaIntersection/reifiedArguments.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/simple.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/starProjection.kt	accepts valid		
 tests/exposed/ambiguousAnonymousExposed.kt	rejects invalid	on an expected line	
@@ -3229,7 +3229,7 @@ tests/expresssions/enumValues.kt	accepts valid
 tests/expresssions/errCallable.kt	rejects invalid	on an expected line	
 tests/expresssions/extensionPropertyInLambda.kt	accepts valid		
 tests/expresssions/genericDecorator.kt	rejects invalid	on an expected line	
-tests/expresssions/genericDescriptor.kt	accepts invalid	EXTENSION_PROPERTY_WITH_BACKING_FIELD	test.kt:2: EXTENSION_PROPERTY_WITH_BACKING_FIELD
+tests/expresssions/genericDescriptor.kt	rejects invalid	on an expected line	
 tests/expresssions/genericDiagnostic.kt	accepts valid		
 tests/expresssions/genericPropertyAccess.kt	accepts valid		
 tests/expresssions/genericUsedInFunction.kt	accepts valid		
@@ -3458,7 +3458,7 @@ tests/funInterface/funInterfaceDeclarationCheck.kt	rejects invalid	on an expecte
 tests/funInterface/funInterfaceSyntheticConstructors.kt	accepts valid		
 tests/funInterface/funInterfaceWithAnyOverrides.kt	rejects invalid	on an expected line	
 tests/funInterface/funIsNotInheritedFromBaseInterface.kt	rejects invalid	on an expected line	
-tests/funInterface/functionDelegateClashOnJvm.kt	accepts invalid	FUNCTION_DELEGATE_MEMBER_NAME_CLASH	functionDelegateClashOnJvm.kt:5: FUNCTION_DELEGATE_MEMBER_NAME_CLASH
+tests/funInterface/functionDelegateClashOnJvm.kt	rejects invalid	on an expected line	
 tests/funInterface/genericSubstitutionForFunInterface.kt	accepts valid		
 tests/funInterface/kt78942.kt	rejects invalid	on an expected line	
 tests/funInterface/noCompatibilityResolveForFunInterfaces.kt	accepts valid		
@@ -3581,7 +3581,7 @@ tests/functionLiterals/unusedLiteral.kt	accepts valid
 tests/functionLiterals/unusedLiteralInsideUnitLiteral.kt	accepts valid		
 tests/functionTypeAlias.kt	accepts valid		
 tests/functionTypeInitializerTypeMismatch.kt	rejects invalid	on an expected line	
-tests/functionTypes.kt	rejects invalid	elsewhere	
+tests/functionTypes.kt	rejects invalid	on an expected line	
 tests/genericConstructors.kt	accepts valid		
 tests/genericFunctions.kt	accepts valid		
 tests/genericReceiverPropertyOverride.kt	accepts valid		
@@ -3608,7 +3608,7 @@ tests/generics/capturedParameters/objectLiteral.kt	rejects invalid	on an expecte
 tests/generics/capturedParameters/uncheckedCast.kt	rejects invalid	on an expected line	
 tests/generics/commonSupertypeContravariant.kt	accepts valid		
 tests/generics/commonSupertypeContravariant2.kt	accepts valid		
-tests/generics/conflictingStarAndTypeParameterBounds.kt	accepts invalid	INCONSISTENT_TYPE_PARAMETER_BOUNDS	conflictingStarAndTypeParameterBounds.kt:10: INCONSISTENT_TYPE_PARAMETER_BOUNDS
+tests/generics/conflictingStarAndTypeParameterBounds.kt	rejects invalid	on an expected line	
 tests/generics/constructorOnGenericQualifier.kt	skip	LANGUAGE	
 tests/generics/constructorOnGenericQualifierForbidden.kt	skip	LANGUAGE	
 tests/generics/cyclicBounds/diagnosticMessages.kt	rejects invalid	on an expected line	
@@ -4142,7 +4142,7 @@ tests/inference/dependantOnVarianceNullable.kt	rejects invalid	on an expected li
 tests/inference/discardInapplicableCandidateWithNotSatisfyingSelfType.kt	accepts valid		
 tests/inference/dnnArgumentInferred.kt	accepts valid		
 tests/inference/dnnThrowJavaCall.kt	accepts valid		
-tests/inference/dontThrowEmptyIntersectionException.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:3: UNRESOLVED_REFERENCE
+tests/inference/dontThrowEmptyIntersectionException.kt	rejects invalid	on an expected line	
 tests/inference/elvisAndLongIlt.kt	skip	LANGUAGE	
 tests/inference/elvisAndLongIltLegacy.kt	skip	LANGUAGE	
 tests/inference/elvisAndUnit.kt	accepts valid		
@@ -4784,8 +4784,8 @@ tests/inference/recursiveTypes/twoTypeConstructors.kt	accepts valid
 tests/inference/regressions/classSubstitutedWithOwnFunctionTypeParameter.kt	rejects invalid	on an expected line	
 tests/inference/regressions/compareBy.kt	accepts valid		
 tests/inference/regressions/functionalSuperTypeOfIntersectionType.kt	rejects invalid	on an expected line	
-tests/inference/regressions/kt1029.kt	rejects invalid	elsewhere	
-tests/inference/regressions/kt1031.kt	rejects invalid	elsewhere	
+tests/inference/regressions/kt1029.kt	rejects invalid	on an expected line	
+tests/inference/regressions/kt1031.kt	rejects invalid	on an expected line	
 tests/inference/regressions/kt1127.kt	rejects invalid	on an expected line	
 tests/inference/regressions/kt1145.kt	rejects invalid	on an expected line	
 tests/inference/regressions/kt1358.kt	accepts valid		
@@ -4956,7 +4956,7 @@ tests/inline/callableReferenceOnInlineParameter.kt	rejects invalid	on an expecte
 tests/inline/capture.kt	rejects invalid	on an expected line	
 tests/inline/constructor.kt	rejects invalid	on an expected line	
 tests/inline/default.kt	accepts valid		
-tests/inline/defaultLambdaInlineSuspend.kt	accepts invalid	NOT_YET_SUPPORTED_IN_INLINE	defaultLambdaInlineSuspend.kt:4: NOT_YET_SUPPORTED_IN_INLINE
+tests/inline/defaultLambdaInlineSuspend.kt	rejects invalid	on an expected line	
 tests/inline/defaultLambdaInlining.kt	rejects invalid	on an expected line	
 tests/inline/exposingInternalTypesInProtected.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/inline/exposingObjects.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -5099,9 +5099,9 @@ tests/inlineClasses/inlineClassWithForbiddenUnderlyingType.kt	skip	LANGUAGE
 tests/inlineClasses/inlineClassesInsideAnnotations.kt	skip	LANGUAGE	
 tests/inlineClasses/innerClassInsideInlineClass.kt	skip	LANGUAGE	
 tests/inlineClasses/jvmExposeBoxed/jvmName.kt	rejects invalid	elsewhere	
-tests/inlineClasses/jvmExposeBoxed/kt85086.kt	accepts invalid	JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME	kt85086.kt:11: JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME
+tests/inlineClasses/jvmExposeBoxed/kt85086.kt	rejects invalid	on an expected line	
 tests/inlineClasses/jvmExposeBoxed/method.kt	accepts valid		
-tests/inlineClasses/jvmExposeBoxed/private.kt	accepts invalid	JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE	private.kt:11: JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE
+tests/inlineClasses/jvmExposeBoxed/private.kt	rejects invalid	on an expected line	
 tests/inlineClasses/jvmExposeBoxed/simple.kt	rejects invalid	on an expected line	
 tests/inlineClasses/kt51366.kt	skip	LANGUAGE	
 tests/inlineClasses/lateinitInlineClassesOff.kt	skip	LANGUAGE	
@@ -5122,7 +5122,7 @@ tests/inlineConstructorParameter.kt	skip	LANGUAGE
 tests/inlineConstructorParameter_on.kt	skip	LANGUAGE	
 tests/inlineDeprecationsOnImplicitCalls.kt	skip	LANGUAGE	
 tests/inlineEnumEntries.kt	rejects invalid	on an expected line	
-tests/inlineFunctionContextBug.kt	accepts invalid	NOT_YET_SUPPORTED_IN_INLINE	inlineFunctionContextBug.kt:9: NOT_YET_SUPPORTED_IN_INLINE
+tests/inlineFunctionContextBug.kt	rejects invalid	on an expected line	
 tests/inner/InnerClassNameClash.kt	accepts valid		
 tests/inner/accessingToJavaNestedClass.kt	rejects invalid	on an expected line	
 tests/inner/accessingToKotlinNestedClass.kt	rejects invalid	on an expected line	
@@ -5186,7 +5186,7 @@ tests/inner/visibility.kt	rejects invalid	on an expected line
 tests/innerClasses/inCallableReferenceLHS/adaptedReference.kt	rejects invalid	elsewhere	
 tests/innerClasses/inCallableReferenceLHS/classReference.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/fromSuperclass.kt	rejects invalid	on an expected line	
-tests/innerClasses/inCallableReferenceLHS/genericFunction.kt	rejects invalid	elsewhere	
+tests/innerClasses/inCallableReferenceLHS/genericFunction.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/genericWithUnderscoreArgument.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/innerClassInCallableReferenceLHS.kt	skip	LANGUAGE	
 tests/innerClasses/inCallableReferenceLHS/innerLocalClasses.kt	rejects invalid	on an expected line	
@@ -5196,8 +5196,8 @@ tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChainWithNested.kt
 tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt	accepts valid		
 tests/innerClasses/inCallableReferenceLHS/nullable.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/simple.kt	rejects invalid	on an expected line	
-tests/innerClasses/inCallableReferenceLHS/upperBoundViolated.kt	rejects invalid	elsewhere	
-tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	elsewhere	
+tests/innerClasses/inCallableReferenceLHS/upperBoundViolated.kt	rejects invalid	on an expected line	
+tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/withPackage.kt	rejects invalid	elsewhere	
 tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt	parse/unsupported	parse error: expected '_', found '_'	withParenthesizes.kt:12: expected ')', found ','
 tests/innerClasses/inCallableReferenceLHS/withProjections.kt	rejects invalid	on an expected line	
@@ -5372,7 +5372,7 @@ tests/j+k/kt62197.kt	accepts valid
 tests/j+k/kt6720_abstractProperty.kt	rejects invalid	on an expected line	
 tests/j+k/kt7523.kt	accepts valid		
 tests/j+k/kt79138_javaClassAnnotatedWithMetadata/differentModulesEmpty.kt	accepts valid		
-tests/j+k/kt79138_javaClassAnnotatedWithMetadata/differentModulesWithKind.kt	accepts invalid	UNRESOLVED_REFERENCE	box.kt:1: UNRESOLVED_REFERENCE
+tests/j+k/kt79138_javaClassAnnotatedWithMetadata/differentModulesWithKind.kt	rejects invalid	on an expected line	
 tests/j+k/kt79138_javaClassAnnotatedWithMetadata/sameModuleEmpty.kt	accepts valid		
 tests/j+k/kt79138_javaClassAnnotatedWithMetadata/sameModuleWithKind.kt	accepts valid		
 tests/j+k/ktij24272.kt	accepts valid		
@@ -5449,7 +5449,7 @@ tests/j+k/rawTypesFromCaptured.kt	rejects invalid	on an expected line
 tests/j+k/rawTypesFromCapturedOriginal.kt	accepts valid		
 tests/j+k/rawUpperBounds.kt	accepts valid		
 tests/j+k/receiverEnhancement.kt	rejects invalid	on an expected line	
-tests/j+k/recursionWithJavaSyntheticProperty.kt	accepts invalid	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	Usage.kt:4: TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM
+tests/j+k/recursionWithJavaSyntheticProperty.kt	rejects invalid	on an expected line	
 tests/j+k/recursiveRawUpperBound.kt	accepts valid		
 tests/j+k/recursiveRawUpperBound2.kt	rejects invalid	elsewhere	
 tests/j+k/recursiveRawUpperBound3.kt	rejects invalid	elsewhere	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/claude-0/-workspace-kotlin-compiler-go/67bdd8a0-4af7-5178-a8fb-4ebce93d1c74/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -5741,7 +5741,7 @@ tests/jvm/duplicateJvmSignature/jvmStatic/jvmStaticInCompanionObject.kt	rejects 
 tests/jvm/duplicateJvmSignature/jvmStatic/jvmStaticInObject.kt	rejects invalid	on an expected line	
 tests/jvm/duplicateJvmSignature/specialNames/classInitializer.kt	rejects invalid	on an expected line	
 tests/jvm/duplicateJvmSignature/specialNames/classObject.kt	skip	IGNORE_FIR_DIAGNOSTICS	
-tests/jvm/duplicateJvmSignature/specialNames/classObjectCopiedField.kt	accepts invalid	CONFLICTING_JVM_DECLARATIONS	classObjectCopiedField.kt:5: CONFLICTING_JVM_DECLARATIONS
+tests/jvm/duplicateJvmSignature/specialNames/classObjectCopiedField.kt	rejects invalid	on an expected line	
 tests/jvm/duplicateJvmSignature/specialNames/classObjectCopiedFieldObject.kt	skip	IGNORE_FIR_DIAGNOSTICS	
 tests/jvm/duplicateJvmSignature/specialNames/dataClassCopy.kt	rejects invalid	on an expected line	
 tests/jvm/duplicateJvmSignature/specialNames/defaults.kt	rejects invalid	on an expected line	
@@ -5811,7 +5811,7 @@ tests/jvm/modules/sourcelessSmartcastSourcefulOriginalExpression.kt	skip	JDK_KIN
 tests/jvm/modules/unnamedDependsOnNamed.kt	skip	JDK_KIND	
 tests/jvm/modules/unnamedDependsOnNamed_allModulePath.kt	skip	JDK_KIND	
 tests/jvm/modules/unnamedDoesNotReadNotAdded.kt	skip	JDK_KIND	
-tests/jvm/multifileClasses/jvmSynthetic.kt	accepts invalid	NOT_ALL_MULTIFILE_CLASS_PARTS_ARE_JVM_SYNTHETIC	f.kt:3: NOT_ALL_MULTIFILE_CLASS_PARTS_ARE_JVM_SYNTHETIC
+tests/jvm/multifileClasses/jvmSynthetic.kt	rejects invalid	on an expected line	
 tests/jvm/multipleBigArityFunsImplemented.kt	rejects invalid	on an expected line	
 tests/jvm/noWarningInLV1_5.kt	skip	LANGUAGE	
 tests/jvm/nothingToOverrideWithRawParameter.kt	skip	IGNORE_FIR_DIAGNOSTICS	
@@ -5822,7 +5822,7 @@ tests/jvm/signatureConflictHiddenByTypeParameter.kt	rejects invalid	on an expect
 tests/jvm/suspensionPointInMonitor.kt	accepts invalid	SUSPENSION_POINT_INSIDE_MONITOR	main.kt:7: SUSPENSION_POINT_INSIDE_MONITOR
 tests/jvm/typeOf/nonReifiedTypeParameterWithRecursiveBound.kt	skip	LANGUAGE	
 tests/jvm/typeOf/nonReifiedTypeParameterWithRecursiveBoundEnabled.kt	skip	LANGUAGE	
-tests/jvm/typeOf/suspendType.kt	accepts invalid	TYPEOF_SUSPEND_TYPE	suspendType.kt:10: TYPEOF_SUSPEND_TYPE
+tests/jvm/typeOf/suspendType.kt	rejects invalid	on an expected line	
 tests/jvm/valueClasses/cloneable.kt	skip	LANGUAGE	
 tests/jvmNameInvalidCharacters.kt	rejects invalid	on an expected line	
 tests/k2IrParentIssue.kt	accepts valid		
@@ -5830,7 +5830,7 @@ tests/kt11167.kt	skip	JDK_KIND
 tests/kt13401.kt	rejects invalid	on an expected line	
 tests/kt310.kt	rejects invalid	on an expected line	
 tests/kt34440.kt	rejects invalid	on an expected line	
-tests/kt34857.kt	accepts invalid	NOT_FUNCTION_AS_OPERATOR	kt34857.kt:6: NOT_FUNCTION_AS_OPERATOR
+tests/kt34857.kt	rejects invalid	on an expected line	
 tests/kt41984.kt	rejects invalid	on an expected line	
 tests/kt41990.kt	accepts valid		
 tests/kt435.kt	rejects invalid	on an expected line	
@@ -6556,7 +6556,7 @@ tests/namedArguments/ambiguousNamedArgumentsWithGenerics2.kt	rejects invalid	on 
 tests/namedArguments/ambiguousNamedArgumentsWithGenerics3.kt	rejects invalid	on an expected line	
 tests/namedArguments/differentNamesForTheSameParametersInSupertypesForLibraryDependency.kt	accepts valid		
 tests/namedArguments/disallowForDelegationToJavaMethods.kt	rejects invalid	on an expected line	
-tests/namedArguments/disallowForFunctionTypes.kt	accepts invalid	NAMED_ARGUMENTS_NOT_ALLOWED	disallowForFunctionTypes.kt:4: NAMED_ARGUMENTS_NOT_ALLOWED
+tests/namedArguments/disallowForFunctionTypes.kt	rejects invalid	on an expected line	
 tests/namedArguments/disallowForJavaConstructor.kt	rejects invalid	on an expected line	
 tests/namedArguments/disallowForJavaMethods.kt	rejects invalid	on an expected line	
 tests/namedArguments/disallowForSamAdapterConstructor.kt	rejects invalid	on an expected line	
@@ -7064,7 +7064,7 @@ tests/platformTypes/nullabilityWarnings/primitiveArray.kt	rejects invalid	on an 
 tests/platformTypes/nullabilityWarnings/safeCall.kt	accepts valid		
 tests/platformTypes/nullabilityWarnings/senselessComparisonEquals.kt	accepts valid		
 tests/platformTypes/nullabilityWarnings/senselessComparisonIdentityEquals.kt	accepts valid		
-tests/platformTypes/nullabilityWarnings/throw.kt	accepts invalid	TYPE_MISMATCH	k.kt:7: TYPE_MISMATCH
+tests/platformTypes/nullabilityWarnings/throw.kt	rejects invalid	on an expected line	
 tests/platformTypes/nullabilityWarnings/uselessElvisInCall.kt	accepts valid		
 tests/platformTypes/nullabilityWarnings/uselessElvisRightIsNull.kt	accepts valid		
 tests/platformTypes/nullableTypeArgument.kt	rejects invalid	on an expected line	
@@ -7131,7 +7131,7 @@ tests/privateInFile/visibility.kt	rejects invalid	on an expected line
 tests/privateSetterSmartcastsToPublicSetter.kt	rejects invalid	on an expected line	
 tests/privateSubclassAsTypeArgInParentClass.kt	accepts valid		
 tests/problems/classLiteralWithExclExcl.kt	rejects invalid	on an expected line	
-tests/problems/compilerPhase.kt	rejects invalid	elsewhere	
+tests/problems/compilerPhase.kt	rejects invalid	on an expected line	
 tests/problems/complexLambdaWithTypeVariableAsExpectedType.kt	accepts valid		
 tests/problems/defaultParametersFromDifferentScopes.kt	accepts valid		
 tests/problems/definitelyNotNullAndOriginalType.kt	rejects invalid	on an expected line	
@@ -7161,7 +7161,7 @@ tests/problems/kt10453.kt	accepts valid
 tests/problems/kt10628.kt	accepts valid		
 tests/problems/kt12101.kt	rejects invalid	on an expected line	
 tests/problems/kt12412.kt	accepts valid		
-tests/problems/kt12610.kt	accepts invalid	NOT_FUNCTION_AS_OPERATOR	kt12610.kt:11: NOT_FUNCTION_AS_OPERATOR
+tests/problems/kt12610.kt	rejects invalid	on an expected line	
 tests/problems/kt13398.kt	accepts valid		
 tests/problems/kt14059.kt	accepts valid		
 tests/problems/kt14687.kt	rejects invalid	on an expected line	
@@ -7287,7 +7287,7 @@ tests/properties/inferenceFromGetters/blockBodyGetter.kt	rejects invalid	on an e
 tests/properties/inferenceFromGetters/cantBeInferred.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/explicitGetterType.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/members.kt	accepts valid		
-tests/properties/inferenceFromGetters/nullAsNothing.kt	accepts invalid	IMPLICIT_NOTHING_PROPERTY_TYPE	nullAsNothing.kt:4: IMPLICIT_NOTHING_PROPERTY_TYPE
+tests/properties/inferenceFromGetters/nullAsNothing.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	elsewhere	
 tests/properties/inferenceFromGetters/overrides.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/primaryConstructorParameter.kt	rejects invalid	on an expected line	
@@ -7318,7 +7318,7 @@ tests/properties/localPropertyExtensions.kt	rejects invalid	on an expected line
 tests/properties/noBackingFieldForExtension.kt	accepts valid		
 tests/properties/noBackingFieldInProperty.kt	rejects invalid	on an expected line	
 tests/properties/protectedGetterWithPublicSetter.kt	rejects invalid	on an expected line	
-tests/properties/syntheticPropertiesForJavaAnnotations.kt	accepts invalid	FUNCTION_EXPECTED	main.kt:4: FUNCTION_EXPECTED
+tests/properties/syntheticPropertiesForJavaAnnotations.kt	rejects invalid	on an expected line	
 tests/propertyFromJavaPlusAssign.kt	accepts valid		
 tests/propertyGetterWithoutType.kt	rejects invalid	on an expected line	
 tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	on an expected line	
@@ -7328,7 +7328,7 @@ tests/propertyVsField/javaFieldAndKotlinPropertyReferenceFromInner.kt	accepts va
 tests/propertyVsField/propertyAndTwoFields.kt	accepts valid		
 tests/propertyVsField/propertyFieldShadow.kt	rejects invalid	on an expected line	
 tests/protectedWithGenericsInDifferentPackage.kt	rejects invalid	on an expected line	
-tests/publishedApi.kt	accepts invalid	NON_INTERNAL_PUBLISHED_API	publishedApi.kt:3: NON_INTERNAL_PUBLISHED_API
+tests/publishedApi.kt	rejects invalid	on an expected line	
 tests/publishedApiOverride.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/GenericClassVsPackage.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/GenericClassVsPackage_topLevel.kt	rejects invalid	on an expected line	
@@ -7446,7 +7446,7 @@ tests/references/leakedImplicitType.kt	rejects invalid	on an expected line
 tests/references/mutablePropertyGenericButNotCapturedType.kt	accepts valid		
 tests/references/mutablePropertyWithCapturedType.kt	accepts valid		
 tests/references/referenceToExtension.kt	rejects invalid	on an expected line	
-tests/references/referenceToField.kt	accepts invalid	UNSUPPORTED	referenceToField.kt:5: UNSUPPORTED
+tests/references/referenceToField.kt	rejects invalid	on an expected line	
 tests/references/referenceToSyntheticJavaPropertyWithProjection.kt	skip	LANGUAGE	
 tests/references/simple.kt	accepts valid		
 tests/references/superMember.kt	accepts valid		
@@ -7569,7 +7569,7 @@ tests/regressions/kt439.kt	accepts valid
 tests/regressions/kt442.kt	rejects invalid	on an expected line	
 tests/regressions/kt443.kt	rejects invalid	on an expected line	
 tests/regressions/kt455.kt	rejects invalid	on an expected line	
-tests/regressions/kt456.kt	rejects invalid	elsewhere	
+tests/regressions/kt456.kt	rejects invalid	on an expected line	
 tests/regressions/kt459.kt	accepts valid		
 tests/regressions/kt469.kt	accepts valid		
 tests/regressions/kt4693.kt	accepts valid		
@@ -7585,7 +7585,7 @@ tests/regressions/kt55956.kt	rejects invalid	on an expected line
 tests/regressions/kt571.kt	accepts valid		
 tests/regressions/kt575.kt	accepts valid		
 tests/regressions/kt57845.kt	accepts valid		
-tests/regressions/kt58.kt	rejects invalid	elsewhere	
+tests/regressions/kt58.kt	rejects invalid	on an expected line	
 tests/regressions/kt580.kt	accepts valid		
 tests/regressions/kt588.kt	accepts valid		
 tests/regressions/kt597.kt	accepts valid		
@@ -8052,18 +8052,18 @@ tests/sealed/NonExhaustiveWhen.kt	rejects invalid	on an expected line
 tests/sealed/NonExhaustiveWhenNegated.kt	rejects invalid	on an expected line	
 tests/sealed/NonExhaustiveWhenWithAdditionalCase.kt	rejects invalid	on an expected line	
 tests/sealed/NonExhaustiveWhenWithAnyCase.kt	rejects invalid	on an expected line	
-tests/sealed/NonPrivateConstructor.kt	accepts invalid	NON_PRIVATE_OR_PROTECTED_CONSTRUCTOR_IN_SEALED	NonPrivateConstructor.kt:5: NON_PRIVATE_OR_PROTECTED_CONSTRUCTOR_IN_SEALED
+tests/sealed/NonPrivateConstructor.kt	rejects invalid	on an expected line	
 tests/sealed/NotFinal.kt	accepts valid		
 tests/sealed/OperationWhen.kt	accepts valid		
 tests/sealed/RedundantAbstract.kt	accepts valid		
 tests/sealed/TreeWhen.kt	accepts valid		
 tests/sealed/TreeWhenFunctional.kt	accepts valid		
 tests/sealed/TreeWhenFunctionalNoIs.kt	rejects invalid	on an expected line	
-tests/sealed/WhenOnEmptySealed.kt	accepts invalid	NO_ELSE_IN_WHEN	WhenOnEmptySealed.kt:8: NO_ELSE_IN_WHEN
+tests/sealed/WhenOnEmptySealed.kt	rejects invalid	on an expected line	
 tests/sealed/WithInterface.kt	accepts valid		
 tests/sealed/inheritorInDifferentModule.kt	rejects invalid	on an expected line	
-tests/sealed/interfaces/inheritorInDifferentModule.kt	accepts invalid	SEALED_INHERITOR_IN_DIFFERENT_MODULE	b.kt:4: SEALED_INHERITOR_IN_DIFFERENT_MODULE
-tests/sealed/interfaces/sealedFunInterface.kt	accepts invalid	UNSUPPORTED_SEALED_FUN_INTERFACE	sealedFunInterface.kt:2: UNSUPPORTED_SEALED_FUN_INTERFACE
+tests/sealed/interfaces/inheritorInDifferentModule.kt	rejects invalid	on an expected line	
+tests/sealed/interfaces/sealedFunInterface.kt	rejects invalid	on an expected line	
 tests/sealed/interfaces/simpleSealedInterface.kt	accepts valid		
 tests/sealed/interfaces/triangleHierarchy.kt	accepts valid		
 tests/sealed/internalTypeInConstructor.kt	accepts valid		
@@ -8088,7 +8088,7 @@ tests/secondaryConstructors/ctrsAnnotationResolve.kt	rejects invalid	on an expec
 tests/secondaryConstructors/cyclicDelegationCalls.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/dataClasses.kt	skip	LANGUAGE	
 tests/secondaryConstructors/dataFlowInDelegationCall.kt	accepts valid		
-tests/secondaryConstructors/delegationByWithoutPrimary.kt	accepts invalid	UNSUPPORTED	delegationByWithoutPrimary.kt:5: UNSUPPORTED
+tests/secondaryConstructors/delegationByWithoutPrimary.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/enums.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/errorsOnEmptyDelegationCall.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/expectedPrimaryConstructorCall.kt	rejects invalid	on an expected line	
@@ -8172,7 +8172,7 @@ tests/smartCasts/NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt	r
 tests/smartCasts/accessToMemberAfterReceiverReassignment.kt	rejects invalid	on an expected line	
 tests/smartCasts/afterBinaryExpr.kt	accepts valid		
 tests/smartCasts/alwaysNull.kt	rejects invalid	on an expected line	
-tests/smartCasts/alwaysNullWithJava.kt	accepts invalid	UNSAFE_CALL	Test.kt:5: UNSAFE_CALL
+tests/smartCasts/alwaysNullWithJava.kt	rejects invalid	on an expected line	
 tests/smartCasts/annotations.kt	accepts valid		
 tests/smartCasts/bangbang.kt	rejects invalid	on an expected line	
 tests/smartCasts/binaryOperatorsWithJumps.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -8310,7 +8310,7 @@ tests/smartCasts/kt3244.kt	accepts valid
 tests/smartCasts/kt3572.kt	accepts valid		
 tests/smartCasts/kt3711.kt	accepts valid		
 tests/smartCasts/kt37327.kt	accepts valid		
-tests/smartCasts/kt3899.kt	rejects invalid	elsewhere	
+tests/smartCasts/kt3899.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt39000.kt	accepts valid		
 tests/smartCasts/kt3993.kt	accepts valid		
 tests/smartCasts/kt45814.kt	accepts valid		
@@ -8420,7 +8420,7 @@ tests/smartCasts/multipleCasts.kt	accepts valid
 tests/smartCasts/multipleResolvedCalls.kt	skip	LANGUAGE	
 tests/smartCasts/multipleResolvedCallsOld.kt	skip	LANGUAGE	
 tests/smartCasts/noErrorCheckForPackageLevelVal.kt	rejects invalid	on an expected line	
-tests/smartCasts/noSmartcastForNonFinalMembersFromJava.kt	accepts invalid	UNSAFE_CALL	test.kt:8: UNSAFE_CALL
+tests/smartCasts/noSmartcastForNonFinalMembersFromJava.kt	rejects invalid	on an expected line	
 tests/smartCasts/noUnnecessarySmartCastForReceiver.kt	accepts valid		
 tests/smartCasts/notNullorNotNull.kt	accepts valid		
 tests/smartCasts/nullability.kt	rejects invalid	on an expected line	
@@ -8698,7 +8698,7 @@ tests/subtyping/extensionOnLocalClasses.kt	accepts valid
 tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	on an expected line	
 tests/subtyping/functionTypeAsSuperType.kt	accepts valid		
 tests/subtyping/invariantArgumentForTypeParameterWithMultipleBounds.kt	accepts valid		
-tests/subtyping/javaAndKotlinSuperType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	1.kt:13: ARGUMENT_TYPE_MISMATCH
+tests/subtyping/javaAndKotlinSuperType.kt	rejects invalid	on an expected line	
 tests/subtyping/kFunctionalCST.kt	rejects invalid	on an expected line	
 tests/subtyping/kt-1457.kt	accepts valid		
 tests/subtyping/kt2069.kt	accepts valid		
@@ -8715,7 +8715,7 @@ tests/subtyping/suspendExtFunctionTypeAsSuperType.kt	rejects invalid	on an expec
 tests/subtyping/suspendExtFunctionTypeAsSuperTypeRestrictionLifted.kt	skip	LANGUAGE	
 tests/subtyping/topLevelAnonymousObjects.kt	rejects invalid	on an expected line	
 tests/subtyping/unresolvedSupertype.kt	rejects invalid	on an expected line	
-tests/superCallsWithDefaultArguments.kt	accepts invalid	SUPER_CALL_WITH_DEFAULT_PARAMETERS	superCallsWithDefaultArguments.kt:18: SUPER_CALL_WITH_DEFAULT_PARAMETERS
+tests/superCallsWithDefaultArguments.kt	rejects invalid	on an expected line	
 tests/superQualifierTypeArgsInDelegatedConstructorCall.kt	accepts valid		
 tests/supertypesForAnnotationClass.kt	rejects invalid	on an expected line	
 tests/suppress/allWarnings.kt	accepts valid		
@@ -8910,7 +8910,7 @@ tests/testsWithJava17/jvmRecord/simpleRecordsWithSecondaryConstructor.kt	accepts
 tests/testsWithJava17/jvmRecord/supertypesCheck.kt	skip	API_VERSION	
 tests/testsWithJava17/newListMethods.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/nullSourceInJvmModuleChecker.kt	accepts invalid	JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE	nullSourceInJvmModuleChecker.kt:7: JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE
-tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt	accepts invalid	NO_ELSE_IN_WHEN	main.kt:3: NO_ELSE_IN_WHEN
+tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/javaSealedClassExhaustiveness.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/javaSealedInterfaceExhaustiveness.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/kotlinInheritsJavaClass.kt	rejects invalid	on an expected line	
@@ -8975,7 +8975,7 @@ tests/throwableSubclass.kt	rejects invalid	on an expected line
 tests/tooLargeFunctionNThroughACallableReference.kt	parse/unsupported	checker: lambdas with more than n parameters are not supported	
 tests/topLevelDestructuring.kt	parse/unsupported	destructuring declaration	topLevelDestructuring.kt:2: destructuring declarations are not supported
 tests/topLevelDestructuring2.kt	parse/unsupported	destructuring declaration	topLevelDestructuring2.kt:3: destructuring declarations are not supported
-tests/traitWithRequired/traitRequiresAny.kt	accepts invalid	INTERFACE_WITH_SUPERCLASS	traitRequiresAny.kt:2: INTERFACE_WITH_SUPERCLASS
+tests/traitWithRequired/traitRequiresAny.kt	rejects invalid	on an expected line	
 tests/traitWithRequired/traitSupertypeList.kt	rejects invalid	on an expected line	
 tests/treeSet.kt	accepts valid		
 tests/trueNegativeOperatorAssignmentOnPropertyFromClass.kt	accepts valid		
@@ -9040,7 +9040,7 @@ tests/typeParameters/misplacedConstraints.kt	rejects invalid	on an expected line
 tests/typeParameters/outerTypeParameterAsBound.kt	accepts valid		
 tests/typeParameters/outerTypeParameterAsSupertype.kt	accepts valid		
 tests/typeParameters/propertyTypeParameters.kt	rejects invalid	on an expected line	
-tests/typeParameters/propertyTypeParametersWithUpperBounds.kt	accepts invalid	INCORRECT_TYPE_PARAMETER_OF_PROPERTY	propertyTypeParametersWithUpperBounds.kt:3: INCORRECT_TYPE_PARAMETER_OF_PROPERTY
+tests/typeParameters/propertyTypeParametersWithUpperBounds.kt	rejects invalid	on an expected line	
 tests/typeParameters/repeatedBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/starProjectionForMultipleBounds.kt	accepts valid		
 tests/typeParameters/starProjectionInsteadOutCaptured.kt	accepts valid		
@@ -9076,7 +9076,7 @@ tests/typealias/functionTypeInTypeAlias.kt	accepts valid
 tests/typealias/functionalTypeWithParameterNameVisibility.kt	rejects invalid	on an expected line	
 tests/typealias/genericTypeAliasConstructor.kt	accepts valid		
 tests/typealias/genericTypeAliasObject.kt	accepts valid		
-tests/typealias/illegalTypeInTypeAliasExpansion.kt	accepts invalid	TYPEALIAS_EXPANDS_TO_ARRAY_OF_NOTHINGS; UNSUPPORTED	illegalTypeInTypeAliasExpansion.kt:7: TYPEALIAS_EXPANDS_TO_ARRAY_OF_NOTHINGS
+tests/typealias/illegalTypeInTypeAliasExpansion.kt	rejects invalid	on an expected line	
 tests/typealias/illegalTypeInTypeAliasExpansionDisabled.kt	skip	LANGUAGE	
 tests/typealias/import.kt	accepts valid		
 tests/typealias/importForTypealiasObject.kt	accepts valid		
@@ -9155,8 +9155,8 @@ tests/typealias/typeAliasConstructorTypeArgumentsInferenceWithPhantomTypes.kt	ac
 tests/typealias/typeAliasConstructorVsFunction.kt	accepts valid		
 tests/typealias/typeAliasConstructorWrongClass.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasConstructorWrongVisibility.kt	rejects invalid	on an expected line	
-tests/typealias/typeAliasExpansionRepeatedAnnotations.kt	accepts invalid	REPEATED_ANNOTATION	typeAliasExpansionRepeatedAnnotations.kt:8: REPEATED_ANNOTATION
-tests/typealias/typeAliasForProjectionInSuperInterfaces.kt	accepts invalid	CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR; PROJECTION_IN_IMMEDIATE_ARGUMENT_TO_SUPERTYPE	typeAliasForProjectionInSuperInterfaces.kt:19: CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR
+tests/typealias/typeAliasExpansionRepeatedAnnotations.kt	rejects invalid	on an expected line	
+tests/typealias/typeAliasForProjectionInSuperInterfaces.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasInAnonymousObjectType.kt	accepts valid		
 tests/typealias/typeAliasInvisibleObject.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasIsUsedAsATypeArgumentInOtherAlias.kt	accepts valid		
@@ -9167,7 +9167,7 @@ tests/typealias/typeAliasShouldExpandToClass.kt	rejects invalid	on an expected l
 tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasesInQualifiers.kt	rejects invalid	on an expected line	
 tests/typealias/typealiasRhsAnnotationsInArguments.kt	accepts valid		
-tests/typealias/typealiasRhsRepeatedAnnotationInArguments.kt	accepts invalid	REPEATED_ANNOTATION	typealiasRhsRepeatedAnnotationInArguments.kt:7: REPEATED_ANNOTATION
+tests/typealias/typealiasRhsRepeatedAnnotationInArguments.kt	rejects invalid	on an expected line	
 tests/typealias/typealiasRhsRepeatedAnnotations.kt	rejects invalid	on an expected line	
 tests/typealias/unusedTypeAliasParameter.kt	accepts valid		
 tests/typealias/wrongNumberOfArgumentsInTypeAliasConstructor.kt	rejects invalid	on an expected line	
@@ -9286,7 +9286,7 @@ tests/varargs/assignArrayToVararagInNamedForm.kt	rejects invalid	on an expected 
 tests/varargs/assignArrayToVararagInNamedFormWithInference.kt	accepts valid		
 tests/varargs/assignNonConstSingleArrayElementAsVarargInAnnotationError.kt	rejects invalid	on an expected line	
 tests/varargs/assigningArraysToVarargsInAnnotations.kt	rejects invalid	on an expected line	
-tests/varargs/assigningSingleElementsInNamedFormAnnDeprecation.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; ASSIGNING_SINGLE_ELEMENT_TO_VARARG_IN_NAMED_FORM_ANNOTATION_ERROR	test.kt:4: ARGUMENT_TYPE_MISMATCH
+tests/varargs/assigningSingleElementsInNamedFormAnnDeprecation.kt	rejects invalid	on an expected line	
 tests/varargs/assigningSingleElementsInNamedFormFunDeprecation.kt	rejects invalid	on an expected line	
 tests/varargs/inferredNullableArrayAsVararg.kt	rejects invalid	on an expected line	
 tests/varargs/kt10926.kt	accepts valid		
@@ -9303,7 +9303,7 @@ tests/varargs/prohibitAssigningSingleElementsInNamedForm.kt	rejects invalid	on a
 tests/varargs/unresolvedVarargType.kt	rejects invalid	on an expected line	
 tests/varargs/varargInSetter.kt	rejects invalid	on an expected line	
 tests/varargs/varargIterator.kt	accepts valid		
-tests/varargs/varargOfNothing.kt	accepts invalid	FORBIDDEN_VARARG_PARAMETER_TYPE	varargOfNothing.kt:4: FORBIDDEN_VARARG_PARAMETER_TYPE
+tests/varargs/varargOfNothing.kt	rejects invalid	on an expected line	
 tests/varargs/varargViewedAsArray.kt	rejects invalid	on an expected line	
 tests/varargs/varargsAndFunctionLiterals.kt	accepts valid		
 tests/varargs/varargsAndOut1.kt	accepts valid		
@@ -9337,7 +9337,7 @@ tests/versionOverload/openMember.kt	rejects invalid	on an expected line
 tests/versionOverload/optInRequred.kt	rejects invalid	on an expected line	
 tests/versionOverload/optionalBeforeNonOptional.kt	rejects invalid	on an expected line	
 tests/versionOverload/overrideMember.kt	rejects invalid	on an expected line	
-tests/versionOverload/propertySetterParameter.kt	accepts invalid	INVALID_VERSIONING_ON_NON_OPTIONAL	propertySetterParameter.kt:8: INVALID_VERSIONING_ON_NON_OPTIONAL
+tests/versionOverload/propertySetterParameter.kt	rejects invalid	on an expected line	
 tests/versionOverload/tooComplexDefault.kt	rejects invalid	on an expected line	
 tests/versionOverload/vararg.kt	rejects invalid	on an expected line	
 tests/vfir/expressions/for.kt	accepts valid		
@@ -9492,7 +9492,7 @@ tests/when/guard/ifElseExpressions.kt	rejects invalid	on an expected line
 tests/when/guard/initializationAnalyses.kt	rejects invalid	on an expected line	
 tests/when/guard/lambda.kt	accepts valid		
 tests/when/guard/multipleCondition.kt	rejects invalid	on an expected line	
-tests/when/guard/returnAnalysis.kt	rejects invalid	elsewhere	
+tests/when/guard/returnAnalysis.kt	rejects invalid	on an expected line	
 tests/when/guard/smartCasts.kt	rejects invalid	on an expected line	
 tests/when/guard/suggestGuard.kt	rejects invalid	on an expected line	
 tests/when/guard/thisInSubject.kt	accepts valid		
@@ -9559,7 +9559,7 @@ testsWithAnyBackend/recursionCycleWithStdlibCall.kt	rejects invalid	on an expect
 testsWithAnyBackend/suspendInlineCycle.kt	rejects invalid	on an expected line	
 testsWithAnyBackend/transitiveInlineCycle.kt	rejects invalid	on an expected line	
 testsWithJvmBackend/companionBlocksAndExtensions/conflictsStatic.kt	skip	LANGUAGE	
-testsWithStdLib/ArrayOfNothing.kt	accepts invalid	UNSUPPORTED; REIFIED_TYPE_FORBIDDEN_SUBSTITUTION; TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR	ArrayOfNothing.kt:12: UNSUPPORTED
+testsWithStdLib/ArrayOfNothing.kt	rejects invalid	on an expected line	
 testsWithStdLib/ArrayOfNothingDisabled.kt	skip	LANGUAGE	
 testsWithStdLib/CallCompanionProtectedNonStatic.kt	rejects invalid	on an expected line	
 testsWithStdLib/CallToMainRedeclaredInMultiFile.kt	rejects invalid	on an expected line	
@@ -9697,7 +9697,7 @@ testsWithStdLib/annotations/subclassOptInRequired/InheritingByLocalClassifiers.k
 testsWithStdLib/annotations/subclassOptInRequired/InheritingDifferentOptInLevels.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/InnerAndNestedClasses.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/InnerClasses.kt	accepts valid		
-testsWithStdLib/annotations/subclassOptInRequired/JavaKotlinInterop.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR	two.kt:3: OPT_IN_TO_INHERITANCE_ERROR
+testsWithStdLib/annotations/subclassOptInRequired/JavaKotlinInterop.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/Module.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/NestedClasses.kt	accepts valid		
 testsWithStdLib/annotations/subclassOptInRequired/NotApiMarkerAsArgument.kt	rejects invalid	on an expected line	
@@ -9755,7 +9755,7 @@ testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	accepts valid
 testsWithStdLib/callableReferences/manyInnermanyOuterCandidatesAmbiguity.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/manyOuterCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/properties.kt	accepts valid		
-testsWithStdLib/callableReferences/referenceToJavaStdlib.kt	rejects invalid	elsewhere	
+testsWithStdLib/callableReferences/referenceToJavaStdlib.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/sam.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/simpleClassReceiver.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/simpleExpressionReceiver.kt	rejects invalid	on an expected line	
@@ -9791,7 +9791,7 @@ testsWithStdLib/contracts/controlflow/flowInlining/nestedTryCatchFinally.kt	reje
 testsWithStdLib/contracts/controlflow/flowInlining/nestedTryCatchs.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/nonLocalReturn.kt	accepts valid		
 testsWithStdLib/contracts/controlflow/flowInlining/nonReturningInlinedLambda.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/controlflow/flowInlining/safeCallAndInPlaceReturn.kt	rejects invalid	elsewhere	
+testsWithStdLib/contracts/controlflow/flowInlining/safeCallAndInPlaceReturn.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/severalJumpOutsFromInlinedLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/tryCatch.kt	rejects invalid	on an expected line	

@@ -586,6 +586,11 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		info.Unresolved = nil
 	}
 	info.Sealed = c.Sealed
+	for _, t := range c.Permits {
+		if n, _ := r.superType(t); n != "" && n != "java/lang/Object" {
+			info.Permitted = append(info.Permitted, n)
+		}
+	}
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
 		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
@@ -645,10 +650,46 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 				args = append([]string{"value"}, args...)
 			}
 			info.Repeatable = r.classLiteral(args, "value")
+		case "kotlin.annotation.Target":
+			info.KotlinTargets = []string{} // allowedTargets = {} allows none
+			for _, arg := range a.Args {
+				if strings.ToUpper(arg) == arg {
+					info.KotlinTargets = append(info.KotlinTargets, arg)
+				}
+			}
 		case "Target", "java.lang.annotation.Target":
+			if n, _ := r.lookup("Target"); a.Name == "Target" && n == "kotlin/annotation/Target" {
+				info.KotlinTargets = []string{}
+				for _, arg := range a.Args {
+					if strings.ToUpper(arg) == arg {
+						info.KotlinTargets = append(info.KotlinTargets, arg)
+					}
+				}
+				continue
+			}
 			for _, arg := range a.Args {
 				if arg != "ElementType" && strings.ToUpper(arg) == arg {
 					info.JavaTargets = append(info.JavaTargets, arg)
+				}
+			}
+		case "SubclassOptInRequired", "kotlin.SubclassOptInRequired":
+			if n, _ := r.lookup("SubclassOptInRequired"); a.Name == "SubclassOptInRequired" && n != "kotlin/SubclassOptInRequired" {
+				continue
+			}
+			// Its markers' class literals: A.class, or {A.class, b.B.class}.
+			var parts []string
+			for _, arg := range a.Args {
+				switch {
+				case arg == "markerClass" && len(parts) == 0:
+				case arg == "class":
+					if len(parts) > 0 {
+						if n := r.classLiteral(append(append([]string{"_"}, parts...), "class"), "_"); n != "" {
+							info.SubclassOptIn = append(info.SubclassOptIn, n)
+						}
+					}
+					parts = nil
+				default:
+					parts = append(parts, arg)
 				}
 			}
 		}

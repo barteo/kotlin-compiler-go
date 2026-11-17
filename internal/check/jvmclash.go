@@ -461,6 +461,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	}
 	own := c.classMembers(d)
 	c.sameContainer(own)
+	c.copiedFieldClashes(d)
 	if c.bigArityFuns(cls) {
 		c.errorf(d.P, "inherited platform declarations clash: class '%s' implements several function types with more than 22 parameters", cls.DisplayName())
 	}
@@ -559,6 +560,53 @@ func (c *Checker) sameContainer(ms []jvmMember) {
 			c.errorf(first.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 		}
 		c.errorf(m.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+	}
+}
+
+// copiedFieldClashes reports the fields of class d's companion object
+// that kotlinc copies into d's class under a name that clashes: it renames
+// the field of a companion property named as one of d's with $1, which a
+// field of the companion may already have.
+func (c *Checker) copiedFieldClashes(d *syntax.ClassDecl) {
+	cls := d.Sym
+	if cls.Companion == nil || cls.Interface {
+		return
+	}
+	fields := func(ms []syntax.Decl) ([]*syntax.PropDecl, map[string]*syntax.PropDecl) {
+		var list []*syntax.PropDecl
+		byName := map[string]*syntax.PropDecl{}
+		for _, m := range ms {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Recv == nil && pd.Sym.HasField() {
+				list = append(list, pd)
+				byName[pd.Name] = pd
+			}
+		}
+		return list, byName
+	}
+	var comp *syntax.ClassDecl
+	for _, m := range d.Members {
+		if cd, ok := m.(*syntax.ClassDecl); ok && cd.Sym == cls.Companion {
+			comp = cd
+		}
+	}
+	if comp == nil {
+		return
+	}
+	_, outer := fields(d.Members)
+	list, inComp := fields(comp.Members)
+	for _, pd := range list {
+		o := outer[pd.Name]
+		q := inComp[pd.Name+"$1"]
+		if o == nil || q == nil {
+			continue
+		}
+		fd, ok := types.Desc(types.FieldType(pd.Sym))
+		if qd, qok := types.Desc(types.FieldType(q.Sym)); !ok || !qok || qd != fd {
+			continue
+		}
+		sig := q.Name + fd
+		c.errorf(q.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+		c.errorf(o.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 	}
 }
 

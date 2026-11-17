@@ -139,15 +139,19 @@ func (c *Checker) inconsistentBounds(bounds []types.Type) string {
 
 // sameBoundArgs is sameArgs, but for the kinds of projections, which
 // don't make bounds inconsistent: T : A<out T>, T : B<in T>, where A and
-// B both extend R<T>.
+// B both extend R<T>. A star projection is consistent only with another,
+// as in K2.
 func (c *Checker) sameBoundArgs(t, u types.Type) bool {
 	for i, a := range t.A.List {
 		if i >= u.A.Len() {
 			break
 		}
 		b := u.A.Get(i)
-		if a.V == types.Star || b.V == types.Star {
+		if a.V == types.Star && b.V == types.Star {
 			continue
+		}
+		if a.V == types.Star || b.V == types.Star {
+			return false
 		}
 		if !c.subtype(a.T, b.T) || !c.subtype(b.T, a.T) {
 			return false

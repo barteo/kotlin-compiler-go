@@ -32,6 +32,9 @@ type compileResult struct {
 	crash   string // kc's panic: its message and where
 	other   string // another failure: the last line kc wrote
 	outDirs []string
+	// tried are the names of the files of the modules it compiled, or
+	// tried to: the modules after one that failed aren't compiled.
+	tried map[string]bool
 }
 
 // compiler compiles the test's modules into dir, each against the ones
@@ -59,7 +62,7 @@ type libraries struct {
 // infrastructure adds them to each module the directives apply to, and
 // those at the top of a test apply to all.
 func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries) (*compileResult, error) {
-	res := &compileResult{}
+	res := &compileResult{tried: map[string]bool{}}
 	byPath := map[string]string{}
 	for mi, m := range t.modules {
 		src := filepath.Join(dir, fmt.Sprintf("m%d", mi), "src")
@@ -68,6 +71,7 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		var paths, javas []string
 		kotlin := false
 		for _, f := range files {
+			res.tried[f.name] = true
 			p := filepath.Join(src, filepath.FromSlash(f.name))
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 				return nil, err

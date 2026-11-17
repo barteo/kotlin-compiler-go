@@ -106,6 +106,9 @@ type TypeRef struct {
 	Params []*TypeRef
 	Ret    *TypeRef
 	Recv   *TypeRef
+	// Named are the positions of the names of a function type's named
+	// parameters, (x: A) -> R, which a supertype can't have.
+	Named []Pos
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
 	// Contexts are the context parameters' types of a context function

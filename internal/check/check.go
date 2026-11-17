@@ -389,6 +389,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
+	// inInlineFun is set in the body of an inline function, and in its
+	// lambdas and local functions, which can't declare local functions.
+	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -689,6 +692,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.boxedReturns()
 	}
 	conflicts(checkers)
+	multifileSynthetic(checkers)
 	for _, c := range checked {
 		c.checkClashes()
 	}
@@ -757,6 +761,10 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
+		c.exposeBoxedPrivate(c.file.Decls, false)
+		for _, d := range c.aliases {
+			c.aliasArrayNothing(d)
+		}
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
@@ -1003,7 +1011,12 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
-		return c.expandAlias(a, ref)
+		c.aliasRepeatedAnnotations(ref, a)
+		t := c.expandAlias(a, ref)
+		if !c.noBoundChecks {
+			c.arrayNothingRef(ref, t)
+		}
+		return t
 	}
 	var t types.Type
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
@@ -1216,6 +1229,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
+		c.arrayNothingRef(ref, t)
 	}
 	return c.nullable(t, ref)
 }
@@ -1910,6 +1924,9 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 	if p.Vararg {
 		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
 			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+		}
+		if nothingLike(t) {
+			c.errorf(varargPos(p), "forbidden vararg parameter type: %s", t)
 		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
@@ -2745,6 +2762,19 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Property == "" {
+		c.implicitNothingRet(d)
+	}
+}
+
+// implicitNothingRet reports an expression-bodied function whose inferred
+// return type is Nothing, as kotlinc's IMPLICIT_NOTHING_RETURN_TYPE: it
+// never returns, which kotlinc wants written. An override's is its
+// overridden function's.
+func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
+	if d.Ret == nil && d.ExprBody != nil && !d.Override && d.Sym.Ret.K == types.Nothing {
+		c.errorf(d.P, "return type 'Nothing' needs to be specified explicitly")
+	}
 }
 
 func (c *Checker) inferProp(d *syntax.PropDecl) {
@@ -2774,6 +2804,10 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if d.Setter != nil {
 		d.Setter.Sym.Params[0].Type = sym.Type
 		c.setterParamType(d)
+	}
+	if d.Type == nil && d.DelegateOf == nil && !d.Override && sym.Type.K == types.Nothing {
+		// As implicitNothingRet, kotlinc's IMPLICIT_NOTHING_PROPERTY_TYPE.
+		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
 	c.onUndo(func() { delete(c.done, d) })
@@ -2921,6 +2955,7 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		c.classRules(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}
@@ -3345,7 +3380,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -3371,7 +3406,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	if d.Body != nil {
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 		return
 	}
@@ -3413,6 +3448,14 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
+	if p := d.DelegateOf; p != nil {
+		// The delegate sees the property's own type parameters.
+		for _, tp := range p.TypeParams {
+			if tp.Sym != nil {
+				c.tparams = append(slices.Clip(c.tparams), tp.Sym)
+			}
+		}
+	}
 	sym := d.Sym
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
@@ -3433,6 +3476,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = types.ApproxFlexNothing(c.value(d.Init, want))
+	}
+	if p := d.DelegateOf; p != nil && p.Recv != nil && len(p.TypeParams) > 0 {
+		c.delegateUsesTypeParam(d.Init, p, t)
 	}
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
@@ -3738,3 +3784,37 @@ type workerPanic struct {
 }
 
 func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }
+
+// closing returns the position of b's closing brace, where kotlinc reports
+// what a block lacks at its end, or of b if it has none.
+func closing(b *syntax.Block) syntax.Pos {
+	if b.End.Line > 0 {
+		return b.End
+	}
+	return b.P
+}
+
+// nothingLike reports whether t is Nothing, Nothing? or a type parameter
+// bounded by one, which no array can hold elements of.
+func nothingLike(t types.Type) bool {
+	switch t.K {
+	case types.Nothing, types.Null:
+		return true
+	case types.TypeParam:
+		if tp := t.Param(); tp != nil {
+			return slices.ContainsFunc(tp.Bounds, func(b types.Type) bool { return b.K == types.Nothing || b.K == types.Null })
+		}
+	}
+	return false
+}
+
+// varargPos returns the position of p's vararg modifier, where kotlinc
+// reports what is wrong with a vararg parameter, or of p.
+func varargPos(p *syntax.Param) syntax.Pos {
+	for _, m := range p.Mods {
+		if m.Name == "vararg" {
+			return m.P
+		}
+	}
+	return p.P
+}

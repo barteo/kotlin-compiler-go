@@ -256,13 +256,19 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	if err := errors.Join(ioErrs...); err != nil {
 		return err
 	}
+	// After syntax errors, the files are checked as far as the parser
+	// recovered them, as kotlinc does, for the errors it finds besides
+	// (see checkRecovered); a file the lexer rejects isn't.
 	var diags []error
-	for _, es := range errLists {
+	broken, unrecovered := false, false
+	for i, es := range errLists {
 		for _, e := range es {
 			diags = append(diags, e)
 		}
+		broken = broken || len(es) > 0
+		unrecovered = unrecovered || len(es) > 0 && files[i] == nil
 	}
-	if len(diags) > 0 {
+	if unrecovered {
 		return errors.Join(diags...)
 	}
 	classes := map[string]string{} // the files' facades and parts, by name
@@ -271,7 +277,9 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		if !f.HasFacade() {
 			continue // a file of expect declarations, as a common one
 		}
-		if prev, dup := classes[f.Class()]; dup {
+		if prev, dup := classes[f.Class()]; dup && broken {
+			return errors.Join(diags...) // as when only the syntax was checked
+		} else if dup {
 			return fmt.Errorf("%s: duplicate JVM class name %s (also from %s)", f.Path, f.Class(), prev)
 		}
 		classes[f.Class()] = f.Path
@@ -280,12 +288,17 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		}
 	}
 	for name := range multifile {
-		if prev, dup := classes[name]; dup {
+		if prev, dup := classes[name]; dup && broken {
+			return errors.Join(diags...)
+		} else if dup {
 			return fmt.Errorf("%s: duplicate JVM class name %s (also a multi-file class)", prev, name)
 		}
 	}
 	phase("parse")
 	r := openCP()
+	if r.err != nil && broken {
+		return errors.Join(diags...) // as without the class path
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -303,6 +316,9 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	}
 	start = time.Now()
 
+	if broken {
+		return checkRecovered(files, errLists, r.lib, opts.Jobs, diags)
+	}
 	if opts.Metro && opts.MetroOptions["enabled"] != "false" && slices.ContainsFunc(files, check.UsesMetro) {
 		r.lib.MetroOptions = opts.MetroOptions
 		var err error
@@ -777,19 +793,61 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 }
 
 // parse parses a source file with frontend. If it has syntax errors, it
-// returns all of them, as kotlinc reports them (see syntaxErrors).
+// returns all of them, as kotlinc reports them (see syntaxErrors), with
+// the file as far as parsing recovered: without the declarations that
+// failed, or nil if it can't.
 func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
 	if frontend != "psi" {
 		f, errs := syntax.Parse(path, src)
 		if len(errs) > 0 {
-			return nil, syntaxErrors(path, src, nil, errs)
+			return parseRecovered(path, src), syntaxErrors(path, src, nil, errs)
 		}
 		return f, nil
 	}
 	s := psi.Parse(path, src)
 	f, _, errs := lower.File(s)
 	if len(errs) > 0 {
-		return nil, syntaxErrors(path, src, s, errs)
+		return f, syntaxErrors(path, src, s, errs)
 	}
 	return f, nil
+}
+
+// parseRecovered returns the file at path as syntax.ParseAll recovers it,
+// or nil if it can't.
+func parseRecovered(path, src string) (f *syntax.File) {
+	defer func() {
+		// ParseAll can panic on an error outside the declarations it
+		// recovers in.
+		if recover() != nil {
+			f = nil
+		}
+	}()
+	f, _ = syntax.ParseAll(path, src)
+	return f
+}
+
+// checkRecovered checks files, some of which have syntax errors, errLists
+// by file, as far as the parser recovered them, and returns the syntax
+// errors, diags, with the checker's errors on the lines without one. A
+// declaration with a syntax error is left out of its file, so the
+// checker's errors on its lines would be about what parsing left. Its
+// warnings are left out, as many are about what isn't used, which a
+// declaration left out may use.
+func checkRecovered(files []*syntax.File, errLists [][]*syntax.Error, lib *check.Library, jobs int, diags []error) error {
+	syntaxLines := map[string]map[int]bool{}
+	for i, es := range errLists {
+		for _, e := range es {
+			if syntaxLines[files[i].Path] == nil {
+				syntaxLines[files[i].Path] = map[int]bool{}
+			}
+			syntaxLines[files[i].Path][e.Pos.Line] = true
+		}
+	}
+	checked, _ := check.CheckOptions(context.Background(), files, lib, jobs, nil, check.Options{})
+	for _, e := range checked {
+		if !e.IsWarning() && !syntaxLines[e.File][e.Pos.Line] {
+			diags = append(diags, e)
+		}
+	}
+	return errors.Join(diags...)
 }

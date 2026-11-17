@@ -1072,6 +1072,13 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		c.args(x, nil)
 		return ft
 	}
+	if m, ok := x.Fun.(*syntax.Member); ok && x.Operator {
+		// a + b is a.plus(b) for a function plus, not a property's
+		// value invoked.
+		c.errorf(x.P, "property '%s' cannot be used as operator", m.Name)
+		c.args(x, nil)
+		return types.InvalidType
+	}
 	if !ft.IsFunc() {
 		if !types.MayBeNull(ft) || ft.P {
 			if t, ok := c.invokeOp(x, ft.NonNull(), want, sink); ok {
@@ -1109,6 +1116,14 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 	if len(x.TypeArgs) > 0 {
 		c.errorf(x.TypeArgs[0].P, "no type arguments expected for 'invoke'")
 		x.TypeArgs = nil
+	}
+	for i := range x.Args {
+		if x.Name(i) != "" {
+			// Function types' parameter names are documentation only.
+			c.errorf(x.Args[i].Pos(), "named arguments are not allowed for function types")
+			x.Names = nil
+			break
+		}
 	}
 	return c.resolve(x, methodCallees(rt.C.Methods["invoke"], func(*types.FunSym) types.Subst { return classSubst(rt) }), want, sink)
 }
