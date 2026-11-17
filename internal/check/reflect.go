@@ -167,6 +167,30 @@ func ensured(cls *types.ClassSym) *types.ClassSym {
 // types are the expected function type's, or without one, those of the
 // only function the reference can name.
 
+// samConvertedArg reports whether the call that reference x's lambda
+// makes converts one of the lambda's parameters to a fun interface, which
+// kotlinc doesn't do: foo(A::invokeLater) for foo(x: (() -> Unit) -> Unit)
+// and Java's static void invokeLater(Runnable).
+func samConvertedArg(x *syntax.Lambda) bool {
+	if x.Body == nil || len(x.Body.Stmts) == 0 {
+		return false
+	}
+	es, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*syntax.Call)
+	if !ok || call.SAM {
+		return false // a fun interface's constructor converts it: ::KRunnable
+	}
+	for _, a := range call.Args {
+		if ch, ok := a.(*syntax.Checked); ok && ch.SAM != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // refForm is a way to read a reference: its lambda's parameter types and
 // a builder of its body.
 type refForm struct {
@@ -542,6 +566,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 			c.tailBlock, c.tailSink = x.Body, tail
 		}
 		ps, rt, ok := c.checkLambda1(x, w)
+		if ok && len(c.errs) == n && samConvertedArg(x) {
+			c.errorf(p, "inapplicable candidate: %s takes a fun interface, which a callable reference's parameter isn't converted to", refString(r))
+		}
 		if len(c.errs) == n || i == len(forms)-1 {
 			if tail != nil {
 				sink.merge(tail)
