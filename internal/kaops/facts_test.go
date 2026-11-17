@@ -1,4 +1,4 @@
-package lintops
+package kaops
 
 import (
 	"os"
@@ -188,7 +188,7 @@ func decode(t *testing.T, msg []byte) decoded {
 	return d
 }
 
-func TestAnalyzeFile(t *testing.T) {
+func TestFacts(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a.kt")
 	b := filepath.Join(dir, "b.kt")
@@ -203,38 +203,32 @@ func TestAnalyzeFile(t *testing.T) {
 	w.Bool(true) // no JDK
 	w.String("m")
 	w.Uint(1)
-	w.Uint(0) // no class path
-	w.Uint(0) // no friend paths
-	w.Uint(0) // no opt-ins
-	w.Uint(2)
-	w.String(a)
-	w.String(b)
-	resp, err := kcabi.Call(OpLintAnalyze, w.Message())
+	w.Uint(0)    // no class path
+	w.Uint(0)    // no friend paths
+	w.Bool(true) // facts
+	w.Uint(0)    // no opt-ins
+	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := wire.NewReader(resp)
-	h := r.Int()
-	if n := r.Uint(); n != 0 {
-		t.Fatalf("%d diagnostics: %s:%d: %s", n, r.String(), r.Uint(), func() string { r.Uint(); _ = r.String(); return r.String() }())
+	session := wire.NewReader(resp).Int()
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(2)
+	w.String(a)
+	w.String(b)
+	w.Uint(0) // nothing kept
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if n := r.Uint(); n != 2 {
-		t.Fatalf("%d files", n)
-	}
-	for range 2 {
-		if nodes, _ := r.Uint(), r.Uint(); nodes == 0 {
-			t.Fatal("no nodes")
-		}
-	}
-	if r.Err() != nil || r.Len() != 0 {
-		t.Fatalf("result: err %v, %d bytes left", r.Err(), r.Len())
-	}
+	h := wire.NewReader(resp).Int()
 
 	file := func(i uint64) decoded {
 		var w wire.Writer
 		w.Int(h)
 		w.Uint(i)
-		resp, err := kcabi.Call(OpLintFile, w.Message())
+		resp, err := kcabi.Call(OpKaFacts, w.Message())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,15 +261,69 @@ func TestAnalyzeFile(t *testing.T) {
 		t.Fatal("no return target in b.kt")
 	}
 
-	w = wire.Writer{}
-	w.Int(h)
-	if _, err := kcabi.Call(OpLintClose, w.Message()); err != nil {
-		t.Fatal(err)
+	for _, x := range []int64{h, session} {
+		w = wire.Writer{}
+		w.Int(x)
+		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+			t.Fatal(err)
+		}
 	}
 	w = wire.Writer{}
 	w.Int(h)
 	w.Uint(0)
-	if _, err := kcabi.Call(OpLintFile, w.Message()); err == nil {
-		t.Fatal("file of a closed result")
+	if _, err := kcabi.Call(OpKaFacts, w.Message()); err == nil {
+		t.Fatal("facts of a closed model")
+	}
+}
+
+// TestNoFacts checks that a session without facts has none, and that one
+// with them has none for sources with errors.
+func TestNoFacts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.kt")
+	if err := os.WriteFile(path, []byte("package p\nfun f(): Int = 1\nfun h(): Int = nope()\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	for _, withFacts := range []bool{false, true} {
+		var w wire.Writer
+		w.String("")
+		w.Bool(true)
+		w.String("m")
+		w.Uint(1)
+		w.Uint(0)
+		w.Uint(0)
+		w.Bool(withFacts)
+		w.Uint(0)
+		resp, err := kcabi.Call(OpKaOpen, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		session := wire.NewReader(resp).Int()
+		w = wire.Writer{}
+		w.Int(session)
+		w.Uint(1)
+		w.String(path)
+		w.Uint(0)
+		resp, err = kcabi.Call(OpKaUpdate, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		model := wire.NewReader(resp).Int()
+		w = wire.Writer{}
+		w.Int(model)
+		w.Uint(0)
+		resp, err = kcabi.Call(OpKaFacts, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := decode(t, resp); len(d.facts) != 0 {
+			t.Errorf("facts %t: %d facts", withFacts, len(d.facts))
+		}
+		for _, x := range []int64{model, session} {
+			w = wire.Writer{}
+			w.Int(x)
+			if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

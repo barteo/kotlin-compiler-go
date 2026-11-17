@@ -1,23 +1,22 @@
-// Package lintops registers libkc's linter operations (internal/kcabi) on
-// package analysis: a JVM linter such as detekt has kc check a module and
-// reads the facts it resolved, file by file, keyed by psi node. The
-// layouts below are mirrored by jvm/kc-detekt's KcFacts.
+package kaops
+
+import (
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/barteo/kotlin-compiler-go/analysis"
+	"github.com/barteo/kotlin-compiler-go/analysis/ka"
+	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
+	"github.com/barteo/kotlin-compiler-go/internal/kcabi/wire"
+	"github.com/barteo/kotlin-compiler-go/psi"
+)
+
+// The facts of a model (OpKaFacts), for a linter such as detekt: what
+// package analysis resolved in the sources' code, keyed by psi node. The
+// layouts below are mirrored by jvm/kc-aa's KcFacts.
 //
-// OpLintAnalyze: config n:Uint path:String*n → result
-//
-//	config = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
-//	         n:Uint classPath:String*n m:Uint friendPath:String*m
-//	         k:Uint optIn:String*k
-//	result = handle:Int n:Uint diag*n m:Uint (nodes:Uint kinds:Uint)*m
-//	diag   = path:String line:Uint col:Uint code:String message:String
-//
-// It parses and checks the files as one module (analysis.Analyze) and
-// returns a handle to the result, its diagnostics, and for each path, in
-// order, the number of its psi nodes and the hash of their kinds in
-// preorder (psi.Snapshot.KindSequenceHash), which the JVM checks its PSI
-// against. A result with diagnostics has no facts.
-//
-// OpLintFile: handle:Int file:Uint → types symbols facts
+// OpKaFacts: model:Int file:Uint → types symbols facts
 //
 //	types   = n:Uint type*n
 //	type    = name:String classID:String tflags:Uint owner:elem projection:Uint
@@ -37,8 +36,9 @@
 //	elem    = file:Uint [node:Uint]
 //	opt     = Uint
 //
-// It returns the facts of the file at index file of the analyzed paths,
-// in node order, with the types they use and the symbols they name. A
+// It returns package analysis's facts of the Kotlin file at index file of
+// the model's files (those of an OpenFacts session's update, facts true in
+// OpKaOpen's config), in node order, with the types they use and the symbols they name. A
 // type's arguments are indices of types before it; an opt is 0 for none
 // or a type's index plus one. An elem's file is 0 for none, and
 // otherwise the index of a file plus one, followed by the node.
@@ -65,136 +65,70 @@
 // cast, 16 used as expression, 32 unreachable, 64 suspend operation,
 // 128 implicit parameter.
 //
-// OpLintClose: handle:Int → nothing. It releases a result.
-package lintops
+//
+// A model whose sources have errors, or one of a session without facts,
+// has no facts: each file's list is empty.
 
-import (
-	"context"
-	"os"
-	"strconv"
-	"strings"
-
-	"github.com/barteo/kotlin-compiler-go/analysis"
-	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
-	"github.com/barteo/kotlin-compiler-go/internal/kcabi/wire"
-	"github.com/barteo/kotlin-compiler-go/psi"
-)
-
-// The operations. The numbers are part of the ABI: append only.
-const (
-	OpLintAnalyze kcabi.Op = 20
-	OpLintFile    kcabi.Op = 21
-	OpLintClose   kcabi.Op = 22
-)
-
-// handles are the results the JVM holds.
-var handles kcabi.Handles
-
-func init() {
-	kcabi.Register(OpLintAnalyze, analyze)
-	kcabi.Register(OpLintFile, file)
-	kcabi.Register(OpLintClose, closeResult)
-}
-
-// result is an analysis and its facts and symbols, split by file.
+// result is a model's facts and symbols, split by file.
 type result struct {
 	facts   [][]analysis.Fact // by file
 	symbols []analysis.Symbol // by ID-1
 	files   map[psi.SnapshotID]int
 }
 
-func analyze(req []byte) ([]byte, error) {
-	r := wire.NewReader(req)
-	var cfg analysis.Config
-	cfg.JDKHome = r.String()
-	cfg.NoJDK = r.Bool()
-	cfg.ModuleName = r.String()
-	cfg.Jobs = int(r.Uint())
-	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
-		cfg.ClassPath = append(cfg.ClassPath, r.String())
-	}
-	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
-		cfg.FriendPaths = append(cfg.FriendPaths, r.String())
-	}
-	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
-		cfg.OptIns = append(cfg.OptIns, r.String())
-	}
-	var paths []string
-	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
-		paths = append(paths, r.String())
-	}
-	if err := r.Err(); err != nil {
-		return nil, err
-	}
-	snaps := make([]*psi.Snapshot, len(paths))
-	errs := make([]error, len(paths))
-	parallel(len(paths), max(cfg.Jobs, 1), func(i int) {
-		b, err := os.ReadFile(paths[i])
-		if err != nil {
-			errs[i] = err
-			return
-		}
-		snaps[i] = psi.Parse(paths[i], string(b))
-	})
-	for _, err := range errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-	res, err := analysis.Analyze(context.Background(), cfg, snaps)
-	if err != nil {
-		return nil, err
-	}
-	data := res.Data()
-	out := &result{facts: make([][]analysis.Fact, len(snaps)), symbols: data.Symbols, files: map[psi.SnapshotID]int{}}
-	for i, s := range snaps {
-		out.files[s.ID()] = i
-	}
-	for _, f := range data.Facts {
-		if i, ok := out.files[f.Element.Snapshot]; ok {
-			out.facts[i] = append(out.facts[i], f)
-		}
-	}
-	var w wire.Writer
-	w.Int(int64(handles.Put(out)))
-	diags := res.Diagnostics()
-	w.Uint(uint64(len(diags)))
-	for _, d := range diags {
-		w.String(d.Path)
-		w.Uint(uint64(max(d.Line, 0)))
-		w.Uint(uint64(max(d.Column, 0)))
-		w.String(d.Code)
-		w.String(d.Message)
-	}
-	w.Uint(uint64(len(snaps)))
-	for _, s := range snaps {
-		w.Uint(uint64(s.NodeCount()))
-		w.Uint(s.KindSequenceHash())
-	}
-	return w.Message(), nil
+// results are the models' results, made on their first OpKaFacts and
+// dropped when they are closed.
+var results struct {
+	mu sync.Mutex
+	m  map[*ka.Model]*result
 }
 
-func closeResult(req []byte) ([]byte, error) {
-	r := wire.NewReader(req)
-	h := kcabi.Handle(r.Int())
-	if err := r.Err(); err != nil {
-		return nil, err
+// factsOf returns m's result.
+func factsOf(m *ka.Model) *result {
+	results.mu.Lock()
+	defer results.mu.Unlock()
+	if r, ok := results.m[m]; ok {
+		return r
 	}
-	handles.Delete(h)
-	return nil, nil
+	out := &result{facts: make([][]analysis.Fact, len(m.Files)), files: map[psi.SnapshotID]int{}}
+	for i, f := range m.Files {
+		out.files[f.Snapshot.ID()] = i
+	}
+	if m.Facts != nil {
+		data := m.Facts.Data()
+		out.symbols = data.Symbols
+		for _, f := range data.Facts {
+			if i, ok := out.files[f.Element.Snapshot]; ok {
+				out.facts[i] = append(out.facts[i], f)
+			}
+		}
+	}
+	if results.m == nil {
+		results.m = map[*ka.Model]*result{}
+	}
+	results.m[m] = out
+	return out
 }
 
-func file(req []byte) ([]byte, error) {
+// dropFacts forgets m's result.
+func dropFacts(m *ka.Model) {
+	results.mu.Lock()
+	delete(results.m, m)
+	results.mu.Unlock()
+}
+
+func factsOp(req []byte) ([]byte, error) {
 	r := wire.NewReader(req)
 	h := kcabi.Handle(r.Int())
 	i := int(r.Uint())
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
-	res, err := kcabi.Get[*result](&handles, h)
+	m, err := kcabi.Get[*ka.Model](&handles, h)
 	if err != nil {
 		return nil, err
 	}
+	res := factsOf(m)
 	if i < 0 || i >= len(res.facts) {
 		return nil, errBadFile(i)
 	}
@@ -203,7 +137,7 @@ func file(req []byte) ([]byte, error) {
 
 type errBadFile int
 
-func (e errBadFile) Error() string { return "lintops: no file " + strconv.Itoa(int(e)) }
+func (e errBadFile) Error() string { return "kaops: no file " + strconv.Itoa(int(e)) }
 
 // encoder writes a file's facts. Types are written to their own table
 // first, so the facts, calls and symbols are encoded into body and refer
@@ -508,27 +442,3 @@ func at(ss []string, i int) string {
 }
 
 func atBool(bs []bool, i int) bool { return i < len(bs) && bs[i] }
-
-func parallel(n, jobs int, fn func(i int)) {
-	if n == 0 {
-		return
-	}
-	jobs = min(jobs, n)
-	next := make(chan int)
-	done := make(chan struct{})
-	for range jobs {
-		go func() {
-			for i := range next {
-				fn(i)
-			}
-			done <- struct{}{}
-		}()
-	}
-	for i := range n {
-		next <- i
-	}
-	close(next)
-	for range jobs {
-		<-done
-	}
-}

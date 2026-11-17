@@ -6,6 +6,11 @@
 //
 //	config  = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
 //	          n:Uint classPath:String*n m:Uint friendPath:String*m
+//	          facts:Bool k:Uint optIn:String*k
+//
+// With facts, the session is ka.OpenFacts's: its updates check the
+// sources' bodies too and their models have facts (OpKaFacts, facts.go).
+// optIn are the module's -opt-in markers.
 //
 // OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k → model
 //
@@ -85,13 +90,16 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi/wire"
 )
 
-// The operations. The numbers are part of the ABI: append only.
+// The operations. The numbers are part of the ABI: append only. 20 to 22
+// were the linter operations of package lintops, which OpKaFacts
+// replaced; they aren't used again.
 const (
 	OpKaOpen    kcabi.Op = 10
 	OpKaUpdate  kcabi.Op = 11
 	OpKaClose   kcabi.Op = 12
 	OpKaClass   kcabi.Op = 13
 	OpKaPackage kcabi.Op = 14
+	OpKaFacts   kcabi.Op = 15
 )
 
 // handles are the sessions and models the JVM holds.
@@ -103,6 +111,7 @@ func init() {
 	kcabi.Register(OpKaClose, closeHandle)
 	kcabi.Register(OpKaClass, class)
 	kcabi.Register(OpKaPackage, pkg)
+	kcabi.Register(OpKaFacts, factsOp)
 }
 
 func pkg(req []byte) ([]byte, error) {
@@ -163,11 +172,19 @@ func open(req []byte) ([]byte, error) {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		cfg.FriendPaths = append(cfg.FriendPaths, r.String())
 	}
+	withFacts := r.Bool()
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		cfg.OptIns = append(cfg.OptIns, r.String())
+	}
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
+	s := ka.Open(cfg)
+	if withFacts {
+		s = ka.OpenFacts(cfg)
+	}
 	var w wire.Writer
-	w.Int(int64(handles.Put(ka.Open(cfg))))
+	w.Int(int64(handles.Put(s)))
 	return w.Message(), nil
 }
 
@@ -371,6 +388,9 @@ func closeHandle(req []byte) ([]byte, error) {
 		return nil, err
 	}
 	handles.Delete(h)
+	if m, ok := x.(*ka.Model); ok {
+		dropFacts(m)
+	}
 	if c, ok := x.(io.Closer); ok {
 		return nil, c.Close()
 	}
