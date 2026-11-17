@@ -118,6 +118,10 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		})
 	}
 	b.Stmts = b.Stmts[1:]
+	if c.contractAt == nil {
+		c.contractAt = map[*syntax.Block]syntax.Pos{}
+	}
+	c.contractAt[b] = call.Fun.Pos()
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)
 		if !ok {

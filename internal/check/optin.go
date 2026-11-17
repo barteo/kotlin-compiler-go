@@ -1018,6 +1018,13 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 	w.typeRef(d.Recv)
 	w.params(d.Params)
 	w.typeRef(d.Ret)
+	if p, ok := w.c.contractAt[d.Body]; ok && d.Body != nil {
+		// kotlin.contracts.contract, which dropContracts took out of
+		// the body, is @ExperimentalContracts.
+		if m := w.o.marker(w.o.extNamed("kotlin.contracts.ExperimentalContracts")); m != nil {
+			w.require(p, []*optMarker{m})
+		}
+	}
 	if d.Body != nil {
 		w.node(d.Body)
 	}

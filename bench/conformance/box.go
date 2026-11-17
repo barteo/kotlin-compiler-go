@@ -218,7 +218,7 @@ func (c *boxConfig) runOne(i int, t *test) *result {
 		defer os.RemoveAll(dir)
 	}
 	withReflect := t.has("WITH_REFLECT")
-	cr, err := c.comp.compile(t, dir, helpers, libraries{stdlib: true, reflect: withReflect})
+	cr, err := c.comp.compile(t, dir, helpers, libraries{stdlib: true, reflect: withReflect, optIns: t.values("OPT_IN")})
 	if err != nil {
 		r.category, r.key, r.detail = catKc, "harness error", err.Error()
 		return r

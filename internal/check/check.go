@@ -192,7 +192,11 @@ type Checker struct {
 	cyclic  []*syntax.ClassDecl // classes that inherit from themselves
 	// cyclicAt are, for a class of cyclic whose cycle goes through the
 	// class path, the supertypes that lead back to it.
-	cyclicAt    map[*syntax.ClassDecl][]syntax.Pos
+	cyclicAt map[*syntax.ClassDecl][]syntax.Pos
+	// contractAt are the positions of the contracts that dropContracts
+	// took out of the functions' bodies, by body, whose opt-in
+	// optInErrors checks.
+	contractAt  map[*syntax.Block]syntax.Pos
 	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
 	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
 	temps       int                     // temporaries named so far, for unique names
