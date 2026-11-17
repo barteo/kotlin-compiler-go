@@ -51,3 +51,45 @@ fun <T : Throwable> catchParam() {
 inline fun <reified T : Throwable> catchReified() {
     try { } catch (e: T) { }
 }
+
+fun refs(param: String) {
+    val a = ::param // ERROR references to variables aren't supported yet
+    val local = "local"
+    val b = ::local // ERROR references to variables aren't supported yet
+    val c = { y: Int -> ::y } // ERROR references to variables aren't supported yet
+}
+fun shadowed() {}
+fun byFunction(shadowed: Int) { val r: () -> Unit = ::shadowed }
+class PropParam(val p: Int, q: Int) {
+    init {
+        ::p
+        ::q // ERROR references to variables aren't supported yet
+    }
+}
+val withField: Int = 1
+    get() {
+        ::field // ERROR references to variables aren't supported yet
+        return field
+    }
+
+inline fun <reified T : Any> reifiedAny() {}
+inline fun <reified T> reifiedAnything() {}
+inline fun <reified F> dnn() {
+    reifiedAny<F & Any>() // ERROR definitely-non-nullable type as a reified type argument
+    reifiedAnything<Inv2<F & Any>>()
+}
+interface Inv2<T>
+
+val Int.minusAssign: (Int) -> Unit get() = {}
+class Ops { operator fun minus(x: Int) = this }
+val Ops.plus: (Int) -> Ops get() = { this }
+fun operators() {
+    1 -= 2 // ERROR property 'minusAssign' cannot be used as operator
+    var i = 1
+    i -= 2 // ERROR assignment operators ambiguity
+    var o = Ops()
+    o = o + 1 // ERROR property 'plus' cannot be used as operator
+    o -= 1
+    o.plus(1)
+    2 *= 3 // ERROR variable expected
+}

@@ -388,7 +388,7 @@ func hasReified(f *types.FunSym) bool {
 // reified type parameters: they must be known when the program runs, so
 // not type parameters, which are erased, unless reified in turn.
 func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, s *system) {
-	x.Reified = c.reifiedTypes(x.P, f, sub, s)
+	x.Reified = c.reifiedTypes(x.P, f, sub, s, x.TypeArgs)
 	c.serializerOf(x, f)
 	c.reifiedSerializers(x, f)
 }
@@ -396,15 +396,20 @@ func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, 
 // reifiedProp records the type arguments of a read x of an extension
 // property whose getter g has reified type parameters, as reifiedArgs.
 func (c *Checker) reifiedProp(x *syntax.Member, g *types.FunSym, sub types.Subst, s *system) {
-	x.Reified = c.reifiedTypes(x.P, g, sub, s)
+	x.Reified = c.reifiedTypes(x.P, g, sub, s, nil)
 }
 
-func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst, s *system) []types.Type {
+// reifiedTypes returns the type arguments of f in a call or read at pos,
+// whose written type arguments are written, and checks those of reified
+// type parameters.
+func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst, s *system, written []*syntax.TypeArg) []types.Type {
 	ts := make([]types.Type, len(f.TypeParams))
 	for i, tp := range f.TypeParams {
 		t := s.final(sub.Apply(types.ParamType(tp)))
 		ts[i] = t
 		switch {
+		case tp.Reified && len(written) == len(f.TypeParams) && written[i].Type != nil && written[i].Type.And != nil:
+			c.errorf(written[i].P, "cannot use definitely-non-nullable type as a reified type argument")
 		case tp.Reified && t.IsParam() && !t.Param().Reified:
 			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
 		case tp.Reified && s != nil && s.captured(sub[tp]):
@@ -413,6 +418,10 @@ func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst,
 			// Nothing has no class; Nothing? is Void's.
 			c.errorf(pos, "cannot use 'Nothing' as reified type parameter")
 		}
+	}
+	if f.Builtin == types.TypeOf && hasSuspendFunc(ts[0]) {
+		// kotlin.reflect has no KType of a suspend function type.
+		c.errorf(pos, "suspend function types can't be used in 'typeOf'")
 	}
 	if f.Builtin == types.TypeOf {
 		if p := recursiveBound(ts[0], nil); p != nil {
@@ -567,4 +576,20 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 		}
 		c.errorf(id.P, "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", id.Name, d.Name)
 	}
+}
+
+// hasSuspendFunc reports whether t is or has as a type argument a suspend
+// function type.
+func hasSuspendFunc(t types.Type) bool {
+	if t.IsSuspendFunc() {
+		return true
+	}
+	if t.K == types.Class && t.A != nil {
+		for _, a := range t.A.List {
+			if a.V != types.Star && hasSuspendFunc(a.T) {
+				return true
+			}
+		}
+	}
+	return false
 }

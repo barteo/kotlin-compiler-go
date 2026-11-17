@@ -111,7 +111,7 @@ func DelegatedProp(pd *PropDecl, member bool, before []Decl) []Decl {
 		}
 		m := &Member{X: field, Name: name}
 		m.P = pos
-		c := &Call{Fun: m, Args: append([]Expr{this, ref}, args...)}
+		c := &Call{Fun: m, Args: append([]Expr{this, ref}, args...), Operator: true}
 		c.P = pos
 		return c
 	}

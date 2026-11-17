@@ -389,6 +389,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
+	// inInlineFun is set in the body of an inline function, and in its
+	// lambdas and local functions, which can't declare local functions.
+	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -689,6 +692,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.boxedReturns()
 	}
 	conflicts(checkers)
+	multifileSynthetic(checkers)
 	for _, c := range checked {
 		c.checkClashes()
 	}
@@ -757,6 +761,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
+		c.exposeBoxedPrivate(c.file.Decls, false)
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
@@ -3366,7 +3371,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

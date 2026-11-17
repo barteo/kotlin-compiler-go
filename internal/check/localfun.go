@@ -41,6 +41,8 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		d.Inline = false
 	case d.Inline:
 		c.errorf(d.P, "local inline functions are not yet supported")
+	case c.inInlineFun:
+		c.errorf(d.P, "local functions are not yet supported in inline functions")
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
 		c.unsupported(d.P, "compose", "local composable functions are not supported")
 	}

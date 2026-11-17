@@ -70,7 +70,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	id := &syntax.Ident{Name: s.DelegateSym.Name}
 	null := &syntax.NullLit{}
 	m := &syntax.Member{X: id, Name: "getValue"}
-	s.Get = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}}
+	s.Get = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 	id.P, null.P, m.P, s.Get.P = s.P, s.P, s.P, s.P
 	if s.Type != nil {
 		c.assignable(c.value(s.Get, t), t, s.Delegate.Pos())
@@ -86,7 +86,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		null := &syntax.NullLit{}
 		v := &syntax.Ident{Name: s.ValueSym.Name}
 		m := &syntax.Member{X: id, Name: "setValue"}
-		s.Set = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref, v}}
+		s.Set = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref, v}, Operator: true}
 		id.P, null.P, v.P, m.P, s.Set.P = s.P, s.P, s.P, s.P, s.P
 		c.value(s.Set, noWant)
 	}

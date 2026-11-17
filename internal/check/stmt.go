@@ -1279,7 +1279,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	c.rewrite(&s.Target, c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(s.Target)))))
 	n := len(c.errs)
 	var tt types.Type
-	var mutable bool
+	var mutable, notVar bool
 	switch t := s.Target.(type) {
 	case *syntax.Member:
 		if t.Paren && s.Op != syntax.ASSIGN {
@@ -1306,6 +1306,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// x += v on a value that isn't a variable calls x.plusAssign(v):
 		// ktor's this += bytes in an extension of its Digest.
 		tt = c.expr(s.Target, noWant)
+		notVar = true
 	}
 	if mutable && c.contextWrite(s) {
 		return
@@ -1377,6 +1378,20 @@ func (c *Checker) assign(s *syntax.Assign) {
 			want = v.Type
 		}
 		c.compoundOp(s, tt, want, mutable)
+		return
+	}
+	if c.opProperty(s.Target, tt, opNames[s.Op], s.Value) {
+		// An extension property plusAssign of a function type isn't an
+		// operator, though x.plusAssign(v) invokes it.
+		if mutable {
+			c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", opNames[s.Op], opNames[arithOf(s.Op)])
+		} else {
+			c.errorf(s.P, "property '%s' cannot be used as operator", opNames[s.Op])
+		}
+		return
+	}
+	if notVar {
+		c.errorf(s.Target.Pos(), "variable expected")
 		return
 	}
 	s.OpType = tt

@@ -76,3 +76,53 @@ fun locals() {
     fun local() = null!! // ERROR return type 'Nothing' needs to be specified explicitly
     val v = null!!
 }
+
+fun interface WithDelegate {
+    val functionDelegate: Any? get() = null // ERROR clashes with the function delegate
+    fun invoke()
+}
+fun interface WithGetter {
+    fun getFunctionDelegate(): Any? = null // ERROR clashes with the function delegate
+    fun invoke()
+}
+fun interface WithOthers {
+    val getFunctionDelegate: Any? get() = null
+    fun functionDelegate(): Any? = null
+    fun getFunctionDelegate(x: Any?): Any? = null
+    fun invoke()
+}
+
+interface Root<T>
+interface Child1<T> : Root<T>
+interface Child2<T> : Root<T>
+class StarBound<X> where X : Child2<*>, X : Child1<Base> // ERROR has inconsistent bounds
+class Stars<X> where X : Child2<*>, X : Child1<*>
+class OutBound<X> where X : Child2<out Base>, X : Child1<Base>
+
+interface Delegated
+class DelegatedImpl : Delegated
+class NoPrimary : Delegated by DelegatedImpl() { // ERROR delegation without primary constructor
+    constructor()
+}
+class WithPrimary() : Delegated by DelegatedImpl() {
+    constructor(x: Int) : this()
+}
+
+interface Inv<T>
+typealias InvStar = Inv<*>
+typealias InvT<T> = Inv<T>
+class FromStarAlias : InvStar // ERROR type alias with projections in its expansion
+class FromProjected : InvT<*> // ERROR projections are not allowed for immediate arguments of a supertype
+class FromDirect : Inv<out Base> // ERROR projections are not allowed for immediate arguments of a supertype
+class FromNested : InvT<InvT<*>>
+class FromPlain : InvT<Base>
+
+inline fun withLocals(f: () -> Unit) {
+    fun local() {} // ERROR local functions are not yet supported in inline functions
+    val l = { fun inLambda() {} } // ERROR local functions are not yet supported in inline functions
+    val anon = fun() {}
+    object {
+        fun member() { fun inMember() {} }
+    }
+}
+fun notInline() { fun local() {} }

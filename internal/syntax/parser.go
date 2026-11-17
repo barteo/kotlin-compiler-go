@@ -1625,12 +1625,13 @@ func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
 	st.External, st.ExternalP = m.External, m.ExternalP
 	p.expect(LPAREN)
 	p.skipNL()
+	var anns []Annotation
 	for p.at(AT) {
-		p.annotation() // ignored, as on locals
+		anns = append(anns, p.annotation())
 		p.skipNL()
 	}
 	name := p.ident()
-	param := &Param{P: name.Pos, Name: name.Text}
+	param := &Param{P: name.Pos, Name: name.Text, Annotations: anns}
 	if p.at(COLON) {
 		p.next()
 		param.Type = p.parseType()

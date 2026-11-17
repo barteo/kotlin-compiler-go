@@ -214,6 +214,27 @@ sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
 
+Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
+
+- **A class path without the standard library**: the two
+  `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
+  `nullableTypes/nullableArgumentForIn`, whose `Int? in IntRange` the full
+  library's `contains` extension resolves (see above).
+- **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
+  `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
+  (`nullSourceInJvmModuleChecker`).
+- **The backend's analysis of inlined library bodies**:
+  `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
+  that reach `typeOf` through another reified function.
+- **Two classes with the same name in two modules**: the three
+  `multimodule/duplicate*` tests and
+  `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
+  its name alone.
+- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
+  `kjkimplicitTypesCrash`, of an older language version (its `latestLV`
+  variant expects no error).
+
 ## Checking the harness
 
 A failure must be `kc`'s, not the harness's, so `-kotlinc` runs tests
@@ -239,27 +260,27 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,270 | 50.0% |
+| rejects invalid | 4,312 | 50.5% |
 | accepts valid | 4,115 | 48.2% |
-| accepts invalid | 123 | 1.4% |
+| accepts invalid | 83 | 1.0% |
 | rejects valid | 7 | 0.1% |
-| parse/unsupported | 16 | 0.2% |
+| parse/unsupported | 14 | 0.2% |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 98% of the diagnostics tests, and reports
-17,646 of the 21,536 expected errors (82%) on their lines, and 507 of
+`kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
+18,404 of the 21,548 expected errors (85%) on their lines, and 507 of
 the 3,634 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 39 of the 123
+none. Tests with Java sources are 1,221 of the run, and 34 of the 83
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 15), unresolved names
-  (`UNRESOLVED_REFERENCE` 15) and unsupported constructs (`UNSUPPORTED`
-  7).
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 14), unresolved names
+  (`UNRESOLVED_REFERENCE` 14), and callable references whose types
+  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 3).
 - **Rejects valid**, by `kc`'s first error: unresolved names and
   imports (4), type mismatches (2), and a property invoked as a
   function (1). No box test is rejected.

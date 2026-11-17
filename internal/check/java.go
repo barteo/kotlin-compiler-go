@@ -1634,6 +1634,13 @@ func (c *Checker) isVar(name string) bool {
 	if _, _, ok := c.scope.lookup(name); ok {
 		return true
 	}
+	return c.nonLocalVar(name)
+}
+
+// nonLocalVar reports whether name names a property that isn't a local:
+// of the class the code is in, an object in scope, an implicit receiver,
+// or a top-level or imported one.
+func (c *Checker) nonLocalVar(name string) bool {
 	if c.cls != nil && c.userProp(c.cls, name) != nil {
 		return true
 	}
@@ -2795,12 +2802,23 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
+	if m := javaAnnotationElement(cls, fn.Name); m != nil {
+		// Kotlin sees a Java annotation's elements as properties.
+		c.errorf(fn.P, "expression '%s' of type %s cannot be invoked as a function", fn.Name, c.kclassOfJava(m.Ret))
+		c.args(x, nil)
+		return types.InvalidType
+	}
 	if hides := c.hidingExts(fn.Name, rt, x); len(hides) > 0 {
 		return c.resolve(x, hides, want, sink)
 	}
 	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
+		if slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Operator }) && slices.ContainsFunc(c.extCalleesFor(fn.Name, rt, x), func(cl callee) bool { return cl.f.Operator && c.mayTake(cl.f, x) }) {
+			// A member without the operator modifier is inapplicable to
+			// the convention, so an operator extension wins over it.
+			ms = slices.DeleteFunc(ms, func(f *types.FunSym) bool { return !f.Operator })
+		}
 	}
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
@@ -3338,4 +3356,18 @@ func javaHidden(cls *types.ClassSym, over []*types.FunSym) bool {
 		}
 	}
 	return len(over) > 0
+}
+
+// javaAnnotationElement returns the element name of Java annotation class
+// cls, its abstract method without parameters, or nil.
+func javaAnnotationElement(cls *types.ClassSym, name string) *types.FunSym {
+	if cls.Ensure(); cls.Retention == types.NoRetention || !javaAnnotation(cls) {
+		return nil
+	}
+	for _, f := range cls.Methods[name] {
+		if f.Abstract && len(f.Params) == 0 && f.Owner == cls {
+			return f
+		}
+	}
+	return nil
 }

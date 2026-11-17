@@ -49,6 +49,11 @@ func (c *Checker) resolveSupertypes() {
 				c.errorf(st.Type.P, "delegation cannot be used in interfaces")
 				st.Delegate = nil
 			}
+			if st.Delegate != nil && !cd.HasPrimary {
+				// The delegate is a field the primary constructor sets.
+				c.errorf(st.Type.P, "delegation without primary constructor is unsupported")
+				st.Delegate = nil
+			}
 			t := c.supertype(cd, st, seen)
 			if t.E || t.X > 0 {
 				c.errorf(st.Type.P, "extension function type or function type with context parameters is not allowed as supertype")
@@ -60,6 +65,9 @@ func (c *Checker) resolveSupertypes() {
 			st.T = t
 			if t.K != types.Class {
 				continue
+			}
+			if st.Call == nil {
+				c.superProjections(st, t)
 			}
 			seen[t.C] = true
 			cls.Supers = append(cls.Supers, t)
@@ -191,7 +199,10 @@ func (c *Checker) checkSupers() {
 			}
 			// A sealed class's subclasses are in its package, and known.
 			if s := st.T.C; st.T.K == types.Class && s.Sealed {
-				if packageOf(s) != packageOf(cd.Sym) {
+				switch {
+				case s.External && !s.Source && !s.JavaSealed:
+					c.errorf(st.Type.P, "inheritor of sealed class or interface declared in a different module")
+				case packageOf(s) != packageOf(cd.Sym):
 					c.errorf(st.Type.P, "inheritors of sealed classes must be in the same package")
 				}
 				s.Subclasses = append(s.Subclasses, cd.Sym)
@@ -2457,4 +2468,23 @@ func inheritsVisibility(decl any) bool {
 		return d.Override && !d.Explicit
 	}
 	return false
+}
+
+// superProjections reports projected type arguments of supertype t,
+// written st without a constructor call (superCall checks those with
+// one): a class can't implement Inv<*>, nor through a typealias whose
+// expansion projects them.
+func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
+	if t.A == nil || !slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+		return
+	}
+	for _, a := range st.Type.Args {
+		if a.Variance != types.Inv {
+			c.errorf(a.P, "projections are not allowed for immediate arguments of a supertype")
+			return
+		}
+	}
+	if c.lookupAlias(st.Type.Name) != nil {
+		c.errorf(st.Type.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+	}
 }

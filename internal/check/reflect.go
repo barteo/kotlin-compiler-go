@@ -277,6 +277,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		return nil, types.InvalidType, false
 	}
 	if r.X == nil && r.Type == nil {
+		if v, _ := c.scope.find(r.Name); v != nil && c.variableRef(v, r.Name) {
+			c.errorf(p, "references to variables aren't supported yet")
+			return nil, types.InvalidType, false
+		}
 		// Only a Kotlin fun interface has a constructor to refer to.
 		if cls := c.lookupClass(r.Name); cls != nil && !cls.Fun && cls.KotlinName == "" && c.sam(cls) != nil {
 			c.errorf(p, "Java SAM interface constructor references are prohibited: %s", refString(r))
@@ -1211,4 +1215,26 @@ func implicitRecvThis(x syntax.Expr) *syntax.This {
 		return t
 	}
 	return nil
+}
+
+// variableRef reports whether ::name, which finds local v, refers to v:
+// a local, a parameter or a property's field, which Kotlin can't refer
+// to. A function or a property of the name wins, as K2 resolves callable
+// references: a constructor parameter's property, a member's or a
+// top-level one.
+func (c *Checker) variableRef(v *types.VarSym, name string) bool {
+	switch v.Kind {
+	case types.BackingField:
+		return true
+	case types.Local, types.Param:
+		if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp {
+			return false
+		}
+		if c.nonLocalVar(name) {
+			return false
+		}
+		fs, _ := c.scope.findFuns(name)
+		return len(fs) == 0 && len(c.topFuns(name)) == 0 && (!c.u.ext.kotlin || len(c.kotlinFuns(name, false)) == 0)
+	}
+	return false
 }

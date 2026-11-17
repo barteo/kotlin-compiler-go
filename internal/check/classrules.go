@@ -18,6 +18,9 @@ func (c *Checker) classRules(d *syntax.ClassDecl) {
 	if d.Sealed && d.Fun {
 		c.errorf(modPos(d.Written, "sealed", d.P), "'sealed' modifier is not allowed on fun interfaces")
 	}
+	if d.Fun {
+		c.functionDelegateClash(d)
+	}
 	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && d.Sym != nil && d.Sym.IsSubclassOf(thr) {
 		// catch couldn't tell the instances apart by their type
 		// arguments, which the JVM erases.
@@ -93,5 +96,25 @@ func (c *Checker) superSafeCall(x *syntax.Member) {
 func (c *Checker) publishedApi(m *syntax.Modifiers) {
 	if a := m.Find("", "PublishedApi"); a != nil && m.Visibility != syntax.Internal {
 		c.errorf(a.P, "@PublishedApi annotation is only applicable for internal declaration")
+	}
+}
+
+// functionDelegateClash reports a fun interface's property functionDelegate
+// or function getFunctionDelegate(), as kotlinc's
+// FUNCTION_DELEGATE_MEMBER_NAME_CLASH: the JVM classes of its SAM
+// conversions declare getFunctionDelegate().
+func (c *Checker) functionDelegateClash(d *syntax.ClassDecl) {
+	const msg = "fun interface member '%s' clashes with the function delegate of its SAM conversions"
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.PropDecl:
+			if m.Name == "functionDelegate" && m.Recv == nil {
+				c.errorf(m.P, msg, m.Name)
+			}
+		case *syntax.FunDecl:
+			if m.Name == "getFunctionDelegate" && m.Recv == nil && len(m.Params) == 0 {
+				c.errorf(m.P, msg, m.Name)
+			}
+		}
 	}
 }
