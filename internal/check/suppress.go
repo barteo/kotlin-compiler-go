@@ -119,10 +119,9 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 			continue
 		}
 		for _, n := range r.names {
-			if e.Name != "" && e.Name == n.name {
-				return n, true
-			}
-			if m := suppressible[n.name]; m != nil && m.MatchString(e.Msg) {
+			// Only the errors listed are suppressed, by name or message:
+			// the others' code can't be generated.
+			if m := suppressible[n.name]; m != nil && (e.Name == n.name || m.MatchString(e.Msg)) {
 				return n, true
 			}
 		}

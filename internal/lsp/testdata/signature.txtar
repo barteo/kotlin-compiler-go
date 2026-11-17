@@ -1,0 +1,140 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/Api.kt --
+package s
+
+/** Sends [body] to [url]. */
+fun send(url: String, body: String, retries: Int = 3): Int = 0
+/** Sends nothing. */
+fun send(url: String): Int = 0
+
+class Point(val x: Int, val y: Int)
+
+fun <T> pair(first: T, second: T): Pair<T, T> = first to second
+
+fun log(vararg messages: String) {}
+
+fun configure(name: String, enabled: Boolean, level: Int) {}
+-- src/Use.kt --
+package s
+
+fun empty() {
+    send(/*|empty*/)
+}
+
+fun second() {
+    send("u", /*|second*/)
+}
+
+fun third() {
+    send("u", "b", 4/*|third*/)
+}
+
+fun inside() {
+    send("u", bo/*|inside*/dy)
+}
+
+fun ctor() {
+    Point(1, /*|ctor*/)
+}
+
+fun generic() {
+    pair(1, /*|generic*/)
+}
+
+fun varargs() {
+    log("a", "b", /*|varargs*/)
+}
+
+fun named() {
+    configure(level = /*|named*/)
+}
+
+fun nested() {
+    send(pair("a", /*|nested*/).first)
+}
+
+fun stdlib() {
+    listOf(1).joinToString(", ", /*|stdlib*/)
+}
+
+fun unclosed() {
+    configure("n", /*|unclosed*/
+}
+
+fun lambda() {
+    run { /*|lambda*/ }
+}
+
+fun javaMethod(sb: StringBuilder) {
+    sb.insert(0, /*|java*/)
+}
+
+fun outside() {
+    send("u")/*|outside*/
+}
+-- script --
+initialize
+open src/Use.kt
+wait
+signature src/Use.kt @empty
+signature src/Use.kt @second
+signature src/Use.kt @third
+signature src/Use.kt @inside
+signature src/Use.kt @ctor
+signature src/Use.kt @generic
+signature src/Use.kt @varargs
+signature src/Use.kt @named
+signature src/Use.kt @nested
+signature src/Use.kt @stdlib
+signature src/Use.kt @unclosed
+signature src/Use.kt @lambda
+signature src/Use.kt @java
+signature src/Use.kt @outside
+-- want --
+> initialize
+> open src/Use.kt
+> wait
+> signature src/Use.kt @empty
+* fun send([url: String]): Int  // Sends nothing.
+  fun send([url: String], body: String, retries: Int): Int  // Sends `body` to `url`.
+> signature src/Use.kt @second
+  fun send(url: String): Int  // Sends nothing.
+* fun send(url: String, [body: String], retries: Int): Int  // Sends `body` to `url`.
+> signature src/Use.kt @third
+  fun send(url: String): Int  // Sends nothing.
+* fun send(url: String, body: String, [retries: Int]): Int  // Sends `body` to `url`.
+> signature src/Use.kt @inside
+  fun send(url: String): Int  // Sends nothing.
+* fun send(url: String, [body: String], retries: Int): Int  // Sends `body` to `url`.
+> signature src/Use.kt @ctor
+* Point(x: Int, [y: Int])
+> signature src/Use.kt @generic
+* fun <T> pair(first: T, [second: T]): Pair<T, T>
+> signature src/Use.kt @varargs
+* fun log([vararg messages: String]): Unit
+> signature src/Use.kt @named
+* fun configure(name: String, enabled: Boolean, [level: Int]): Unit
+> signature src/Use.kt @nested
+* fun <T> pair(first: T, [second: T]): Pair<T, T>
+> signature src/Use.kt @stdlib
+* fun <T> Iterable<T>.joinToString(separator: CharSequence, [prefix: CharSequence], postfix: CharSequence, limit: Int, truncated: CharSequence, transform: ((T) -> CharSequence)?): String
+> signature src/Use.kt @unclosed
+* fun configure(name: String, [enabled: Boolean], level: Int): Unit
+> signature src/Use.kt @lambda
+(none)
+> signature src/Use.kt @java
+* fun insert(Int, [Any!]): StringBuilder!
+  fun insert(Int, [String!]): StringBuilder!
+  fun insert(Int, [CharArray!]): StringBuilder!
+  fun insert(Int, [CharSequence!]): StringBuilder!
+  fun insert(Int, [Boolean]): StringBuilder!
+  fun insert(Int, [Char]): StringBuilder!
+  fun insert(Int, [Int]): StringBuilder!
+  fun insert(Int, [Long]): StringBuilder!
+  fun insert(Int, [Float]): StringBuilder!
+  fun insert(Int, [Double]): StringBuilder!
+  fun insert(Int, [CharArray!], Int, Int): StringBuilder!
+  fun insert(Int, [CharSequence!], Int, Int): StringBuilder!
+> signature src/Use.kt @outside
+(none)

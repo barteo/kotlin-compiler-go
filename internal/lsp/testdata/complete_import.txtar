@@ -1,0 +1,149 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/util/Strings.kt --
+package app.util
+
+/** Shouts [s]. */
+fun shout(s: String): String = s.uppercase()
+
+class Formatter(val width: Int)
+
+object Defaults {
+    const val WIDTH = 80
+}
+-- src/util/deep/Deep.kt --
+package app.util.deep
+
+class Deeper
+-- src/Main.kt --
+package app
+
+import kotlin.collections.Array/*|importClass*/List
+import java.util.con/*|importSub*/current.ConcurrentHashMap
+import app.u/*|importOwn*/til.shout
+import app.util./*|importMembers*/
+
+fun main() {
+    sho/*|notImported*/
+}
+
+fun fmt() {
+    Forma/*|notImportedClass*/
+}
+
+fun random() {
+    Rando/*|random*/
+}
+
+fun sqrt() {
+    sqr/*|sqrtFun*/
+}
+
+fun lowercase() {
+    x/*|lowercaseLetter*/
+}
+
+fun deep() {
+    Deepe/*|deeper*/
+}
+-- src/NoImports.kt --
+package app.second
+
+fun main() {
+    Formatt/*|noImports*/
+}
+-- src/NoPackage.kt --
+fun main() {
+    Formatt/*|noPackage*/
+}
+-- src/Pkg.kt --
+package app.ut/*|packageDirective*/il
+-- script --
+initialize
+open src/Main.kt
+open src/NoImports.kt
+open src/NoPackage.kt
+open src/Pkg.kt
+wait
+complete src/Main.kt @importClass 4
+complete src/Main.kt @importSub 4
+complete src/Main.kt @importOwn 4
+complete src/Main.kt @importMembers 6
+complete src/Main.kt @notImported 3 doc
+complete src/Main.kt @notImportedClass 3
+complete src/Main.kt @random 3
+complete src/Main.kt @sqrtFun 3
+complete src/Main.kt @lowercaseLetter 3
+complete src/Main.kt @deeper 3
+complete src/NoImports.kt @noImports 2
+complete src/NoPackage.kt @noPackage 2
+complete src/Pkg.kt @packageDirective 3
+-- want --
+> initialize
+> open src/Main.kt
+> open src/NoImports.kt
+> open src/NoPackage.kt
+> open src/Pkg.kt
+> wait
+> complete src/Main.kt @importClass 4
+ArrayDeque class kotlin.collections.ArrayDeque
+ArrayList class kotlin.collections.ArrayList
+arrayListOf function kotlin.collections.arrayListOf
+> complete src/Main.kt @importSub 4
+concurrent package java.util.concurrent
+ConcurrentModificationException class java.util.ConcurrentModificationException
+function package java.util.function
+AbstractCollection class java.util.AbstractCollection
+... 25 more
+> complete src/Main.kt @importOwn 4
+util package app.util
+> complete src/Main.kt @importMembers 6
+deep package app.util.deep
+Defaults class app.util.Defaults
+Formatter class app.util.Formatter
+shout function app.util.shout
+> complete src/Main.kt @notImported 3 doc
+shout function fun shout(s: String): String => "shout("
+    ```kotlin
+    fun shout(s: String): String
+    ```
+    
+    Shouts `s`.
+Short class kotlin.Short
+ShortArray class kotlin.ShortArray
+... 74 more
+> complete src/Main.kt @notImportedClass 3
+Format class java.text.Format +5:16-5:16 "\nimport java.text.Format"
+Formatter class app.util.Formatter +5:16-5:16 "\nimport app.util.Formatter"
+Formatter class java.util.Formatter +5:16-5:16 "\nimport java.util.Formatter"
+... 15 more
+> complete src/Main.kt @random 3
+RandomAccess interface java.util.RandomAccess
+random function fun random(): Unit => "random()"
+Random class java.util.Random +5:16-5:16 "\nimport java.util.Random"
+... 11 more
+> complete src/Main.kt @sqrtFun 3
+sqrt function fun sqrt(): Unit => "sqrt()"
+sqrt function kotlin.math.sqrt +5:16-5:16 "\nimport kotlin.math.sqrt"
+SQLTransactionRollbackException class java.sql.SQLTransactionRollbackException +5:16-5:16 "\nimport java.sql.SQLTransactionRollbackException"
+... 15 more
+> complete src/Main.kt @lowercaseLetter 3
+Xid class javax.transaction.xa.Xid +5:16-5:16 "\nimport javax.transaction.xa.Xid"
+XPath class javax.xml.xpath.XPath +5:16-5:16 "\nimport javax.xml.xpath.XPath"
+XECKey class java.security.interfaces.XECKey +5:16-5:16 "\nimport java.security.interfaces.XECKey"
+... 186 more
+> complete src/Main.kt @deeper 3
+Deeper class app.util.deep.Deeper +5:16-5:16 "\nimport app.util.deep.Deeper"
+DeepRecursiveScope class kotlin.DeepRecursiveScope
+DeepRecursiveFunction class kotlin.DeepRecursiveFunction
+... 21 more
+> complete src/NoImports.kt @noImports 2
+Formatter class app.util.Formatter +0:18-0:18 "\n\nimport app.util.Formatter"
+Formatter class java.util.Formatter +0:18-0:18 "\n\nimport java.util.Formatter"
+... 8 more
+> complete src/NoPackage.kt @noPackage 2
+Formatter class app.util.Formatter +0:0-0:0 "import app.util.Formatter\n\n"
+Formatter class java.util.Formatter +0:0-0:0 "import java.util.Formatter\n\n"
+... 8 more
+> complete src/Pkg.kt @packageDirective 3
+util package app.util

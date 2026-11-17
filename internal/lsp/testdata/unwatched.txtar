@@ -1,0 +1,145 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+fun a(): Int = extra() + more()
+-- _E.kt --
+fun extra(): Int = 1
+-- _M.kt --
+fun more(): Int = 2
+-- _config --
+{"modules": [{"name": "main", "sourceRoots": ["src", "gen"]}]}
+-- script --
+# The client doesn't watch files: a file the module doesn't list is
+# listed when it is opened, saved or closed, the others by the scan.
+initialize
+open src/A.kt
+wait
+diagnostics src/A.kt
+write src/E.kt _E.kt
+notify textDocument/didSave {"textDocument":{"uri":"ROOT/src/E.kt"}}
+wait
+diagnostics src/A.kt
+write src/M.kt _M.kt
+scan
+wait
+diagnostics src/A.kt
+write src/M.kt -
+scan
+wait
+diagnostics src/A.kt
+# kc.reimport reloads the project.
+write kc-lsp.json _config
+write gen/M.kt _M.kt
+request workspace/executeCommand {"command":"kc.reimport"}
+wait
+diagnostics src/A.kt
+request workspace/executeCommand {"command":"kc.nothing"}
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 15
+      },
+      "end": {
+        "line": 0,
+        "character": 20
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: extra",
+    "data": [
+      "extra"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 25
+      },
+      "end": {
+        "line": 0,
+        "character": 29
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: more",
+    "data": [
+      "more"
+    ]
+  }
+]
+> write src/E.kt _E.kt
+> notify textDocument/didSave {"textDocument":{"uri":"ROOT/src/E.kt"}}
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 25
+      },
+      "end": {
+        "line": 0,
+        "character": 29
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: more",
+    "data": [
+      "more"
+    ]
+  }
+]
+> write src/M.kt _M.kt
+> scan
+> wait
+> diagnostics src/A.kt
+[]
+> write src/M.kt -
+> scan
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 25
+      },
+      "end": {
+        "line": 0,
+        "character": 29
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: more",
+    "data": [
+      "more"
+    ]
+  }
+]
+> write kc-lsp.json _config
+> write gen/M.kt _M.kt
+> request workspace/executeCommand {"command":"kc.reimport"}
+null
+> wait
+> diagnostics src/A.kt
+[]
+> request workspace/executeCommand {"command":"kc.nothing"}
+error -32602: unknown command "kc.nothing"

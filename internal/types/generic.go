@@ -40,14 +40,17 @@ type Arg struct {
 	Raw bool
 }
 
-func (a Arg) String() string {
+func (a Arg) String() string { return a.Format(nil) }
+
+// Format writes a as String does, with class names from name.
+func (a Arg) Format(name func(*ClassSym) string) string {
 	switch a.V {
 	case Star:
 		return "*"
 	case Out, In:
-		return a.V.String() + " " + a.T.String()
+		return a.V.String() + " " + a.T.Format(name)
 	}
-	return a.T.String()
+	return a.T.Format(name)
 }
 
 // Args is an interned list of type arguments. Equal lists share one

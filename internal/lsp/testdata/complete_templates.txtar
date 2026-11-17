@@ -1,0 +1,141 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+fun f(ok: Boolean, names: List<String>, maybe: String?, s: String) {
+    ok./*|ok*/
+}
+
+fun g(ok: Boolean, names: List<String>, maybe: String?, s: String) {
+    names.fo/*|for*/
+    maybe.nn/*|nn*/
+    val x = s.le/*|let*/
+    (s.length + 1).va/*|val*/
+    so/*|sout*/
+}
+
+class C {
+    fu/*|member*/
+}
+
+ma/*|top*/
+-- script --
+initialize {"processId":null,"rootUri":"ROOT","capabilities":{"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}}
+open src/A.kt
+wait
+# Postfix templates by the receiver's type, after the members.
+complete src/A.kt @ok 60
+complete src/A.kt @for 40
+complete src/A.kt @nn 3
+# Not a statement: no val or if.
+complete src/A.kt @let 3
+complete src/A.kt @val 3
+# Live templates.
+complete src/A.kt @sout 3
+complete src/A.kt @member 5
+complete src/A.kt @top 5
+-- want --
+> initialize {"processId":null,"rootUri":"ROOT","capabilities":{"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}}
+> open src/A.kt
+> wait
+> complete src/A.kt @ok 60
+and method fun and(other: Boolean): Boolean => "and($0)"
+compareTo method operator fun compareTo(other: Boolean): Int => "compareTo($0)"
+equals method operator fun equals(other: Any?): Boolean => "equals($0)"
+hashCode method fun hashCode(): Int => "hashCode()"
+not method operator fun not(): Boolean => "not()"
+or method fun or(other: Boolean): Boolean => "or($0)"
+toString method fun toString(): String => "toString()"
+xor method fun xor(other: Boolean): Boolean => "xor($0)"
+also function fun <T> T.also(block: (T) -> Unit): T => "also { $0 }"
+apply function fun <T> T.apply(block: T.() -> Unit): T => "apply { $0 }"
+coerceAtLeast function fun <T> T.coerceAtLeast(minimumValue: T): T => "coerceAtLeast($0)"
+coerceAtMost function fun <T> T.coerceAtMost(maximumValue: T): T => "coerceAtMost($0)"
+coerceIn function fun <T> T.coerceIn(minimumValue: T?, maximumValue: T?): T => "coerceIn($0)"
+coerceIn function fun <T> T.coerceIn(range: ClosedFloatingPointRange<T>): T => "coerceIn($0)"
+coerceIn function fun <T> T.coerceIn(range: ClosedRange<T>): T => "coerceIn($0)"
+javaClass property Class<T>
+let function fun <T, R> T.let(block: (T) -> R): R => "let { $0 }"
+rangeTo function operator fun <T> T.rangeTo(that: T): ClosedRange<T> => "rangeTo($0)"
+rangeUntil function operator fun <T> T.rangeUntil(that: T): OpenEndRange<T> => "rangeUntil($0)"
+run function fun <T, R> T.run(block: T.() -> R): R => "run { $0 }"
+runCatching function fun <T, R> T.runCatching(block: T.() -> R): Result<R> => "runCatching { $0 }"
+takeIf function fun <T> T.takeIf(predicate: (T) -> Boolean): T? => "takeIf { $0 }"
+takeUnless function fun <T> T.takeUnless(predicate: (T) -> Boolean): T? => "takeUnless { $0 }"
+to function fun <A, B> A.to(that: B): Pair<A, B> => "to($0)"
+also snippet expr.also {} => "ok.also { $0 }" @3:4-3:7
+else snippet if (!expr) {} => "if (!ok) {\n    $0\n}" @3:4-3:7
+if snippet if (expr) {} => "if (ok) {\n    $0\n}" @3:4-3:7
+let snippet expr.let {} => "ok.let { $0 }" @3:4-3:7
+not snippet !expr => "!ok$0" @3:4-3:7
+par snippet (expr) => "(ok)$0" @3:4-3:7
+print snippet println(expr) => "println(ok)$0" @3:4-3:7
+return snippet return expr => "return ok$0" @3:4-3:7
+val snippet val name = expr => "val ${1:b} = ok$0" @3:4-3:7
+var snippet var name = expr => "var ${1:b} = ok$0" @3:4-3:7
+when snippet when (expr) {} => "when (ok) {\n    $0\n}" @3:4-3:7
+> complete src/A.kt @for 40
+forEach method operator fun forEach(p: Consumer<in String!>!): Unit => "forEach($0)"
+fold function fun <T, R> Iterable<T>.fold(initial: R, operation: (R, T) -> R): R => "fold($0)"
+foldRight function fun <T, R> List<T>.foldRight(initial: R, operation: (T, R) -> R): R => "foldRight($0)"
+foldIndexed function fun <T, R> Iterable<T>.foldIndexed(initial: R, operation: (Int, R, T) -> R): R => "foldIndexed($0)"
+forEachIndexed function fun <T> Iterable<T>.forEachIndexed(action: (Int, T) -> Unit): Unit => "forEachIndexed { $0 }"
+foldRightIndexed function fun <T, R> List<T>.foldRightIndexed(initial: R, operation: (Int, T, R) -> R): R => "foldRightIndexed($0)"
+for snippet for (item in expr) {} => "for (${1:name} in names) {\n    $0\n}" @7:4-7:12
+firstOrNull function fun <T> Iterable<T>.firstOrNull(): T? => "firstOrNull()"
+firstOrNull function fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T? => "firstOrNull { $0 }"
+firstOrNull function fun <T> List<T>.firstOrNull(): T? => "firstOrNull()"
+firstNotNullOf function fun <T, R> Iterable<T>.firstNotNullOf(transform: (T) -> R?): R => "firstNotNullOf { $0 }"
+firstNotNullOfOrNull function fun <T, R> Iterable<T>.firstNotNullOfOrNull(transform: (T) -> R?): R? => "firstNotNullOfOrNull { $0 }"
+filterTo function fun <T, C> Iterable<T>.filterTo(destination: C, predicate: (T) -> Boolean): C => "filterTo($0)"
+filterNot function fun <T> Iterable<T>.filterNot(predicate: (T) -> Boolean): List<T> => "filterNot { $0 }"
+flatMapTo function fun <T, R, C> Iterable<T>.flatMapTo(destination: C, transform: (T) -> Iterable<R>): C => "flatMapTo($0)"
+flatMapTo function fun <T, R, C> Iterable<T>.flatMapTo(destination: C, transform: (T) -> Sequence<R>): C => "flatMapTo($0)"
+filterNotTo function fun <T, C> Iterable<T>.filterNotTo(destination: C, predicate: (T) -> Boolean): C => "filterNotTo($0)"
+maxOfOrNull function fun <T, R> Iterable<T>.maxOfOrNull(selector: (T) -> R): R? => "maxOfOrNull { $0 }"
+maxOfOrNull function fun <T> Iterable<T>.maxOfOrNull(selector: (T) -> Double): Double? => "maxOfOrNull { $0 }"
+maxOfOrNull function fun <T> Iterable<T>.maxOfOrNull(selector: (T) -> Float): Float? => "maxOfOrNull { $0 }"
+minOfOrNull function fun <T, R> Iterable<T>.minOfOrNull(selector: (T) -> R): R? => "minOfOrNull { $0 }"
+minOfOrNull function fun <T> Iterable<T>.minOfOrNull(selector: (T) -> Double): Double? => "minOfOrNull { $0 }"
+minOfOrNull function fun <T> Iterable<T>.minOfOrNull(selector: (T) -> Float): Float? => "minOfOrNull { $0 }"
+runningFold function fun <T, R> Iterable<T>.runningFold(initial: R, operation: (R, T) -> R): List<R> => "runningFold($0)"
+filterNotNull function fun <T> Iterable<T?>.filterNotNull(): List<T> => "filterNotNull()"
+filterIndexedTo function fun <T, C> Iterable<T>.filterIndexedTo(destination: C, predicate: (Int, T) -> Boolean): C => "filterIndexedTo($0)"
+filterNotNullTo function fun <C, T> Iterable<T?>.filterNotNullTo(destination: C): C => "filterNotNullTo($0)"
+maxOfWithOrNull function fun <T, R> Iterable<T>.maxOfWithOrNull(comparator: Comparator<in R>, selector: (T) -> R): R? => "maxOfWithOrNull($0)"
+minOfWithOrNull function fun <T, R> Iterable<T>.minOfWithOrNull(comparator: Comparator<in R>, selector: (T) -> R): R? => "minOfWithOrNull($0)"
+flatMapIndexedTo function fun <T, R, C> Iterable<T>.flatMapIndexedTo(destination: C, transform: (Int, T) -> Iterable<R>): C => "flatMapIndexedTo($0)"
+flatMapIndexedTo function fun <T, R, C> Iterable<T>.flatMapIndexedTo(destination: C, transform: (Int, T) -> Sequence<R>): C => "flatMapIndexedTo($0)"
+filterIsInstanceTo function fun <C, R> Iterable<*>.filterIsInstanceTo(destination: C, klass: Class<R>): C => "filterIsInstanceTo($0)"
+filterIsInstanceTo function fun <R, C> Iterable<*>.filterIsInstanceTo(destination: C): C => "filterIsInstanceTo($0)"
+runningFoldIndexed function fun <T, R> Iterable<T>.runningFoldIndexed(initial: R, operation: (Int, R, T) -> R): List<R> => "runningFoldIndexed($0)"
+> complete src/A.kt @nn 3
+nn snippet if (expr != null) {} => "if (maybe != null) {\n    $0\n}" @8:4-8:12
+none function fun CharSequence.none(): Boolean => "none()"
+none function fun CharSequence.none(predicate: (Char) -> Boolean): Boolean => "none { $0 }"
+... 70 more
+> complete src/A.kt @let 3
+length property Int
+let function fun <T, R> T.let(block: (T) -> R): R => "let { $0 }"
+let snippet expr.let {} => "s.let { $0 }" @9:12-9:16
+... 87 more
+> complete src/A.kt @val 3
+val snippet val name = expr => "val ${1:i} = s.length + 1$0" @10:4-10:21
+var snippet var name = expr => "var ${1:i} = s.length + 1$0" @10:4-10:21
+javaClass property Class<T>
+> complete src/A.kt @sout 3
+(incomplete)
+sout snippet println() => "println($0)"
+sortedMapOf function fun <K, V> sortedMapOf(comparator: Comparator<in K>, vararg pairs: Pair<K, V>): SortedMap<K, V> => "sortedMapOf($0)"
+sortedMapOf function fun <K, V> sortedMapOf(vararg pairs: Pair<K, V>): SortedMap<K, V> => "sortedMapOf($0)"
+... 198 more
+> complete src/A.kt @member 5
+fun keyword
+fun0 snippet function, no parameters => "fun ${1:name}() {\n    $0\n}"
+fun1 snippet function, one parameter => "fun ${1:name}(${2:p}: ${3:Any}) {\n    $0\n}"
+fun2 snippet function, two parameters => "fun ${1:name}(${2:p1}: ${3:Any}, ${4:p2}: ${5:Any}) {\n    $0\n}"
+exfun snippet extension function => "fun ${1:Any}.${2:name}(${3}) {\n    $0\n}"
+> complete src/A.kt @top 5
+main snippet fun main() => "fun main() {\n    $0\n}"
+maina snippet fun main(args) => "fun main(args: Array<String>) {\n    $0\n}"

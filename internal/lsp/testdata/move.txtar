@@ -1,0 +1,68 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/a/A.kt --
+package a
+
+class A {
+    fun b() = B()
+}
+
+fun helper() = 1
+-- src/a/B.kt --
+package a
+
+class B {
+    fun a() = A()
+}
+-- src/d/D.kt --
+package d
+
+import a.A
+
+fun g() = A().hashCode() + a.helper()
+-- src/z/Odd.kt --
+package elsewhere
+
+class Odd
+-- _empty --
+-- script --
+initialize {"processId":null,"rootUri":"ROOT","capabilities":{"workspace":{"applyEdit":true}}}
+wait
+move src/a/A.kt src/c/A.kt
+move src/a src/e/f
+move src/d/D.kt src/D.kt
+move src/z/Odd.kt src/y/Odd.kt
+write src/c/New.kt _empty
+notify workspace/didCreateFiles {"files":[{"uri":"ROOT/src/c/New.kt"}]}
+applied
+-- want --
+> initialize {"processId":null,"rootUri":"ROOT","capabilities":{"workspace":{"applyEdit":true}}}
+> wait
+> move src/a/A.kt src/c/A.kt
+src/a/A.kt:
+  0:8-0:9 "a" -> "c"
+  0:9-0:9 "" -> "\n\nimport a.B"
+src/a/B.kt:
+  0:9-0:9 "" -> "\n\nimport c.A"
+src/d/D.kt:
+  2:7-2:8 "a" -> "c"
+  4:27-4:29 "a." -> "c."
+> move src/a src/e/f
+src/a/A.kt:
+  0:8-0:9 "a" -> "e.f"
+src/a/B.kt:
+  0:8-0:9 "a" -> "e.f"
+src/d/D.kt:
+  2:7-2:8 "a" -> "e.f"
+  4:27-4:29 "a." -> "e.f."
+> move src/d/D.kt src/D.kt
+src/d/D.kt:
+  0:0-2:0 "package d\n\n" -> ""
+> move src/z/Odd.kt src/y/Odd.kt
+(none)
+> write src/c/New.kt _empty
+> notify workspace/didCreateFiles {"files":[{"uri":"ROOT/src/c/New.kt"}]}
+> applied
+Add the package directive
+  src/c/New.kt:
+    0:0-0:0 "" -> "package c\n\n"

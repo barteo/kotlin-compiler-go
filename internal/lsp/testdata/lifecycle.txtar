@@ -1,0 +1,160 @@
+-- script --
+request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/A.kt"}}
+initialize
+capabilities
+request textDocument/linkedEditingRange {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
+request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/Missing.kt"}}
+shutdown
+request textDocument/foldingRange {"textDocument":{"uri":"file:///work/A.kt"}}
+exit
+-- want --
+> request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/A.kt"}}
+error -32002: textDocument/documentSymbol before initialize
+> initialize
+> capabilities
+{
+  "capabilities": {
+    "callHierarchyProvider": true,
+    "codeActionProvider": {
+      "codeActionKinds": [
+        "quickfix",
+        "source.organizeImports",
+        "refactor.extract",
+        "refactor.inline",
+        "refactor.rewrite"
+      ]
+    },
+    "codeLensProvider": {},
+    "completionProvider": {
+      "resolveProvider": true,
+      "triggerCharacters": [
+        ".",
+        ":"
+      ]
+    },
+    "definitionProvider": true,
+    "documentFormattingProvider": true,
+    "documentHighlightProvider": true,
+    "documentOnTypeFormattingProvider": {
+      "firstTriggerCharacter": "}",
+      "moreTriggerCharacter": [
+        "\n"
+      ]
+    },
+    "documentRangeFormattingProvider": true,
+    "documentSymbolProvider": true,
+    "executeCommandProvider": {
+      "commands": [
+        "kc.reimport",
+        "kc.run",
+        "kc.debug",
+        "kc.clearCaches",
+        "kc.restart"
+      ]
+    },
+    "foldingRangeProvider": true,
+    "hoverProvider": true,
+    "implementationProvider": true,
+    "inlayHintProvider": true,
+    "positionEncoding": "utf-16",
+    "referencesProvider": true,
+    "renameProvider": {
+      "prepareProvider": true
+    },
+    "selectionRangeProvider": true,
+    "semanticTokensProvider": {
+      "full": true,
+      "legend": {
+        "tokenModifiers": [
+          "declaration",
+          "readonly",
+          "documentation"
+        ],
+        "tokenTypes": [
+          "namespace",
+          "type",
+          "class",
+          "enum",
+          "interface",
+          "typeParameter",
+          "parameter",
+          "variable",
+          "property",
+          "enumMember",
+          "function",
+          "method",
+          "keyword",
+          "comment",
+          "string",
+          "number",
+          "decorator"
+        ]
+      }
+    },
+    "signatureHelpProvider": {
+      "retriggerCharacters": [
+        "="
+      ],
+      "triggerCharacters": [
+        "(",
+        ","
+      ]
+    },
+    "textDocumentSync": {
+      "change": 2,
+      "openClose": true,
+      "save": true
+    },
+    "typeDefinitionProvider": true,
+    "typeHierarchyProvider": true,
+    "workspace": {
+      "fileOperations": {
+        "didCreate": {
+          "filters": [
+            {
+              "pattern": {
+                "glob": "**/*.kt",
+                "matches": "file"
+              },
+              "scheme": "file"
+            }
+          ]
+        },
+        "willRename": {
+          "filters": [
+            {
+              "pattern": {
+                "glob": "**/*.kt",
+                "matches": "file"
+              },
+              "scheme": "file"
+            },
+            {
+              "pattern": {
+                "glob": "**",
+                "matches": "folder"
+              },
+              "scheme": "file"
+            }
+          ]
+        }
+      }
+    },
+    "workspaceSymbolProvider": {
+      "resolveProvider": true
+    }
+  },
+  "serverInfo": {
+    "name": "kc-lsp",
+    "version": "0.1.0"
+  }
+}
+> request textDocument/linkedEditingRange {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
+error -32601: textDocument/linkedEditingRange is not supported
+> request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/Missing.kt"}}
+error -32602: file:///work/Missing.kt is not open
+> shutdown
+> request textDocument/foldingRange {"textDocument":{"uri":"file:///work/A.kt"}}
+error -32600: textDocument/foldingRange after shutdown
+> exit
+exit code 0

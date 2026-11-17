@@ -1,0 +1,47 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/lib/Lib.kt --
+package lib
+
+class Box(val x: Int) {
+}
+-- src/app/Main.kt --
+package app
+
+import lib.Box
+
+fun f(b: Box): Int = b./*|grow*/grow(2)
+
+fun g() {
+    /*|log*/log("x")
+}
+
+class C : /*|base*/Base()
+-- script --
+initialize
+open src/lib/Lib.kt
+open src/app/Main.kt
+wait
+actions src/app/Main.kt @grow only=quickfix apply=1
+actions src/app/Main.kt @log only=quickfix
+actions src/app/Main.kt @base only=quickfix
+-- want --
+> initialize
+> open src/lib/Lib.kt
+> open src/app/Main.kt
+> wait
+> actions src/app/Main.kt @grow only=quickfix apply=1
+1. Create member function 'Box.grow' [quickfix] UNRESOLVED_REFERENCE
+  src/lib/Lib.kt:
+    3:0-3:0 "" -> "    fun grow(i: Int): Int {\n        TODO(\"Not yet implemented\")\n    }\n"
+> actions src/app/Main.kt @log only=quickfix
+1. Import 'kotlin.math.log' [quickfix preferred] UNRESOLVED_REFERENCE
+  src/app/Main.kt:
+    2:14-2:14 "" -> "\nimport kotlin.math.log"
+2. Create function 'log' [quickfix] UNRESOLVED_REFERENCE
+  src/app/Main.kt:
+    8:1-8:1 "" -> "\n\nfun log(s: String) {\n    TODO(\"Not yet implemented\")\n}"
+> actions src/app/Main.kt @base only=quickfix
+1. Create class 'Base' [quickfix] kc
+  src/app/Main.kt:
+    11:0-11:0 "" -> "\nopen class Base\n"

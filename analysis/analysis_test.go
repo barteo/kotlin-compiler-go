@@ -27,7 +27,7 @@ func analyzed(t *testing.T, cfg Config, src string) (*Result, *psi.Snapshot) {
 
 // withStdlib returns a configuration with the standard library, or skips
 // t.
-func withStdlib(t *testing.T) Config {
+func withStdlib(t testing.TB) Config {
 	t.Helper()
 	jar, err := classpath.FindStdlib()
 	if err != nil {

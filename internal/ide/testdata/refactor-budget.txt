@@ -1,0 +1,14 @@
+# Refactorings TestRefactorScan knows to break a program: module path:line:col title.
+arrayClassShadowed arrayClassShadowed.kt:4:9 Specify type explicitly
+selfTypes selfTypes.kt:48:13 Extract variable
+selfTypes selfTypes.kt:48:9 Inline variable 'f'
+selfTypes selfTypes.kt:51:13 Extract variable
+stdlibJavaForEachConsumer stdlibJavaForEachConsumer.kt:6:9 Inline variable 'print'
+stdlibLambdaResults stdlibLambdaResults.kt:35:21 Convert to block body
+stdlibLambdaResults stdlibLambdaResults.kt:35:5 Convert to block body
+stdlibLambdaResults stdlibLambdaResults.kt:35:5 Specify return type explicitly
+stdlibNotNullCallInStatement stdlibNotNullCallInStatement.kt:14:9 Inline variable 'turn'
+stdlibPlatformInference stdlibPlatformInference.kt:19:13 Extract variable
+stdlibPropertyInvokeOverMember stdlibPropertyInvokeOverMember.kt:20:36 Convert to block body
+stdlibPropertyInvokeOverMember stdlibPropertyInvokeOverMember.kt:20:49 Convert to block body
+stdlibSmartCastForms stdlibSmartCastForms.kt:47:41 Specify type explicitly

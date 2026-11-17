@@ -1,0 +1,97 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+fun f(): Int = "no"
+fun g() = h()
+-- scripts/Tool.kt --
+fun tool(): Int = "no"
+fun broken( {
+-- script --
+initialize {"processId":null,"rootUri":"ROOT","capabilities":{},"initializationOptions":{"diagnostics":"coded"}}
+open scripts/Tool.kt
+open src/A.kt
+wait
+diagnostics scripts/Tool.kt
+diagnostics src/A.kt
+-- want --
+> initialize {"processId":null,"rootUri":"ROOT","capabilities":{},"initializationOptions":{"diagnostics":"coded"}}
+> open scripts/Tool.kt
+> open src/A.kt
+> wait
+> diagnostics scripts/Tool.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 11
+      },
+      "end": {
+        "line": 1,
+        "character": 11
+      }
+    },
+    "severity": 1,
+    "code": "syntax_error",
+    "source": "kc",
+    "message": "Expecting ')'"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 13
+      },
+      "end": {
+        "line": 1,
+        "character": 13
+      }
+    },
+    "severity": 1,
+    "code": "syntax_error",
+    "source": "kc",
+    "message": "Expecting '}'"
+  }
+]
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 15
+      },
+      "end": {
+        "line": 0,
+        "character": 19
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 10
+      },
+      "end": {
+        "line": 1,
+        "character": 11
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: h",
+    "data": [
+      "h"
+    ]
+  }
+]

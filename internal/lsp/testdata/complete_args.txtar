@@ -1,0 +1,204 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/Api.kt --
+package a
+
+class Request(val url: String, val timeout: Int = 30, val retries: Int = 3)
+
+fun send(request: Request, async: Boolean = false): Int = 0
+fun send(url: String, body: String, headers: Map<String, String> = emptyMap()): Int = 0
+
+fun configure(name: String, enabled: Boolean, level: Int) {}
+
+fun <T> pick(first: T, second: T): T = first
+
+fun onEach(items: List<String>, action: (String) -> Unit) {}
+
+enum class Mode { FAST, SLOW }
+
+fun run(mode: Mode) {}
+
+fun javaArgs(sb: StringBuilder) {}
+-- src/Use.kt --
+package a
+
+fun firstArg() {
+    Request(/*|firstArg*/)
+}
+
+fun secondArg() {
+    Request("u", /*|secondArg*/)
+}
+
+fun afterNamed() {
+    Request(url = "u", /*|afterNamed*/)
+}
+
+fun partialNamed() {
+    configure(name = "n", ena/*|partialNamed*/)
+}
+
+fun overloads() {
+    send(/*|overloads*/)
+}
+
+fun overloadsSecond() {
+    send("u", /*|overloadsSecond*/)
+}
+
+fun namedValue() {
+    configure(enabled = /*|namedValue*/)
+}
+
+fun argName() {
+    configure(name = "n", ena/*|argName*/bled = true)
+}
+
+fun argNameFirst() {
+    configure(lev/*|argNameFirst*/el = 1)
+}
+
+fun expectedEnum() {
+    run(Mode./*|expectedEnum*/)
+}
+
+fun expectedBool(flag: Boolean, count: Int) {
+    configure("n", /*|expectedBool*/)
+}
+
+fun generic(count: Int) {
+    pick(count, /*|generic*/)
+}
+
+fun lambdaArg() {
+    onEach(listOf("a")) { it.len/*|lambdaArg*/ }
+}
+
+fun nestedCall(count: Int) {
+    configure("n", true, maxOf(cou/*|nestedCall*/))
+}
+
+fun javaCtor() {
+    StringBuilder(/*|javaCtor*/)
+}
+
+fun stdlibNamed() {
+    listOf(1).joinToString(sep/*|stdlibNamed*/)
+}
+-- script --
+initialize
+open src/Use.kt
+wait
+complete src/Use.kt @firstArg 4
+complete src/Use.kt @secondArg 4
+complete src/Use.kt @afterNamed 4
+complete src/Use.kt @partialNamed 3
+complete src/Use.kt @overloads 7
+complete src/Use.kt @overloadsSecond 4
+complete src/Use.kt @namedValue 4
+complete src/Use.kt @argName 3
+complete src/Use.kt @argNameFirst 3
+complete src/Use.kt @expectedEnum 3
+complete src/Use.kt @expectedBool 4
+complete src/Use.kt @generic 3
+complete src/Use.kt @lambdaArg 2
+complete src/Use.kt @nestedCall 3
+complete src/Use.kt @javaCtor 4
+complete src/Use.kt @stdlibNamed 3
+-- want --
+> initialize
+> open src/Use.kt
+> wait
+> complete src/Use.kt @firstArg 4
+(incomplete)
+url = variable String => "url = "
+timeout = variable Int => "timeout = "
+retries = variable Int => "retries = "
+buildString function fun buildString(builderAction: StringBuilder.() -> Unit): String => "buildString("
+... 196 more
+> complete src/Use.kt @secondArg 4
+(incomplete)
+url = variable String => "url = "
+timeout = variable Int => "timeout = "
+retries = variable Int => "retries = "
+send function fun send(request: Request, async: Boolean): Int => "send("
+... 196 more
+> complete src/Use.kt @afterNamed 4
+(incomplete)
+timeout = variable Int => "timeout = "
+retries = variable Int => "retries = "
+send function fun send(request: Request, async: Boolean): Int => "send("
+send function fun send(url: String, body: String, headers: Map<String, String>): Int => "send("
+... 196 more
+> complete src/Use.kt @partialNamed 3
+enabled = variable Boolean => "enabled = "
+ExperimentalNativeApi class kotlin.experimental.ExperimentalNativeApi +0:9-0:9 "\n\nimport kotlin.experimental.ExperimentalNativeApi"
+ExperimentalJsFileName class kotlin.js.ExperimentalJsFileName +0:9-0:9 "\n\nimport kotlin.js.ExperimentalJsFileName"
+... 72 more
+> complete src/Use.kt @overloads 7
+(incomplete)
+request = variable Request => "request = "
+async = variable Boolean => "async = "
+url = variable String => "url = "
+body = variable String => "body = "
+headers = variable Map<String, String> => "headers = "
+afterNamed function fun afterNamed(): Unit => "afterNamed()"
+argName function fun argName(): Unit => "argName()"
+... 193 more
+> complete src/Use.kt @overloadsSecond 4
+(incomplete)
+request = variable Request => "request = "
+async = variable Boolean => "async = "
+url = variable String => "url = "
+body = variable String => "body = "
+... 196 more
+> complete src/Use.kt @namedValue 4
+(incomplete)
+false keyword
+true keyword
+afterNamed function fun afterNamed(): Unit => "afterNamed()"
+argName function fun argName(): Unit => "argName()"
+... 196 more
+> complete src/Use.kt @argName 3
+enabled = variable Boolean => "enabled"
+> complete src/Use.kt @argNameFirst 3
+level = variable Int => "level"
+> complete src/Use.kt @expectedEnum 3
+FAST property Mode
+SLOW property Mode
+valueOf method fun valueOf(value: String): Mode => "valueOf("
+... 1 more
+> complete src/Use.kt @expectedBool 4
+(incomplete)
+name = variable String => "name = "
+enabled = variable Boolean => "enabled = "
+level = variable Int => "level = "
+flag variable Boolean
+... 196 more
+> complete src/Use.kt @generic 3
+(incomplete)
+first = variable T => "first = "
+second = variable T => "second = "
+count variable Int
+... 197 more
+> complete src/Use.kt @lambdaArg 2
+length property Int
+elementAt function fun CharSequence.elementAt(index: Int): Char => "elementAt("
+... 27 more
+> complete src/Use.kt @nestedCall 3
+count variable Int
+Counter class org.w3c.dom.css.Counter +0:9-0:9 "\n\nimport org.w3c.dom.css.Counter"
+CountDownLatch class java.util.concurrent.CountDownLatch +0:9-0:9 "\n\nimport java.util.concurrent.CountDownLatch"
+... 86 more
+> complete src/Use.kt @javaCtor 4
+(incomplete)
+afterNamed function fun afterNamed(): Unit => "afterNamed()"
+argName function fun argName(): Unit => "argName()"
+argNameFirst function fun argNameFirst(): Unit => "argNameFirst()"
+configure function fun configure(name: String, enabled: Boolean, level: Int): Unit => "configure("
+... 196 more
+> complete src/Use.kt @stdlibNamed 3
+separator = variable CharSequence => "separator = "
+SeparatorUI class javax.swing.plaf.SeparatorUI +0:9-0:9 "\n\nimport javax.swing.plaf.SeparatorUI"
+SelectorProvider class java.nio.channels.spi.SelectorProvider +0:9-0:9 "\n\nimport java.nio.channels.spi.SelectorProvider"
+... 152 more

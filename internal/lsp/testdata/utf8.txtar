@@ -1,0 +1,40 @@
+-- A.kt --
+val s = "😀"; fun f( {
+}
+-- B.kt --
+val t = "ä/*|in*/b"
+-- script --
+initialize {"processId":null,"capabilities":{"general":{"positionEncodings":["utf-8","utf-16"]}}}
+open A.kt
+diagnostics A.kt
+open B.kt
+selection B.kt @in
+-- want --
+> initialize {"processId":null,"capabilities":{"general":{"positionEncodings":["utf-8","utf-16"]}}}
+> open A.kt
+> diagnostics A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 22
+      },
+      "end": {
+        "line": 0,
+        "character": 22
+      }
+    },
+    "severity": 1,
+    "code": "syntax_error",
+    "source": "kc",
+    "message": "Expecting ')'"
+  }
+]
+> open B.kt
+> selection B.kt @in
+@in:
+  0:9-0:12 "äb"
+  0:8-0:13 "\"äb\""
+  0:0-0:13 "val t = \"äb\""
+  0:0-1:0 "val t = \"äb\"\n"

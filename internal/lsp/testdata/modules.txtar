@@ -1,0 +1,341 @@
+-- kc-lsp.json --
+{"modules": [
+  {"name": "lib", "sourceRoots": ["lib/src"]},
+  {"name": "app", "sourceRoots": ["app/src"], "dependsOn": ["lib"]}
+]}
+-- lib/src/Lib.kt --
+package lib
+
+class /*|counter*/Counter(start: Int) {
+    var /*|value*/value = start
+    fun /*|inc*/inc(by: Int = 1): Int {
+        value += by
+        return value
+    }
+}
+
+fun /*|make*/makeCounter() = Counter(0)
+
+val broken: Int = "not an int"
+-- app/src/App.kt --
+package app
+
+import lib.Counter
+import lib.makeCounter
+
+fun main() {
+    val c: Counter = /*|call*/makeCounter()
+    c./*|use*/inc()
+    c.inc(by = 2)
+    println(c./*|v*/value)
+    val wrong: String = c.value
+}
+-- lib2.kt --
+package lib
+
+class Counter(start: Int) {
+    var value = start
+    fun increment(by: Int = 1): Int = by
+}
+
+fun makeCounter(): Int = 0
+-- script --
+initialize
+open lib/src/Lib.kt
+open app/src/App.kt
+wait
+diagnostics lib/src/Lib.kt
+diagnostics app/src/App.kt
+definition app/src/App.kt @call
+definition app/src/App.kt @use
+references lib/src/Lib.kt @inc decl
+references lib/src/Lib.kt @counter
+references app/src/App.kt @v decl
+rename lib/src/Lib.kt @inc increment
+wait
+diagnostics app/src/App.kt
+change lib/src/Lib.kt 5:0 5:0 "        println(by)\n"
+wait
+diagnostics lib/src/Lib.kt
+diagnostics app/src/App.kt
+definition app/src/App.kt @v
+references app/src/App.kt @use decl
+calls lib/src/Lib.kt @inc
+replace lib/src/Lib.kt lib2.kt
+wait
+diagnostics app/src/App.kt
+-- want --
+> initialize
+> open lib/src/Lib.kt
+> open app/src/App.kt
+> wait
+> diagnostics lib/src/Lib.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 12,
+        "character": 18
+      },
+      "end": {
+        "line": 12,
+        "character": 30
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
+  }
+]
+> diagnostics app/src/App.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 26
+      },
+      "end": {
+        "line": 10,
+        "character": 31
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but String was expected",
+    "data": [
+      "kotlin.Int",
+      "kotlin.String"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 8
+      },
+      "end": {
+        "line": 10,
+        "character": 13
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'wrong' is never used",
+    "tags": [
+      1
+    ]
+  }
+]
+> definition app/src/App.kt @call
+lib/src/Lib.kt 10:4-10:15 "makeCounter"
+> definition app/src/App.kt @use
+lib/src/Lib.kt 4:8-4:11 "inc"
+> references lib/src/Lib.kt @inc decl
+app/src/App.kt 7:6-7:9 "inc"
+app/src/App.kt 8:6-8:9 "inc"
+lib/src/Lib.kt 4:8-4:11 "inc"
+> references lib/src/Lib.kt @counter
+app/src/App.kt 6:11-6:18 "Counter"
+lib/src/Lib.kt 10:20-10:27 "Counter"
+> references app/src/App.kt @v decl
+app/src/App.kt 9:14-9:19 "value"
+lib/src/Lib.kt 3:8-3:13 "value"
+lib/src/Lib.kt 5:8-5:13 "value"
+lib/src/Lib.kt 6:15-6:20 "value"
+> rename lib/src/Lib.kt @inc increment
+app/src/App.kt:
+  7:6-7:9 "inc" -> "increment"
+  8:6-8:9 "inc" -> "increment"
+lib/src/Lib.kt:
+  4:8-4:11 "inc" -> "increment"
+> wait
+> diagnostics app/src/App.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 26
+      },
+      "end": {
+        "line": 10,
+        "character": 31
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but String was expected",
+    "data": [
+      "kotlin.Int",
+      "kotlin.String"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 8
+      },
+      "end": {
+        "line": 10,
+        "character": 13
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'wrong' is never used",
+    "tags": [
+      1
+    ]
+  }
+]
+> change lib/src/Lib.kt 5:0 5:0 "        println(by)\n"
+> wait
+> diagnostics lib/src/Lib.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 13,
+        "character": 18
+      },
+      "end": {
+        "line": 13,
+        "character": 30
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
+  }
+]
+> diagnostics app/src/App.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 26
+      },
+      "end": {
+        "line": 10,
+        "character": 31
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but String was expected",
+    "data": [
+      "kotlin.Int",
+      "kotlin.String"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 8
+      },
+      "end": {
+        "line": 10,
+        "character": 13
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'wrong' is never used",
+    "tags": [
+      1
+    ]
+  }
+]
+> definition app/src/App.kt @v
+lib/src/Lib.kt 3:8-3:13 "value"
+> references app/src/App.kt @use decl
+app/src/App.kt 7:6-7:15 "increment"
+app/src/App.kt 8:6-8:15 "increment"
+lib/src/Lib.kt 4:8-4:17 "increment"
+> calls lib/src/Lib.kt @inc
+increment [6] (Counter) lib/src/Lib.kt 4:8-4:17
+  <- main [12] (app) app/src/App.kt 5:4-5:8: 7:6-7:15 "increment", 8:6-8:15 "increment"
+> replace lib/src/Lib.kt lib2.kt
+> wait
+> diagnostics app/src/App.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 6,
+        "character": 32
+      },
+      "end": {
+        "line": 6,
+        "character": 33
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but Counter was expected",
+    "data": [
+      "kotlin.Int",
+      "lib.Counter"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 26
+      },
+      "end": {
+        "line": 10,
+        "character": 31
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but String was expected",
+    "data": [
+      "kotlin.Int",
+      "kotlin.String"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 8
+      },
+      "end": {
+        "line": 10,
+        "character": 13
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'wrong' is never used",
+    "tags": [
+      1
+    ]
+  }
+]

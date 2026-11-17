@@ -1,0 +1,262 @@
+package lsp
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/barteo/kotlin-compiler-go/internal/ide"
+	"github.com/barteo/kotlin-compiler-go/internal/libsrc"
+	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
+	"github.com/barteo/kotlin-compiler-go/psi"
+)
+
+// Navigation into the library's sources. A location in the library is a
+// file extracted from its source archive (internal/libsrc) to a cache
+// directory, read-only, so that every client opens it as a file; a
+// document of it has the syntax features, as a file outside the modules
+// does.
+
+// libraries is the server's state of the library's sources.
+type libraries struct {
+	off     bool   // initializationOptions.librarySources false: stubs only
+	noStubs bool   // nor stubs from the library's metadata (tests)
+	dir     string // initializationOptions.libraryCache, or ""
+	jdk     string // the JDK whose sources to read, if not the module's (tests)
+
+	mu      sync.Mutex
+	finders map[string]*libsrc.Finder // by class path and JDK
+	snaps   map[string]*psi.Snapshot  // the extracted files' parses, by path
+}
+
+// maxLibrarySnaps is how many parses of extracted files the server keeps.
+const maxLibrarySnaps = 64
+
+// finder returns the finder of the class path of the module that owns
+// path.
+func (s *Server) finder(path string) *libsrc.Finder {
+	if s.lib.off {
+		return nil
+	}
+	var cp []string
+	jdk := ""
+	found := false
+	for _, m := range s.modulesOf(path) {
+		m.w.mu.Lock()
+		owner := m.w.proj != nil && m.w.proj.ModuleOf(path) == m.m
+		m.w.mu.Unlock()
+		if owner || !found {
+			cp, jdk, found = m.m.ClassPath, m.m.JDKHome, true
+		}
+		if owner {
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	if s.lib.jdk != "" {
+		jdk = s.lib.jdk
+	}
+	key := strings.Join(cp, "\x00") + "\x01" + jdk
+	s.lib.mu.Lock()
+	defer s.lib.mu.Unlock()
+	if s.lib.finders == nil {
+		s.lib.finders = map[string]*libsrc.Finder{}
+	}
+	f := s.lib.finders[key]
+	if f == nil {
+		f = libsrc.New(cp, jdk)
+		s.lib.finders[key] = f
+	}
+	return f
+}
+
+// libraryLoc locates t in the library of the module of path, and returns
+// its location in the file extracted for it: from the library's sources,
+// or else a stub rendered from its metadata.
+func (s *Server) libraryLoc(path string, t libsrc.Target) (ide.Loc, libsrc.Location, bool) {
+	return s.libraryLocIn(path, t, false)
+}
+
+// libraryLocIn is libraryLoc; with kotlin, a declaration in a Java source
+// is located in its stub instead, a Kotlin rendering of its class file.
+func (s *Server) libraryLocIn(path string, t libsrc.Target, kotlin bool) (ide.Loc, libsrc.Location, bool) {
+	loc, ok := libsrc.Location{}, false
+	if f := s.finder(path); f != nil {
+		loc, ok = f.Locate(t)
+		if ok && kotlin && !strings.HasSuffix(loc.Entry, ".kt") {
+			ok = false
+		}
+	}
+	if !ok {
+		loc, ok = s.stub(path, t)
+	}
+	if !ok {
+		return ide.Loc{}, libsrc.Location{}, false
+	}
+	file, err := s.extract(loc)
+	if err != nil {
+		s.logMessage(protocol.MessageWarning, "kc-lsp: library sources: "+err.Error())
+		return ide.Loc{}, libsrc.Location{}, false
+	}
+	return ide.Loc{Snap: s.librarySnap(file, loc.Text), Range: loc.Range}, loc, true
+}
+
+// stubArchive marks a stub's location: its Archive is stubArchive and the
+// class path's key.
+const stubArchive = "stubs:"
+
+// stub renders the declaration t is in from the metadata of the library
+// of the module that owns path, and locates t in it.
+func (s *Server) stub(path string, t libsrc.Target) (libsrc.Location, bool) {
+	if s.lib.noStubs {
+		return libsrc.Location{}, false
+	}
+	m := s.ownerModule(path)
+	if m == nil {
+		return libsrc.Location{}, false
+	}
+	name := t.Name
+	if t.Kind == "class" && t.Binary != "" && !strings.Contains(name, ".") {
+		name = strings.NewReplacer("/", ".", "$", ".").Replace(t.Binary)
+	}
+	entry, text, ok, err := m.sess.LibraryStub(name)
+	if err != nil || !ok {
+		return libsrc.Location{}, false
+	}
+	key := strings.Join(m.m.ClassPath, "\x00") + "\x01" + m.m.JDKHome
+	return libsrc.LocateIn(stubArchive+key, entry, text, t)
+}
+
+// librarySnap returns the parse of an extracted file.
+func (s *Server) librarySnap(file, text string) *psi.Snapshot {
+	s.lib.mu.Lock()
+	defer s.lib.mu.Unlock()
+	if snap := s.lib.snaps[file]; snap != nil && snap.Source() == text {
+		return snap
+	}
+	if s.lib.snaps == nil || len(s.lib.snaps) >= maxLibrarySnaps {
+		s.lib.snaps = map[string]*psi.Snapshot{}
+	}
+	snap := psi.Parse(file, text)
+	s.lib.snaps[file] = snap
+	return snap
+}
+
+// extract writes loc's file to the cache directory, if it isn't there
+// with its text, and returns its path: <dir>/<archive>-<hash>/<entry>,
+// where hash is of the archive's path; a stub's archive is "stubs", and
+// hash of its class path.
+func (s *Server) extract(loc libsrc.Location) (string, error) {
+	dir, err := s.cacheDir()
+	if err != nil {
+		return "", err
+	}
+	if !libsrc.LocalEntry(loc.Entry) {
+		return "", fmt.Errorf("library entry %q is not a local path", loc.Entry)
+	}
+	h := sha256.Sum256([]byte(loc.Archive))
+	base := strings.TrimSuffix(filepath.Base(loc.Archive), filepath.Ext(loc.Archive))
+	if strings.HasPrefix(loc.Archive, stubArchive) {
+		base = "stubs" // the stubs of a class path
+	}
+	file := filepath.Join(dir, base+"-"+hex.EncodeToString(h[:6]), filepath.FromSlash(loc.Entry))
+	if old, err := os.ReadFile(file); err == nil && string(old) == loc.Text {
+		return file, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(file), ".extract-*")
+	if err != nil {
+		return "", err
+	}
+	_, werr := tmp.WriteString(loc.Text)
+	cerr := tmp.Close()
+	if werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Chmod(tmp.Name(), 0o444) // the library's: not to edit
+	}
+	if werr == nil {
+		werr = os.Rename(tmp.Name(), file)
+	}
+	if werr != nil {
+		os.Remove(tmp.Name())
+		return "", werr
+	}
+	return file, nil
+}
+
+// cacheDir returns the directory of the extracted files.
+func (s *Server) cacheDir() (string, error) {
+	if s.lib.dir != "" {
+		return s.lib.dir, nil
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, "kc-lsp", "sources"), nil
+}
+
+// libraryDefinition returns the location in the library of what the
+// caret uses, if it isn't in the sources.
+func (s *Server) libraryDefinition(c caret, typ bool) []ide.Loc {
+	target := ide.LibraryTarget
+	if typ {
+		target = ide.LibraryTypeTarget
+	}
+	t, ok := target(c.views[0], c.path, c.off)
+	if !ok {
+		return nil
+	}
+	l, _, ok := s.libraryLoc(c.path, t)
+	if !ok {
+		return nil
+	}
+	return []ide.Loc{l}
+}
+
+// libraryDoc returns the documentation of the library's declaration the
+// caret uses, as Markdown, or "".
+func (s *Server) libraryDoc(c caret) string {
+	t, ok := ide.LibraryTarget(c.views[0], c.path, c.off)
+	if !ok {
+		return ""
+	}
+	_, loc, ok := s.libraryLoc(c.path, t)
+	if !ok || !loc.Doc.Valid() {
+		return ""
+	}
+	return ide.KDoc(loc.Doc)
+}
+
+// libraryDecl returns a function finding a target's declaration in the
+// library of the module of path, in the file extracted for it, or nil
+// when library sources are off. The declaration is Kotlin's, for the
+// hierarchies to read: a Java class's is in its stub.
+func (s *Server) libraryDecl(path string) func(libsrc.Target) (psi.NodeRef, bool) {
+	if s.lib.off && s.lib.noStubs {
+		return nil
+	}
+	return func(t libsrc.Target) (psi.NodeRef, bool) {
+		l, _, ok := s.libraryLocIn(path, t, true)
+		if !ok {
+			return psi.NodeRef{}, false
+		}
+		for n := l.Snap.NodeAt(l.Range.Start); n.Valid(); n = n.Parent() {
+			switch n.NumericKind() {
+			case psi.KindFUN, psi.KindSECONDARY_CONSTRUCTOR, psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+				return n, true
+			}
+		}
+		return psi.NodeRef{}, false
+	}
+}

@@ -82,6 +82,7 @@ func (p *Parser) ParseMeasured(path, text string) (*Snapshot, ParseStages) {
 	copy(nodes, w.nodes)
 	t3 := time.Now()
 	s := newSnapshot(path, text, nodes, w.diags)
+	s.lazy = w.lazy
 	st.Positions = time.Since(t3)
 	return s, st
 }

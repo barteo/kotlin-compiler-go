@@ -1,0 +1,154 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/lib/Lib.kt --
+package lib
+
+class Box(val x: Int)
+interface Shape {
+    val area: Double
+    fun scale(by: Double): Shape
+}
+-- src/app/Main.kt --
+package app
+
+import lib.Box
+
+/*|square*/class Square : lib.Shape
+
+fun f(s: String?, b: Box): Int {
+    b./*|x*/x = 2
+    return s./*|len*/length + /*|abs*/abs(-1)
+}
+-- script --
+initialize
+open src/lib/Lib.kt
+open src/app/Main.kt
+wait
+diagnostics src/app/Main.kt
+actions src/app/Main.kt @square
+actions src/app/Main.kt @x
+actions src/app/Main.kt @len
+actions src/app/Main.kt @abs only=quickfix apply=1
+actions src/app/Main.kt @square only=source.organizeImports
+-- want --
+> initialize
+> open src/lib/Lib.kt
+> open src/app/Main.kt
+> wait
+> diagnostics src/app/Main.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 0
+      },
+      "end": {
+        "line": 4,
+        "character": 5
+      }
+    },
+    "severity": 1,
+    "code": "ABSTRACT_MEMBER_NOT_IMPLEMENTED",
+    "source": "kc",
+    "message": "class 'Square' is not abstract and does not implement abstract member 'scale'",
+    "data": [
+      "fun scale(by: kotlin.Double): lib.Shape"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 0
+      },
+      "end": {
+        "line": 4,
+        "character": 5
+      }
+    },
+    "severity": 1,
+    "code": "ABSTRACT_MEMBER_NOT_IMPLEMENTED",
+    "source": "kc",
+    "message": "class 'Square' is not abstract and does not implement abstract member 'area'",
+    "data": [
+      "val area: kotlin.Double"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 7,
+        "character": 6
+      },
+      "end": {
+        "line": 7,
+        "character": 7
+      }
+    },
+    "severity": 2,
+    "code": "VAL_REASSIGNMENT",
+    "source": "kc",
+    "message": "val cannot be reassigned"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 8,
+        "character": 13
+      },
+      "end": {
+        "line": 8,
+        "character": 19
+      }
+    },
+    "severity": 2,
+    "code": "UNSAFE_CALL",
+    "source": "kc",
+    "message": "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?",
+    "data": [
+      "kotlin.String?"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 8,
+        "character": 22
+      },
+      "end": {
+        "line": 8,
+        "character": 25
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: abs",
+    "data": [
+      "abs"
+    ]
+  }
+]
+> actions src/app/Main.kt @square
+1. Implement members [quickfix preferred] ABSTRACT_MEMBER_NOT_IMPLEMENTED
+  src/app/Main.kt:
+    2:14-2:14 "" -> "\nimport lib.Shape"
+    4:24-4:24 "" -> " {\n    override fun scale(by: Double): Shape {\n        TODO(\"Not yet implemented\")\n    }\n\n    override val area: Double\n        get() = TODO(\"Not yet implemented\")\n}"
+> actions src/app/Main.kt @x
+1. Change 'x' to var [quickfix preferred] VAL_REASSIGNMENT
+  src/lib/Lib.kt:
+    2:10-2:13 "val" -> "var"
+> actions src/app/Main.kt @len
+1. Replace with safe (?.) call [quickfix preferred] UNSAFE_CALL
+  src/app/Main.kt:
+    8:12-8:13 "." -> "?."
+2. Add non-null asserted (!!.) call [quickfix] UNSAFE_CALL
+  src/app/Main.kt:
+    8:12-8:13 "." -> "!!."
+> actions src/app/Main.kt @abs only=quickfix apply=1
+1. Import 'kotlin.math.abs' [quickfix preferred] UNRESOLVED_REFERENCE
+  src/app/Main.kt:
+    2:14-2:14 "" -> "\nimport kotlin.math.abs"
+> actions src/app/Main.kt @square only=source.organizeImports
+(none)

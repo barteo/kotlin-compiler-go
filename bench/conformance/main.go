@@ -70,6 +70,7 @@ func main() {
 	timeout := flag.Duration("timeout", 10*time.Second, "how long a test's box() may run")
 	work := flag.String("work", filepath.Join(os.TempDir(), "kc-conformance"), "directory for the compiled tests")
 	keep := flag.Bool("keep", false, "keep the compiled tests in -work")
+	precision := flag.String("precision", "", "with -mode diagnostics, the TSV file of kc's errors' precision by kotlinc diagnostic to write")
 	serve := flag.Bool("serve", true, "compile on -j long-lived kc -serve processes, which keep the class path and the standard library's classes they read from test to test, instead of a kc process a module")
 	flag.Parse()
 	if *kotlin == "" || *stdlib == "" {
@@ -181,7 +182,7 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut, strayWarns: *strayWarns}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut, strayWarns: *strayWarns, precision: *precision}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}

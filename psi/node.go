@@ -157,6 +157,28 @@ func (n NodeRef) Declaration() NodeRef {
 	return NodeRef{}
 }
 
+// EnclosingDeclaration returns the named declaration whose code contains
+// n, past lambdas, parameters, accessors and local variables: a
+// function, constructor, initializer block, class, object, or a member
+// or top-level property. It is invalid outside any.
+func (n NodeRef) EnclosingDeclaration() NodeRef {
+	for p := n.Parent(); p.Valid(); p = p.Parent() {
+		switch p.NumericKind() {
+		case KindFUN, KindSECONDARY_CONSTRUCTOR, KindCLASS_INITIALIZER, KindCLASS:
+			return p
+		case KindOBJECT_DECLARATION:
+			if p.NameIdentifier().Valid() || p.ChildKind(KindMODIFIER_LIST).ChildKind(KindCOMPANION_KEYWORD).Valid() {
+				return p
+			}
+		case KindPROPERTY:
+			if k := p.Parent().NumericKind(); k == KindFILE || k == KindCLASS_BODY {
+				return p
+			}
+		}
+	}
+	return NodeRef{}
+}
+
 // Function returns n if it is a function, lambda literal or constructor.
 func (n NodeRef) Function() NodeRef {
 	if functionKinds.has(n.NumericKind()) {

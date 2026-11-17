@@ -1,0 +1,67 @@
+-- A.kt --
+package demo
+
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.abs
+
+/*
+ * A block comment.
+ */
+class A {
+    /**
+     * KDoc.
+     */
+    fun f(x: Int): Int {
+        val ys = listOf(1, 2).map {
+            it * 2
+        }
+        return when (x) {
+            0 -> 1
+            else -> max(min(x, 3), abs(x))
+        }
+    }
+
+    fun g() { }
+}
+-- script --
+initialize
+open A.kt
+folding A.kt
+-- want --
+> initialize
+> open A.kt
+> folding A.kt
+[
+  {
+    "endLine": 4,
+    "kind": "imports",
+    "startLine": 2
+  },
+  {
+    "endLine": 8,
+    "kind": "comment",
+    "startLine": 6
+  },
+  {
+    "endLine": 23,
+    "startLine": 9
+  },
+  {
+    "endLine": 12,
+    "kind": "comment",
+    "startLine": 10
+  },
+  {
+    "endLine": 20,
+    "startLine": 13
+  },
+  {
+    "endLine": 15,
+    "startLine": 14
+  },
+  {
+    "endLine": 19,
+    "startLine": 17
+  }
+]

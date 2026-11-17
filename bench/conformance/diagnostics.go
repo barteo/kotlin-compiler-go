@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,6 +142,9 @@ type diagConfig struct {
 	keep   bool
 	comp   *compiler
 	sev    map[string]string
+	// precision is the TSV file of the errors' precision by code to
+	// write, or "".
+	precision string
 	// strayErrs is the file to write kc's errors on lines without an
 	// expected diagnostic to, or "".
 	strayErrs string
@@ -327,6 +331,11 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 	}
 	close(next)
 	wg.Wait()
+	if c.precision != "" {
+		if err := os.WriteFile(c.precision, []byte(precisionTSV(dts)), 0o644); err != nil {
+			return nil, "", err
+		}
+	}
 	if c.strayErrs != "" {
 		if err := writeStray(c.strayErrs, results, dts); err != nil {
 			return nil, "", err
@@ -344,6 +353,71 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 	}
 	c.missed = missedLines(results, dts)
 	return results, reportDiagnostics(c, results, dts, tag), nil
+}
+
+// precisionTSV returns, for each kotlinc diagnostic kc names its errors
+// by, and for the errors it names none, in how many tests kc reported
+// one, and of those how many kotlinc accepts (false positives), how many
+// mark the same diagnostic on its line, how many another error there,
+// and how many none there: what tells a language server which of kc's
+// errors to show as errors. A test counts once for each code.
+func precisionTSV(dts []*diagTest) string {
+	type counts struct{ tests, valid, exact, line, elsewhere int }
+	byCode := map[string]*counts{}
+	for _, dt := range dts {
+		if dt == nil || len(dt.kc) == 0 {
+			continue
+		}
+		seen := map[string]int{} // code -> best class: 0 elsewhere, 1 line, 2 exact
+		for _, d := range dt.kc {
+			if d.feature != "" {
+				continue
+			}
+			code := d.name
+			if code == "" {
+				code = "(none)"
+			}
+			class := 0
+			for _, m := range dt.errors {
+				if m.file == d.file && m.line == d.line {
+					class = max(class, 1)
+					if m.name == d.name {
+						class = 2
+					}
+				}
+			}
+			if prev, ok := seen[code]; !ok || class > prev {
+				seen[code] = class
+			}
+		}
+		for code, class := range seen {
+			c := byCode[code]
+			if c == nil {
+				c = &counts{}
+				byCode[code] = c
+			}
+			c.tests++
+			switch {
+			case !dt.rejects:
+				c.valid++
+			case class == 2:
+				c.exact++
+			case class == 1:
+				c.line++
+			default:
+				c.elsewhere++
+			}
+		}
+	}
+	codes := slices.Sorted(maps.Keys(byCode))
+	slices.SortStableFunc(codes, func(a, b string) int { return byCode[b].tests - byCode[a].tests })
+	var sb strings.Builder
+	sb.WriteString("code\ttests\tvalid\texact\tline\telsewhere\tprecision\n")
+	for _, code := range codes {
+		c := byCode[code]
+		fmt.Fprintf(&sb, "%s\t%d\t%d\t%d\t%d\t%d\t%.3f\n", code, c.tests, c.valid, c.exact, c.line, c.elsewhere, 1-float64(c.valid)/float64(c.tests))
+	}
+	return sb.String()
 }
 
 // writeMarks writes each expected diagnostic of the tests kc compiled as

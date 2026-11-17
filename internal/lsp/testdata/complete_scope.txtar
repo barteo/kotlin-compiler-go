@@ -1,0 +1,194 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/Box.kt --
+package p
+
+/** A box of [T]. */
+open class Box<T>(val item: T) {
+    /** Takes the item. */
+    fun take(): T = item
+    fun put(x: T, times: Int = 1) {}
+    companion object {
+        fun empty(): Box<String> = Box("")
+    }
+}
+
+fun topLevel(n: Int): String = n.toString()
+
+@Deprecated("old")
+fun topOld(): Int = 1
+-- src/Use.kt --
+package p
+
+fun locals(count: Int, name: String?) {
+    val local = Box(count)
+    val total = count + 1
+    co/*|locals*/
+}
+
+fun members(local: Box<Int>) {
+    local./*|members*/
+}
+
+fun middle(local: Box<Int>) {
+    local.ta/*|take*/ke()
+}
+
+fun safe(name: String?) {
+    name?./*|safe*/
+}
+
+fun smart(name: String?) {
+    if (name != null) name.len/*|smart*/
+}
+
+fun static() {
+    Box./*|static*/
+}
+
+fun top() {
+    top/*|top*/
+}
+
+fun type() {
+    val box: Bo/*|type*/
+}
+
+fun arg(local: Box<Int>, count: Int) {
+    local.put(1, /*|arg*/)
+}
+
+fun open(count: Int) {
+    println(/*|open*/
+}
+
+fun template(local: Box<String>) {
+    val s = "${local.it/*|template*/}"
+    // co/*|comment*/
+}
+
+fun ref() {
+    val r = Box<Int>::/*|ref*/
+}
+
+fun auto() {
+    ConcurrentH/*|auto*/
+}
+-- script --
+initialize
+open src/Use.kt
+wait
+complete src/Use.kt @locals 8 doc
+complete src/Use.kt @members
+complete src/Use.kt @take 4 doc
+complete src/Use.kt @safe 4
+complete src/Use.kt @smart 4
+complete src/Use.kt @static 4
+complete src/Use.kt @top 4
+complete src/Use.kt @type 4
+complete src/Use.kt @arg 6
+complete src/Use.kt @open 4
+complete src/Use.kt @template 4
+complete src/Use.kt @comment
+complete src/Use.kt @ref 4
+complete src/Use.kt @auto 4
+-- want --
+> initialize
+> open src/Use.kt
+> wait
+> complete src/Use.kt @locals 8 doc
+(incomplete)
+count variable Int
+    ```kotlin
+    count: Int
+    ```
+continue keyword
+com package com
+context function fun <A, B, C, D, E, F, R> context(a: A, b: B, c: C, d: D, e: E, f: F, block: (A, B, C, D, E, F) -> R): R => "context("
+context function fun <A, B, C, D, E, R> context(a: A, b: B, c: C, d: D, e: E, block: (A, B, C, D, E) -> R): R => "context("
+context function fun <A, B, C, D, R> context(a: A, b: B, c: C, d: D, block: (A, B, C, D) -> R): R => "context("
+context function fun <A, B, C, R> context(a: A, b: B, c: C, block: (A, B, C) -> R): R => "context("
+context function fun <A, B, R> context(a: A, b: B, block: (A, B) -> R): R => "context("
+... 192 more
+> complete src/Use.kt @members
+item property Int
+put method fun put(x: Int, times: Int): Unit => "put("
+take method fun take(): Int => "take()"
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+toString method fun toString(): String => "toString()"
+also function fun <T> T.also(block: (T) -> Unit): T => "also("
+apply function fun <T> T.apply(block: T.() -> Unit): T => "apply("
+javaClass property Class<T>
+let function fun <T, R> T.let(block: (T) -> R): R => "let("
+run function fun <T, R> T.run(block: T.() -> R): R => "run("
+runCatching function fun <T, R> T.runCatching(block: T.() -> R): Result<R> => "runCatching("
+... 3 more
+> complete src/Use.kt @take 4 doc
+take method fun take(): Int
+    ```kotlin
+    fun take(): T
+    ```
+    
+    Takes the item.
+takeIf function fun <T> T.takeIf(predicate: (T) -> Boolean): T?
+takeUnless function fun <T> T.takeUnless(predicate: (T) -> Boolean): T?
+> complete src/Use.kt @safe 4
+(incomplete)
+compareTo method operator fun compareTo(other: String): Int => "compareTo("
+equals method operator fun equals(other: Any?): Boolean => "equals("
+get method operator fun get(index: Int): Char => "get("
+hashCode method fun hashCode(): Int => "hashCode()"
+... 196 more
+> complete src/Use.kt @smart 4
+length property Int
+elementAt function fun CharSequence.elementAt(index: Int): Char => "elementAt("
+filterNot function fun CharSequence.filterNot(predicate: (Char) -> Boolean): CharSequence => "filterNot("
+filterNot function fun String.filterNot(predicate: (Char) -> Boolean): String => "filterNot("
+... 25 more
+> complete src/Use.kt @static 4
+empty method fun empty(): Box<String> => "empty()"
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+toString method fun toString(): String => "toString()"
+... 10 more
+> complete src/Use.kt @top 4
+top function fun top(): Unit => "top()"
+topLevel function fun topLevel(n: Int): String => "topLevel("
+topOld function fun topOld(): Int => "topOld()" (deprecated)
+ToolProvider class java.util.spi.ToolProvider +0:9-0:9 "\n\nimport java.util.spi.ToolProvider"
+... 51 more
+> complete src/Use.kt @type 4
+Box class p.Box
+Boolean class kotlin.Boolean
+BooleanArray class kotlin.BooleanArray
+BooleanIterator class kotlin.collections.BooleanIterator
+... 128 more
+> complete src/Use.kt @arg 6
+(incomplete)
+x = variable Int => "x = "
+times = variable Int => "times = "
+count variable Int
+compareValues function fun <T> compareValues(a: T?, b: T?): Int => "compareValues("
+compareValuesBy function fun <T, K> compareValuesBy(a: T, b: T, comparator: Comparator<in K>, selector: (T) -> K): Int => "compareValuesBy("
+compareValuesBy function fun <T> compareValuesBy(a: T, b: T, selector: (T) -> Comparable<*>?): Int => "compareValuesBy("
+... 194 more
+> complete src/Use.kt @open 4
+(incomplete)
+message = variable Any? => "message = "
+count variable Int
+arg function fun arg(local: Box<Int>, count: Int): Unit => "arg("
+auto function fun auto(): Unit => "auto()"
+... 196 more
+> complete src/Use.kt @template 4
+item property String
+> complete src/Use.kt @comment
+(none)
+> complete src/Use.kt @ref 4
+item property Int
+put method fun put(x: Int, times: Int): Unit
+take method fun take(): Int
+equals method operator fun equals(other: Any?): Boolean
+... 11 more
+> complete src/Use.kt @auto 4
+ConcurrentHashMap class java.util.concurrent.ConcurrentHashMap +0:9-0:9 "\n\nimport java.util.concurrent.ConcurrentHashMap"

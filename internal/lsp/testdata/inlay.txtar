@@ -1,0 +1,89 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+enum class Color { RED }
+
+class Box<T>(val item: T) {
+    fun twice(f: (T) -> Int) = f(item) * 2
+}
+
+fun use(xs: List<Int>) {
+    val b = Box("s")
+    var n = b.twice { s -> s.length } + xs.size
+    n += maxOf(1, 2) + Color.RED.ordinal
+}
+-- script --
+initialize
+open src/A.kt
+wait
+tokens src/A.kt
+inlay src/A.kt
+change src/A.kt 0:0 0:0 "// a comment\n"
+inlay src/A.kt
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> tokens src/A.kt
+0:0 keyword "package"
+0:8 namespace "p"
+2:0 keyword "enum"
+2:5 keyword "class"
+2:11 enum [declaration] "Color"
+2:19 enumMember [declaration readonly] "RED"
+4:0 keyword "class"
+4:6 class [declaration] "Box"
+4:10 typeParameter [declaration] "T"
+4:13 keyword "val"
+4:17 property [declaration readonly] "item"
+4:23 typeParameter "T"
+5:4 keyword "fun"
+5:8 method [declaration] "twice"
+5:14 parameter [declaration] "f"
+5:18 typeParameter "T"
+5:24 class "Int"
+5:31 parameter "f"
+5:33 property [readonly] "item"
+5:41 number "2"
+8:0 keyword "fun"
+8:4 function [declaration] "use"
+8:8 parameter [declaration] "xs"
+8:12 class "List"
+8:17 class "Int"
+9:4 keyword "val"
+9:8 variable [declaration readonly] "b"
+9:12 class "Box"
+9:16 string "\""
+9:17 string "s"
+9:18 string "\""
+10:4 keyword "var"
+10:8 variable [declaration] "n"
+10:12 variable [readonly] "b"
+10:14 method "twice"
+10:22 parameter [declaration] "s"
+10:27 parameter "s"
+10:29 property "length"
+10:40 parameter "xs"
+10:43 property [readonly] "size"
+11:4 variable "n"
+11:9 function "maxOf"
+11:15 number "1"
+11:18 number "2"
+11:23 enum "Color"
+11:29 enumMember [readonly] "RED"
+11:33 property [readonly] "ordinal"
+> inlay src/A.kt
+9:16 parameter "item:"
+10:9 type ": Int"
+10:23 type ": String"
+11:15 parameter "a:"
+11:18 parameter "b:"
+> change src/A.kt 0:0 0:0 "// a comment\n"
+> inlay src/A.kt
+10:16 parameter "item:"
+11:9 type ": Int"
+11:23 type ": String"
+12:15 parameter "a:"
+12:18 parameter "b:"

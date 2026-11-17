@@ -1,0 +1,19 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+library
+-- src/A.kt --
+package p
+
+class ArrayDequeUser
+-- script --
+initialize
+wait
+wsymbol ArrayDeque
+-- want --
+> initialize
+> wait
+> wsymbol ArrayDeque
+ArrayDequeUser 5 "p" in "src/A.kt" 2:6-2:20 "ArrayDequeUser"
+ArrayDeque 5 "java.util" in ".libcache/stubs/java/util/ArrayDeque.kt" 4:11-4:21 "ArrayDeque"
+ArrayDeque 5 "kotlin.collections" in ".libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/ArrayDeque.kt" 16:13-16:23 "ArrayDeque"

@@ -237,7 +237,7 @@ func (t Type) Contexts() int {
 
 // funcString formats a function type as (A, B) -> R, or reports false if
 // its arguments are projected against their declared variance.
-func funcString(t Type) (string, bool) {
+func funcString(t Type, name func(*ClassSym) string) (string, bool) {
 	n := t.A.Len() - 1
 	ps := make([]string, n)
 	for i, a := range t.A.List {
@@ -245,7 +245,7 @@ func funcString(t Type) (string, bool) {
 			return "", false
 		}
 		if i < n {
-			ps[i] = a.T.String()
+			ps[i] = a.T.Format(name)
 		}
 	}
 	ctx := ""
@@ -261,7 +261,7 @@ func funcString(t Type) (string, bool) {
 		}
 		ps = ps[1:]
 	}
-	s := ctx + recv + "(" + strings.Join(ps, ", ") + ") -> " + t.A.Get(n).T.String()
+	s := ctx + recv + "(" + strings.Join(ps, ", ") + ") -> " + t.A.Get(n).T.Format(name)
 	if t.C.Suspend {
 		s = "suspend " + s
 	}

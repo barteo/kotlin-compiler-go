@@ -1,0 +1,126 @@
+-- A.kt --
+class A {
+    fun one() {}
+}
+-- B.kt --
+object B
+-- script --
+initialize
+open A.kt
+change A.kt 1:8 1:11 "first"
+change A.kt 2:0 2:0 "    fun two() {}\n"
+symbols A.kt
+replace A.kt B.kt
+symbols A.kt
+-- want --
+> initialize
+> open A.kt
+> change A.kt 1:8 1:11 "first"
+> change A.kt 2:0 2:0 "    fun two() {}\n"
+> symbols A.kt
+[
+  {
+    "children": [
+      {
+        "detail": "()",
+        "kind": 6,
+        "name": "first",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 1
+          },
+          "start": {
+            "character": 4,
+            "line": 1
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 1
+          },
+          "start": {
+            "character": 8,
+            "line": 1
+          }
+        }
+      },
+      {
+        "detail": "()",
+        "kind": 6,
+        "name": "two",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 2
+          },
+          "start": {
+            "character": 4,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 8,
+            "line": 2
+          }
+        }
+      }
+    ],
+    "kind": 5,
+    "name": "A",
+    "range": {
+      "end": {
+        "character": 1,
+        "line": 3
+      },
+      "start": {
+        "character": 0,
+        "line": 0
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 7,
+        "line": 0
+      },
+      "start": {
+        "character": 6,
+        "line": 0
+      }
+    }
+  }
+]
+> replace A.kt B.kt
+> symbols A.kt
+[
+  {
+    "kind": 19,
+    "name": "B",
+    "range": {
+      "end": {
+        "character": 8,
+        "line": 0
+      },
+      "start": {
+        "character": 0,
+        "line": 0
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 8,
+        "line": 0
+      },
+      "start": {
+        "character": 7,
+        "line": 0
+      }
+    }
+  }
+]

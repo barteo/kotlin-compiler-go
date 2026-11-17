@@ -51,12 +51,15 @@ type lookupKey struct {
 type lookups struct {
 	mu   sync.Mutex
 	seen map[lookupKey]bool
+	// off is set for a file outside Options.Only: what it looks up
+	// doesn't change unless it is checked.
+	off bool
 }
 
 // noteLookup reports name looked up in scope, once per file.
 func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 	r := c.u.lookups
-	if r == nil || name == "" || strings.HasPrefix(name, "<") {
+	if r == nil || c.looked.off || name == "" || strings.HasPrefix(name, "<") {
 		return
 	}
 	k := lookupKey{scope, name, kind}
@@ -74,7 +77,7 @@ func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 }
 
 // recordsLookups reports whether lookups are being recorded.
-func (c *Checker) recordsLookups() bool { return c.u.lookups != nil }
+func (c *Checker) recordsLookups() bool { return c.u.lookups != nil && !c.looked.off }
 
 // classScope returns the qualified name of cls as a scope, or "" and false
 // for a class that other files can't see: a local or anonymous one.
@@ -297,6 +300,9 @@ func (c *Checker) noteIdent(name string, sym *types.VarSym) {
 // noteSelector reports name selected from x: a member of x's class, or,
 // if x names a class or a package, a member of that.
 func (c *Checker) noteSelector(x syntax.Expr, name string) {
+	if x == nil { // a bound reference to a member of this, ::name
+		return
+	}
 	if cls := c.classRef(x); cls != nil {
 		c.noteClass(cls)
 		c.noteMemberOf(cls, name)

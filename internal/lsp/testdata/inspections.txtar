@@ -1,0 +1,331 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+private fun g(a: Int, b: Int) = a
+
+fun f(s: String): Int {
+    println(s/*|safe*/?.length)
+    /*|var*/var n = 1
+    return g(n, 2) + (s /*|cast*/as String).length
+}
+
+class C {
+    private fun /*|unused*/unused() = s!!
+    private val s = "s"
+}
+-- src/B.kt --
+/*|pub*/public class B() {
+    fun h(x: Int) = "${x}";
+}
+-- src/C.kt --
+fun c(xs: List<Int>, s: String): Boolean {
+    println(/*|get*/xs.get(0))
+    println(s ?: "none")
+    return if (xs.size == 0) false else true
+}
+-- script --
+initialize
+open src/A.kt
+wait
+diagnostics src/A.kt
+actions src/A.kt @safe only=quickfix
+actions src/A.kt @var only=quickfix
+actions src/A.kt @cast only=quickfix apply=1
+actions src/A.kt @unused only=quickfix
+open src/B.kt
+wait
+diagnostics src/B.kt
+actions src/B.kt @pub only=quickfix apply=1
+open src/C.kt
+wait
+diagnostics src/C.kt
+actions src/C.kt @get only=quickfix apply=1
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 22
+      },
+      "end": {
+        "line": 0,
+        "character": 23
+      }
+    },
+    "severity": 2,
+    "code": "UNUSED_PARAMETER",
+    "source": "kc",
+    "message": "Parameter 'b' is never used",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 13
+      },
+      "end": {
+        "line": 3,
+        "character": 15
+      }
+    },
+    "severity": 2,
+    "code": "UNNECESSARY_SAFE_CALL",
+    "source": "kc",
+    "message": "Unnecessary safe call on a non-null receiver of type String"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 4
+      },
+      "end": {
+        "line": 4,
+        "character": 7
+      }
+    },
+    "severity": 2,
+    "code": "CAN_BE_VAL",
+    "source": "kc",
+    "message": "Variable 'n' is never modified and can be declared immutable using 'val'"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 24
+      },
+      "end": {
+        "line": 5,
+        "character": 33
+      }
+    },
+    "severity": 2,
+    "code": "USELESS_CAST",
+    "source": "kc",
+    "message": "No cast needed",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 16
+      },
+      "end": {
+        "line": 9,
+        "character": 22
+      }
+    },
+    "severity": 2,
+    "code": "UNUSED_PRIVATE_MEMBER",
+    "source": "kc",
+    "message": "Function 'unused' is never used",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 28
+      },
+      "end": {
+        "line": 9,
+        "character": 30
+      }
+    },
+    "severity": 2,
+    "code": "UNNECESSARY_NOT_NULL_ASSERTION",
+    "source": "kc",
+    "message": "Unnecessary non-null assertion (!!) on a non-null receiver of type String"
+  }
+]
+> actions src/A.kt @safe only=quickfix
+1. Replace with dot call [quickfix preferred] UNNECESSARY_SAFE_CALL
+  src/A.kt:
+    3:13-3:15 "?." -> "."
+> actions src/A.kt @var only=quickfix
+1. Change to 'val' [quickfix preferred] CAN_BE_VAL
+  src/A.kt:
+    4:4-4:7 "var" -> "val"
+> actions src/A.kt @cast only=quickfix apply=1
+1. Remove useless cast [quickfix preferred] USELESS_CAST
+  src/A.kt:
+    5:22-5:33 "s as String" -> "s"
+> actions src/A.kt @unused only=quickfix
+1. Remove function 'unused' [quickfix preferred] UNUSED_PRIVATE_MEMBER
+  src/A.kt:
+    9:0-10:0 "    private fun unused() = s!!\n" -> ""
+> open src/B.kt
+> wait
+> diagnostics src/B.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 6
+      }
+    },
+    "severity": 4,
+    "code": "REDUNDANT_VISIBILITY_MODIFIER",
+    "source": "kc",
+    "message": "Redundant visibility modifier",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 14
+      },
+      "end": {
+        "line": 0,
+        "character": 16
+      }
+    },
+    "severity": 4,
+    "code": "REMOVE_EMPTY_PRIMARY_CONSTRUCTOR",
+    "source": "kc",
+    "message": "Remove empty primary constructor",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 21
+      },
+      "end": {
+        "line": 1,
+        "character": 25
+      }
+    },
+    "severity": 4,
+    "code": "REMOVE_CURLY_BRACES_FROM_TEMPLATE",
+    "source": "kc",
+    "message": "Redundant curly braces in string template",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 26
+      },
+      "end": {
+        "line": 1,
+        "character": 27
+      }
+    },
+    "severity": 4,
+    "code": "REDUNDANT_SEMICOLON",
+    "source": "kc",
+    "message": "Redundant semicolon",
+    "tags": [
+      1
+    ]
+  }
+]
+> actions src/B.kt @pub only=quickfix apply=1
+1. Remove redundant 'public' modifier [quickfix preferred] REDUNDANT_VISIBILITY_MODIFIER
+  src/B.kt:
+    0:0-0:7 "public " -> ""
+> open src/C.kt
+> wait
+> diagnostics src/C.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 12
+      },
+      "end": {
+        "line": 1,
+        "character": 21
+      }
+    },
+    "severity": 3,
+    "code": "REPLACE_GET_OR_SET",
+    "source": "kc",
+    "message": "Explicit 'get' call can be replaced with indexing"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 14
+      },
+      "end": {
+        "line": 2,
+        "character": 23
+      }
+    },
+    "severity": 2,
+    "code": "USELESS_ELVIS",
+    "source": "kc",
+    "message": "Elvis operator (?:) always returns the left operand of non-nullable type String",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 11
+      },
+      "end": {
+        "line": 3,
+        "character": 13
+      }
+    },
+    "severity": 3,
+    "code": "REDUNDANT_IF",
+    "source": "kc",
+    "message": "Redundant 'if' statement"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 15
+      },
+      "end": {
+        "line": 3,
+        "character": 27
+      }
+    },
+    "severity": 3,
+    "code": "REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY",
+    "source": "kc",
+    "message": "Size check can be replaced with 'isEmpty()'"
+  }
+]
+> actions src/C.kt @get only=quickfix apply=1
+1. Replace 'get' call with indexing operator [quickfix preferred] REPLACE_GET_OR_SET
+  src/C.kt:
+    1:12-1:21 "xs.get(0)" -> "xs[0]"

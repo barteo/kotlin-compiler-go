@@ -1,0 +1,57 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+fun f(s: String): Int {
+    return /*|at*/0
+}
+-- script --
+initialize
+open src/A.kt
+wait
+change src/A.kt @at @at "s"
+change src/A.kt 1:12 1:12 "."
+change src/A.kt 1:13 1:13 "l"
+change src/A.kt 1:14 1:14 "e"
+change src/A.kt 1:15 1:15 "n"
+change src/A.kt 1:16 1:16 "g"
+change src/A.kt 1:17 1:17 "th + "
+wait
+diagnostics src/A.kt
+change src/A.kt 1:21 1:23 ""
+wait
+diagnostics src/A.kt
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> change src/A.kt @at @at "s"
+> change src/A.kt 1:12 1:12 "."
+> change src/A.kt 1:13 1:13 "l"
+> change src/A.kt 1:14 1:14 "e"
+> change src/A.kt 1:15 1:15 "n"
+> change src/A.kt 1:16 1:16 "g"
+> change src/A.kt 1:17 1:17 "th + "
+> wait
+> diagnostics src/A.kt
+[]
+> change src/A.kt 1:21 1:23 ""
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 21
+      },
+      "end": {
+        "line": 1,
+        "character": 21
+      }
+    },
+    "severity": 1,
+    "code": "syntax_error",
+    "source": "kc",
+    "message": "Expecting an element"
+  }
+]

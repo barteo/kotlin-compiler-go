@@ -1,0 +1,119 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+fun a(): Int = extra()
+-- _E.kt --
+fun extra(): Int = 1
+-- _E2.kt --
+fun extra(): String = "1"
+-- _config --
+{"modules": [{"name": "main", "sourceRoots": ["lib"]}]}
+-- script --
+initialize
+open src/A.kt
+wait
+diagnostics src/A.kt
+write src/E.kt _E.kt
+notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":1}]}
+wait
+diagnostics src/A.kt
+write src/E.kt _E2.kt
+notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":2}]}
+wait
+diagnostics src/A.kt
+write src/E.kt -
+notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":3}]}
+wait
+diagnostics src/A.kt
+# A.kt is in no module once the project changes: only syntax errors.
+write kc-lsp.json _config
+notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/kc-lsp.json","type":2}]}
+wait
+diagnostics src/A.kt
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 15
+      },
+      "end": {
+        "line": 0,
+        "character": 20
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: extra",
+    "data": [
+      "extra"
+    ]
+  }
+]
+> write src/E.kt _E.kt
+> notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":1}]}
+> wait
+> diagnostics src/A.kt
+[]
+> write src/E.kt _E2.kt
+> notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":2}]}
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 20
+      },
+      "end": {
+        "line": 0,
+        "character": 21
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
+  }
+]
+> write src/E.kt -
+> notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/src/E.kt","type":3}]}
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 15
+      },
+      "end": {
+        "line": 0,
+        "character": 20
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: extra",
+    "data": [
+      "extra"
+    ]
+  }
+]
+> write kc-lsp.json _config
+> notify workspace/didChangeWatchedFiles {"changes":[{"uri":"ROOT/kc-lsp.json","type":2}]}
+> wait
+> diagnostics src/A.kt
+[]

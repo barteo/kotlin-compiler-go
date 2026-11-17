@@ -1,0 +1,68 @@
+-- A.kt --
+class Box {
+    val size = 1
+    fun open() {}
+}
+-- script --
+initialize {"processId":null,"capabilities":{}}
+open A.kt
+symbols A.kt
+-- want --
+> initialize {"processId":null,"capabilities":{}}
+> open A.kt
+> symbols A.kt
+[
+  {
+    "kind": 5,
+    "location": {
+      "range": {
+        "end": {
+          "character": 1,
+          "line": 3
+        },
+        "start": {
+          "character": 0,
+          "line": 0
+        }
+      },
+      "uri": "file:///work/A.kt"
+    },
+    "name": "Box"
+  },
+  {
+    "containerName": "Box",
+    "kind": 7,
+    "location": {
+      "range": {
+        "end": {
+          "character": 16,
+          "line": 1
+        },
+        "start": {
+          "character": 4,
+          "line": 1
+        }
+      },
+      "uri": "file:///work/A.kt"
+    },
+    "name": "size"
+  },
+  {
+    "containerName": "Box",
+    "kind": 6,
+    "location": {
+      "range": {
+        "end": {
+          "character": 17,
+          "line": 2
+        },
+        "start": {
+          "character": 4,
+          "line": 2
+        }
+      },
+      "uri": "file:///work/A.kt"
+    },
+    "name": "open"
+  }
+]

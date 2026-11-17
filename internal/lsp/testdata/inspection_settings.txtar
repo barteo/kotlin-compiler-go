@@ -1,0 +1,71 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/C.kt --
+fun c(xs: List<Int>, s: String): Boolean {
+    println(xs.get(0))
+    println(s ?: "none")
+    return if (xs.size == 0) false else true
+}
+-- script --
+initialize {"processId":null,"rootUri":"ROOT","capabilities":{},"initializationOptions":{"inspections":{"REPLACE_GET_OR_SET":"off","REDUNDANT_IF":"warning","USELESS_ELVIS":"hint","NO_SUCH_INSPECTION":"off","REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY":"loud"}}}
+open src/C.kt
+wait
+diagnostics src/C.kt
+-- want --
+> initialize {"processId":null,"rootUri":"ROOT","capabilities":{},"initializationOptions":{"inspections":{"REPLACE_GET_OR_SET":"off","REDUNDANT_IF":"warning","USELESS_ELVIS":"hint","NO_SUCH_INSPECTION":"off","REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY":"loud"}}}
+> open src/C.kt
+> wait
+> diagnostics src/C.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 14
+      },
+      "end": {
+        "line": 2,
+        "character": 23
+      }
+    },
+    "severity": 4,
+    "code": "USELESS_ELVIS",
+    "source": "kc",
+    "message": "Elvis operator (?:) always returns the left operand of non-nullable type String",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 11
+      },
+      "end": {
+        "line": 3,
+        "character": 13
+      }
+    },
+    "severity": 2,
+    "code": "REDUNDANT_IF",
+    "source": "kc",
+    "message": "Redundant 'if' statement"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 15
+      },
+      "end": {
+        "line": 3,
+        "character": 27
+      }
+    },
+    "severity": 3,
+    "code": "REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY",
+    "source": "kc",
+    "message": "Size check can be replaced with 'isEmpty()'"
+  }
+]

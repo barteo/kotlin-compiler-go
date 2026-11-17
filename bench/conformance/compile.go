@@ -21,7 +21,7 @@ type diag struct {
 	line    int
 	feature string // the unsupported feature, or ""
 	msg     string
-	name    string // the diagnostic's name, if kc knows it: a warning's
+	name    string // the diagnostic's name, if kc knows it: every warning's
 }
 
 // compileResult is what compiling a test's modules came to.
