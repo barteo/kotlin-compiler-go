@@ -178,6 +178,10 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		saved, savedLookup := c.state, c.lookupCls
 		c.state = state{scope: &scope{}, staticCls: owner}
+		if this := annotationThis(owner, site); this != nil {
+			c.cls, c.this, c.staticCls = this, newThis(this), nil
+			c.inAnon(this) // an inner or local class's outer receivers
+		}
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, args, a.P)
 		c.state, c.lookupCls = saved, savedLookup
@@ -432,8 +436,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
-		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false})
-		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false})
+		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false, false})
+		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false})
 	case *syntax.TypeAliasDecl:
 		c.annotations(d.Annotations, owner, typealiasSite)
 		c.typeParamAnnotations(d.TypeParams, owner)
@@ -454,8 +458,10 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
 		c.typeParamAnnotations(d.TypeParams, cls)
+		superSite := typeSite
+		superSite.outerThis = cls.Inner
 		for _, s := range d.Supers {
-			c.signatureTypeAnnotations(cls.Outer, s.Type) // outside it, as its annotations
+			c.typeAnnotationsAt(cls.Outer, superSite, s.Type) // outside it, as its annotations
 		}
 		for _, cp := range d.CtorParams {
 			c.signatureTypeAnnotations(cls, cp.Type)
