@@ -212,7 +212,9 @@ func (t *classTable) class(name string) *types.ClassSym {
 	// type's descriptor depends on it, as a field's of Compose's Color,
 	// whose members may never be loaded.
 	c = types.NewExternal(name, t.load)
-	t.markValue(c)
+	if !t.markValue(c) {
+		c = nil
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if old, ok := t.m[name]; ok {
@@ -239,6 +241,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
 	cls.OptInLevel, cls.SubclassOptIn = info.OptInLevel, info.SubclassOptIn
 	cls.JavaSealed = info.Sealed
+	if info.Sealed && len(info.Permitted) > 0 {
+		// A when over it needs no else if it covers these, as kotlinc
+		// sees it.
+		for _, n := range info.Permitted {
+			if sub := t.class(n); sub != nil {
+				cls.Subclasses = append(cls.Subclasses, sub)
+			}
+		}
+		cls.Sealed = len(cls.Subclasses) > 0
+	}
 	cls.RecordComponents = info.RecordComponents
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
@@ -261,8 +273,18 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.Repeatable = cls.Container != nil || slices.ContainsFunc(cls.Annotations, func(a *types.ClassSym) bool {
 			return a.Name == "kotlin/annotation/Repeatable"
 		})
-		known := !t.cp.IsSource(cls.Name)
+		known := true // a Java source's too, when its @Target is written
 		switch {
+		case info.KotlinTargets != nil && info.Kotlin == nil:
+			// A Java annotation class with a @kotlin.annotation.Target
+			// applies where it or its @java.lang.annotation.Target allows,
+			// as kotlinc has it: without the latter, to Java's
+			// declarations, which a property isn't.
+			java := javaDeclTargets
+			if info.JavaTargets != nil {
+				java = types.JavaTargets(info.JavaTargets)
+			}
+			cls.Targets = types.KotlinTargets(info.KotlinTargets) | java
 		case info.KotlinTargets != nil:
 			cls.Targets = types.KotlinTargets(info.KotlinTargets)
 		case info.Kotlin != nil:
@@ -3105,6 +3127,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	if x.Getter == nil {
 		return types.InvalidType, false
 	}
+	if g := x.Getter; g.InProgress && !g.Resolved {
+		// The program's override whose return type is being inferred:
+		// override fun getFoo() = foo.
+		c.errorf(x.P, "type checking has run into a recursive problem; specify the return type of '%s'", g.Name)
+		return types.InvalidType, true
+	}
 	sub := c.memberSubst(rt, x.Getter.Owner)
 	// A setter may return a value, which an assignment drops: Android's
 	// Intent.setFlags returns the Intent. Its parameter is of the type of
@@ -3133,6 +3161,13 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	}
 	return sub.Apply(x.Getter.Ret), true
 }
+
+// javaDeclTargets are the targets kotlinc gives a Java annotation class
+// with a @kotlin.annotation.Target but no @java.lang.annotation.Target,
+// before adding the former's.
+const javaDeclTargets = types.TargetClass | types.TargetAnnotationClass | types.TargetField | types.TargetLocalVariable |
+	types.TargetValueParameter | types.TargetConstructor | types.TargetFunction | types.TargetGetter | types.TargetSetter |
+	types.TargetExpression
 
 // sameJavaType reports whether setter's parameter is of getter's type,
 // in Java's terms when both are Java methods: their descriptors.

@@ -163,6 +163,9 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 				ft.Params = []*syntax.TypeRef{}
 				for _, p := range kids(c) {
 					if p.NumericKind() == psi.KindVALUE_PARAMETER {
+						if id := child(p, psi.KindIDENTIFIER); id.Valid() {
+							ft.Named = append(ft.Named, l.pos(id))
+						}
 						ft.Params = append(ft.Params, l.typeRef(child(p, psi.KindTYPE_REFERENCE)))
 					}
 				}

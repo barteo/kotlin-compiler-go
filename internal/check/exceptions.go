@@ -212,7 +212,8 @@ func (c *Checker) throw(x *syntax.Jump) {
 		c.errs = c.errs[:n]
 		t = c.value(x.X, types.ClassType(th))
 	}
-	if t.K != types.Invalid && t.K != types.Nothing && !c.throwable(t.NonNull()) {
+	if t.K != types.Invalid && t.K != types.Nothing && (!c.throwable(t.NonNull()) || types.MayBeNull(t) && !t.P) {
+		// A platform value may be thrown, but not a nullable one.
 		c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Throwable was expected", t)
 	}
 }

@@ -74,8 +74,9 @@ type Info struct {
 	// java/lang/Object in place of the unresolved ones.
 	Unresolved []string
 	// Sealed is set on a sealed Java class or interface: one with a
-	// PermittedSubclasses attribute.
-	Sealed bool
+	// PermittedSubclasses attribute, whose classes are Permitted.
+	Sealed    bool
+	Permitted []string
 	// RecordComponents are the names of a Java record's components, from
 	// its Record attribute.
 	RecordComponents []string
@@ -98,6 +99,8 @@ type KotlinMeta struct {
 	XS string   // multi-file part: the facade's internal name
 	PN string   // package name, if it differs from the JVM package
 	XI int      // extra flags
+	// KWritten is set when k is written, not taken as its default 1.
+	KWritten bool
 }
 
 // Member is a field or method.
@@ -482,6 +485,10 @@ func Parse(data []byte) (*Info, error) {
 			info.Deprecated = javaDeprecation(info.Deprecated)
 		case name == "PermittedSubclasses":
 			info.Sealed = true
+			for range r.u2() {
+				info.Permitted = append(info.Permitted, must(p.class(r.u2())))
+			}
+			size = 0
 		case name == "Record":
 			end := r.pos + size
 			for range r.u2() {
@@ -666,6 +673,7 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			switch name {
 			case "k":
 				meta.K, err = intValue(r, p)
+				meta.KWritten = true
 			case "xi":
 				meta.XI, err = intValue(r, p)
 			case "xs":

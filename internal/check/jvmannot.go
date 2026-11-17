@@ -222,6 +222,7 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			report(d.Annotations, outer || d.Visibility == syntax.Private, "")
+			c.exposeBoxedSameName(d)
 		case *syntax.PropDecl:
 			private := outer || d.Visibility == syntax.Private
 			getter := false
@@ -240,6 +241,20 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 				report(sc.Annotations, private || sc.Visibility == syntax.Private, "")
 			}
 			c.exposeBoxedPrivate(d.Members, private)
+		}
+	}
+}
+
+// exposeBoxedSameName reports a @JvmExposeBoxed name that is function d's
+// own, as kotlinc's JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME.
+func (c *Checker) exposeBoxedSameName(d *syntax.FunDecl) {
+	for i := range d.Annotations {
+		a := &d.Annotations[i]
+		if !a.Is("JvmExposeBoxed") || a.Target != "" {
+			continue
+		}
+		if name, ok := a.Str("jvmName"); ok && name == d.Name {
+			c.errorf(a.Arg(0, "jvmName").Toks[0].Pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
 		}
 	}
 }

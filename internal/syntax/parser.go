@@ -960,12 +960,14 @@ func (p *parser) quests() bool {
 func (p *parser) parseParenType() *TypeRef {
 	pos := p.expect(LPAREN).Pos
 	var params []*TypeRef
+	var named []Pos
 	for {
 		p.skipNL()
 		if p.at(RPAREN) {
 			break
 		}
 		if p.at(IDENT) && p.toks[p.i+1].Kind == COLON {
+			named = append(named, p.toks[p.i].Pos)
 			p.i += 2
 		}
 		params = append(params, p.parseType())
@@ -977,7 +979,7 @@ func (p *parser) parseParenType() *TypeRef {
 	p.expect(RPAREN)
 	if p.peekPastNL() == ARROW {
 		p.op()
-		return &TypeRef{P: pos, Params: params, Ret: p.parseType()}
+		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named}
 	}
 	if len(params) != 1 {
 		p.unexpected("'->'")

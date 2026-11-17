@@ -219,7 +219,9 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
 - **A class path without the standard library**: the two
   `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
   `nullableTypes/nullableArgumentForIn`, whose `Int? in IntRange` the full
-  library's `contains` extension resolves (see above).
+  library's `contains` extension resolves (see above). The same goes for
+  `j+k/collectionOverrides/containsAll` and the library's `containsAll`
+  extension.
 - **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
   (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
   `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
@@ -231,9 +233,21 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `multimodule/duplicate*` tests and
   `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
   its name alone.
+- **Java source roots**: `j+k/differentFilename` and
+  `problems/multipleJavaClassesInOneFile`. They expect a Java file's
+  classes other than the one it is named after to be unresolved. That
+  is `kotlinc`'s view of a source root directory. Given the `.java`
+  files themselves, as Gradle and `kc` take them, `kotlinc` resolves
+  them too.
+- **Malformed Java**: `j+k/deprecations/javaWithHiddenDeprecation`
+  declares `public statis void function()`, and
+  `scopes/specialFunctionInJava_1` a method without its `;`. `kotlinc`'s
+  Java parser reads past them. `kc` reports the syntax errors, as `javac`
+  would in a build.
 - **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
-  `kjkimplicitTypesCrash`, of an older language version (its `latestLV`
-  variant expects no error).
+  `kjkimplicitTypesCrash` and
+  `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
+  older language version (their `latestLV` variants expect no error).
 
 ## Checking the harness
 

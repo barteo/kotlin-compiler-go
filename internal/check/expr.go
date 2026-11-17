@@ -281,7 +281,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			name := strings.TrimPrefix(w.C.Name, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
-		return c.call(x, want, sink)
+		t := c.call(x, want, sink)
+		c.arrayNothingExpr(x, t)
+		return t
 	case *syntax.Index:
 		return c.index(x, "get", x.Args, want)
 	case *syntax.NotNull:
@@ -878,8 +880,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
-			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)
-			c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
+			c.scope.narrows = append(c.scope.narrows, c.elvisNonNull(x.X)...)
 		}
 		if yt.P {
 			// a ?: javaCall() is of a platform type, as the Java value:
@@ -1496,6 +1497,9 @@ func (c *Checker) declaredIfNull(x syntax.Expr, t types.Type) types.Type {
 	declared := id.Sym.Type
 	switch {
 	case t.K == types.Null:
+		// A platform value known to be null is a Nothing?, whose members
+		// need a safe call: my.foo() after my == null.
+		declared = declared.Nullable()
 	case t.IsParam() && len(t.Param().Bounds) == 0 && !declared.IsParam() && declared.K != types.Any:
 		if !types.MayBeNull(t) {
 			declared = declared.NonNull()
@@ -2035,6 +2039,22 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 // equalNonNull returns the smart casts implied by x being equal to a
 // value that isn't null: neither x nor the receivers of its safe calls
 // are null.
+// elvisNonNull returns the smart casts of x not being null, the left side
+// of an elvis whose right side jumps: those of a as well for an a ?: n or
+// n ?: a whose n is always null, as in a ?: b?.let { return it } ?: return.
+func (c *Checker) elvisNonNull(x syntax.Expr) []narrow {
+	out := append(c.equalNonNull(x), c.notNullCast(x)...)
+	if e, ok := x.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+		switch {
+		case isNull(e.Y):
+			out = append(out, c.elvisNonNull(e.X)...)
+		case isNull(e.X):
+			out = append(out, c.elvisNonNull(e.Y)...)
+		}
+	}
+	return out
+}
+
 func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 	if as, ok := x.(*syntax.As); ok && as.Safe {
 		// (a as? T) isn't null: a is a T, as after (a as? T)?.f() != null.

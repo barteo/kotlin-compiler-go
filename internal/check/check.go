@@ -762,6 +762,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.dslErrors()
 		c.versionOverloads()
 		c.exposeBoxedPrivate(c.file.Decls, false)
+		for _, d := range c.aliases {
+			c.aliasArrayNothing(d)
+		}
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
@@ -1008,7 +1011,12 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
-		return c.expandAlias(a, ref)
+		c.aliasRepeatedAnnotations(ref, a)
+		t := c.expandAlias(a, ref)
+		if !c.noBoundChecks {
+			c.arrayNothingRef(ref, t)
+		}
+		return t
 	}
 	var t types.Type
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
@@ -1221,6 +1229,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
+		c.arrayNothingRef(ref, t)
 	}
 	return c.nullable(t, ref)
 }
@@ -3439,6 +3448,14 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
+	if p := d.DelegateOf; p != nil {
+		// The delegate sees the property's own type parameters.
+		for _, tp := range p.TypeParams {
+			if tp.Sym != nil {
+				c.tparams = append(slices.Clip(c.tparams), tp.Sym)
+			}
+		}
+	}
 	sym := d.Sym
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
@@ -3459,6 +3476,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = types.ApproxFlexNothing(c.value(d.Init, want))
+	}
+	if p := d.DelegateOf; p != nil && p.Recv != nil && len(p.TypeParams) > 0 {
+		c.delegateUsesTypeParam(d.Init, p, t)
 	}
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)

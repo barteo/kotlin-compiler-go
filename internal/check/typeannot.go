@@ -120,3 +120,96 @@ func (c *Checker) localTypeParamAnnotations(tps []*syntax.TypeParam) {
 		c.localAnnotations(tp.Annotations, typeParamSite)
 	}
 }
+
+// aliasRepeatRef keys Checker.done for a reference to a typealias whose
+// repeated annotations are reported: types are resolved more than once.
+type aliasRepeatRef struct{ *syntax.TypeRef }
+
+// aliasRepeatedAnnotations reports the annotations of ref, a reference to
+// typealias a, that its expansion already has: @A AInt for typealias
+// AInt = @A Int, or Gen<@A Int> for typealias Gen<T> = List<@A T>.
+func (c *Checker) aliasRepeatedAnnotations(ref *syntax.TypeRef, a *types.AliasSym) {
+	d, ok := a.Decl.(*syntax.TypeAliasDecl)
+	if !ok || c.done[aliasRepeatRef{ref}] {
+		return
+	}
+	c.done[aliasRepeatRef{ref}] = true
+	if len(ref.Annotations) > 0 {
+		have := c.aliasAnnotations(a, map[*types.AliasSym]bool{})
+		for _, an := range ref.Annotations {
+			if cls := c.lookupClass(an.Name); cls != nil && have[cls] && !repeatable(cls) {
+				c.errorf(an.P, "this annotation is not repeatable")
+			}
+		}
+	}
+	for i, arg := range ref.Args {
+		if arg.Type == nil || len(arg.Type.Annotations) == 0 || i >= len(a.TypeParams) {
+			continue
+		}
+		have := map[*types.ClassSym]bool{}
+		c.paramAnnotations(d.Type, a.TypeParams[i].Name, have)
+		for _, an := range arg.Type.Annotations {
+			if cls := c.lookupClass(an.Name); cls != nil && have[cls] && !repeatable(cls) {
+				c.errorf(an.P, "this annotation is not repeatable")
+			}
+		}
+	}
+}
+
+// aliasAnnotations returns the classes of the annotations on the type
+// typealias a expands to, through the aliases it stands for.
+func (c *Checker) aliasAnnotations(a *types.AliasSym, seen map[*types.AliasSym]bool) map[*types.ClassSym]bool {
+	have := map[*types.ClassSym]bool{}
+	d, ok := a.Decl.(*syntax.TypeAliasDecl)
+	if !ok || seen[a] || d.Type == nil {
+		return have
+	}
+	seen[a] = true
+	for _, an := range d.Type.Annotations {
+		if cls := c.lookupClass(an.Name); cls != nil {
+			have[cls] = true
+		}
+	}
+	if next := c.lookupAlias(d.Type.Name); next != nil && d.Type.Ret == nil {
+		for cls := range c.aliasAnnotations(next, seen) {
+			have[cls] = true
+		}
+	}
+	return have
+}
+
+// paramAnnotations adds to have the classes of the annotations on the
+// uses of type parameter name in ref.
+func (c *Checker) paramAnnotations(ref *syntax.TypeRef, name string, have map[*types.ClassSym]bool) {
+	if ref == nil {
+		return
+	}
+	if ref.Name == name && ref.Args == nil && ref.Ret == nil {
+		for _, an := range ref.Annotations {
+			if cls := c.lookupClass(an.Name); cls != nil {
+				have[cls] = true
+			}
+		}
+	}
+	for _, a := range ref.Args {
+		c.paramAnnotations(a.Type, name, have)
+	}
+	for _, p := range ref.Params {
+		c.paramAnnotations(p, name, have)
+	}
+	c.paramAnnotations(ref.Ret, name, have)
+	c.paramAnnotations(ref.Recv, name, have)
+}
+
+// repeatable reports whether annotation class cls may be repeated.
+func repeatable(cls *types.ClassSym) bool {
+	if cls.Repeatable {
+		return true
+	}
+	for _, m := range cls.Annotations {
+		if m.Name == "kotlin/annotation/Repeatable" || m.Name == "java/lang/annotation/Repeatable" {
+			return true
+		}
+	}
+	return false
+}

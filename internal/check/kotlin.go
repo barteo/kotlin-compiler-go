@@ -653,22 +653,29 @@ func isUnsigned(t types.Type) bool {
 }
 
 // markValue marks a class of the class path as a value class if its
-// metadata says it is one. Java's classes have no metadata.
-func (t *classTable) markValue(cls *types.ClassSym) {
+// metadata says it is one. Java's classes have no metadata. It returns
+// false for a class kotlinc can't see: one whose metadata says it is a
+// Kotlin class, k = 1 written out, but has neither its data nor a metadata
+// version, as a Java class annotated @Metadata(k = 1) compiles to.
+func (t *classTable) markValue(cls *types.ClassSym) bool {
 	for _, pkg := range javaPackages {
 		if strings.HasPrefix(cls.Name, pkg) {
-			return
+			return true
 		}
 	}
 	info, err := t.cp.Load(cls.Name)
 	if err != nil || info.Kotlin == nil {
-		return
+		return true
+	}
+	if m := info.Kotlin; m.KWritten && m.K == kmeta.KindClassFile && len(m.D1) == 0 && len(m.MV) == 0 {
+		return false
 	}
 	kc, err := kmeta.ReadClass(info.Kotlin)
 	if err != nil {
-		return
+		return true
 	}
 	t.valueOf(cls, kc)
+	return true
 }
 
 // javaPackages are packages without Kotlin classes, whose classes

@@ -59,6 +59,7 @@ type Class struct {
 	TypeParams []*TypeParam
 	Extends    []*Type // a class's superclass, or an interface's superinterfaces
 	Implements []*Type
+	Permits    []*Type  // a sealed class's permitted subclasses
 	Components []*Param // a record's
 	Fields     []*Field
 	Methods    []*Method
@@ -414,7 +415,7 @@ func (p *parser) typeDecl(mods Modifiers, outer *Class) *Class {
 			continue
 		case p.isWord("permits"):
 			p.next()
-			p.typeList()
+			c.Permits = p.typeList()
 			continue
 		}
 		break

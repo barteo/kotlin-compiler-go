@@ -194,11 +194,16 @@ func (c *Checker) checkSupers() {
 		c.checkConsistentSupers(cd)
 		for _, st := range cd.Supers {
 			c.javaCycle(st)
+			if st.Type != nil && st.Type.Ret != nil {
+				for _, p := range st.Type.Named {
+					c.errorf(p, "named parameter in function type as supertype is unsupported")
+				}
+			}
 			if st.T.K == types.Class && st.T.A != nil {
 				c.checkBounds(st.T, st.Type)
 			}
 			// A sealed class's subclasses are in its package, and known.
-			if s := st.T.C; st.T.K == types.Class && s.Sealed {
+			if s := st.T.C; st.T.K == types.Class && s.Sealed && !s.JavaSealed {
 				switch {
 				case s.External && !s.Source && !s.JavaSealed:
 					c.errorf(st.Type.P, "inheritor of sealed class or interface declared in a different module")
