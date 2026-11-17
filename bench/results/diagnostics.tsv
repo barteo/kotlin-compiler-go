@@ -224,7 +224,7 @@ tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	rejects invali
 tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid		
 tests/annotations/annotationArgumentScopeForConstructorHeader.kt	skip	LANGUAGE	
 tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt	skip	LANGUAGE	
-tests/annotations/annotationArgumentScopeForNestedClass.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	annotationArgumentScopeForNestedClass.kt:19: ARGUMENT_TYPE_MISMATCH
+tests/annotations/annotationArgumentScopeForNestedClass.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	rejects invalid	on an expected line	
 tests/annotations/annotationInheritance.kt	rejects invalid	on an expected line	
 tests/annotations/annotationModifier.kt	rejects invalid	on an expected line	
@@ -695,7 +695,7 @@ tests/callableReference/bound/companionObject.kt	rejects invalid	on an expected 
 tests/callableReference/bound/controlFlow.kt	accepts valid		
 tests/callableReference/bound/dataFlow.kt	accepts valid		
 tests/callableReference/bound/expectedType.kt	accepts valid		
-tests/callableReference/bound/expressionWithNullableType.kt	accepts invalid	UNSAFE_CALLABLE_REFERENCE	test.kt:2: UNSAFE_CALLABLE_REFERENCE
+tests/callableReference/bound/expressionWithNullableType.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/functionCallWithoutArguments.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/innerNested.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/kt12843.kt	rejects invalid	on an expected line	
@@ -7722,7 +7722,7 @@ tests/resolve/invoke/kt4321InvokeOnEnum.kt	accepts valid
 tests/resolve/invoke/kt51793.kt	accepts valid		
 tests/resolve/invoke/kt51793Complex.kt	accepts valid		
 tests/resolve/invoke/kt9517.kt	accepts valid		
-tests/resolve/invoke/kt9805.kt	accepts invalid	NO_VALUE_FOR_PARAMETER	kt9805.kt:10: NO_VALUE_FOR_PARAMETER
+tests/resolve/invoke/kt9805.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/privateInvokeOwner.kt	accepts valid		
 tests/resolve/invoke/reportFunctionExpectedOnSimpleUnresolved.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/reportFunctionExpectedWhenOneInvokeExist.kt	rejects invalid	on an expected line	
@@ -8094,7 +8094,7 @@ tests/secondaryConstructors/errorsOnEmptyDelegationCall.kt	rejects invalid	on an
 tests/secondaryConstructors/expectedPrimaryConstructorCall.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/generics.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/generics2.kt	rejects invalid	on an expected line	
-tests/secondaryConstructors/generics3.kt	accepts invalid	NONE_APPLICABLE	generics3.kt:16: NONE_APPLICABLE
+tests/secondaryConstructors/generics3.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/headerCallChecker/accessBaseGenericFromInnerExtendingSameBase.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/headerCallChecker/accessBaseGenericFromInnerExtendingSameBase2.kt	skip	LANGUAGE	
 tests/secondaryConstructors/headerCallChecker/accessBaseGenericFromInnerExtendingSameBase2After.kt	skip	LANGUAGE	
@@ -10673,7 +10673,7 @@ testsWithStdLib/purelyImplementedCollection/arrayList.kt	rejects invalid	on an e
 testsWithStdLib/purelyImplementedCollection/arrayListNullable.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/intersectionOfPrimitiveBasedFunctions.kt	accepts invalid	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	intersectionOfPrimitiveBasedFunctions.kt:18: MANY_IMPL_MEMBER_NOT_IMPLEMENTED
+testsWithStdLib/purelyImplementedCollection/intersectionOfPrimitiveBasedFunctions.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/invalidFqName.kt	accepts valid		
 testsWithStdLib/purelyImplementedCollection/maps.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableKey.kt	rejects invalid	on an expected line	

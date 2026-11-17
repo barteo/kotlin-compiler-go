@@ -194,7 +194,9 @@ Four things differ from the test infrastructure:
   can't be smart cast, a `SMARTCAST_IMPOSSIBLE`), would resolve to
   the full library's `Any?` extension: the harness calls an extension of
   `Any` that it declares at the end of the file instead, which both
-  compilers then reject unless `x` is smart cast to non-null.
+  compilers then reject unless `x` is smart cast to non-null. It does
+  the same for a bound reference, `x::hashCode`, that the markup expects
+  to be an `UNSAFE_CALLABLE_REFERENCE`.
 - **The `CHECK_TYPE` helpers** declare names (`_`) that `kotlinc` reports
   outside the infrastructure. A test that adds them stops in the
   frontend even when valid, so only its marks count.
@@ -223,7 +225,8 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `nullableTypes/nullableArgumentForIn`, whose `Int? in IntRange` the full
   library's `contains` extension resolves (see above). The same goes for
   `j+k/collectionOverrides/containsAll` and the library's `containsAll`
-  extension.
+  extension, and for `typealias/starProjection`, whose index of a
+  `Map<*, *>` the library's `get` extension resolves.
 - **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
   (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
   `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
@@ -242,10 +245,11 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
 - **Malformed Java**: `j+k/deprecations/javaWithHiddenDeprecation`
-  declares `public statis void function()`, and
-  `scopes/specialFunctionInJava_1` a method without its `;`. `kotlinc`'s
-  Java parser reads past them. `kc` reports the syntax errors, as `javac`
-  would in a build.
+  declares `public statis void function()`,
+  `scopes/specialFunctionInJava_1` a method without its `;`, and
+  `generics/wildcardInValueParameter` parameters of the types `?` and
+  `? extends String`. `kotlinc`'s Java parser reads past them. `kc`
+  reports the syntax errors, as `javac` would in a build.
 - **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
   `kjkimplicitTypesCrash` and
   `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
@@ -276,25 +280,25 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,343 | 50.9% |
+| rejects invalid | 4,348 | 51.0% |
 | accepts valid | 4,117 | 48.3% |
-| accepts invalid | 52 | 0.6% |
+| accepts invalid | 47 | 0.6% |
 | rejects valid | 5 | 0.1% |
 | parse/unsupported | 14 | 0.2% |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-18,629 of the 21,548 expected errors (86%) on their lines, and 507 of
+18,661 of the 21,548 expected errors (87%) on their lines, and 507 of
 the 3,634 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 20 of the 52
+none. Tests with Java sources are 1,221 of the run, and 19 of the 47
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 12), unresolved names
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 11), unresolved names
   (`UNRESOLVED_REFERENCE` 9), and callable references whose types
   can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2).
 - **Rejects valid**, by `kc`'s first error: unresolved names (2),
