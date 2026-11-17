@@ -1,5 +1,6 @@
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.*
 import store.*
 import kotlin.coroutines.*
 
@@ -47,6 +48,14 @@ fun main() = runBlocking {
     println(flowOf(1, 2).retried { if (it > 1) error("x") else it }.toList())
     println(flowOf<Any>(1, "a", 2, "b").onlyOf<String>().toList())
     println(flowOf<Any>(1, "a", 2, "b").onlyOf<Int>().toList())
+    val mutex = Mutex()
+    println(mutex.guarded { delay(1); "held ${mutex.isLocked}" })
+    println(mutex.guarded<String> { null })
+    println(mutex.guarded<String> { error("failed ${mutex.isLocked}") })
+    println(mutex.isLocked)
+    println(recovered { delay(1); 5 })
+    println(recovered<Int> { error("lost") })
+    println(recovered({ delay(1); it.message }) { error("found") })
     // Not copied: its own method.
     val m = Class.forName("store.InlineKt").getMethod("halved", Int::class.javaPrimitiveType, Continuation::class.java)
     println(runCatching { m.invoke(null, -1, Continuation<Any?>(EmptyCoroutineContext) {}) }.exceptionOrNull()?.cause)

@@ -109,6 +109,14 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		return nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
+	if c.file != nil && c.file.Annotated != nil {
+		syntax.Inspect(l.Body, func(n any) bool {
+			for _, a := range c.file.Annotated[n] {
+				c.errorf(a.P, "annotations are prohibited inside contracts")
+			}
+			return true
+		})
+	}
 	b.Stmts = b.Stmts[1:]
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)

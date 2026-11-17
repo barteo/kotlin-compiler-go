@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
@@ -580,12 +581,45 @@ internal class KcRound(
             return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
-        /** The type of a class literal of type [t]: a generic class's
-         *  without arguments, as `HashMap::class`, has star arguments. */
-        fun classLiteralType(t: KaType): KaType {
-            if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
-            val n = (t.symbol as? KaClassSymbol)?.typeParameters?.size ?: 0
-            return if (n == 0) t else KcClassType(this@KcRound, t.classId, List(n) { KcStarProjection(token) }, t.marked)
+        /**
+         * The type of a class literal the model gives type [t], written at
+         * [psi] if in a Kotlin source. FIR gives a generic class written
+         * without arguments, as `HashMap::class`, star arguments. A
+         * platform type is a Java declaration's literal (`HashMap.class` in
+         * a class file or a Java source), whose type is the Java type's
+         * lower bound, raw for a generic class. One read from a Kotlin
+         * class file has no arguments.
+         */
+        fun classLiteralType(t: KcType, psi: KtElement?): KaType {
+            val type = types.type(t)
+            val c = (type as? KcFlexibleType)?.lowerBound ?: type
+            if (c !is KcClassType || c.typeArguments.isNotEmpty() || c.isAlias) return c
+            val params = (c.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
+            return when {
+                params.isEmpty() -> c
+                type is KcFlexibleType -> {
+                    val kotlin = c.classId.packageFqName.asString().let { it == "kotlin" || it.startsWith("kotlin.") }
+                    KcClassType(this@KcRound, c.classId, params.map { rawArgument(it, kotlin) }, c.marked, raw = true)
+                }
+                psi != null -> KcClassType(this@KcRound, c.classId, params.map { KcStarProjection(token) }, c.marked)
+                else -> c
+            }
+        }
+
+        /**
+         * A raw type's argument for [p], as FIR renders it: the erased upper
+         * bound for a parameter of a Kotlin class ([kotlin]), a star for one
+         * of a Java class.
+         */
+        fun rawArgument(p: KaTypeParameterSymbol, kotlin: Boolean): KaTypeProjection {
+            if (!kotlin) return KcStarProjection(token)
+            val bound = when (val b = p.upperBounds.firstOrNull()?.let { (it as? KcFlexibleType)?.lowerBound ?: it }) {
+                null -> relations.anyType(true)
+                is KcClassType -> if (b.typeArguments.isEmpty()) b
+                    else KcClassType(this@KcRound, b.classId, b.typeArguments.map { KcStarProjection(token) }, b.marked)
+                else -> b
+            }
+            return KcTypeArgument(bound, org.jetbrains.kotlin.types.Variance.INVARIANT, token)
         }
 
         /** The KaAnnotationValue of [v], recorded as its expression's value. */
@@ -595,7 +629,7 @@ internal class KcRound(
                 is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
                 is KcValue.Enum -> KcEnumEntryValue(
                     CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
-                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(types.type(v.type)),
+                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(v.type, psi),
                     v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
                     psi, token)
                 is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)

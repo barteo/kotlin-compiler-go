@@ -254,3 +254,45 @@ fun f() {
 		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
 	}
 }
+
+// TestClassFileLiteral checks the type of a class literal in a class
+// file's annotation, as the Java loader has it (a Java declaration's
+// annotation, an annotation parameter's default) and as rewritten for a
+// Kotlin declaration's annotation.
+func TestClassFileLiteral(t *testing.T) {
+	var str func(t *Type) string
+	str = func(t *Type) string {
+		s := t.ClassID
+		if len(t.Args) == 1 {
+			s += "<" + str(t.Args[0].Type) + ">"
+		}
+		if t.Flexible {
+			s += "!"
+		}
+		return s
+	}
+	for _, c := range []struct{ desc, java, kotlin string }{
+		{"Ljava/lang/Void;", "java/lang/Void!", "java/lang/Void"},
+		{"V", "kotlin/Unit!", "kotlin/Unit"},
+		{"I", "kotlin/Int!", "kotlin/Int"},
+		{"Ljava/lang/Integer;", "kotlin/Int!", "kotlin/Int"},
+		{"Ljava/lang/String;", "kotlin/String!", "kotlin/String"},
+		{"Ljava/lang/Object;", "kotlin/Any!", "kotlin/Any"},
+		{"Ljava/util/List;", "kotlin/collections/MutableList!", "kotlin/collections/List"},
+		{"Ljava/util/Map$Entry;", "kotlin/collections/MutableMap.MutableEntry!", "kotlin/collections/Map.Entry"},
+		{"Ljava/lang/Iterable;", "kotlin/collections/MutableIterable!", "kotlin/collections/Iterable"},
+		{"Ljava/util/ArrayList;", "java/util/ArrayList!", "java/util/ArrayList"},
+		{"[I", "kotlin/IntArray!", "kotlin/IntArray"},
+		{"[Ljava/lang/Void;", "kotlin/Array<java/lang/Void!>!", "kotlin/Array<java/lang/Void>"},
+		{"[Ljava/util/List;", "kotlin/Array<kotlin/collections/MutableList!>!", "kotlin/Array<kotlin/collections/List>"},
+	} {
+		v := &Value{Kind: ValueArray, Elems: []*Value{classLiteral(c.desc)}}
+		if got := str(v.Elems[0].Type); got != c.java {
+			t.Errorf("%s: got %s, want %s", c.desc, got, c.java)
+		}
+		kotlinLiterals(v)
+		if got := str(v.Elems[0].Type); got != c.kotlin {
+			t.Errorf("%s on a Kotlin declaration: got %s, want %s", c.desc, got, c.kotlin)
+		}
+	}
+}

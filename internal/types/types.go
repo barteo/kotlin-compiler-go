@@ -629,7 +629,9 @@ type FunSym struct {
 	// BoxedParams are the indexes of the parameters of type Result, whose
 	// functions keep their names, that an overridden function takes as
 	// another type, as T: as with kotlinc, they are passed boxed and the
-	// function unboxes them.
+	// function unboxes them. On a Java method, they are the parameters of
+	// a primitive's wrapper class that an annotation makes non-null: a
+	// @NonNull Long is a Long to Kotlin, passed boxed.
 	BoxedParams []int
 	// DefaultsOf is set on an override that inherits default values: the
 	// overridden method, whose name$default method supplies them.
@@ -827,6 +829,9 @@ type ClassSym struct {
 	// visibility, which only code in its package sees, as its
 	// package-private members.
 	PackagePrivate bool
+	// ProtectedNested is set on a protected nested Java class, which
+	// only its package and the subclasses of the class it is in see.
+	ProtectedNested bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

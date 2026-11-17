@@ -125,6 +125,9 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 	if site.kind == siteUnchecked || !cls.TargetsKnown {
 		return
 	}
+	if site.kind == siteExpr && isJavaClass(cls) {
+		return // kotlinc doesn't check a Java annotation on an expression
+	}
 	switch {
 	case a.Accessor && site.kind == siteProp:
 		// @A get(): the getter's.

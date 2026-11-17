@@ -101,6 +101,16 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
 	}
 
+	open := func() uint64 {
+		resp, err := kcabi.Call(OpKaHandles, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire.NewReader(resp).Uint()
+	}
+	if n := open(); n != 3 {
+		t.Errorf("%d handles open, want the session's and two models'", n)
+	}
 	for _, h := range []int64{model, again, session} {
 		w = wire.Writer{}
 		w.Int(h)
@@ -108,8 +118,8 @@ func TestOpenUpdateClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if handles.Len() != 0 {
-		t.Errorf("%d handles left", handles.Len())
+	if n := open(); n != 0 {
+		t.Errorf("%d handles left", n)
 	}
 	w = wire.Writer{}
 	w.Int(session)
@@ -378,4 +388,25 @@ func readAnnotations(r *wire.Reader) []ka.Annotation {
 		out = append(out, *readAnnotation(r))
 	}
 	return out
+}
+
+// TestOpenOldLayout checks that a config that ends after the friend
+// paths, as before facts and -opt-ins were appended, still opens a session.
+func TestOpenOldLayout(t *testing.T) {
+	var w wire.Writer
+	w.String("")
+	w.Bool(true) // no JDK
+	w.String("m")
+	w.Uint(1)
+	w.Uint(0) // no class path
+	w.Uint(0) // no friend paths
+	resp, err := kcabi.Call(OpKaOpen, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = wire.Writer{}
+	w.Int(wire.NewReader(resp).Int())
+	if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+		t.Fatal(err)
+	}
 }

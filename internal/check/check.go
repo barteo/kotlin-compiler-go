@@ -213,6 +213,18 @@ type Checker struct {
 	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
 	looked       lookups                      // the lookups recorded (see lookups.go)
 	errs         []*syntax.Error
+	// warns are the file's warnings, apart from errs, which speculative
+	// checks roll back and count. Warnings are found by passes over the
+	// checked code (see warnf).
+	warns  []*syntax.Error
+	warned map[warnKey]bool
+	// maybeNull are the x!! and x ?: y whose x some check of them found
+	// may be null: checked again, x may be smart cast by the first check.
+	maybeNull map[syntax.Expr]bool
+	// refLHS is set while the type on a callable reference's left side
+	// is resolved, where an inner class's type arguments may go on to
+	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
+	refLHS bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -229,7 +241,7 @@ type Checker struct {
 	// allow, reported once checked, and markers the markers of classes
 	// (see dsl.go).
 	dslUses map[dslKey]shadowedUse
-	markers map[*types.ClassSym][]*types.ClassSym
+	markers map[*types.ClassSym][]string
 	// accessed names the properties with context parameters whose
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
@@ -377,6 +389,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
+	// inInlineFun is set in the body of an inline function, and in its
+	// lambdas and local functions, which can't declare local functions.
+	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -653,6 +668,10 @@ type Options struct {
 	// operators': those the checked files name. One that isn't is inferred
 	// when a checked file needs it, one at a time (lazily).
 	Infer map[string]bool
+	// Warnings is set to return the warnings, after the errors, among
+	// the diagnostics: Severity tells them apart. Without it, only the
+	// errors are returned.
+	Warnings bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -673,6 +692,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.boxedReturns()
 	}
 	conflicts(checkers)
+	multifileSynthetic(checkers)
 	for _, c := range checked {
 		c.checkClashes()
 	}
@@ -736,20 +756,35 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 
 	optInErrors(checkers)
 	localClassNames(checkers)
-	var errs []*syntax.Error
+	var errs, warns []*syntax.Error
 	for _, c := range checked {
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
+		c.exposeBoxedPrivate(c.file.Decls, false)
+		for _, d := range c.aliases {
+			c.aliasArrayNothing(d)
+		}
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
+		if !opts.Signatures {
+			c.localWarnings()
+		}
 		c.suppressErrors()
-		sort.SliceStable(c.errs, func(i, j int) bool {
-			a, b := c.errs[i].Pos, c.errs[j].Pos
-			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
-		})
+		byPos := func(ds []*syntax.Error) {
+			sort.SliceStable(ds, func(i, j int) bool {
+				a, b := ds[i].Pos, ds[j].Pos
+				return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
+			})
+		}
+		byPos(c.errs)
+		byPos(c.warns)
 		errs = append(errs, c.errs...)
+		warns = append(warns, c.warns...)
+	}
+	if opts.Warnings {
+		errs = append(errs, warns...)
 	}
 	return errs, nil
 }
@@ -892,6 +927,28 @@ func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
 }
 
+// warnf reports a warning, which kotlinc names name. It is for the passes
+// over checked code, after speculative checks are done: a warning isn't
+// rolled back with errors. A warning at the same place, with the same
+// name, is reported once.
+func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	k := warnKey{p, name, msg}
+	if c.warned[k] {
+		return
+	}
+	if c.warned == nil {
+		c.warned = map[warnKey]bool{}
+	}
+	c.warned[k] = true
+	c.warns = append(c.warns, &syntax.Error{File: c.file.Path, Pos: p, Msg: msg, Severity: syntax.SevWarning, Name: name})
+}
+
+type warnKey struct {
+	p         syntax.Pos
+	name, msg string
+}
+
 // unsupported reports the use of a Kotlin feature kc doesn't support,
 // with a stable name for it, as the parser does.
 func (c *Checker) unsupported(p syntax.Pos, feature, format string, args ...any) {
@@ -924,6 +981,7 @@ func (c *Checker) hidesBuiltin(name string) bool {
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
+	c.javaBoundCycle(ref, t)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -953,7 +1011,12 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
-		return c.expandAlias(a, ref)
+		c.aliasRepeatedAnnotations(ref, a)
+		t := c.expandAlias(a, ref)
+		if !c.noBoundChecks {
+			c.arrayNothingRef(ref, t)
+		}
+		return t
 	}
 	var t types.Type
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
@@ -1166,6 +1229,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
+		c.arrayNothingRef(ref, t)
 	}
 	return c.nullable(t, ref)
 }
@@ -1860,6 +1924,9 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 	if p.Vararg {
 		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
 			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+		}
+		if nothingLike(t) {
+			c.errorf(varargPos(p), "forbidden vararg parameter type: %s", t)
 		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
@@ -2695,6 +2762,19 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Property == "" {
+		c.implicitNothingRet(d)
+	}
+}
+
+// implicitNothingRet reports an expression-bodied function whose inferred
+// return type is Nothing, as kotlinc's IMPLICIT_NOTHING_RETURN_TYPE: it
+// never returns, which kotlinc wants written. An override's is its
+// overridden function's.
+func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
+	if d.Ret == nil && d.ExprBody != nil && !d.Override && d.Sym.Ret.K == types.Nothing {
+		c.errorf(d.P, "return type 'Nothing' needs to be specified explicitly")
+	}
 }
 
 func (c *Checker) inferProp(d *syntax.PropDecl) {
@@ -2724,6 +2804,10 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if d.Setter != nil {
 		d.Setter.Sym.Params[0].Type = sym.Type
 		c.setterParamType(d)
+	}
+	if d.Type == nil && d.DelegateOf == nil && !d.Override && sym.Type.K == types.Nothing {
+		// As implicitNothingRet, kotlinc's IMPLICIT_NOTHING_PROPERTY_TYPE.
+		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
 	c.onUndo(func() { delete(c.done, d) })
@@ -2871,6 +2955,7 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		c.classRules(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}
@@ -2970,6 +3055,20 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 // Java's charAt.
 var builtinOperators = map[string]bool{"get": true, "set": true, "contains": true, "iterator": true, "next": true, "hasNext": true, "charAt": true}
 
+// declaredPublic reports whether o, an overridden function, is public by
+// its own declaration, and not an override that has the visibility of the
+// functions it overrides.
+func declaredPublic(o *types.FunSym) bool {
+	if o.Protected || o.Module != "" {
+		return false
+	}
+	od, ok := o.Decl.(*syntax.FunDecl)
+	if !ok {
+		return o.Decl == nil
+	}
+	return od.Visibility == syntax.Public && (od.Explicit || !od.Override)
+}
+
 func (c *Checker) inheritDefaults() {
 	for _, d := range c.classes {
 		c.inheritModule(d)
@@ -2984,7 +3083,12 @@ func (c *Checker) inheritDefaults() {
 				}
 			}
 			c.multipleDefaults(fd)
-			for _, o := range c.overridden(d.Sym, fd.Sym) {
+			over := c.overridden(d.Sym, fd.Sym)
+			// An override declared without a visibility has the widest of
+			// the overridden functions': public where one of them is, as
+			// the clone() of a Java interface that extends Cloneable.
+			public := slices.ContainsFunc(over, declaredPublic)
+			for _, o := range over {
 				// As in Kotlin, an override of an operator or infix
 				// function is one too.
 				fd.Sym.Operator = fd.Sym.Operator || o.Operator || o.Owner != nil && o.Owner.Name == charSequence && o.Name == "charAt"
@@ -3006,7 +3110,7 @@ func (c *Checker) inheritDefaults() {
 				if kotlinOp || (o.Name == "equals" || o.Name == "compareTo") && len(o.Params) == 1 {
 					fd.Sym.KotlinOperator = true
 				}
-				if !fd.Explicit && fd.Sym.Inherited == 0 {
+				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
 					case o.Protected || od != nil && od.Visibility == syntax.Protected:
 						fd.Sym.Inherited = types.InheritProtected
@@ -3276,7 +3380,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -3302,7 +3406,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	if d.Body != nil {
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 		return
 	}
@@ -3344,6 +3448,14 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
+	if p := d.DelegateOf; p != nil {
+		// The delegate sees the property's own type parameters.
+		for _, tp := range p.TypeParams {
+			if tp.Sym != nil {
+				c.tparams = append(slices.Clip(c.tparams), tp.Sym)
+			}
+		}
+	}
 	sym := d.Sym
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
@@ -3364,6 +3476,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = types.ApproxFlexNothing(c.value(d.Init, want))
+	}
+	if p := d.DelegateOf; p != nil && p.Recv != nil && len(p.TypeParams) > 0 {
+		c.delegateUsesTypeParam(d.Init, p, t)
 	}
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
@@ -3669,3 +3784,37 @@ type workerPanic struct {
 }
 
 func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }
+
+// closing returns the position of b's closing brace, where kotlinc reports
+// what a block lacks at its end, or of b if it has none.
+func closing(b *syntax.Block) syntax.Pos {
+	if b.End.Line > 0 {
+		return b.End
+	}
+	return b.P
+}
+
+// nothingLike reports whether t is Nothing, Nothing? or a type parameter
+// bounded by one, which no array can hold elements of.
+func nothingLike(t types.Type) bool {
+	switch t.K {
+	case types.Nothing, types.Null:
+		return true
+	case types.TypeParam:
+		if tp := t.Param(); tp != nil {
+			return slices.ContainsFunc(tp.Bounds, func(b types.Type) bool { return b.K == types.Nothing || b.K == types.Null })
+		}
+	}
+	return false
+}
+
+// varargPos returns the position of p's vararg modifier, where kotlinc
+// reports what is wrong with a vararg parameter, or of p.
+func varargPos(p *syntax.Param) syntax.Pos {
+	for _, m := range p.Mods {
+		if m.Name == "vararg" {
+			return m.P
+		}
+	}
+	return p.P
+}

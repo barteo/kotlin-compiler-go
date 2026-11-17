@@ -57,8 +57,38 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 	return nil
 }
 
+// ambiguousLabel reports whether label names the receivers of more than
+// one declaration, as kotlinc's AMBIGUOUS_LABEL: an extension function's
+// and a class's, or two extension functions'. The label of a lambda with
+// a receiver shadows those around it instead.
+func (c *Checker) ambiguousLabel(label string) bool {
+	n := 0
+	if c.cls != nil && simpleName(c.cls) == label {
+		n++
+	}
+	innermost := true
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		r := &c.recvs[i]
+		if r.label != label {
+			continue
+		}
+		if _, lambda := r.owner.(*syntax.Lambda); lambda {
+			if innermost {
+				return false
+			}
+			continue
+		}
+		innermost = false
+		n++
+	}
+	return n > 1
+}
+
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
+	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
+		c.errorf(x.P, "ambiguous label: %s", x.Label)
+	}
 	r := c.receiverFor(x)
 	if obj := c.headerThis(x, r); obj != nil {
 		x.Obj = obj
@@ -255,6 +285,14 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
+		if i > 0 && !c.explicitRecvFits(t, id.Name, x) {
+			// function<A>() for fun <T> T.function() is an outer A
+			// receiver's, not an inner B's.
+			if inner == nil {
+				inner = m
+			}
+			continue
+		}
 		if inner == nil && i > 0 && c.onlyMembers(t, id.Name, x) {
 			if ts == nil {
 				ts = c.argTypes(x)
@@ -274,6 +312,48 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		return true
 	}
 	return false
+}
+
+// explicitRecvFits reports whether a receiver of type t may take call x
+// with explicit type arguments: false only if all the functions it may
+// take are extensions whose receiver's type, with those arguments,
+// isn't t's.
+func (c *Checker) explicitRecvFits(t types.Type, name string, x *syntax.Call) bool {
+	if len(x.TypeArgs) == 0 || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+		return true
+	}
+	var args []types.Type
+	n := len(c.errs)
+	defer func() { c.errs = c.errs[:n] }()
+	for _, a := range x.TypeArgs {
+		if a.Variance == types.Star || a.Type == nil {
+			return true
+		}
+		at := c.resolveType(a.Type)
+		if at.K == types.Invalid {
+			return true
+		}
+		args = append(args, at)
+	}
+	found := false
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		f := cl.f
+		if !c.mayTake(f, x) {
+			continue
+		}
+		found = true
+		if len(f.TypeParams) != len(args) {
+			return true
+		}
+		sub := types.Subst{}
+		for i, p := range f.TypeParams {
+			sub[p] = types.Arg{T: args[i]}
+		}
+		if c.subtype(t, sub.ApplyIn(f.Recv)) {
+			return true
+		}
+	}
+	return !found
 }
 
 // onlyMembers reports whether the functions that a receiver of type t has

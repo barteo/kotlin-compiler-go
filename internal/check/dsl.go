@@ -68,15 +68,16 @@ func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
 	return t.WithMarkers(ms)
 }
 
-// annotationMarkers returns the DSL markers among annotations as.
-func (c *Checker) annotationMarkers(as []syntax.Annotation) []*types.ClassSym {
+// annotationMarkers returns the names of the DSL markers among
+// annotations as.
+func (c *Checker) annotationMarkers(as []syntax.Annotation) []string {
 	if len(as) == 0 {
 		return nil
 	}
-	var ms []*types.ClassSym
+	var ms []string
 	for _, a := range c.classAnnotations(as) {
 		if isDslMarker(a) || declaredDslMarker(a) {
-			ms = append(ms, a)
+			ms = append(ms, a.Name)
 		}
 	}
 	return ms
@@ -90,10 +91,10 @@ func declaredDslMarker(a *types.ClassSym) bool {
 	return d != nil && slices.ContainsFunc(d.Annotations, func(m syntax.Annotation) bool { return m.Is("DslMarker") })
 }
 
-// dslMarkers returns the DSL markers of values of type t: its own, and
-// those of its class and of the class's supertypes, or of a type
-// parameter's bounds.
-func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
+// dslMarkers returns the names of the DSL markers of values of type t:
+// its own, and those of its class and of the class's supertypes, or of a
+// type parameter's bounds.
+func (c *Checker) dslMarkers(t types.Type) []string {
 	if own := t.Markers(); len(own) > 0 {
 		t.M = 0
 		out := slices.Clone(own)
@@ -106,7 +107,7 @@ func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
 	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
-		var out []*types.ClassSym
+		var out []string
 		for _, b := range t.Param().Bounds {
 			for _, m := range c.dslMarkers(b) {
 				if !slices.Contains(out, m) {
@@ -122,17 +123,17 @@ func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
 	if ms, ok := c.markers[t.C]; ok {
 		return ms
 	}
-	var out []*types.ClassSym
+	var out []string
 	t.C.Supertypes(func(s *types.ClassSym) bool {
 		for _, a := range s.Annotations {
-			if !slices.Contains(out, a) && isDslMarker(a) {
-				out = append(out, a)
+			if !slices.Contains(out, a.Name) && isDslMarker(a) {
+				out = append(out, a.Name)
 			}
 		}
 		return true
 	})
 	if c.markers == nil {
-		c.markers = map[*types.ClassSym][]*types.ClassSym{}
+		c.markers = map[*types.ClassSym][]string{}
 	}
 	c.markers[t.C] = out
 	return out
@@ -193,7 +194,7 @@ func (c *Checker) implicitVals() []implicitVal {
 // v is nil, has a DSL marker that another implicit value as near or
 // nearer has too.
 func (c *Checker) dslViolation(v *types.VarSym) bool {
-	var ms []*types.ClassSym
+	var ms []string
 	switch {
 	case v != nil:
 		ms = c.dslMarkers(v.Type)

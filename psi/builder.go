@@ -68,6 +68,16 @@ type builder struct {
 	newlines []bool
 	join     []bool
 
+	// lastPrecede is the highest marker index Precede made, or -1.
+	lastPrecede int32
+
+	// attempts counts the speculative parses running, and remaps holds the
+	// token kinds they set, which a rollback keeps. readLo and readHi are
+	// the range of tokens whose kinds were read.
+	attempts       int
+	remaps         []remap
+	readLo, readHi int
+
 	// lazyKind selects the reparse entry point for lazily collapsed nodes.
 	lazy bool
 }
@@ -75,7 +85,7 @@ type builder struct {
 func newBuilder(src string, types []Kind, starts []int32, lazy bool) *builder {
 	return &builder{
 		src: src, types: types, starts: starts, n: len(types),
-		newlines: []bool{true}, join: []bool{true}, lazy: lazy,
+		newlines: []bool{true}, join: []bool{true}, lazy: lazy, lastPrecede: -1,
 	}
 }
 
@@ -103,7 +113,14 @@ func (b *builder) rawTokenType() Kind {
 	if b.rawEOF() {
 		return kNone
 	}
-	return b.types[b.cur]
+	return b.kind(b.cur)
+}
+
+// kind is the kind of token i, which widens the range of tokens read.
+func (b *builder) kind(i int) Kind {
+	b.readLo = min(b.readLo, i)
+	b.readHi = max(b.readHi, i)
+	return b.types[i]
 }
 
 func (b *builder) rawTokenText() (string, bool) {
@@ -134,7 +151,7 @@ func (b *builder) rawLookAhead(steps int) Kind {
 		steps--
 	}
 	if cur < b.n {
-		return b.types[cur]
+		return b.kind(cur)
 	}
 	return kNone
 }
@@ -142,7 +159,7 @@ func (b *builder) rawLookAhead(steps int) Kind {
 func (b *builder) rawLookup(steps int) Kind {
 	cur := b.cur + steps
 	if cur >= 0 && cur < b.n {
-		return b.types[cur]
+		return b.kind(cur)
 	}
 	return kNone
 }
@@ -169,8 +186,17 @@ func (b *builder) currentOffset() int {
 
 func (b *builder) remapCurrentToken(k Kind) {
 	if b.cur < b.n {
+		if b.attempts > 0 {
+			b.remaps = append(b.remaps, remap{b.cur, b.types[b.cur], k})
+		}
 		b.types[b.cur] = k
 	}
+}
+
+// remap is a token's kind that remapCurrentToken set.
+type remap struct {
+	tok       int
+	old, kind Kind
 }
 
 func (b *builder) originalText() string { return b.src }
@@ -257,6 +283,11 @@ func (m Marker) RollbackTo() {
 	m.b.cur = int(m.b.prods[i].lex)
 	m.b.checked = true
 	m.b.prods = m.b.prods[:i]
+	// The productions left reference only older markers, unless Precede
+	// placed a newer marker before m.
+	if m.b.lastPrecede < m.i {
+		m.b.markers = m.b.markers[:m.i]
+	}
 }
 
 // Precede is Marker.precede.
@@ -264,6 +295,7 @@ func (m Marker) Precede() Marker {
 	b := m.b
 	i := b.startIndex(m.i)
 	n := int32(len(b.markers))
+	b.lastPrecede = n
 	b.markers = append(b.markers, markerData{left: defaultLeftBinder, right: defaultRightBinder, start: b.prods[i].lex})
 	b.prods = append(b.prods, prod{})
 	copy(b.prods[i+1:], b.prods[i:])

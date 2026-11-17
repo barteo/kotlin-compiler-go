@@ -39,9 +39,15 @@ fun files(property: String): List<File> =
     System.getProperty(property, "").split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
 
 fun main(args: Array<String>) {
+    // Stock KSP leaves non-daemon threads behind.
+    exitProcess(run(args))
+}
+
+/** Runs KSP and returns the process's exit code. */
+fun run(args: Array<String>): Int {
     if (args.size < 2) {
         System.err.println("usage: RunKsp SRC_DIR[:SRC_DIR...] OUT_DIR [LIB[:LIB...]]")
-        exitProcess(2)
+        return 2
     }
     val srcs = args[0].split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
     val out = File(args[1]).absoluteFile
@@ -75,7 +81,7 @@ fun main(args: Array<String>) {
     val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).toList()
     if (providers.isEmpty()) {
         System.err.println("RunKsp: no SymbolProcessorProvider on the class path")
-        exitProcess(2)
+        return 2
     }
     val code = KotlinSymbolProcessing(config, providers, RunLogger).execute()
     for (dir in listOf("kotlin", "java", "resources")) {
@@ -83,8 +89,7 @@ fun main(args: Array<String>) {
     }
     if (code != KotlinSymbolProcessing.ExitCode.OK || RunLogger.errors > 0) {
         System.err.println("KSP exited with $code")
-        exitProcess(1)
+        return 1
     }
-    // Stock KSP leaves non-daemon threads behind.
-    exitProcess(0)
+    return 0
 }

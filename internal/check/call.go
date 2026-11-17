@@ -138,6 +138,26 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 	return out, len(out) < len(cs)
 }
 
+// hidingExts returns the extensions name of a receiver of type rt
+// annotated @kotlin.internal.HidesMembers that may take call x, which
+// come before its members.
+func (c *Checker) hidingExts(name string, rt types.Type, x *syntax.Call) []callee {
+	var out []callee
+	for _, cl := range c.extCalleesFor(name, rt, x) {
+		if hidesMembers(cl.f) && c.mayTake(cl.f, x) {
+			out = append(out, cl)
+		}
+	}
+	return out
+}
+
+// hidesMembers reports whether function f of the program is annotated
+// @kotlin.internal.HidesMembers.
+func hidesMembers(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && (d.Find("", "internal.HidesMembers") != nil || d.Find("", "HidesMembers") != nil)
+}
+
 // notLowPriority leaves out the candidates marked
 // @LowPriorityInOverloadResolution when any other fits, before the most
 // specific is chosen, as Kotlin does: foo(1) calls foo(Any) over a
@@ -729,6 +749,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 			c.invisibleFun(x.Fun.Pos(), f)
 		} else if m, ok := x.Fun.(*syntax.Member); ok && f.PrivateToThis {
 			c.checkPrivateToThis(m.X, f.Name, f.Owner, m.P)
+		} else if !ok {
+			c.companionProtectedFun(f, x.Fun.Pos())
 		}
 	case f.Owner != nil && !f.Owner.External && ctorVisibility(f) == syntax.Private && !c.canSee(syntax.Private, f.Owner, ""):
 		// A superclass's private constructor, which only the classes
@@ -750,6 +772,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
 	if (v.Kind == types.Global || v.Kind == types.Prop) && !c.propVisible(v) {
 		c.invisibleProp(p, v)
+	} else {
+		c.companionProtectedProp(v, p)
 	}
 }
 
@@ -1026,11 +1050,21 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if len(maximal) == 0 && len(c.stubs) > 0 {
 			// In a builder's lambda, a stub in the candidates' parameter
-			// types leaves none more specific than the others: the tie
-			// breaks as between equally specific ones, the candidate
-			// without a vararg first, make(it: Iterable<T>) of B<T>'s
-			// two for make(listOf("a")).
-			maximal = match
+			// types leaves none more specific than the others: the one
+			// candidate without a vararg is chosen, make(it: Iterable<T>)
+			// of B<T>'s two for make(listOf("a")). Candidates that differ
+			// in the parameters left to their defaults stay ambiguous,
+			// which the builder's other lambdas resolve (see
+			// stubInference): Entry(key: T, id: Any = key) and
+			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			for _, cd := range match {
+				if !cd.usesVararg() {
+					maximal = append(maximal, cd)
+				}
+			}
+			if len(maximal) != 1 {
+				maximal = nil
+			}
 		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
@@ -1162,7 +1196,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			x.Args[i] = c.retypeArith(a, s.final(params[i]))
 			a = x.Args[i]
-			want := captured(a.Type(), params[i], s.finalArg(params[i]))
+			pt := s.finalArg(params[i])
+			if pt.K == types.Unit && params[i].HasVars() && safeCallOf(a) && a.Type().N {
+				// A variable inferred from the Unit? of a safe call, which
+				// the Unit it is written as stands for.
+				continue
+			}
+			want := captured(a.Type(), params[i], pt)
 			c.assignable(a.Type(), want, a.Pos())
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
@@ -1184,7 +1224,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if sink != nil {
 		c.runLambdas(sys, true)
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
-			sys.fixups = append(sys.fixups, func(s *system) { x.T = c.unitResult(f.Ret, s.final(x.T)) })
+			sys.fixups = append(sys.fixups, func(s *system) {
+				// A safe call whose result is inferred as Unit here is an
+				// argument: the Unit object or null.
+				x.T = c.safeUnit(x, c.unitResult(f.Ret, s.final(x.T)))
+			})
 			sink.merge(sys)
 			return ret
 		}
@@ -1411,7 +1455,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			li = i
 		}
 	}
-	if li < 0 {
+	if li < 0 || !slices.ContainsFunc(match, func(cd *candidate) bool { return !sourceNotByLambdaResult(cd.f) }) {
 		return nil
 	}
 	l := x.Args[li].(*syntax.Lambda)
@@ -1489,6 +1533,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
 	return maximal[0]
+}
+
+// sourceNotByLambdaResult reports whether f is a function of the program
+// not marked @OverloadResolutionByLambdaReturnType. A lambda's result
+// chooses only between overloads one of which is marked: e {} for
+// e(block: () -> String) and e(block: () -> Unit) is ambiguous. A library
+// function's mark isn't read: those of the standard library that a
+// lambda's result chooses between are marked.
+func sourceNotByLambdaResult(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
 }
 
 // branchesClass returns the class of the calls the branches of e, an if
@@ -2000,6 +2055,8 @@ func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Exp
 		if trial.sub(vt, p); trial.ok {
 			return types.InvalidType, false
 		}
+	} else if !c.subtype(vt, c.unsuspended(p)) {
+		return types.InvalidType, false // a () -> String? for a suspend () -> String
 	}
 	return c.unsuspended(p), true
 }
@@ -2437,7 +2494,9 @@ func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 // a is more specific than one of number type b, though neither is a
 // subtype of the other: f(Int?) is more specific than f(Long?) for
 // f(null). As in kotlinc, Double comes before Float, Int before Long,
-// Short and Byte, and Short before Byte.
+// Short and Byte, and Short before Byte; any signed integer type before
+// any unsigned one, UInt before the other unsigned types, and UShort
+// before UByte.
 func numberMoreSpecific(a, b types.Type) bool {
 	if a.P || b.P || a.N && !b.N {
 		return false
@@ -2446,9 +2505,17 @@ func numberMoreSpecific(a, b types.Type) bool {
 	case types.Double:
 		return b.K == types.Float
 	case types.Int:
-		return b.K == types.Short || b.K == types.Byte || b.K == types.Long
-	case types.Short:
-		return b.K == types.Byte
+		return b.K == types.Short || b.K == types.Byte || b.K == types.Long || isUnsigned(b)
+	case types.Short, types.Byte, types.Long:
+		return a.K == types.Short && b.K == types.Byte || isUnsigned(b)
+	}
+	if isUnsigned(a) && isUnsigned(b) {
+		switch a.C.Name {
+		case "kotlin/UInt":
+			return b.C.Name != "kotlin/UInt"
+		case "kotlin/UShort":
+			return b.C.Name == "kotlin/UByte"
+		}
 	}
 	return false
 }

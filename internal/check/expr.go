@@ -93,7 +93,10 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if len(c.recvs) > 0 {
 			if v, _, local := c.scope.lookup(x.Name); !local || propParam(v) != nil {
 				if t, ok := c.recvMember(x); ok {
-					return t
+					if p := x.Member.Prop; p == nil || !lowPriorityVar(p) || !c.lowPriorityLoses(x.Name) {
+						return t
+					}
+					x.Member = nil
 				}
 			}
 		}
@@ -119,6 +122,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			// classes, before imported ones.
 			if t, ok := c.inheritedStatic(x); ok {
 				return t
+			}
+		}
+		if ok && lowPriorityVar(sym) {
+			// An object of the name comes before a property annotated
+			// @LowPriorityInOverloadResolution.
+			if obj := c.objectNamed(x.Name); obj != nil {
+				return objectValue(x, obj)
 			}
 		}
 		if ok && sym.Ambiguous {
@@ -271,7 +281,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			name := strings.TrimPrefix(w.C.Name, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
-		return c.call(x, want, sink)
+		t := c.call(x, want, sink)
+		c.arrayNothingExpr(x, t)
+		return t
 	case *syntax.Index:
 		return c.index(x, "get", x.Args, want)
 	case *syntax.NotNull:
@@ -287,12 +299,14 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			n := len(sink.vars)
 			c.sink = sink
 			t := c.value(x.X, xw)
+			c.noteMaybeNull(x, t)
 			if len(sink.vars) > n {
 				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).NonNull()) })
 			}
 			return t.NonNull()
 		}
 		t := c.declaredIfNull(x.X, c.value(x.X, xw))
+		c.noteMaybeNull(x, t)
 		if t.K == types.Invalid {
 			return t
 		}
@@ -373,7 +387,11 @@ func (c *Checker) receiverProp(x *syntax.Ident) (types.Type, bool) {
 	if !c.objectHasProp(x.Name) {
 		return types.InvalidType, false
 	}
-	return c.objectMember(x)
+	t, ok := c.objectMember(x)
+	if ok && x.Member != nil && x.Member.Prop != nil {
+		c.companionProtectedProp(x.Member.Prop, x.P)
+	}
+	return t, ok
 }
 
 func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool) {
@@ -817,6 +835,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			}
 		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
+		c.noteMaybeNull(x, xt)
 		var yt types.Type
 		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {
 			// An integer literal is of the left side's type: l ?: 0 is
@@ -861,8 +880,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
-			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)
-			c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
+			c.scope.narrows = append(c.scope.narrows, c.elvisNonNull(x.X)...)
 		}
 		if yt.P {
 			// a ?: javaCall() is of a platform type, as the Java value:
@@ -1479,6 +1497,9 @@ func (c *Checker) declaredIfNull(x syntax.Expr, t types.Type) types.Type {
 	declared := id.Sym.Type
 	switch {
 	case t.K == types.Null:
+		// A platform value known to be null is a Nothing?, whose members
+		// need a safe call: my.foo() after my == null.
+		declared = declared.Nullable()
 	case t.IsParam() && len(t.Param().Bounds) == 0 && !declared.IsParam() && declared.K != types.Any:
 		if !types.MayBeNull(t) {
 			declared = declared.NonNull()
@@ -1531,6 +1552,79 @@ func (c *Checker) hasNamed(t types.Type, name string) bool {
 	_, found := c.extProp(&syntax.Member{Name: name}, t)
 	c.errs = c.errs[:n]
 	return found
+}
+
+// lowPriorityVar reports whether property v of the program is annotated
+// @LowPriorityInOverloadResolution, which a property or object of the
+// same name in another scope wins over.
+func lowPriorityVar(v *types.VarSym) bool {
+	d, ok := v.Decl.(*syntax.PropDecl)
+	return ok && lowPriorityMods(&d.Modifiers)
+}
+
+// lowPriorityLoses reports whether a low-priority member property name
+// gives way to a top-level property that isn't low-priority, or to an
+// object: in fun Foo.test(), bar is a top-level bar, not Foo's
+// @LowPriorityInOverloadResolution one.
+func (c *Checker) lowPriorityLoses(name string) bool {
+	if c.objectNamed(name) != nil {
+		return true
+	}
+	n := len(c.errs)
+	sym, _, _, ok := c.lookupVar(name)
+	c.errs = c.errs[:n]
+	return ok && sym.Kind == types.Global && !lowPriorityVar(sym)
+}
+
+// objectNamed returns the object that name refers to as a value, if any.
+func (c *Checker) objectNamed(name string) *types.ClassSym {
+	if _, _, local := c.scope.lookup(name); local {
+		return nil
+	}
+	cls := c.findClass(name)
+	if cls == nil {
+		return nil
+	}
+	if obj := objectOf(cls); obj != nil {
+		return obj
+	}
+	return c.starObject(name, cls)
+}
+
+// suspendRecv returns the suspend function type that receiver fn.X, a
+// callable reference of type t, is converted to for a call of fn.Name:
+// one that names no member or extension of t but an extension of the
+// suspend type.
+func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool) {
+	l, ok := fn.X.(*syntax.Lambda)
+	if !ok || l.Ref == nil || t.N || t.K != types.Class || t.A == nil || c.extCallees(fn.Name, t) != nil || c.hasNamed(t, fn.Name) {
+		return types.InvalidType, false
+	}
+	n, suspend, ok := kfunctionArity(t.C)
+	if !ok || suspend {
+		return types.InvalidType, false
+	}
+	ft, ok := c.asSuper(t, c.u.ext.funcs.Class(n))
+	if !ok || ft.E || ft.X != 0 {
+		return types.InvalidType, false
+	}
+	ps := make([]types.Type, n)
+	for i := range ps {
+		ps[i] = ft.A.List[i].T
+	}
+	st := c.u.ext.funcs.SuspendType(ps, ft.A.List[n].T)
+	return st, len(c.extCallees(fn.Name, st)) > 0
+}
+
+// builtinNamed reports whether builtin type t, as Int or String, has a
+// member or extension name.
+func (c *Checker) builtinNamed(t types.Type, name string) bool {
+	for n := range 4 {
+		if builtinFun(t, name, n) {
+			return true
+		}
+	}
+	return c.hasNamed(t, name)
 }
 
 // narrowing returns the smart casts implied by cond being true or false.
@@ -1945,6 +2039,22 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 // equalNonNull returns the smart casts implied by x being equal to a
 // value that isn't null: neither x nor the receivers of its safe calls
 // are null.
+// elvisNonNull returns the smart casts of x not being null, the left side
+// of an elvis whose right side jumps: those of a as well for an a ?: n or
+// n ?: a whose n is always null, as in a ?: b?.let { return it } ?: return.
+func (c *Checker) elvisNonNull(x syntax.Expr) []narrow {
+	out := append(c.equalNonNull(x), c.notNullCast(x)...)
+	if e, ok := x.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+		switch {
+		case isNull(e.Y):
+			out = append(out, c.elvisNonNull(e.X)...)
+		case isNull(e.X):
+			out = append(out, c.elvisNonNull(e.Y)...)
+		}
+	}
+	return out
+}
+
 func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 	if as, ok := x.(*syntax.As); ok && as.Safe {
 		// (a as? T) isn't null: a is a T, as after (a as? T)?.f() != null.
@@ -2087,6 +2197,19 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		}
 		fn.X, t = checked(fn.X, st), st
 	}
+	if t.IsIntersection() && finalBuiltin(t.Param().Bounds[0].NonNull()) && !c.builtinNamed(t.Param().Bounds[0].NonNull(), fn.Name) {
+		// An Int & A of a smart cast has A's members too: x.foo() after
+		// x is A and x is Int.
+		for _, b := range t.Param().Bounds[1:] {
+			if b.K == types.Class && c.hasNamed(b, fn.Name) {
+				if types.MayBeNull(t) {
+					b = b.Nullable()
+				}
+				fn.X, t = checked(fn.X, b), b
+				break
+			}
+		}
+	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
 		// of a nullable receiver takes: i.foo() for a String?.foo()
@@ -2095,6 +2218,13 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 			fn.X = checked(fn.X, vt)
 			return vt, cands, true
 		}
+	}
+	if st, ok := c.suspendRecv(fn, t); ok {
+		// A reference receiver is suspend converted for a suspend
+		// function type's extension: (::f).ext() for
+		// fun (suspend () -> Unit).ext().
+		fn.X = c.suspendConverted(fn.X, st)
+		return st, nil, true
 	}
 	if c.extCallees(fn.Name, t) == nil {
 		fn.X, t = builtinBound(fn.X, t)
@@ -2175,6 +2305,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 	}
 	if s, ok := x.X.(*syntax.Super); ok {
+		c.superSafeCall(x)
 		return c.superMember(x, s)
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "isInitialized" && !x.Safe {
@@ -2246,7 +2377,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			t, found = c.javaProperty(x, rt)
 			break
 		}
-		if p := x.Prop; !c.propVisible(p) {
+		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
 			// An extension of the name is read instead, as with calls.
 			x.Prop = nil
 			if t, found = c.extProp(x, rt); found {
@@ -2256,6 +2387,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			x.Prop, found = p, true
 		} else if ensureVar(p); p.PrivateToThis {
 			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
+		} else {
+			c.shadowedField(cls, p, x.P)
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
@@ -2272,6 +2405,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberField(x, rt, t)
 	case cls != nil && c.visibleField(instanceField(cls, x.Name)):
 		x.Prop = instanceField(cls, x.Name)
+		if x.Prop.Protected && !c.protectedVia(x.Prop.Owner, x.X) {
+			c.invisibleProp(x.P, x.Prop)
+		}
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
@@ -2485,7 +2621,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
-					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
+					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) &&
+				// Members that don't take the arguments' types give way to
+				// a property of the name whose value does: sut(state) next
+				// to fun sut(a: A), for a state whose type is inferred.
+				!(c.propInvokeFits(name, x) && !c.takeTypes(ms, x, c.argTypes(x))) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
@@ -2794,6 +2934,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.staticCall(x, fn, cls, want, sink)
 		}
 		if s, ok := fn.X.(*syntax.Super); ok {
+			c.superSafeCall(fn)
 			return c.superCall(x, fn, s, want, sink)
 		}
 		if _, ok := c.extFuncVar(fn.Name); ok && fn.Safe && !c.memberExtFirst(fn, x) {
@@ -2840,9 +2981,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// returned: requireNotNull(x).let { x.f() }.
 			n = append(n, c.returnNarrows(r)...)
 		}
-		if len(n) > 0 {
+		if len(n) > 0 || fn.Safe {
 			// The arguments are evaluated only if the receiver isn't
-			// null: x?.let { f(x) }.
+			// null: x?.let { f(x) }, whose smart casts don't outlive
+			// it: a?.f(y!!).
 			c.push()
 			c.scope.narrows = n
 			defer func() {
@@ -2952,6 +3094,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				}
 				ensureVar(p)
 				fn.Prop = p
+				if !c.propVisible(p) {
+					c.invisibleProp(fn.P, p)
+				}
 				fn.T = c.memberSubst(rt, p.Owner).Apply(p.Type)
 				return c.invokeValue(x, fn.T, want, sink)
 			}
@@ -3192,6 +3337,11 @@ func (c *Checker) ctorTakes(name string, x *syntax.Call) bool {
 func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 	ft = ft.Flex()
 	if !ft.IsFunc() {
+		if x.Infix && ft.K != types.Invalid {
+			// b f 3 calls a property f's invoke only if it is infix;
+			// otherwise an infix extension f of b is called.
+			return c.infixInvoke(ft, x)
+		}
 		return ft.K == types.Invalid || c.hasFun(ft, "invoke", x)
 	}
 	for _, n := range x.Names {
@@ -3224,6 +3374,25 @@ func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 		}
 	}
 	return true
+}
+
+// infixInvoke reports whether a value of type ft, which isn't a function
+// type, has an infix invoke operator that may take call x.
+func (c *Checker) infixInvoke(ft types.Type, x *syntax.Call) bool {
+	if cls := c.classOf(ft); cls != nil && !types.MayBeNull(ft) {
+		cls.Ensure()
+		for _, f := range c.accessible(cls, c.javaMethods(cls, "invoke")) {
+			if f.Infix && c.mayTake(f, x) {
+				return true
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor("invoke", ft, x) {
+		if cl.f.Infix && c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // implicitOf reports whether an implicit receiver in scope, or this, may
@@ -3843,7 +4012,10 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
 			} else {
-				forced = p.free != nil
+				// Not the Unit that a lambda's unused last statement is
+				// coerced to: put("a", listOf(1)) at the end of buildMap's
+				// lambda doesn't make V? a Unit.
+				forced = p.free != nil && !(p.unused && target.K == types.Unit)
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
@@ -4027,6 +4199,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			cov = coverage{}
 		}
 		laterLen := len(later)
+		nonNull := 0
 		for j := range br.Conds {
 			cond := &br.Conds[j]
 			switch {
@@ -4130,9 +4303,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && equalsNonNull(ct) {
-					// Equal to a value that isn't null: neither the
-					// subject nor the receivers of its safe calls are.
+				if equalsNonNull(ct) {
+					nonNull++
+				}
+				if nonNull == len(br.Conds) {
+					// Equal to a value that isn't null, or to one of
+					// several: neither the subject nor the receivers of
+					// its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
@@ -4289,6 +4466,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			return types.NothingType
 		}
 		return types.UnitType
+	}
+	if len(x.Branches) == 0 {
+		return types.UnitType // when (n) {} of an n: Nothing, as kotlinc types it
 	}
 	if sink != nil {
 		return c.sinkBranches(sink, pending, result)

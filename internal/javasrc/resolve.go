@@ -586,6 +586,11 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		info.Unresolved = nil
 	}
 	info.Sealed = c.Sealed
+	for _, t := range c.Permits {
+		if n, _ := r.superType(t); n != "" && n != "java/lang/Object" {
+			info.Permitted = append(info.Permitted, n)
+		}
+	}
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
 		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
@@ -645,10 +650,46 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 				args = append([]string{"value"}, args...)
 			}
 			info.Repeatable = r.classLiteral(args, "value")
+		case "kotlin.annotation.Target":
+			info.KotlinTargets = []string{} // allowedTargets = {} allows none
+			for _, arg := range a.Args {
+				if strings.ToUpper(arg) == arg {
+					info.KotlinTargets = append(info.KotlinTargets, arg)
+				}
+			}
 		case "Target", "java.lang.annotation.Target":
+			if n, _ := r.lookup("Target"); a.Name == "Target" && n == "kotlin/annotation/Target" {
+				info.KotlinTargets = []string{}
+				for _, arg := range a.Args {
+					if strings.ToUpper(arg) == arg {
+						info.KotlinTargets = append(info.KotlinTargets, arg)
+					}
+				}
+				continue
+			}
 			for _, arg := range a.Args {
 				if arg != "ElementType" && strings.ToUpper(arg) == arg {
 					info.JavaTargets = append(info.JavaTargets, arg)
+				}
+			}
+		case "SubclassOptInRequired", "kotlin.SubclassOptInRequired":
+			if n, _ := r.lookup("SubclassOptInRequired"); a.Name == "SubclassOptInRequired" && n != "kotlin/SubclassOptInRequired" {
+				continue
+			}
+			// Its markers' class literals: A.class, or {A.class, b.B.class}.
+			var parts []string
+			for _, arg := range a.Args {
+				switch {
+				case arg == "markerClass" && len(parts) == 0:
+				case arg == "class":
+					if len(parts) > 0 {
+						if n := r.classLiteral(append(append([]string{"_"}, parts...), "class"), "_"); n != "" {
+							info.SubclassOptIn = append(info.SubclassOptIn, n)
+						}
+					}
+					parts = nil
+				default:
+					parts = append(parts, arg)
 				}
 			}
 		}
@@ -660,7 +701,8 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations), Deprecated: r.deprecation(f.Annotations)}
+		fieldMarked := r.nullMarked(nil)
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.markNonNull(fieldMarked, f.Type, r.nullability(f.Annotations)), Deprecated: r.deprecation(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -716,6 +758,10 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
 		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
+		marked := mr.nullMarked(m.Annotations)
+		if marked && m.Ret != nil && len(mr.nullability(m.Annotations)) == 0 {
+			mm.Annotations = append(mm.Annotations, mr.markNonNull(true, m.Ret, nil)...)
+		}
 		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
 		if c.Kind == KindAnnotation && m.HasDefault {
 			// The value isn't evaluated, as in Details: an element value
@@ -723,7 +769,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			mm.Default = &classfile.ElementValue{}
 		}
 		for i, p := range m.Params {
-			if as := mr.nullability(p.Annotations); as != nil {
+			if as := mr.markNonNull(marked, p.Type, mr.nullability(p.Annotations)); as != nil {
 				if mm.ParamAnnotations == nil {
 					mm.ParamAnnotations = make([][]string, len(m.Params))
 				}

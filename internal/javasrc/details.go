@@ -134,7 +134,7 @@ var nullabilityPackages = map[string]bool{"org.jetbrains.annotations": true, "an
 	"org.eclipse.jdt.annotation": true, "org.checkerframework.checker.nullness.qual": true,
 	"org.checkerframework.checker.nullness.compatqual": true, "edu.umd.cs.findbugs.annotations": true,
 	"lombok": true, "io.reactivex.annotations": true, "io.reactivex.rxjava3.annotations": true,
-	"javax.annotation": true}
+	"javax.annotation": true, "org.jspecify.annotations": true}
 
 // methodAnnotations returns the descriptors of a method's annotations as
 // its class file's member lists them: all of them, as annotationNames
@@ -179,4 +179,65 @@ func (r *resolver) deprecation(as []*Annotation) *classfile.Deprecation {
 		return &classfile.Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
 	}
 	return nil
+}
+
+// jspecifyNonNull is the descriptor of jSpecify's @NonNull, which
+// markNonNull gives the types of a @NullMarked class's members.
+const jspecifyNonNull = "Lorg/jspecify/annotations/NonNull;"
+
+// jspecify reports whether annotation a, as r resolves it, is jSpecify's
+// annotation of the simple name: written qualified, or imported by name
+// or with its package.
+func (r *resolver) jspecify(a *Annotation, simple string) bool {
+	const pkg = "org.jspecify.annotations"
+	if a.Name == pkg+"."+simple {
+		return true
+	}
+	if a.Name != simple {
+		return false
+	}
+	for _, imp := range r.c.file.Imports {
+		if !imp.Static && (imp.Star && imp.Name == pkg || !imp.Star && imp.Name == pkg+"."+simple) {
+			return true
+		}
+	}
+	return false
+}
+
+// nullMarked reports whether the code of method annotations as, or nil
+// for a field, is in jSpecify's null-marked scope: the nearest of the
+// method and its enclosing classes annotated @NullMarked or
+// @NullUnmarked is @NullMarked.
+func (r *resolver) nullMarked(as []*Annotation) bool {
+	scopes := [][]*Annotation{as}
+	for k := r.c; k != nil; k = k.Outer {
+		scopes = append(scopes, k.Annotations)
+	}
+	for _, s := range scopes {
+		for _, a := range s {
+			switch {
+			case r.jspecify(a, "NullUnmarked"):
+				return false
+			case r.jspecify(a, "NullMarked"):
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// markNonNull returns nullability annotations as of a declaration of type
+// t with jSpecify's @NonNull added in a null-marked scope (see
+// nullMarked), when they have none: there, a reference type that is not a
+// type variable is non-null.
+func (r *resolver) markNonNull(marked bool, t *Type, as []string) []string {
+	if !marked || t == nil || t.Prim != "" && t.Dims == 0 || len(as) > 0 {
+		return as
+	}
+	if t.Dims == 0 && len(t.Segs) == 1 {
+		if _, tp := r.lookup(t.Segs[0].Name); tp != nil {
+			return as
+		}
+	}
+	return []string{jspecifyNonNull}
 }

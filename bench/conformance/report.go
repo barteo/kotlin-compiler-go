@@ -193,17 +193,24 @@ func tsvField(s string) string {
 	return strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(s)
 }
 
+// baselineCategories returns the tests' categories in a results TSV
+// file's data, by path.
+func baselineCategories(data []byte) map[string]string {
+	cats := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n")[1:] {
+		f := strings.SplitN(line, "\t", 4)
+		if len(f) >= 2 {
+			cats[f[0]] = f[1]
+		}
+	}
+	return cats
+}
+
 // compareBaseline prints the tests whose category changed from or to a
 // good one since the baseline TSV, data read from path: regressions, then
 // fixes. It returns an error if a test regressed.
 func compareBaseline(path string, data []byte, rs []*result, good func(string) bool) error {
-	old := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n")[1:] {
-		f := strings.SplitN(line, "\t", 4)
-		if len(f) >= 2 {
-			old[f[0]] = f[1]
-		}
-	}
+	old := baselineCategories(data)
 	var worse, better []string
 	for _, r := range rs {
 		o, ok := old[r.path]

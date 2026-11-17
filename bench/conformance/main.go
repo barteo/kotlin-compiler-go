@@ -28,6 +28,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -58,7 +59,10 @@ func main() {
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
 	list := flag.String("list", "", "only the tests whose paths, relative to the suite, this file lists, one a line (the first field of a TSV line; # starts a comment)")
 	strayErrs := flag.String("errors", "", "diagnostics mode: the TSV file to write kc's errors on lines without an expected diagnostic to (path, category, file:line, message)")
-	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line (path, category, file:line, name, severity, hit or miss)")
+	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line, or for a warning that warning (path, category, file:line, name, severity, hit or miss, and a missed error's cause)")
+	missedOut := flag.String("missed", "", "diagnostics mode: the TSV file to write the expected errors kc didn't report on their lines to (path, file:line, name, cause)")
+	missedBase := flag.String("missed-baseline", "", "diagnostics mode: a -missed file of an earlier run to compare with, read before -missed is written; with -baseline, the harness fails if an expected error kc reported on its line is missed")
+	strayWarns := flag.String("warnings", "", "diagnostics mode: the TSV file to write kc's warnings on lines that don't expect them to (path, category, file:line, name, message)")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
 	jobs := flag.Int("j", runtime.NumCPU(), "tests compiled at a time")
@@ -102,6 +106,16 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	var missedData []byte
+	if *missedBase != "" {
+		if *baseline == "" {
+			log.Fatal("-missed-baseline needs -baseline")
+		}
+		var err error
+		if missedData, err = os.ReadFile(*missedBase); err != nil {
+			log.Fatal(err)
+		}
+	}
 	start := time.Now()
 
 	var suite string
@@ -141,6 +155,7 @@ func main() {
 
 	var rs []*result
 	var report string
+	var missed []string // diagnostics mode: missedLines
 	good := func(cat string) bool { return cat == catPass }
 	switch *mode {
 	case "box":
@@ -166,10 +181,11 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut, strayWarns: *strayWarns}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}
+		missed = c.missed
 		good = func(cat string) bool { return cat == catRejectsInvalid || cat == catAcceptsValid }
 	}
 	elapsed := time.Since(start).Round(time.Second)
@@ -187,10 +203,25 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if *baseline != "" {
-		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
+	if *missedOut != "" {
+		data := missedHeader + "\n" + strings.Join(missed, "\n") + "\n"
+		if err := os.WriteFile(*missedOut, []byte(data), 0o644); err != nil {
 			log.Fatal(err)
 		}
+	}
+	var failed []error
+	if *baseline != "" {
+		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if *missedBase != "" {
+		if err := compareMissed(*missedBase, missedData, baselineCategories(baselineData), rs, missed); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if err := errors.Join(failed...); err != nil {
+		log.Fatal(err)
 	}
 }
 

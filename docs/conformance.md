@@ -32,12 +32,28 @@ key and detail. Flags after the mode go to the harness:
   file and line, and the message.
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
-  diagnostic and its severity, and `hit` if `kc` reported an error on
-  its line or `miss`.
+  diagnostic and its severity, and `hit` if `kc` reported on its line an
+  error, for an error, or the same warning, for a warning, or `miss`,
+  followed for a missed error by its cause.
+- `-warnings FILE` (diagnostics) writes `kc`'s warnings on lines where
+  the markup doesn't expect them, other than those a test's `DIAGNOSTICS`
+  directive switches off, to a TSV file: the test, its category, the
+  file and line, the warning and its message.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
   so a run can also write its results over it.
+- `-missed FILE` (diagnostics) writes each expected error `kc` doesn't
+  report on its line to a TSV file: the test, the file and line, the
+  diagnostic and why it was missed (see below). `bench/kotlin-tests.sh
+  diagnostics` writes it to
+  [bench/results/diagnostics-missed.tsv](../bench/results/diagnostics-missed.tsv),
+  the backlog of missed errors.
+- `-missed-baseline bench/results/diagnostics-missed.tsv` (diagnostics,
+  with `-baseline`) compares a run's missed errors with that file's, and
+  fails if `kc` misses an error it reported on its line before. Tests
+  that weren't type-checked in either run, such as unsupported ones,
+  are left out.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -160,8 +176,11 @@ Accepting invalid code is a correctness bug, not a missing feature. The
 report ranks those tests by the errors they expect, with *only error*
 counting the tests one check alone would fix. Since `kc` reports many
 errors per file, it also checks each expected error for one of `kc`'s on
-its line, and lists `kc`'s errors on lines that expect none and the
-warnings the tests expect (`kc` reports none).
+its line, and lists `kc`'s errors on lines that expect none. Warnings
+don't change a test's category: the report counts, by warning, those the
+tests expect that `kc` reports on their lines and those it reports on
+lines that don't expect them, which `-Werror` would turn into rejected
+valid code, and lists the warnings `kc` doesn't report.
 
 Four things differ from the test infrastructure:
 
@@ -195,6 +214,41 @@ sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
 
+Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
+
+- **A class path without the standard library**: the two
+  `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
+  `nullableTypes/nullableArgumentForIn`, whose `Int? in IntRange` the full
+  library's `contains` extension resolves (see above). The same goes for
+  `j+k/collectionOverrides/containsAll` and the library's `containsAll`
+  extension.
+- **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
+  `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
+  (`nullSourceInJvmModuleChecker`).
+- **The backend's analysis of inlined library bodies**:
+  `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
+  that reach `typeOf` through another reified function.
+- **Two classes with the same name in two modules**: the three
+  `multimodule/duplicate*` tests and
+  `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
+  its name alone.
+- **Java source roots**: `j+k/differentFilename` and
+  `problems/multipleJavaClassesInOneFile`. They expect a Java file's
+  classes other than the one it is named after to be unresolved. That
+  is `kotlinc`'s view of a source root directory. Given the `.java`
+  files themselves, as Gradle and `kc` take them, `kotlinc` resolves
+  them too.
+- **Malformed Java**: `j+k/deprecations/javaWithHiddenDeprecation`
+  declares `public statis void function()`, and
+  `scopes/specialFunctionInJava_1` a method without its `;`. `kotlinc`'s
+  Java parser reads past them. `kc` reports the syntax errors, as `javac`
+  would in a build.
+- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
+  `kjkimplicitTypesCrash` and
+  `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
+  older language version (their `latestLV` variants expect no error).
+
 ## Checking the harness
 
 A failure must be `kc`'s, not the harness's, so `-kotlinc` runs tests
@@ -220,38 +274,53 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,233 | 49.6% |
-| accepts valid | 4,104 | 48.1% |
-| accepts invalid | 159 | 1.9% |
-| rejects valid | 20 | 0.2% |
+| rejects invalid | 4,332 | 50.8% |
+| accepts valid | 4,115 | 48.2% |
+| accepts invalid | 63 | 0.7% |
+| rejects valid | 7 | 0.1% |
 | parse/unsupported | 14 | 0.2% |
-| crash | 1 | |
+| crash | 0 | |
 | harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 98% of the diagnostics tests, and reports
-16,633 of the 21,532 expected errors (77%) on their lines. Tests with
-Java sources are 1,221 of the run, and 56 of the 159 that *accept
-invalid* code. The reports break the failures down; the largest groups
-are:
+`kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
+18,527 of the 21,548 expected errors (86%) on their lines, and 507 of
+the 3,634 expected warnings (14%), with 8 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 24 of the 63
+that *accept invalid* code. The reports break the failures down; the
+largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 17), unresolved names
-  (`UNRESOLVED_REFERENCE` 15), invisible references
-  (`INVISIBLE_REFERENCE` 7) and unsupported constructs (`UNSUPPORTED` 7).
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 13), unresolved names
+  (`UNRESOLVED_REFERENCE` 13), and callable references whose types
+  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 3).
 - **Rejects valid**, by `kc`'s first error: unresolved names and
-  imports (7), type mismatches (5), ambiguous calls (3), and five others
-  of one test each. No box test is rejected.
-- **Crashes**: a test with Java sources, a stack overflow on a
-  recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
-  compiles only with `--patch-module`.
+  imports (4), type mismatches (2), and a property invoked as a
+  function (1). No box test is rejected.
+- **Crashes**: none. The harness error is a test that declares
+  `java.util.Date`, which `javac` compiles only with `--patch-module`.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
 CI's *Conformance* job (`.github/workflows/pr-checks.yml`) runs both
 suites against them on every pull request and push to `main`, and fails
-if a test that passes there stopped passing. The job's summary has each
-suite's counts. A test that started passing is a warning: running
-`bench/kotlin-tests.sh box` or `diagnostics` writes the new baseline to
-commit with the change.
+if a test that passes there stopped passing, or, for the diagnostics
+tests, if an expected error `kc` reported on its line is now missed. The
+job's summary has each suite's counts. A test that started passing, or
+an error newly reported, is a warning: running `bench/kotlin-tests.sh
+box` or `diagnostics` writes the new baselines to commit with the change.
+
+The diagnostics report sorts the missed errors by cause (*Missed errors
+by cause*), the first of these that applies:
+
+- *accepted*: `kc` compiled the test.
+- *syntax-error*: `kc`'s parser rejected the code. `kc` then checks
+  the declarations its parser recovers, but not one with a syntax
+  error, so the errors in such a declaration are missed.
+- *module-not-compiled*: the error is in a module after one that
+  failed, which the harness doesn't compile.
+- *nearby*: `kc` reported an error within three lines of it, on a line
+  the markup expects none on: most likely this error, at another
+  position.
+- *missing-check*: none of those.

@@ -21,15 +21,20 @@ type diag struct {
 	line    int
 	feature string // the unsupported feature, or ""
 	msg     string
+	name    string // the diagnostic's name, if kc knows it: a warning's
 }
 
 // compileResult is what compiling a test's modules came to.
 type compileResult struct {
 	ok      bool
 	diags   []diag
+	warns   []diag // kc's warnings (see warnings.go)
 	crash   string // kc's panic: its message and where
 	other   string // another failure: the last line kc wrote
 	outDirs []string
+	// tried are the names of the files of the modules it compiled, or
+	// tried to: the modules after one that failed aren't compiled.
+	tried map[string]bool
 }
 
 // compiler compiles the test's modules into dir, each against the ones
@@ -57,7 +62,7 @@ type libraries struct {
 // infrastructure adds them to each module the directives apply to, and
 // those at the top of a test apply to all.
 func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries) (*compileResult, error) {
-	res := &compileResult{}
+	res := &compileResult{tried: map[string]bool{}}
 	byPath := map[string]string{}
 	for mi, m := range t.modules {
 		src := filepath.Join(dir, fmt.Sprintf("m%d", mi), "src")
@@ -66,6 +71,7 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		var paths, javas []string
 		kotlin := false
 		for _, f := range files {
+			res.tried[f.name] = true
 			p := filepath.Join(src, filepath.FromSlash(f.name))
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 				return nil, err
@@ -131,6 +137,9 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		}
 		output, failed, timedOut := c.run(name, args)
 		res.outDirs = append(res.outDirs, out)
+		if c.kotlinc == "" {
+			res.warns = append(res.warns, kcWarnings(output, byPath)...)
+		}
 		if !failed {
 			if later && len(javas) > 0 {
 				if err := c.compileJava(out, append(cp, out), javas); err != nil {
@@ -200,17 +209,9 @@ func parseKcOutput(out string, byPath map[string]string, res *compileResult) {
 		}
 	}
 	for _, line := range lines {
-		f := strings.SplitN(line, "\t", 4)
-		if len(f) != 4 {
-			continue
+		if d, warning, ok := parseKcLine(line, byPath); ok && !warning {
+			res.diags = append(res.diags, d)
 		}
-		var l, col int
-		fmt.Sscanf(f[1], "%d:%d", &l, &col)
-		name := byPath[f[0]]
-		if name == "" {
-			name = filepath.Base(f[0])
-		}
-		res.diags = append(res.diags, diag{file: name, line: l, feature: f[2], msg: f[3]})
 	}
 	if len(res.diags) == 0 {
 		res.other = lines[len(lines)-1]

@@ -676,6 +676,11 @@ func (c *Checker) joinFlows(states []flowState) []narrow {
 				break
 			}
 		}
+		if decl := k.sym.Type; decl.P && t.K != types.Invalid && t == decl.Nullable() {
+			// A platform value null on one path and not on another is of
+			// its platform type again, not a nullable one.
+			t = decl
+		}
 		cur := c.scope.narrowedMember(k.recv, k.sym, types.InvalidType)
 		switch {
 		case v && (t.K == types.Invalid || !c.subtype(t, k.sym.Type)):
@@ -999,6 +1004,9 @@ func (c *Checker) stableMember(p *types.VarSym) bool {
 // open val is stable too if recv's class is final and inherits it, as
 // x.p for an x: B, where B doesn't override A's open val p.
 func (c *Checker) stableOn(p *types.VarSym, recv types.Type) bool {
+	if p.Kind == types.Prop && !p.Mutable && p.Owner != nil && p.Owner.JavaFields[p.Name] == p {
+		return true // a final Java field, as kotlinc has it
+	}
 	if p.Kind != types.Prop || p.Mutable || p.Getter != nil || !p.HasField() || p.Owner == nil || p.Owner.External {
 		return false
 	}

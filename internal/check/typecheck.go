@@ -550,24 +550,27 @@ func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 
 // narrowedIntersection returns cur & t for a smart cast of a value of
 // type cur to an unrelated t, where one of them is an interface, both are
-// Kotlin or Java class types without type parameters, and t is no
-// subclass of cur's class: t & cur.
+// Kotlin or Java class types without type parameters, or final builtin
+// types (String, Int), and t is no subclass of cur's class: t & cur. An
+// intersection of a final class with an unrelated one has no values, but
+// K2 types it so: after x !is A, x !is B and x is Int, x is an Int & A &
+// B, and after a as UByte, a String a is a UByte & String.
 func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 	a, b := cur.Flex().NonNull(), t.NonNull()
-	if a.IsIntersection() && b.K == types.Class && intersectable(b) && !b.C.Func && !c.subtype(b, a) {
+	if a.IsIntersection() && (b.K == types.Class && intersectable(b) && !b.C.Func || finalBuiltin(b)) && !c.subtype(b, a) {
 		// A further smart cast of an intersection adds to it: b of a
 		// class B that is an A and a C is a C & A & B. Each component
 		// must be intersectable with the target.
-		b.C.Ensure()
+		ensureClass(b)
 		for _, u := range a.Param().Bounds {
-			if u.K != types.Class || !intersectable(u) {
+			if !(u.K == types.Class && intersectable(u) || finalBuiltin(u)) {
 				return types.InvalidType, false
 			}
 			if c.subtype(u, b) {
 				continue
 			}
-			u.C.Ensure()
-			if !u.C.Interface && !b.C.Interface && !c.subtype(b, u) {
+			ensureClass(u)
+			if !isInterface(u) && !isInterface(b) && !c.subtype(b, u) {
 				return types.InvalidType, false
 			}
 		}
@@ -577,13 +580,15 @@ func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 		}
 		return i, true
 	}
-	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
-		a.C.Func || b.C.Func || c.subtype(b, a) {
+	classLike := func(t types.Type) bool {
+		return t.K == types.Class && intersectable(t) && !t.C.Func || finalBuiltin(t)
+	}
+	if !classLike(a) || !classLike(b) || c.subtype(b, a) {
 		return types.InvalidType, false
 	}
-	a.C.Ensure()
-	b.C.Ensure()
-	if !a.C.Interface && !b.C.Interface && !c.disjointClasses(a, b) {
+	ensureClass(a)
+	ensureClass(b)
+	if !isInterface(a) && !isInterface(b) && !c.disjointClasses(a, b) {
 		return types.InvalidType, false
 	}
 	// The target first, whose members win, as they did when the value
@@ -593,6 +598,22 @@ func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 		i = i.Nullable()
 	}
 	return i, true
+}
+
+// finalBuiltin reports whether t is String or a primitive type, final
+// classes that kc represents as builtin types.
+func finalBuiltin(t types.Type) bool {
+	return t.K == types.String || types.IsPrimitiveKind(t.K)
+}
+
+func ensureClass(t types.Type) {
+	if t.K == types.Class {
+		t.C.Ensure()
+	}
+}
+
+func isInterface(t types.Type) bool {
+	return t.K == types.Class && t.C.Interface
 }
 
 // needsCast reports whether a value read as type from needs a cast to be
@@ -824,6 +845,9 @@ func (c *Checker) sealedCovered(cls *types.ClassSym, cv *coverage, root *types.C
 		return false
 	}
 	if root == nil {
+		if len(cls.Subclasses) == 0 {
+			return false // kotlinc wants else in a when over a sealed class with no subclasses
+		}
 		root = cls
 	}
 	for _, s := range cls.Subclasses {

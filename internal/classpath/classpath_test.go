@@ -227,6 +227,33 @@ func TestJarAndDir(t *testing.T) {
 	}
 }
 
+// A class of the class path hides the JDK's class of the same name, and
+// the JDK has the classes that the class path lacks: a platform's jar of
+// java classes stands in for the JDK's.
+func TestClassPathBeforeJDK(t *testing.T) {
+	home := jdk(t)
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "java", "lang"), 0o755)
+	shadow := classfile.NewClass(classfile.AccPublic|classfile.AccInterface|classfile.AccAbstract, "java/lang/Runnable", "java/lang/Object")
+	shadow.AddField(classfile.AccPublic|classfile.AccStatic|classfile.AccFinal, "SHADOW", "I")
+	os.WriteFile(filepath.Join(dir, "java", "lang", "Runnable.class"), shadow.Bytes(), 0o644)
+
+	p, err := Open(home, []string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	info, err := p.Load("java/lang/Runnable")
+	if err != nil || len(info.Fields) != 1 || info.Fields[0].Name != "SHADOW" || len(info.Methods) != 0 {
+		t.Errorf("java/lang/Runnable is not the class path's: %+v, %v", info, err)
+	}
+	for _, name := range []string{"java/lang/String", "java/lang/management/ManagementFactory"} {
+		if !p.Has(name) {
+			t.Errorf("%s of the JDK not found", name)
+		}
+	}
+}
+
 // A source file's class hides a class file of the same name, and has no
 // bytes.
 func TestAddSource(t *testing.T) {

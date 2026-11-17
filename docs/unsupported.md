@@ -10,6 +10,18 @@ own tests.
 
 ## The language
 
+- Warnings: `kc` reports only `DEPRECATION`,
+  `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
+  `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
+  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON` and
+  `USELESS_ELVIS`, and those only where the types make them certain, so
+  that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
+  never of a platform type, a type parameter or a type it couldn't
+  resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
+  isn't reified, or to a generic type from `Any` or a star-projected
+  supertype. `@Suppress` silences a warning by its name, or all of them
+  with `"warnings"`.
+
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
 - `lateinit` properties of a `@file:JvmMultifileClass` class that
@@ -17,9 +29,9 @@ own tests.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` are checked, the class path's read from its class files
-  and metadata, but only their errors are reported: markers with level
-  `WARNING` and deprecations with level `WARNING` (Java's `@Deprecated`
-  among them) give no warning. `@DeprecatedSinceKotlin` and
+  and metadata. Markers and deprecations with level `WARNING` (Java's
+  `@Deprecated` among them) give the warnings `OPT_IN_USAGE` and
+  `DEPRECATION`. `@DeprecatedSinceKotlin` and
   `@SinceKotlin` are read as if their versions were reached: `kc` acts
   as the newest API version, as `kotlinc` does by default, and has no
   `-api-version`. A class path's typealias opts in to nothing, as the
@@ -161,14 +173,15 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 ## Metro (`-metro`)
 
-`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+`kc` implements Metro 1.6.0's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
 
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`: among them `enable-derived-bindings` and a `companion-mode` other than `companion-object`;
 - `@Provides` extension functions, and `@Provides` members of an
   interface or an abstract class outside its companion object;
 - graphs with type parameters, and graph factories that are abstract classes;
+- graph lifecycle callbacks: a graph that is a `CloseableGraph`, with its `@OnGraphInit` and `@OnGraphClose` functions;
 - injecting a generic class where the requested type's arguments are type
   parameters, and contributed interfaces with type parameters;
 - javax, Jakarta, Dagger and Guice interop;
@@ -190,8 +203,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 - Intersection types (`A & B`) are inferred only for the shared
   supertypes of Kotlin classes and generic Java ones (a Java class's
-  non-generic interfaces only when nothing else is shared), smart casts between a class type and an unrelated
-  interface, or of such an intersection to another (`C & A & B`),
+  non-generic interfaces only when nothing else is shared), smart casts between a class type, `String` or a
+  primitive type and an unrelated interface (`Int & A`), or of such an intersection to another (`C & A & B`),
   smart casts of a value of a type parameter's type to a class
   type, a primitive type or `String` (`String & T`, `Int & T`), identity or safe equality of two
   generic class types or a cast of one to the other (`Box<T> & Box<A>`),
@@ -262,7 +275,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the parameter (`Out3<*>` is an `Out3<Out3<*>>` for `Out3<out T :
   Out3<T>>`), as K2 approximates its capture. The capture of an
   `in` projection is checked against the variable's bounds only at the
-  top of an argument's type.
+  top of an argument's type. A property written through a projected
+  receiver takes `Nothing` for a generic extension property's type
+  parameter its receiver projects out, and for an invariant argument of
+  a member property's type that a star captures, checked after the
+  value is inferred against the read type.
+- A lambda's result chooses between overloads of the program's
+  functions only when one of them is marked
+  `@OverloadResolutionByLambdaReturnType`, as in K2, but between
+  library functions' whether or not they are, since `kc` doesn't read
+  the mark from class files. `@HidesMembers` is read only on the
+  program's functions; the standard library's `forEach` hides only
+  members that just Java's collection interfaces declare.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
   types (star projections), and the inferred type isn't an
@@ -289,6 +313,16 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
+- jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
+  Java method's, parameter's or field's type, and `@NullMarked` and
+  `@NullUnmarked` only on the classes and methods of the program's Java
+  sources, not on packages, modules or class files.
+- A Kotlin override of a package-private Java method, declared without a
+  visibility, is visible to calls in its package, where K2 reports it as
+  invisible.
+- Of Java members, only those of the program's Java sources count
+  toward an inherited member that must be overridden because it has
+  several implementations; a class-path Java class's do not.
 - Java sources compiled with the program see the member classes a
   Kotlin class inherits only through supertypes written without type
   arguments: a Java subclass of `class K : Base<String>()` that names

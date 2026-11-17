@@ -585,3 +585,22 @@ func (c *Checker) reassign(p syntax.Pos, target syntax.Expr, tt types.Type, valu
 	c.assign(a)
 	return append(stmts, a), ref
 }
+
+// opProperty reports whether the receiver recv, of type rt, has an
+// extension property name, of a function type that may take args, that
+// an operator's function of the name would be called for: a property
+// isn't an operator, as kotlinc's NOT_FUNCTION_AS_OPERATOR.
+func (c *Checker) opProperty(recv syntax.Expr, rt types.Type, name string, args ...syntax.Expr) bool {
+	if rt.K == types.Invalid {
+		return false
+	}
+	if cls := c.classOf(rt.NonNull()); cls != nil && c.hasProp(cls, name) {
+		return false
+	}
+	probe := &syntax.Member{X: checked(recv, rt), Name: name}
+	probe.P = recv.Pos()
+	n := len(c.errs)
+	pt, ok := c.extProp(probe, rt)
+	c.errs = c.errs[:n]
+	return ok && pt.IsFunc() && c.invokableWith(pt, &syntax.Call{Args: args})
+}

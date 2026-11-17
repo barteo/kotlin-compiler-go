@@ -19,7 +19,16 @@
 //              wrote. A module without variants, such as a Kotlin/JVM library, serves all of
 //              them: kc compiles it only in a build that runs tasks of listed variants and of no
 //              other. A task whose variant the script cannot tell keeps kotlinc.
-//   KC_JDK_HOME  JDK for modules without android.jar, in place of the task's Java toolchain
+//   KC_KSP     directory of kc's KSP backend (jvm/kc-aa/build.sh writes it as
+//              jvm/kc-aa/build/kc-ksp). With it, the KSP tasks (kspKotlin, ksp<Variant>Kotlin) of
+//              the modules and variants kc compiles run KSP on kc: their KSP class path becomes
+//              the directory's loader and KSP API jars and, from the task's own, KSP's
+//              configuration classes, the Kotlin standard library and kotlinx.coroutines. The
+//              processors see those jars only. Unless KC_STRICT=1, a task whose run on kc fails
+//              runs stock KSP in its place, and the build log says so. A daemon's builds must
+//              name one directory with one libkc.so: after an upgrade of kc, restart the daemon.
+//              Checked with the KSP Gradle plugin 2.3.12 and 2.3.13.
+//   KC_JDK_HOME  JDK to compile against, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:
 //              compose-stability-compiler, which adds recomposition tracing and stability reports).
@@ -103,15 +112,16 @@ if (gradle.parent == null) {
 
       val args = mutableListOf(kc, "-d", dest.path)
       (option("getModuleName") as String?)?.let { args += listOf("-module-name", it) }
-      // An Android module's class path holds android.jar, which stands in for the JDK. Other
-      // modules compile against the JDK of the task's Java toolchain, as kotlinc does.
+      // A module compiles against its class path and then the JDK of the task's Java toolchain,
+      // as kotlinc does: an Android module's android.jar stands in for the JDK's classes, and
+      // its unit tests still see the ones android.jar lacks, such as java.lang.management.
       val toolchainJdk = runCatching {
         val toolchain = call(task, "getKotlinJavaToolchain")!!
         val java = callPrefixed(toolchain, "getJavaExecutable") as org.gradle.api.file.RegularFileProperty
         java.get().asFile.canonicalFile.parentFile.parentFile.path
       }.getOrNull()
       when {
-        option("getNoJdk") == true || libraries.any { File(it).name == "android.jar" } -> args += "-no-jdk"
+        option("getNoJdk") == true -> args += "-no-jdk"
         System.getenv("KC_JDK_HOME") != null -> args += listOf("-jdk-home", System.getenv("KC_JDK_HOME"))
         toolchainJdk != null -> args += listOf("-jdk-home", toolchainJdk)
       }
@@ -158,16 +168,49 @@ if (gradle.parent == null) {
         logger.lifecycle("kc: ${task.path}: ${sources.size} files in $ms ms")
         throw StopExecutionException()
       }
-      val excerpt = output.lineSequence().filter { it.isNotBlank() }.take(20).joinToString("\n")
+      // The errors, which follow the warnings of the files before them.
+      val lines = output.lines().filter { it.isNotBlank() }
+      val excerpt = lines.filterNot { ": warning: " in it }.ifEmpty { lines }.take(20).joinToString("\n")
       if (strict) throw GradleException("kc failed on ${task.path}:\n$excerpt")
       logger.warn("kc failed on ${task.path}, so kotlinc compiles it:\n$excerpt")
       dest.deleteRecursively()
       task.javaClass.getMethod("setIncremental", Boolean::class.javaPrimitiveType).invoke(task, false)
     }
   }
+  fun isKsp(task: Task) =
+    task.javaClass.name.removeSuffix("_Decorated") == "com.google.devtools.ksp.gradle.KspAATask"
+  val useKcKsp: Task.() -> Unit = {
+    val home = System.getenv("KC_KSP")
+    if (home != null && path !in System.getenv("KC_SKIP").orEmpty().split(',').map { it.trim() }) {
+      val classpath = javaClass.getMethod("getKspClasspath").invoke(this) as ConfigurableFileCollection
+      val stock = project.files(classpath.from.toList())
+      // The directory's API is the one its KSP is compiled against. The configuration classes
+      // stay the plugin's version, as the plugin passes KSP a serialized configuration.
+      classpath.setFrom(
+        File(home, "kc-ksp-loader.jar"),
+        File(home, "symbol-processing-api.jar"),
+        stock.filter { f -> listOf("api", "aa-embeddable").none { f.name.startsWith("symbol-processing-$it-") } },
+      )
+      inputs.file(File(home, "libkc.so")).withPropertyName("kcKspLibrary").withPathSensitivity(PathSensitivity.NONE)
+      inputs.dir(File(home, "lib")).withPropertyName("kcKspBackend").withPathSensitivity(PathSensitivity.RELATIVE)
+      doFirst {
+        // The loader reads the property, named by its own class path, when its run fails.
+        val key = "kc.ksp.stock:" + classpath.files.joinToString(File.pathSeparator) { it.path }
+        if (System.getenv("KC_STRICT") == "1") {
+          System.clearProperty(key)
+        } else {
+          System.setProperty(key, stock.files.joinToString(File.pathSeparator) { it.path })
+        }
+      }
+    }
+  }
   val listed = System.getenv("KC_VARIANTS")?.split(',')?.map { it.trim() }
   if (listed == null) {
     allprojects { tasks.matching { isKotlinCompile(it) }.configureEach { useKc(this) } }
+    // Once the plugin has set the tasks' class paths.
+    gradle.taskGraph.whenReady {
+      for (task in allTasks) if (isKsp(task) && task.project.gradle == gradle) useKcKsp(task)
+    }
   } else {
     fun call(target: Any, name: String): Any? =
       target.javaClass.methods.first { it.name == name && it.parameterCount == 0 }.invoke(target)
@@ -205,18 +248,20 @@ if (gradle.parent == null) {
       }
       val onlyListed = running.isNotEmpty() && running.all { isListed(it) }
       for (task in allTasks) {
-        if (!isKotlinCompile(task) || task.project.gradle != gradle) continue
+        val compile = isKotlinCompile(task)
+        if (!compile && !isKsp(task) || task.project.gradle != gradle) continue
+        val prefix = if (compile) "compile" else "ksp"
         val known = components[task.project]
         val variant = known?.entries?.firstOrNull {
           val name = it.key.replaceFirstChar { c -> c.uppercase() }
-          task.name == "compile${name}Kotlin" || task.name == "compile${name}KotlinAndroid"
+          task.name == "$prefix${name}Kotlin" || task.name == "$prefix${name}KotlinAndroid"
         }?.value
         // A module without variants serves every variant, so kc compiles it only in a build of
         // listed variants alone.
         if (if (known == null) onlyListed else variant != null && isListed(variant)) {
-          useKc(task)
+          if (compile) useKc(task) else useKcKsp(task)
         } else {
-          task.logger.info("kc: KC_VARIANTS leaves ${task.path} to kotlinc")
+          task.logger.info("kc: KC_VARIANTS leaves ${task.path} to ${if (compile) "kotlinc" else "stock KSP"}")
         }
       }
     }

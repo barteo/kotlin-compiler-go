@@ -1,5 +1,7 @@
 package io.github.barteo.kc.aa
 
+import com.intellij.codeInsight.CustomExceptionHandler
+import com.intellij.core.CoreApplicationEnvironment
 import com.intellij.diagnostic.PluginException
 import com.intellij.diagnostic.PluginProblemReporter
 import com.intellij.openapi.Disposable
@@ -7,6 +9,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiElementFinder
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.PsiManagerEx
@@ -42,9 +45,13 @@ internal class KcEnvironment(val key: String, config: KcModuleConfig) {
             // (checked exceptions, member order, backing fields, Java
             // annotation defaults) through the Java file manager, which
             // must give PSI-backed classes (JavaClassImpl).
-            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
+            // A build passes paths that need not exist (an output directory
+            // nothing is written to, a source set without sources). The
+            // environment reports a missing root as an error; stock KSP
+            // leaves it out.
+            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct().filter { it.exists() })
             config.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(config.allSourceRoots)
+            conf.addJavaSourceRoots(config.allSourceRoots.filter { it.exists() })
             conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
@@ -53,6 +60,7 @@ internal class KcEnvironment(val key: String, config: KcModuleConfig) {
     val project get() = env.project
     val provider = KcSessionProvider(project)
     private val psiManager = PsiManager.getInstance(project)
+    val kotlinClasses = KcKotlinClassFinder(psiManager)
 
     init {
         // MockProject.registerService, called reflectively: kotlinc can't see
@@ -60,6 +68,7 @@ internal class KcEnvironment(val key: String, config: KcModuleConfig) {
         val register = project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
         register.invoke(project, KaSessionProvider::class.java, provider)
         register.invoke(project, KotlinModificationTrackerFactory::class.java, KcModificationTrackers)
+        PsiElementFinder.EP.getPoint(project).registerExtension(kotlinClasses, disposable)
         // The application's, which the environments of a process share, as
         // KSP's standalone backend registers it: PluginException.createByClass
         // needs one.
@@ -68,6 +77,18 @@ internal class KcEnvironment(val key: String, config: KcModuleConfig) {
             app.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
                 .invoke(app, PluginProblemReporter::class.java, KcPluginProblemReporter)
         }
+        // What Java PSI's type inference needs and the core environment
+        // lacks. KSP checks the Java sources after a processor's error,
+        // which resolves their calls: one that takes a reference to a
+        // method with checked exceptions asks this extension point for
+        // handlers, and one whose result has wildcard arguments reads this
+        // registry key, which the IDE's Java plugin declares as true. The
+        // registry reads a key's system property before its own values.
+        if (!app.extensionArea.hasExtensionPoint(CustomExceptionHandler.KEY)) {
+            CoreApplicationEnvironment.registerApplicationExtensionPoint(CustomExceptionHandler.KEY, CustomExceptionHandler::class.java)
+        }
+        val freshVariables = "javac.fresh.variables.for.captured.wildcards.only"
+        if (System.getProperty(freshVariables) == null) System.setProperty(freshVariables, "true")
     }
 
     /** How many files [psiFile] parsed again because their text changed, and how many it reused. */
@@ -179,6 +200,7 @@ internal object KcEnvironments {
     @Synchronized
     fun release(e: KcEnvironment) {
         e.provider.clear()
+        e.kotlinClasses.round = null
         if (!enabled) {
             e.dispose()
             return

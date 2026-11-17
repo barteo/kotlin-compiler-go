@@ -1,0 +1,3 @@
+e: bad class e.Bar
+e: bad class e.Foo
+KSP exited with PROCESSING_ERROR

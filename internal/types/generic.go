@@ -273,7 +273,9 @@ func (p *TypeParamSym) ErasureBound() Type {
 
 // Bound returns the first upper bound, or Any? if there is none.
 func (p *TypeParamSym) Bound() Type {
-	if len(p.Bounds) == 0 {
+	if len(p.Bounds) == 0 || p.Bounds[0].IsParam() && ParamCycle(p) {
+		// No bound, or bounds that are each other's parameters, as Java
+		// sources can declare (<A extends B, B extends A>): Any?.
 		return AnyType.Nullable()
 	}
 	return p.Bounds[0]
@@ -484,6 +486,11 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			// B<*, Int>.
 			p := t.Param()
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
+		case a.V == Star && pos == Out && ParamCycle(t.Param()):
+			// Bounds that are each other's parameters, Java's <A extends
+			// B, B extends A>, which kotlinc reads as Any!: substituting
+			// the bound would never end.
+			r = AnyType.Nullable().Platform()
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
 			if r.K == Class && r.A == nil && !r.C.Array && r.C.Raw() {
@@ -650,6 +657,16 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					return Arg{V: Out, T: a.T}, r.V == Out || r.V == In
 				}
 				return r, true
+			case pos == In && r.V == In && a.V == In:
+				// Written to, in of an in projection's capture is in its
+				// parameter's bound: B<in CharSequence>.foo(x: A<in E>)
+				// takes an A<in Any?>.
+				if p := a.T.Param(); len(p.Bounds) == 0 {
+					return Arg{V: In, T: withFlags(AnyType.Nullable(), a.T)}, true
+				} else if len(p.Bounds) == 1 && !p.Bounds[0].HasParams() {
+					return Arg{V: In, T: withFlags(p.Bounds[0], a.T)}, true
+				}
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, true
 			case r.V == Star:
 				// Read, a star in an invariant argument is a capture
 				// approximated, which makes the argument out: T of
@@ -696,6 +713,23 @@ func jdkParam(p *TypeParamSym) bool {
 		c = o.Owner
 	}
 	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
+}
+
+// ParamCycle reports whether the bounds of p, followed through the type
+// parameters they are, lead back to p.
+func ParamCycle(p *TypeParamSym) bool {
+	seen := map[*TypeParamSym]bool{}
+	for q := p; len(q.Bounds) > 0 && q.Bounds[0].IsParam(); {
+		q = q.Bounds[0].Param()
+		if q == p {
+			return true
+		}
+		if seen[q] {
+			return false
+		}
+		seen[q] = true
+	}
+	return false
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.
