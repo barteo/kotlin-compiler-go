@@ -193,6 +193,9 @@ type Checker struct {
 	// supersOf is the class whose supertypes are being resolved, which
 	// may name its private nested classes: class A : I<A.N>.
 	supersOf *types.ClassSym
+	// headerBounds is the class whose type parameters' bounds are being
+	// resolved; they don't see its nested classes: class A<T : Nested>.
+	headerBounds *types.ClassSym
 	// anon are the classes of the file's object expressions, with the
 	// code around each; anonCount numbers them, by enclosing function.
 	anon      map[*types.ClassSym]*anonCtx
@@ -1399,14 +1402,15 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 
 // resolveClassBounds resolves the bounds of class type parameters, which
 // other files' signatures may need. Bounds are checked against each
-// other only where they are used.
+// other only where they are used. Like the supertypes, the bounds don't
+// see the class's own nested and inner classes: class A<T : Nested>.
 func (c *Checker) resolveClassBounds() {
 	c.noBoundChecks = true
 	for _, d := range c.classes {
-		c.tparams, c.lookupCls = d.Sym.TypeParams, d.Sym
+		c.tparams, c.lookupCls, c.headerBounds = d.Sym.TypeParams, d.Sym, d.Sym
 		c.resolveBounds(d.TypeParams)
 	}
-	c.tparams, c.lookupCls = nil, nil
+	c.tparams, c.lookupCls, c.headerBounds = nil, nil, nil
 	c.noBoundChecks = false
 }
 
