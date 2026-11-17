@@ -33,7 +33,8 @@ key and detail. Flags after the mode go to the harness:
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
   diagnostic and its severity, and `hit` if `kc` reported on its line an
-  error, for an error, or the same warning, for a warning, or `miss`.
+  error, for an error, or the same warning, for a warning, or `miss`,
+  followed for a missed error by its cause.
 - `-warnings FILE` (diagnostics) writes `kc`'s warnings on lines where
   the markup doesn't expect them, other than those a test's `DIAGNOSTICS`
   directive switches off, to a TSV file: the test, its category, the
@@ -42,6 +43,17 @@ key and detail. Flags after the mode go to the harness:
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
   so a run can also write its results over it.
+- `-missed FILE` (diagnostics) writes each expected error `kc` doesn't
+  report on its line to a TSV file: the test, the file and line, the
+  diagnostic and why it was missed (see below). `bench/kotlin-tests.sh
+  diagnostics` writes it to
+  [bench/results/diagnostics-missed.tsv](../bench/results/diagnostics-missed.tsv),
+  the backlog of missed errors.
+- `-missed-baseline bench/results/diagnostics-missed.tsv` (diagnostics,
+  with `-baseline`) compares a run's missed errors with that file's, and
+  fails if `kc` misses an error it reported on its line before. Tests
+  that weren't type-checked in either run, such as unsupported ones,
+  are left out.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -258,7 +270,21 @@ The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
 CI's *Conformance* job (`.github/workflows/pr-checks.yml`) runs both
 suites against them on every pull request and push to `main`, and fails
-if a test that passes there stopped passing. The job's summary has each
-suite's counts. A test that started passing is a warning: running
-`bench/kotlin-tests.sh box` or `diagnostics` writes the new baseline to
-commit with the change.
+if a test that passes there stopped passing, or, for the diagnostics
+tests, if an expected error `kc` reported on its line is now missed. The
+job's summary has each suite's counts. A test that started passing, or
+an error newly reported, is a warning: running `bench/kotlin-tests.sh
+box` or `diagnostics` writes the new baselines to commit with the change.
+
+The diagnostics report sorts the missed errors by cause (*Missed errors
+by cause*), the first of these that applies:
+
+- *accepted*: `kc` compiled the test.
+- *parse-gated*: `kc`'s parser rejected the code. `kc` type-checks
+  nothing after a syntax error, so none of the test's other errors is
+  reported.
+- *module-not-compiled*: the error is in a module after one that
+  failed, which the harness doesn't compile.
+- *nearby*: `kc` reported an error within three lines of it, after a
+  first error or at another position.
+- *missing-check*: none of those.

@@ -191,6 +191,18 @@ kc reports 17646 of 21536 expected errors (81.9%) on their lines.
 | `NULLABLE_TYPE_OF_ANNOTATION_MEMBER` | 20 | 7 | 13 |
 | *534 more* | | | |
 
+### Missed errors by cause
+
+Why kc reports no error on the line of an expected one: *accepted*, it compiled the test; *parse-gated*, its parser rejected the code, and kc checks nothing then; *module-not-compiled*, the error is in a module after one that failed, which isn't compiled; *nearby*, kc reported an error within 3 lines of it (after a first error, or at another position); *missing-check*, none of those.
+
+| Cause | Missed | Share | Most missed |
+|:---|---:|---:|:---|
+| accepted | 414 | 10.6% | `UNSUPPORTED` 45, `UNRESOLVED_REFERENCE` 44, `WRONG_ANNOTATION_TARGET` 34, `ARGUMENT_TYPE_MISMATCH` 33, `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE` 28 |
+| parse-gated | 1477 | 38.0% | `UNRESOLVED_REFERENCE` 268, `UNSUPPORTED` 126, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 62, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 60, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 60 |
+| module-not-compiled | 0 | 0.0% |  |
+| nearby | 1083 | 27.8% | `UNRESOLVED_REFERENCE` 123, `ARGUMENT_TYPE_MISMATCH` 55, `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` 55, `CONFLICTING_OVERLOADS` 48, `INVISIBLE_REFERENCE` 48 |
+| missing-check | 916 | 23.5% | `ARGUMENT_TYPE_MISMATCH` 82, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 73, `CONFLICTING_OVERLOADS` 47, `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` 46, `UNRESOLVED_REFERENCE` 35 |
+
 ## Errors kotlinc doesn't report
 
 kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
