@@ -7,10 +7,10 @@ Of 10827 test files, 2295 are skipped and 8532 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4356 | 51.1% |
-| accepts valid | 4120 | 48.3% |
+| accepts valid | 4123 | 48.3% |
 | accepts invalid | 47 | 0.6% |
 | rejects valid | 2 | 0.0% |
-| parse/unsupported | 6 | 0.1% |
+| parse/unsupported | 3 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
@@ -217,7 +217,6 @@ By the features the parser (with error recovery) and the checker found. A test c
 
 | Feature | Tests | Only blocker | Examples |
 |:---|---:|---:|:---|
-| `callable reference` | 3 | 3 | `tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt`, `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt` |
 | `parse error: expected '_', found '_'` | 1 | 1 | `tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt` |
 | `parse error: expected expression, found '_'` | 1 | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChain.kt` |
 | `unsupported types in signature` | 1 | 1 | `tests/syntheticExtensions/samAdapters/InnerClassInGeneric.kt` |
@@ -228,10 +227,9 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 | Step | Feature | Tests unblocked | Total |
 |---:|:---|---:|---:|
-| 1 | `callable reference` | 3 | 3 |
-| 2 | `parse error: expected '_', found '_'` | 1 | 4 |
-| 3 | `parse error: expected expression, found '_'` | 1 | 5 |
-| 4 | `unsupported types in signature` | 1 | 6 |
+| 1 | `parse error: expected '_', found '_'` | 1 | 1 |
+| 2 | `parse error: expected expression, found '_'` | 1 | 2 |
+| 3 | `unsupported types in signature` | 1 | 3 |
 
 ## Warnings
 

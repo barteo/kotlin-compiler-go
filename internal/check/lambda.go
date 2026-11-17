@@ -195,9 +195,13 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 		// is a KFunctionN, a kotlin.reflect object, as with kotlinc:
 		// ::f as T, or val r = ::f. A suspend function's is a
 		// KSuspendFunctionN.
-		if call := kfunCall(x); call != nil {
+		call := kfunCall(x)
+		if call == nil {
+			call = builtinKFunCall(x)
+		}
+		if call != nil {
 			name := "kotlin/reflect/KFunction"
-			if call.Sym.Suspend {
+			if call.Sym != nil && call.Sym.Suspend {
 				name = "kotlin/reflect/KSuspendFunction"
 			}
 			if k := c.u.ext.class(name + strconv.Itoa(len(ps))); k != nil && !k.Missing {

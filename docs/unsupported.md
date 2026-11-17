@@ -361,6 +361,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   so is a suspend reference whose `invoke` `kotlinc` makes a state machine (one
   that ignores the result, or to an inline suspend function or one
   returning a value class).
+- A reference to a library function that `kc` compiles as built in,
+  as `String::toInt`, names the receiver's class (`String`) as its
+  owner, where `kotlinc`'s names the library's file facade
+  (`StringsKt`).
 - A `when` over an enum compares entries with `equals`, not through a
   `$WhenMappings` ordinal switch.
 - Interfaces default to `-jvm-default=no-compatibility`; `kotlinc`'s

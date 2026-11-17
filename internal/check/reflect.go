@@ -1176,6 +1176,9 @@ func (c *Checker) kfunRef(x *syntax.Lambda, want, fn types.Type) types.Type {
 	}
 	call := kfunCall(x)
 	if call == nil {
+		call = builtinKFunCall(x)
+	}
+	if call == nil {
 		c.unsupported(x.P, "callable reference", "%s as a kotlin.reflect object: only references to functions and constructors of classes are supported", refString(x.Ref))
 		return types.InvalidType
 	}
@@ -1213,6 +1216,37 @@ func kfunCall(x *syntax.Lambda) *syntax.Call {
 		return nil
 	}
 	if x.Suspend && x.SAM == nil && call.Sym.Suspend && refStateMachine(x, call.Sym) {
+		return nil
+	}
+	return call
+}
+
+// builtinKFunCall returns the call of reference x's lambda, if it is the
+// call of a built-in member of its receiver, as Int::and's: its
+// kotlin.reflect object names the receiver's class (see kfunArgs in
+// internal/codegen), as kotlinc's names kotlin.Int.
+func builtinKFunCall(x *syntax.Lambda) *syntax.Call {
+	if len(x.Body.Stmts) == 0 || x.Suspend || x.SAM != nil || x.KProp != nil {
+		return nil
+	}
+	s, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	call, ok := s.X.(*syntax.Call)
+	if !ok || call.Sym != nil || call.Builtin == 0 || call.Invoke || call.Ctor != nil {
+		return nil
+	}
+	var recv types.Type
+	switch ps := x.ParamSyms(); {
+	case x.Ref.Bound != nil:
+		recv = x.Ref.Bound.Type
+	case x.Ref.X != nil && len(ps) > 0:
+		recv = ps[0].Type
+	default:
+		return nil
+	}
+	if _, ok := types.Desc(types.Erase(recv.NonNull())); !ok {
 		return nil
 	}
 	return call

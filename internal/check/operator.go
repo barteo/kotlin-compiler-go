@@ -278,7 +278,25 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		return nil, nil, false
 	}
 	ts := make([]types.Type, len(ix.Args))
+	if slices.ContainsFunc(ix.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok }) {
+		// A lambda or a reference takes its type from get's parameter,
+		// as A[::f] += 1 for an operator get(IFoo) does a fun
+		// interface's: x.get(i) is checked first, and the index keeps the
+		// type it gave the lambda.
+		probe := &syntax.Index{X: checked(ix.X, xt), Args: slices.Clone(ix.Args)}
+		probe.P = ix.P
+		c.value(probe, noWant)
+		for i, a := range ix.Args {
+			if l, ok := a.(*syntax.Lambda); ok {
+				ts[i] = l.T
+				ix.Args[i] = checked(a, ts[i])
+			}
+		}
+	}
 	for i, a := range ix.Args {
+		if _, done := a.(*syntax.Checked); done {
+			continue
+		}
 		ts[i] = c.value(a, noWant)
 		ix.Args[i] = checked(a, ts[i])
 	}

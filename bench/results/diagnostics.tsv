@@ -716,7 +716,7 @@ tests/callableReference/callableReferenceWithMostSpecificGenericTypeParameter.kt
 tests/callableReference/callableReferencesToCompanionMembers.kt	accepts valid		
 tests/callableReference/classVsPackage.kt	accepts valid		
 tests/callableReference/companionBlockInInnerClass.kt	skip	LANGUAGE	
-tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt	parse/unsupported	callable reference	
+tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt	accepts valid		
 tests/callableReference/constraintFromLHSWithCorrectDirection.kt	rejects invalid	on an expected line	
 tests/callableReference/constraintFromLHSWithCorrectDirectionError.kt	rejects invalid	on an expected line	
 tests/callableReference/correctCandidateWithCompatibilityForSeveralCandidates.kt	accepts valid		
@@ -917,7 +917,7 @@ tests/callableReference/resolve/overloadsMember.kt	accepts valid
 tests/callableReference/resolve/postponedResolveOfManyCallableReference.kt	accepts valid		
 tests/callableReference/resolve/resolveCallableReferencesAfterAllSimpleArguments.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/resolveEqualsOperatorWithAnyExpectedType.kt	accepts valid		
-tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt	parse/unsupported	callable reference	
+tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt	accepts valid		
 tests/callableReference/resolve/resolveTwoReferencesAgainstGenerics.kt	accepts valid		
 tests/callableReference/resolve/valVsFun.kt	accepts valid		
 tests/callableReference/resolve/withAs.kt	rejects invalid	on an expected line	
@@ -7184,7 +7184,7 @@ tests/problems/kt22961.kt	accepts valid
 tests/problems/kt23677.kt	rejects invalid	on an expected line	
 tests/problems/kt23909.kt	rejects invalid	on an expected line	
 tests/problems/kt24210.kt	accepts valid		
-tests/problems/kt24230.kt	parse/unsupported	callable reference	
+tests/problems/kt24230.kt	accepts valid		
 tests/problems/kt24507.kt	rejects invalid	on an expected line	
 tests/problems/kt24994.kt	accepts valid		
 tests/problems/kt27650.kt	rejects invalid	on an expected line	
