@@ -121,6 +121,10 @@ func closeParen(s string) int {
 // SMARTCAST_IMPOSSIBLE.
 var unsafeAnyCallRE = regexp.MustCompile(`(<![^!>]*\bUNSAFE_CALL\b[^!>]*!>\.<!>|<![^!>]*\bSMARTCAST_IMPOSSIBLE\b[^!>]*!>[\w.]+<!>\.)(hashCode|toString)\(\)`)
 
+// unsafeAnyRefRE matches a bound reference to hashCode or toString that
+// the markup expects to be an UNSAFE_CALLABLE_REFERENCE.
+var unsafeAnyRefRE = regexp.MustCompile(`(::<![^!>]*\bUNSAFE_CALLABLE_REFERENCE\b[^!>]*!>)(hashCode|toString)<!>`)
+
 // nonNullAnyCalls returns src, a test's file that the markup expects
 // x.hashCode() or x.toString() of a nullable x to be an UNSAFE_CALL in,
 // or an x that can't be smart cast to non-null a SMARTCAST_IMPOSSIBLE,
@@ -129,7 +133,9 @@ var unsafeAnyCallRE = regexp.MustCompile(`(<![^!>]*\bUNSAFE_CALL\b[^!>]*!>\.<!>|
 // library, without the extensions of Any? of those names that the full
 // one, which both compilers get (see runOne), has: kotlinc reports the
 // call of the member, and kc, with these, the call of the extension, on
-// a value that isn't smart cast to non-null. The declarations go after
+// a value that isn't smart cast to non-null. The same goes for a bound
+// reference, x::hashCode, the markup expects to be an
+// UNSAFE_CALLABLE_REFERENCE. The declarations go after
 // the last line, which keeps the lines of the markup.
 func nonNullAnyCalls(src string) string {
 	used := map[string]bool{}
@@ -137,6 +143,11 @@ func nonNullAnyCalls(src string) string {
 		sub := unsafeAnyCallRE.FindStringSubmatch(m)
 		used[sub[2]] = true
 		return sub[1] + "kcNonNull_" + sub[2] + "()"
+	})
+	src = unsafeAnyRefRE.ReplaceAllStringFunc(src, func(m string) string {
+		sub := unsafeAnyRefRE.FindStringSubmatch(m)
+		used[sub[2]] = true
+		return sub[1] + "kcNonNull_" + sub[2] + "<!>"
 	})
 	if used["hashCode"] {
 		src += "\nprivate fun Any.kcNonNull_hashCode(): Int = hashCode()\n"
