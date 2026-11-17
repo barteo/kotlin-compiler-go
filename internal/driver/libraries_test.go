@@ -88,6 +88,10 @@ func TestLibrariesPrograms(t *testing.T) {
 		{"class A { fun f() = \"s\" }\nval x: String = A().f()\nval l = listOf(\"a\").map { it.length }\n", ""},
 		{"class A { fun f() = \"s\" }\nval x: Int = A().f()\n", "type mismatch"},
 		{"open class A\nclass B : A()\nval a: A = B()\nval m = mapOf(1 to B())\n", ""},
+		// A class of the class path's name takes its place in the class
+		// path's signatures, but only in its own compile.
+		{"package java.util.function\ninterface Supplier<T> { fun extra(): Int }\nfun f(o: java.util.Optional<String>, s: Supplier<String>) = o.orElseGet(s)\n", ""},
+		{"val s = java.util.function.Supplier { \"a\" }\nval x: String = s.get()\nfun f(o: java.util.Optional<String>) = o.orElseGet(s)\n", ""},
 	}
 	compile := func(src string, libs *Libraries) (map[string][]byte, error) {
 		dir := t.TempDir()

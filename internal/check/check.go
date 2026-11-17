@@ -47,6 +47,10 @@ type Universe struct {
 	// built-in type, as TextValue.String, which hides it where it is
 	// in scope.
 	builtinNames bool
+	// shadowing is set if a class of the program has the name of a class
+	// of the class path, which it takes the place of: see
+	// classTable.shadow.
+	shadowing bool
 	// partial is Options.Signatures: a class type with an argument that
 	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
 	// has it, rather than being an error type as a whole.
@@ -184,8 +188,11 @@ type Checker struct {
 	// renamed are the dotted names that the file imports only under
 	// another name: import a.A as ER hides a.A's simple name in the
 	// file's package, the star imports and the default imports.
-	renamed     map[string]bool
-	cyclic      []*syntax.ClassDecl     // classes that inherit from themselves
+	renamed map[string]bool
+	cyclic  []*syntax.ClassDecl // classes that inherit from themselves
+	// cyclicAt are, for a class of cyclic whose cycle goes through the
+	// class path, the supertypes that lead back to it.
+	cyclicAt    map[*syntax.ClassDecl][]syntax.Pos
 	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
 	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
 	temps       int                     // temporaries named so far, for unique names
@@ -809,6 +816,12 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
+	shadows := lib.t.shadowedBy(files)
+	if shadows {
+		w := *lib
+		w.t = lib.t.private()
+		lib = &w
+	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
@@ -832,6 +845,16 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	if lib.t.cp != nil && lib.t.cp.HasSources() {
 		find := u.sourceClass
 		lib.t.sources.Store(&find)
+	}
+	if shadows {
+		find := func(name string) *types.ClassSym {
+			if lib.t.cp.IsSource(name) {
+				return nil
+			}
+			return u.sourceClass(name)
+		}
+		lib.t.root().shadow.Store(&find)
+		u.shadowing = true
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err

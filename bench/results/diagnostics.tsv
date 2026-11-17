@@ -1181,7 +1181,7 @@ tests/classObjects/typeParametersInObject.kt	rejects invalid	on an expected line
 tests/classpathSubstitution/cyclicSupertype.kt	rejects invalid	on an expected line	
 tests/classpathSubstitution/cyclicSupertype2.kt	rejects invalid	on an expected line	
 tests/classpathSubstitution/cyclicSupertypeBetweenModules.kt	rejects invalid	on an expected line	
-tests/classpathSubstitution/localClasspathSubstitution.kt	rejects valid	unresolved reference: _	usage.kt:11: unresolved reference: bar
+tests/classpathSubstitution/localClasspathSubstitution.kt	accepts valid		
 tests/collectionLiteralInLambdaReturningAnnotation.kt	skip	LANGUAGE	
 tests/collectionLiterals/cfg/clArgumentInfluencesOverload.kt	skip	LANGUAGE	
 tests/collectionLiterals/cfg/collectionLiteralsAndSmartcasts.kt	skip	LANGUAGE	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/claude-0/-workspace-kotlin-compiler-go/6e45242d-902c-5356-af71-55f05a224b30/scratchpad/tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -6028,8 +6028,8 @@ tests/multimodule/duplicateClass/duplicateClass.kt	accepts valid
 tests/multimodule/duplicateClass/duplicateNestedClasses.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/duplicateSuperClass.kt	accepts valid		
 tests/multimodule/duplicateClass/genericSuperClass.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	b.kt:5: ARGUMENT_TYPE_MISMATCH
-tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	b.kt:9: type mismatch: inferred type is A but A was expected
-tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt	rejects valid	unresolved reference: _	b.kt:10: unresolved reference: foo
+tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt	accepts valid		
+tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt	accepts valid		
 tests/multimodule/duplicateClass/members.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/sameClassNameDifferentPackages.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/sameGenericArguments.kt	accepts valid		

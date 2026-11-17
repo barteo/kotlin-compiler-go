@@ -7,9 +7,9 @@ Of 10827 test files, 2295 are skipped and 8532 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4348 | 51.0% |
-| accepts valid | 4117 | 48.3% |
+| accepts valid | 4120 | 48.3% |
 | accepts invalid | 47 | 0.6% |
-| rejects valid | 5 | 0.1% |
+| rejects valid | 2 | 0.0% |
 | parse/unsupported | 14 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -88,9 +88,8 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 2 | `tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt`, `testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt` |
-| `unresolved reference: _` | 2 | `tests/classpathSubstitution/localClasspathSubstitution.kt`, `tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 1 | `tests/nullabilityAndSmartCasts/kt1778.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 1 | `testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt` |
 
 ## Errors by diagnostic
 
@@ -180,10 +179,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 221 |
+| `unresolved reference: _` | 219 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `type mismatch: inferred type is _ but _ was expected` | 173 |
+| `type mismatch: inferred type is _ but _ was expected` | 172 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 57 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
 | `unresolved or unsupported type: _` | 32 |
@@ -209,7 +208,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' is not allowed outside a loop` | 8 |
 | `'_' modifier is required on '_'` | 8 |
 | `expected n parameter of type _ but n were declared` | 8 |
-| `'_' overrides nothing` | 7 |
+| `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | *170 more* | |
 
 ## Unsupported features

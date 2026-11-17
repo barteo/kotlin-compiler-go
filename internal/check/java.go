@@ -25,6 +25,12 @@ type classTable struct {
 	// class path's classes of Java sources name. Checking sets it once
 	// the program's classes are declared.
 	sources atomic.Pointer[func(string) *types.ClassSym]
+	// shadow finds the program's classes by internal name, which take
+	// the place of the class path's of their names, as K2's symbol
+	// providers look in the program's sources first: the class path's
+	// signatures and supertypes that name such a class name the
+	// program's. Checking sets it on a table of its own (see private).
+	shadow atomic.Pointer[func(string) *types.ClassSym]
 
 	// parent is set on a check's table of its Java sources, whose class
 	// path is an overlay of parent's: see withSources. It has the
@@ -81,6 +87,48 @@ func (t *classTable) root() *classTable {
 func (t *classTable) withSources(cp *classpath.Path) *classTable {
 	t = t.root()
 	return &classTable{tableShared: t.tableShared, cp: cp, parent: t, srcM: map[string]*types.ClassSym{}}
+}
+
+// private returns a new table of t's class path, with t's settings,
+// which shares nothing with t: a check whose program has classes of the
+// names of the class path's own reads the class path anew, so that
+// those classes take the place of the class path's in its signatures
+// (see shadow) without a library that checks share (see Libraries in
+// internal/driver, and analysis/ka) seeing them.
+func (t *classTable) private() *classTable {
+	root := t.root()
+	n := newClassTable(root.cp)
+	n.serialization, n.hidden, n.javaTypes = root.serialization, root.hidden, root.javaTypes
+	if t.parent != nil {
+		return n.withSources(t.cp)
+	}
+	return n
+}
+
+// shadowedBy reports whether a class of files has the name of a class
+// of t's class path that isn't one of the program's Java sources.
+func (t *classTable) shadowedBy(files []*syntax.File) bool {
+	root := t.root()
+	if root.cp == nil {
+		return false
+	}
+	for _, f := range files {
+		pkg := strings.ReplaceAll(f.Package, ".", "/")
+		if pkg != "" {
+			pkg += "/"
+		}
+		for _, d := range f.Decls {
+			cd, ok := d.(*syntax.ClassDecl)
+			if !ok {
+				continue
+			}
+			name := pkg + cd.Name
+			if root.cp.Has(name) && (t.cp == nil || !t.cp.IsSource(name)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // sourceClass returns the class of the Java sources with the given name.
@@ -194,6 +242,11 @@ func (t *classTable) class(name string) *types.ClassSym {
 		}
 		if n, ok := functionArity(name, "kotlin/coroutines/Suspend"); ok {
 			return t.funcs.SuspendClass(n) // kotlin.coroutines.SuspendFunction1, suspend (P1) -> R
+		}
+	}
+	if sh := t.shadow.Load(); sh != nil {
+		if c := (*sh)(name); c != nil {
+			return c
 		}
 	}
 	if t.cp == nil || !t.cp.Has(name) {

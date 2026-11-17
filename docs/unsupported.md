@@ -38,10 +38,9 @@ own tests.
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.
 - A class of the program with the name of a class of the class path
-  doesn't replace it in the class path's signatures and supertypes, as
-  it does in K2: a class path's class whose supertype is shadowed this
-  way still has the class path's supertype. Only the cycles of
-  supertypes this closes are reported.
+  takes its place in the class path's signatures and supertypes, as in
+  K2. A class of the program's Java sources doesn't: the class path's
+  signatures still name the class path's class of its name.
 - Two classes of one name on the class path, from different modules,
   are one class, the first; a signature that names the other with
   other type arguments isn't reported.
