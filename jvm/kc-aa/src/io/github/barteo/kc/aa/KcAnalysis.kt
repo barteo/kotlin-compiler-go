@@ -84,13 +84,13 @@ class KcAnalysis internal constructor(
         p.restoreSymbol(session(this))
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
-        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.byPsi[c]?.let { return it as? KaNamedClassSymbol }
         round.libraryClass(round.javaClassId(c) ?: return null)
-        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+        return round.byPsi[c] as? KaNamedClassSymbol
     }
     fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
         m.containingClass?.let(::getNamedClassSymbol)
-        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+        return round.byPsi[m] as? KaCallableSymbol
     }
 
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)

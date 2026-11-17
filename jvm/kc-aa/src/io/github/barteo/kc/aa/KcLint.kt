@@ -181,7 +181,7 @@ internal class KcLint(
 
     /** The model's symbol of a source declaration, if it has one. */
     private fun modelSymbol(e: PsiElement): KaDeclarationSymbol? =
-        synchronized(round) { round.byPsi[e] } as? KaDeclarationSymbol
+        round.byPsi[e] as? KaDeclarationSymbol
 
     /**
      * The symbol of a declaration in the sources: the model's, or else one
