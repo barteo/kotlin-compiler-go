@@ -1,8 +1,9 @@
 // Conversions during inference: a function value passed for a suspend
 // function type whose variables it gives, a lambda of an if passed for
 // a variable whose bound is a suspend function type, a lambda passed for
-// a variable a Java interface bounds, and a SAM constructor's lambda
-// whose declared parameter doesn't fit the expected type.
+// a variable, converted to the Java interface it is expected to be only
+// when its call is passed for that interface, and a SAM constructor's
+// lambda whose declared parameter doesn't fit the expected type.
 
 fun <T> foo1(f: suspend (T) -> String): T = TODO()
 fun <T, K> foo2(f: suspend (T) -> K): Map<T, K> = TODO()
@@ -25,8 +26,12 @@ fun suspendBranches(b: Boolean) {
     Bar(Foo(if (b) { -> } else { -> }))
 }
 
+fun takeTicker(t: Ticker) {}
+
 fun javaSam() {
-    val t: Ticker = Selectors.select({ s -> s + s }, null)
+    val t: Ticker = Selectors.select({ s -> s + s }, null) // ERROR type mismatch
+    val u: Ticker = Selectors.select(Ticker { s -> s + s }, null)
+    takeTicker(Selectors.select({ s -> s + s }, null))
     val l: Collection<Int> = Selectors.compute(Computable { listOf(1) })
 }
 

@@ -312,6 +312,12 @@ type Checker struct {
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// aliasCtors are the calls of typealiases' constructors, with their
+	// aliases: see ownParamArg.
+	aliasCtors map[*syntax.Call]*types.AliasSym
+	// samArg is the call being checked as an argument for a parameter of
+	// a fun interface type: see ownParamArg.
+	samArg *syntax.Call
 	// nothingTail is set while the value of the return that a lambda's
 	// last when gives is checked: see lambdaResult.nothingTail.
 	nothingTail bool
