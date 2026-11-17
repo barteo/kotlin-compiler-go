@@ -47,6 +47,8 @@ var libraries struct {
 // acquire returns a library for cfg that the caller must release: a
 // shared one if there is one for cfg, else one it opens.
 func acquire(cfg Config) (*shared, error) {
+	cfg.ClassPath = existing(cfg.ClassPath)
+	cfg.FriendPaths = existing(cfg.FriendPaths)
 	key := libraryKey(cfg)
 	libraries.mu.Lock()
 	if key != "" {
@@ -88,6 +90,19 @@ func acquire(cfg Config) (*shared, error) {
 	libraries.list = append(libraries.list, s)
 	trimLocked()
 	return s, nil
+}
+
+// existing returns the paths that exist. A build lists class path entries
+// that need not exist (an output directory nothing is written to), and
+// kotlinc and stock KSP leave those out.
+func existing(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // retain adds a user to s.

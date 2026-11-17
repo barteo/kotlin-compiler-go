@@ -81,6 +81,17 @@ kotlin-inject 0.9.0 and kotlin-inject-anvil 0.1.7 use parts of KSP that Moshi, D
 
 `build.sh test` and `stock` run both processors over `test/inject/src` (jars in `inject-jars.sh`) and compare with `test/inject/want`, recorded from stock KSP. `build.sh stock` also runs `test/dump/Dump.kt`, a processor that writes what KSP says about each declaration in `test/dump/src` and the order of the files, on both backends, and diffs the two outputs. Files are listed in directory order, which depends on the file system, so there is no recorded want.
 
+## Hilt on Android
+
+Hilt's Android processors (`@AndroidEntryPoint`, `@HiltAndroidApp`, `@HiltViewModel`) read class literals from class files and from the Java sources Hilt generates, and a build lists paths that don't exist. Their output on kc matches stock KSP's because kc does the following, as stock KSP does:
+
+- A library path or source root that doesn't exist is left out.
+- A class literal in a class file is read as its loader reads it. For a Java declaration's annotation and for any annotation parameter's default, `Void.class` is `java.lang.Void` (only `void.class` is `kotlin.Unit`), a collection is its mutable Kotlin class, an array's element is a platform type, and a generic class's type is a raw type: it prints with arguments and KSP lists none. For a Kotlin declaration's annotation, a collection is its read-only class and a generic class's type has no arguments.
+- Java PSI finds the module's Kotlin source classes, so a class literal in a Java source (`@ClassKey(Screen.class)`) names the Kotlin class, also one that an earlier round generated. The classes Java PSI finds have names and nested classes only.
+- The check of Java sources that KSP runs after a processor's error has the IntelliJ extension point and registry key that Java's type inference reads.
+
+`build.sh test` and `stock` run Hilt's processors over `test/hilt-android/src` against hilt-android's class files and stand-ins for the Android classes (`test/hilt-android/stubs`), a two-round processor over `test/rounds/src`, and a failing processor over `test/errors/src` (on kc only: stock KSP 2.3.13 fails in that check).
+
 ## Gaps and open questions
 
 - **Slice simplifications.** These go when the symbol model and the
@@ -126,5 +137,8 @@ kotlin-inject 0.9.0 and kotlin-inject-anvil 0.1.7 use parts of KSP that Moshi, D
   octi-server, down from 45. Every file is still lowered and has its
   written signatures resolved. An edit that changes declarations checks
   the whole module.
+- **Class literals of Kotlin library annotations.** kotlinc 2.4 also writes a declaration's annotations into its metadata, and stock KSP reads them there: `Nothing::class` is `kotlin.Nothing` and `MutableList::class` is `MutableList`. kc reads the class file's annotations, where both are Java's (`java.lang.Void`, `java.util.List`). Stock KSP drops an array literal's dimension (`Array<String>::class` is `kotlin.String`); kc keeps it.
+- **Kotlin members in Java PSI.** Java PSI resolves a Kotlin source class but none of its members, so the check of Java sources that KSP runs after a processor's error reports each call of a Kotlin member from Java as an unresolved reference. Stock KSP's light classes have the members.
+- **JDK classes that Kotlin maps.** `java.util.Map` as a class has no declarations on kc and `java.util.Map.Entry` isn't found, so `Map.Entry.class` in a Java source's annotation is an error type.
 - **`expect` declarations.** kc leaves them out of the program, so a processor that looks for them (kotlin-inject's `@KmpComponentCreate`) finds none.
 - **Built-in members.** Members the JDK maps onto Kotlin's built-ins (`spliterator`, `stream`) are among a built-in class's declarations on kc, and only in its member scope on stock KSP. Built-in members lack some annotations (`IntrinsicConstEvaluation`, `SinceKotlin`), an enum's `getAllFunctions` lacks `java.lang.Enum`'s (`getDeclaringClass`, `describeConstable`, `finalize`), and `Array.size`'s `hasBackingField` differs.
