@@ -60,6 +60,9 @@
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
 //
+// OpKaHandles: nothing → n:Uint. It returns the number of sessions and
+// models that are open, for tests of what a host leaves open.
+//
 // OpKaClass: model:Int classID:String → n:Uint decl*n
 //
 // It returns the model of a class of the class path (ka's Model.Class),
@@ -92,6 +95,7 @@ const (
 	OpKaClose   kcabi.Op = 12
 	OpKaClass   kcabi.Op = 13
 	OpKaPackage kcabi.Op = 14
+	OpKaHandles kcabi.Op = 15
 )
 
 // handles are the sessions and models the JVM holds.
@@ -103,6 +107,11 @@ func init() {
 	kcabi.Register(OpKaClose, closeHandle)
 	kcabi.Register(OpKaClass, class)
 	kcabi.Register(OpKaPackage, pkg)
+	kcabi.Register(OpKaHandles, func([]byte) ([]byte, error) {
+		var w wire.Writer
+		w.Uint(uint64(handles.Len()))
+		return w.Message(), nil
+	})
 }
 
 func pkg(req []byte) ([]byte, error) {

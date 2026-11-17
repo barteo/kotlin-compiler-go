@@ -37,11 +37,12 @@ KSP fork (jvm/ksp)                JVM: jvm/kc-aa (Kotlin)                Go: lib
   return type has to be inferred.
 
 **The bridge.**
-- `libkc.so` is loaded into the Gradle daemon's JVM and exposes a single JNI
-  method, `KcNative.call(op, request) → byte[]`.
+- `libkc.so` is loaded into the Gradle daemon's JVM and exposes a single JNI method, which `KcNative.call(op, request) → byte[]` calls.
+- A JVM lets one class loader load a native library, and a Go library can't be unloaded, while a daemon makes a class loader per KSP class path and drops it when a build ends. So the JNI method is `KcBridge`'s, a class the first `KcNative` defines in a class loader of its own that sees the JDK only. A daemon thread keeps it for the life of the JVM, and each later `KcNative`, in whichever class loader, finds it through that thread and calls it with a method handle. The class loaders share the Go side's state: its library cache, and one table of handles.
+- When a class loader is collected, the thread closes the sessions and models it left open (`KcNative.atUnload`).
 - Go objects are opaque `int64` handles into a per-`Model` table, and Go holds
   no JVM references.
-- A panic surfaces as a `KcPanicException`, not a crash.
+- A panic surfaces as a `KcPanicException`, not a crash: the JNI method returns a status and a message, and `KcNative` throws its own class loader's exception.
 - A call costs about 0.5 µs, so a call returns a whole record (flags, names,
   supertypes, annotation headers) and the JVM caches it per handle.
 
@@ -125,13 +126,8 @@ Hilt's Android processors (`@AndroidEntryPoint`, `@HiltAndroidApp`, `@HiltViewMo
 - **Aliases inside a class path typealias's expansion** are expanded, not
   kept as abbreviations: its right side isn't read. A source typealias's
   are kept.
-- **One libkc per daemon.** A JVM lets one class loader load libkc, and
-  the KSP plugin makes a class loader per KSP class path, so a daemon runs
-  kc for one KSP class path only; another fails with
-  `UnsatisfiedLinkError` until the daemon restarts. Loading a
-  copy of the library from another path would load a second Go runtime
-  into the process, which is untested; failing over to the `aa` backend
-  needs the stock backend (above).
+- **One libkc file per daemon.** The class loaders of a JVM share one libkc (above), so they must name the same file, by path, size and modification time: another one, as after an upgrade of kc, fails with `UnsatisfiedLinkError` until the daemon restarts. Loading it next to the first would put a second Go runtime into the process. The bridge between them is not versioned either: a change to `KcBridge`'s methods needs a new JVM.
+- **What keeps a dropped class loader.** libkc closes a class loader's sessions and models once the JVM has collected it, which the JVM does not do while something holds it. The IntelliJ core leaves a thread local on the thread that ran KSP (`KotlinBinaryClassCache`), AWT keeps the context class loader of the first thread that used it, and the JDK's method handle caches hold classes by soft references until memory runs short. `jvm/kc-aa/test/Loaders.java` runs KSP on threads that end, uses AWT first, and has the collector clear soft references.
 - **Incremental checking.** An edit that changes only bodies checks
   only the edited files: 25 ms for a one-file edit on
   octi-server, down from 45. Every file is still lowered and has its

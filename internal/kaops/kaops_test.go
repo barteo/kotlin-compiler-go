@@ -99,6 +99,16 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
 	}
 
+	open := func() uint64 {
+		resp, err := kcabi.Call(OpKaHandles, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire.NewReader(resp).Uint()
+	}
+	if n := open(); n != 3 {
+		t.Errorf("%d handles open, want the session's and two models'", n)
+	}
 	for _, h := range []int64{model, again, session} {
 		w = wire.Writer{}
 		w.Int(h)
@@ -106,8 +116,8 @@ func TestOpenUpdateClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if handles.Len() != 0 {
-		t.Errorf("%d handles left", handles.Len())
+	if n := open(); n != 0 {
+		t.Errorf("%d handles left", n)
 	}
 	w = wire.Writer{}
 	w.Int(session)

@@ -4,7 +4,6 @@ package main
 
 /*
 #include <jni.h>
-#include <stdlib.h>
 
 static jsize kcLen(JNIEnv *env, jbyteArray a) {
 	return a ? (*env)->GetArrayLength(env, a) : 0;
@@ -22,12 +21,8 @@ static jbyteArray kcNew(JNIEnv *env, const void *src, jsize n) {
 	return a;
 }
 
-// kcThrow throws a KcException; panic tells a bug in kc from a bad request.
-static void kcThrow(JNIEnv *env, const char *msg, int panic) {
-	jclass c = (*env)->FindClass(env, panic ? "io/github/barteo/kc/KcPanicException" : "io/github/barteo/kc/KcException");
-	if (c != NULL) {
-		(*env)->ThrowNew(env, c, msg);
-	}
+static void kcStatus(JNIEnv *env, jintArray a, jint v) {
+	(*env)->SetIntArrayRegion(env, a, 0, 1, &v);
 }
 */
 import "C"
@@ -42,26 +37,31 @@ import (
 
 func main() {}
 
-//export Java_io_github_barteo_kc_KcNative_call
-func Java_io_github_barteo_kc_KcNative_call(env *C.JNIEnv, _ C.jclass, op C.jint, req C.jbyteArray) C.jbyteArray {
+// The values KcBridge.call stores in status[0].
+const (
+	statusOK    = 0
+	statusError = 1 // the response is the message of an error the request caused
+	statusPanic = 2 // the response is the message of a panic, which is a bug in kc
+)
+
+//export Java_io_github_barteo_kc_KcBridge_call
+func Java_io_github_barteo_kc_KcBridge_call(env *C.JNIEnv, _ C.jclass, op C.jint, req C.jbyteArray, status C.jintArray) C.jbyteArray {
 	n := C.kcLen(env, req)
 	in := make([]byte, int(n))
 	if n > 0 {
 		C.kcRead(env, req, n, unsafe.Pointer(&in[0]))
 	}
+	st := C.jint(statusOK)
 	out, err := kcabi.Call(kcabi.Op(op), in)
 	if err != nil {
+		st = statusError
 		var e *kcabi.Error
-		panicked := errors.As(err, &e) && e.Panic
-		msg := C.CString(err.Error())
-		defer C.free(unsafe.Pointer(msg))
-		p := C.int(0)
-		if panicked {
-			p = 1
+		if errors.As(err, &e) && e.Panic {
+			st = statusPanic
 		}
-		C.kcThrow(env, msg, p)
-		return 0
+		out = []byte(err.Error())
 	}
+	C.kcStatus(env, status, st)
 	var src unsafe.Pointer
 	if len(out) > 0 {
 		src = unsafe.Pointer(&out[0])
