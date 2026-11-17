@@ -309,6 +309,12 @@ func FuzzParse(f *testing.F) {
 	for _, src := range []string{"fun f() {}", "class A<T>(val x: T) : B by c { init {} }", "val s = \"a${b}c\"", "@A fun f(x: *)"} {
 		f.Add(src)
 	}
+	// Each "(" of a type is tried as a parenthesized type and, without its
+	// ")", parsed again as a function type's parameters.
+	f.Add("0<((A<" + strings.Repeat("(", 22) + "\v")
+	f.Add("val x = 0<(" + strings.Repeat("A<(", 18))
+	f.Add("fun f(p: " + strings.Repeat("(", 24) + ") {}")
+	f.Add("C<" + strings.Repeat("(", 24) + "0!1")
 	f.Fuzz(func(t *testing.T, src string) {
 		done := make(chan struct{})
 		timer := time.AfterFunc(5*time.Second, func() { panic(fmt.Sprintf("parse hangs on %q", src)) })
