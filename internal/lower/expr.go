@@ -405,7 +405,7 @@ func (l *lowerer) memberExpr(x syntax.Expr, name psi.NodeRef, safe bool) *syntax
 		l.fail(t, "expected a name")
 	}
 	l.underscoreRef(t)
-	m := &syntax.Member{X: x, Name: ident(t), Safe: safe}
+	m := &syntax.Member{X: x, Name: ident(t), Safe: safe, Written: true}
 	m.P = l.pos(t)
 	return record(l, m, name)
 }

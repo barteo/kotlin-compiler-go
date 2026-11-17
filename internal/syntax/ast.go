@@ -1309,6 +1309,11 @@ type Member struct {
 	Safe    bool
 	Prop    *types.VarSym
 	Builtin types.Builtin
+	// Written is set by the parser on x.f and x?.f as written, outside
+	// parentheses: a property of an explicit receiver, x.f() for an f:
+	// B.() -> Unit, isn't invoked with an implicit B, as (x.f)() is. The
+	// checker's own member accesses, this.f() for f(), don't have it.
+	Written bool
 	// Groups is set by the checker on a safe call in composable code that
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.

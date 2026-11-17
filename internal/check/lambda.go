@@ -1120,7 +1120,14 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	c.implicitArg(x, rt.Flex())
+	if m, ok := x.Fun.(*syntax.Member); ok && m.Written && !x.Recv {
+		// A property of an explicit receiver, a.foo() for a foo: B.() ->
+		// Unit, is invoked with its receiver passed: a.foo(b), not the
+		// implicit B, which (a.foo)() passes.
+		c.implicitContexts(x, rt.Flex())
+	} else {
+		c.implicitArg(x, rt.Flex())
+	}
 	x.Invoke = true
 	c.useArity(rt.A.Len() - 1)
 	if len(x.TypeArgs) > 0 {

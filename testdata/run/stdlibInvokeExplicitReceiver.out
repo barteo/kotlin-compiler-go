@@ -1,0 +1,6 @@
+getter on b, receiver b2
+getter on b, receiver b
+getter on b, receiver b
+getter on b, receiver b2
+foo on b
+foo on b

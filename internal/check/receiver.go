@@ -1020,7 +1020,14 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		if slices.ContainsFunc(c.javaMethods(cls, fn.Name), func(f *types.FunSym) bool { return c.mayTake(f, x) }) {
 			return true
 		}
-		if !cls.External && c.userProp(cls, fn.Name) != nil || cls.External && c.hasProp(cls, fn.Name) {
+		if p := c.userProp(cls, fn.Name); !cls.External && p != nil {
+			// Unless it is of a function type with a receiver that only
+			// an implicit receiver could pass, which a property of a
+			// written receiver doesn't take (see invokeValue): x.f() is
+			// then the f in scope invoked with x, f(x).
+			return !fn.Written || !c.invokedWithImplicit(p, x)
+		}
+		if cls.External && c.hasProp(cls, fn.Name) {
 			return true
 		}
 	}
@@ -1045,6 +1052,17 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 	return slices.ContainsFunc(memberExtMethods(c.cls, fn.Name), func(f *types.FunSym) bool {
 		return c.recvFits(rt, f.Recv) && c.recvTakes(rt, f.Recv) && c.mayTake(f, x)
 	})
+}
+
+// invokedWithImplicit reports whether call x of property p's value, of a
+// function type with a receiver, leaves out the receiver argument.
+func (c *Checker) invokedWithImplicit(p *types.VarSym, x *syntax.Call) bool {
+	if p.InProgress {
+		return false
+	}
+	ensureVar(p)
+	ft := p.Type.Flex().NonNull()
+	return ft.IsExtFunc() && len(x.Args) == ft.A.Len()-2-ft.Contexts()
 }
 
 // simpleExpr reports whether an expression may be checked twice: a name, or
