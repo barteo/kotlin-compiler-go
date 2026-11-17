@@ -3371,7 +3371,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	if d.Body != nil {
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 		return
 	}
@@ -3738,3 +3738,12 @@ type workerPanic struct {
 }
 
 func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }
+
+// closing returns the position of b's closing brace, where kotlinc reports
+// what a block lacks at its end, or of b if it has none.
+func closing(b *syntax.Block) syntax.Pos {
+	if b.End.Line > 0 {
+		return b.End
+	}
+	return b.P
+}

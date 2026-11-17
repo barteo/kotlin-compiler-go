@@ -137,6 +137,13 @@ func (p *parser) skipDecl() {
 	braces := false
 	p.next()
 	for {
+		// The lexer emits no NL after an unclosed ( or [, as in
+		// fun f(x: Int {, so a declaration that starts a line also ends
+		// the one skipped.
+		if prev := p.toks[p.i-1]; depth == 0 && prev.Kind != NL && prev.Kind != ASSIGN && p.tok().Pos.Line > prev.Pos.Line &&
+			startsDecl(p.tok()) && (braces || !p.primaryCtorAt(p.i)) && !p.accessorAt(p.i) {
+			return
+		}
 		switch p.tok().Kind {
 		case EOF:
 			return

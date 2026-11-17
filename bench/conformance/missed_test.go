@@ -19,6 +19,7 @@ func TestMissCause(t *testing.T) {
 		{"nearby", diagTest{kc: []diag{{file: "a.kt", line: 12}}}, catRejectsInvalid, causeNearby},
 		{"other file", diagTest{kc: []diag{{file: "b.kt", line: 10}}}, catRejectsInvalid, causeMissingCheck},
 		{"far", diagTest{kc: []diag{{file: "a.kt", line: 20}}}, catRejectsInvalid, causeMissingCheck},
+		{"nearby, marked", diagTest{kc: []diag{{file: "a.kt", line: 11}}, marks: []mark{{"a.kt", expected{"Y", 11}}}}, catRejectsInvalid, causeMissingCheck},
 	}
 	for _, tt := range tests {
 		if got := tt.dt.missCause(tt.category, e); got != tt.want {

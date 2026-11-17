@@ -271,9 +271,9 @@ type diagTest struct {
 // The causes of an expected error that kc doesn't report on its line.
 const (
 	causeAccepted     = "accepted"            // kc compiled the test
-	causeParse        = "parse-gated"         // kc's parser rejected it, and kc checks nothing then
+	causeParse        = "syntax-error"        // kc's parser rejected it, and checked only what it recovered
 	causeModule       = "module-not-compiled" // it is in a module after one that failed
-	causeNearby       = "nearby"              // kc reported an error within cascadeLines of it
+	causeNearby       = "nearby"              // kc reported an error within cascadeLines of it, on a line without a mark
 	causeMissingCheck = "missing-check"       // none of those
 	cascadeLines      = 3
 )
@@ -292,7 +292,9 @@ func (dt *diagTest) missCause(category string, e mark) string {
 	case dt.tried != nil && !dt.tried[e.file]:
 		return causeModule
 	}
-	for _, d := range dt.kc {
+	// An error on a line the markup expects another one on is most
+	// likely that one.
+	for _, d := range dt.stray() {
 		if d.file == e.file && d.line >= e.line-cascadeLines && d.line <= e.line+cascadeLines {
 			return causeNearby
 		}
@@ -784,7 +786,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 // (missCause), each with the diagnostics it misses most.
 func reportMissCauses(sb *strings.Builder, missed map[string]map[string]int, total int) {
 	fmt.Fprintf(sb, "### Missed errors by cause\n\n")
-	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checks nothing then; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it (after a first error, or at another position); *%s*, none of those.\n\n",
+	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked the declarations it recovered, without those with a syntax error; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
 		causeAccepted, causeParse, causeModule, causeNearby, cascadeLines, causeMissingCheck)
 	fmt.Fprintf(sb, "| Cause | Missed | Share | Most missed |\n|:---|---:|---:|:---|\n")
 	for _, cause := range causes {

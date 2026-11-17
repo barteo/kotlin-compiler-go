@@ -280,11 +280,12 @@ The diagnostics report sorts the missed errors by cause (*Missed errors
 by cause*), the first of these that applies:
 
 - *accepted*: `kc` compiled the test.
-- *parse-gated*: `kc`'s parser rejected the code. `kc` type-checks
-  nothing after a syntax error, so none of the test's other errors is
-  reported.
+- *syntax-error*: `kc`'s parser rejected the code. `kc` then checks
+  the declarations its parser recovers, but not one with a syntax
+  error, so the errors in such a declaration are missed.
 - *module-not-compiled*: the error is in a module after one that
   failed, which the harness doesn't compile.
-- *nearby*: `kc` reported an error within three lines of it, after a
-  first error or at another position.
+- *nearby*: `kc` reported an error within three lines of it, on a line
+  the markup expects none on: most likely this error, at another
+  position.
 - *missing-check*: none of those.
