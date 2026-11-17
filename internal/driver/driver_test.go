@@ -1439,7 +1439,7 @@ func TestSerialization(t *testing.T) {
 
 // metroJars returns Metro's runtime jar and its compiler plugin jar:
 // $KC_METRO_CP and $KC_METRO_PLUGIN, or the version that
-// testdata/metro.out was generated with, 1.5.2, in Gradle's cache. It
+// testdata/metro.out was generated with, 1.6.0, in Gradle's cache. It
 // returns "" for either if it isn't found.
 func metroJars() (runtimeJar, plugin string) {
 	runtimeJar, plugin = os.Getenv("KC_METRO_CP"), os.Getenv("KC_METRO_PLUGIN")
@@ -1449,12 +1449,12 @@ func metroJars() (runtimeJar, plugin string) {
 	}
 	cache := filepath.Join(home, ".gradle/caches/modules-2/files-2.1/dev.zacsweers.metro")
 	if runtimeJar == "" {
-		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.5.2/*/runtime-jvm-1.5.2.jar")); len(jars) > 0 {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.6.0/*/runtime-jvm-1.6.0.jar")); len(jars) > 0 {
 			runtimeJar = jars[0]
 		}
 	}
 	if plugin == "" {
-		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.5.2/*/compiler-1.5.2.jar")); len(jars) > 0 {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.6.0/*/compiler-1.6.0.jar")); len(jars) > 0 {
 			plugin = jars[0]
 		}
 	}
@@ -1480,7 +1480,7 @@ func TestMetro(t *testing.T) {
 	}
 	rt, plugin := metroJars()
 	if rt == "" || plugin == "" {
-		t.Skip("Metro 1.5.2 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
+		t.Skip("Metro 1.6.0 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
 	}
 	const dir = "../../testdata/metro"
 	want, err := os.ReadFile(dir + ".out")
@@ -1530,6 +1530,13 @@ func TestMetro(t *testing.T) {
 		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},
 		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
 			options: map[string]string{"custom-inject": "a/MyInject"}},
+		"derived bindings": {src: "@DependencyGraph interface G", feature: true, msg: "enable-derived-bindings",
+			options: map[string]string{"enable-derived-bindings": "true"}},
+		"companion blocks": {src: "@DependencyGraph interface G", feature: true, msg: "companion-mode",
+			options: map[string]string{"companion-mode": "companion-block"}},
+		"no companions": {src: "@DependencyGraph interface G", feature: true, msg: "companion-mode",
+			options: map[string]string{"companion-mode": "NONE"}},
+		"closeable graph":     {src: "@DependencyGraph interface G : CloseableGraph", feature: true, msg: "CloseableGraph"},
 		"dynamic graph":       {src: "@DependencyGraph interface G\nfun g() = createDynamicGraph<G>()", feature: true},
 		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
 		"member of its own type": {src: "@Inject class S { @Inject lateinit var s: Lazy<S> }\n@DependencyGraph interface G { val s: S }",
@@ -1545,8 +1552,35 @@ func TestMetro(t *testing.T) {
 				t.Errorf("compiled; want an error")
 			case tc.feature && (!errors.As(err, &se) || se.Feature != "metro"):
 				t.Errorf("got %v, want an unsupported Metro feature", err)
-			case !tc.feature && !strings.Contains(err.Error(), tc.msg):
+			case !strings.Contains(err.Error(), tc.msg):
 				t.Errorf("got %v, want %s", err, tc.msg)
+			}
+		})
+	}
+}
+
+// The options that Metro's Gradle plugin passes by default, in either
+// spelling of companion-mode, and the options that only shape Metro's own
+// graph implementations or diagnostics compile as no options do.
+func TestMetroOptions(t *testing.T) {
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
+	}
+	for name, options := range map[string]map[string]string{
+		"gradle defaults":       {"enable-derived-bindings": "false", "derived-binding-overlap-severity": "NONE"},
+		"companion-object":      {"companion-mode": "companion-object"},
+		"COMPANION_OBJECT":      {"companion-mode": "COMPANION_OBJECT"},
+		"provider getters":      {"force-provider-getters": "true"},
+		"overlap severity":      {"derived-binding-overlap-severity": "ERROR"},
+		"provider getters, off": {"force-provider-getters": "false"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte("import dev.zacsweers.metro.*\n\n@DependencyGraph interface G { val s: String\n@Provides fun s(): String = \"s\" }\n"), 0o644)
+			if err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: []string{lib, rt}, Metro: true, MetroOptions: options}); err != nil {
+				t.Error(err)
 			}
 		})
 	}
@@ -1558,7 +1592,7 @@ func TestMetroHints(t *testing.T) {
 	lib := stdlib()
 	rt, _ := metroJars()
 	if lib == "" || rt == "" {
-		t.Skip("kotlin-stdlib.jar or Metro 1.5.2's runtime not found")
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
 	}
 	for name, src := range map[string]string{
 		"default package": "import dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject class Impl : I\n",

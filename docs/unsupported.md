@@ -173,14 +173,15 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 ## Metro (`-metro`)
 
-`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+`kc` implements Metro 1.6.0's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
 
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`: among them `enable-derived-bindings` and a `companion-mode` other than `companion-object`;
 - `@Provides` extension functions, and `@Provides` members of an
   interface or an abstract class outside its companion object;
 - graphs with type parameters, and graph factories that are abstract classes;
+- graph lifecycle callbacks: a graph that is a `CloseableGraph`, with its `@OnGraphInit` and `@OnGraphClose` functions;
 - injecting a generic class where the requested type's arguments are type
   parameters, and contributed interfaces with type parameters;
 - javax, Jakarta, Dagger and Guice interop;
