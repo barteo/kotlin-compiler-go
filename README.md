@@ -159,6 +159,7 @@ If `kc` fails on a module, `kotlinc` compiles that module and the build log says
 | `KC_STRICT` | `1`: a `kc` failure or an unsupported compiler plugin fails the build instead of falling back to `kotlinc` |
 | `KC_SKIP` | comma-separated task paths to leave to `kotlinc`, such as `:app:compileDebugKotlin` |
 | `KC_VARIANTS` | comma-separated Android build types or variants, such as `debug` or `freeDebug`, to compile with `kc`; every other variant keeps `kotlinc` |
+| `KC_KSP` | the directory of kc's KSP backend, which also runs the KSP tasks on kc (below) |
 | `KC_IGNORE_PLUGINS` | comma-separated compiler plugins, as `artifact` or `group:artifact`, that `kc` may leave out because the program works without them (default: `compose-stability-compiler`) |
 | `KC_JDK_HOME` | the JDK to compile against, in place of the task's Java toolchain |
 
@@ -169,6 +170,17 @@ KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew assembleDebug assembleRelease --init-
 ```
 
 An entry is a build type, which covers each variant of that type (`debug` covers `freeDebug` and `paidDebug`), or one variant's name. A listed variant's unit and instrumented tests go with it. The compile task of any other variant is left as it is: it gets neither the `kc` step nor the binary as an input, so it stays up to date after a `kotlinc` build and never reuses classes `kc` wrote. A module without variants, such as a Kotlin/JVM library, is part of every variant that depends on it, so `kc` compiles it only in a build that runs tasks of listed variants and of no other, as `assembleDebug` does; in the build above, and in one that runs no variant's tasks at all, `kotlinc` compiles it. When that module was last compiled by `kc`, Gradle runs its compile task again with `kotlinc`. A task of an Android module whose variant the script cannot tell keeps `kotlinc`. An empty `KC_VARIANTS` lists nothing, so `kotlinc` compiles everything.
+
+With `KC_KSP`, the KSP tasks (`kspKotlin`, `ksp<Variant>Kotlin`) of the modules and variants `kc` compiles run KSP on [kc's KSP backend](docs/analysis-api.md), in KSP's own Gradle plugin. `jvm/kc-aa/build.sh` writes the directory:
+
+```sh
+jvm/kc-aa/build.sh
+KC_KSP=$PWD/jvm/kc-aa/build/kc-ksp KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
+```
+
+Such a task keeps its processors, options and output directories. Its KSP class path becomes the directory's loader and KSP API jars and, from its own, KSP's configuration classes, the Kotlin standard library and kotlinx.coroutines. Those are all a processor sees of KSP, as with stock KSP: the libraries kc's backend runs on, kotlin-compiler's bundled Guava among them, are in a class loader of their own, so a processor uses the Guava or kotlinx.serialization it brings. `KC_VARIANTS` and `KC_SKIP` choose KSP tasks as they choose compile tasks, so the KSP task of a variant that isn't listed stays stock KSP's and never loads kc. If the run on kc fails, stock KSP processes the module in the same task and the build log says so; with `KC_STRICT=1` the task fails. An error a processor reports fails the run on kc too, so stock KSP then reports it again. A build that changes which of the two runs a task runs the task again.
+
+The daemon loads the directory's `libkc.so` once and keeps it, so every build in a daemon has to name the same directory and the same file: after building kc again, restart the daemon. It is checked with the KSP Gradle plugin 2.3.12 and 2.3.13 on Linux; `jvm/kc-aa/gradle.sh` runs Moshi's, Dagger's and Room's processors this way and compares their output with stock KSP's.
 
 [bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
 
