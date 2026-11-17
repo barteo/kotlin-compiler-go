@@ -48,6 +48,9 @@ type compiler struct {
 	timeout time.Duration
 	// servers, if set, run kc's compiles, instead of a process each.
 	servers *kcPool
+	// annotations is the JetBrains annotations jar, which the test
+	// infrastructure puts on every module's class path, if set.
+	annotations string
 }
 
 // libraries says which of the libraries a test compiles against.
@@ -91,8 +94,11 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			return nil, err
 		}
 		var cp []string
+		if c.annotations != "" {
+			cp = append(cp, c.annotations)
+		}
 		if libs.stdlib {
-			cp = slices.Clone(c.libs)
+			cp = append(cp, c.libs...)
 		}
 		if libs.reflect {
 			cp = append(cp, c.reflect)

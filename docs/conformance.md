@@ -109,8 +109,9 @@ path unless the module names them too. Friends' output directories are
 also its `-friend-paths`. It compiles with `kc -features`, which names the unsupported feature behind an error.
 It then runs `box()` in a fresh class loader of a long-lived JVM
 (`bench/conformance/BoxRunner.java`), with a 10 s timeout. As the test
-infrastructure does, it puts the standard library and kotlin-test on the
-class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
+infrastructure does, it puts the JetBrains annotations
+(`org.jetbrains.annotations`), the standard library and kotlin-test on
+the class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
 a module's `JVM_DEFAULT_MODE` (or the test's, before its first
