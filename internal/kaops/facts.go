@@ -71,8 +71,8 @@ import (
 
 // result is a model's facts and symbols, split by file.
 type result struct {
-	facts   [][]analysis.Fact // by file
-	symbols []analysis.Symbol // by ID-1
+	facts   [][]*analysis.Fact // by file; the analysis's own, read only
+	symbols []analysis.Symbol  // by ID-1
 	files   map[psi.SnapshotID]int
 }
 
@@ -90,14 +90,15 @@ func factsOf(m *ka.Model) *result {
 	if r, ok := results.m[m]; ok {
 		return r
 	}
-	out := &result{facts: make([][]analysis.Fact, len(m.Files)), files: map[psi.SnapshotID]int{}}
+	out := &result{facts: make([][]*analysis.Fact, len(m.Files)), files: map[psi.SnapshotID]int{}}
 	for i, f := range m.Files {
 		out.files[f.Snapshot.ID()] = i
 	}
 	if m.Facts != nil {
-		data := m.Facts.Data()
-		out.symbols = data.Symbols
-		for _, f := range data.Facts {
+		// The analysis's own facts, not Data's copies: they are only read.
+		facts, symbols := m.Facts.SharedData()
+		out.symbols = symbols
+		for _, f := range facts {
 			if i, ok := out.files[f.Element.Snapshot]; ok {
 				out.facts[i] = append(out.facts[i], f)
 			}
@@ -150,7 +151,7 @@ type encoder struct {
 	body  wire.Writer
 }
 
-func encodeFile(res *result, facts []analysis.Fact) []byte {
+func encodeFile(res *result, facts []*analysis.Fact) []byte {
 	e := &encoder{res: res, index: map[string]int{}}
 	// The symbols the facts name.
 	seen := map[uint32]bool{}
@@ -174,7 +175,7 @@ func encodeFile(res *result, facts []analysis.Fact) []byte {
 	}
 	e.body.Uint(uint64(len(facts)))
 	for i := range facts {
-		e.fact(&facts[i])
+		e.fact(facts[i])
 	}
 	var w wire.Writer
 	w.Uint(uint64(e.nType))

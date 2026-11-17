@@ -116,6 +116,10 @@ jvm/detekt/build.sh test
 
 - `run.sh` takes detekt-cli's arguments. Compiler options, such as
   `-opt-in`, go last.
+- `run.sh` runs detekt with `--parallel` and a class-data sharing archive,
+  and kc analyzes in the background as soon as detekt builds the session.
+  [Making detekt on kc faster](detekt-performance.md) measures these and
+  the other speedups.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
   `libjsig.so`. That chains Go's signal handlers with the JVM's.
 - `build.sh test` runs detekt with `--all-rules` on the fixture in
