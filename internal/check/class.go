@@ -1942,8 +1942,8 @@ func simpleName(cls *types.ClassSym) string {
 	return n[strings.LastIndexByte(n, '.')+1:]
 }
 
-// superHas reports whether the supertype cls has a function (call) or a
-// property named name.
+// superHas reports whether the supertype cls has a property or, for a
+// call, a function named name.
 func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 	if call {
 		for _, f := range c.accessible(nil, c.javaMethods(cls, name)) {
@@ -1952,7 +1952,10 @@ func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 				return true
 			}
 		}
-		return false
+		// A Kotlin property of the name counts too, even one that can't
+		// be invoked: super.fn() is ambiguous between a fun fn() and a
+		// val fn of another supertype. A Java getter doesn't.
+		return c.userProp(cls, name) != nil
 	}
 	if c.userProp(cls, name) != nil {
 		return true
@@ -1991,7 +1994,8 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 				return true
 			}
 		}
-		return false
+		p := c.userProp(cls, name)
+		return p != nil && !p.Abstract
 	}
 	if p := c.userProp(cls, name); p != nil {
 		return !p.Abstract
