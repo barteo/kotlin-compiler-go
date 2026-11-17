@@ -782,7 +782,7 @@ tests/callableReference/functionReferenceWithDefaultValueAsOtherFunctionType_ena
 tests/callableReference/generic/argumentAndReturnExpectedType.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/argumentExpectedType.kt	accepts valid		
 tests/callableReference/generic/boundViolated.kt	rejects invalid	on an expected line	
-tests/callableReference/generic/dependOnArgumentType.kt	accepts invalid	INAPPLICABLE_CANDIDATE	1.kt:8: INAPPLICABLE_CANDIDATE
+tests/callableReference/generic/dependOnArgumentType.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/expectedFunctionType.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/explicitTypeArguments.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/genericExtensionFunction.kt	rejects invalid	on an expected line	
@@ -3814,8 +3814,8 @@ tests/imports/ExplicitImportsUnambiguityForFunction.kt	accepts valid
 tests/imports/ExplicitPackageImportsAmbiguity.kt	rejects invalid	on an expected line	
 tests/imports/ImportClassClash.kt	rejects invalid	on an expected line	
 tests/imports/ImportFromCompanionObject.kt	rejects invalid	on an expected line	
-tests/imports/ImportFromCurrentWithDifferentName.kt	accepts invalid	UNRESOLVED_REFERENCE	ImportFromCurrentWithDifferentName.kt:7: UNRESOLVED_REFERENCE
-tests/imports/ImportFromCurrentWithDifferentNameComplex.kt	accepts invalid	UNRESOLVED_REFERENCE	ImportFromCurrentWithDifferentNameComplex.kt:16: UNRESOLVED_REFERENCE
+tests/imports/ImportFromCurrentWithDifferentName.kt	rejects invalid	on an expected line	
+tests/imports/ImportFromCurrentWithDifferentNameComplex.kt	rejects invalid	on an expected line	
 tests/imports/ImportFromObject.kt	rejects invalid	on an expected line	
 tests/imports/ImportFunctionWithPackageName.kt	accepts valid		
 tests/imports/ImportHidingDefinitionInTheSameFile.kt	accepts valid		
@@ -3845,7 +3845,7 @@ tests/imports/PackageLocalClassReferencedError.kt	rejects invalid	on an expected
 tests/imports/PackageVsClass.kt	accepts valid		
 tests/imports/PrivateClassNotImported.kt	accepts valid		
 tests/imports/PrivateClassReferencedError.kt	rejects invalid	on an expected line	
-tests/imports/RenameOnImport.kt	rejects invalid	elsewhere	
+tests/imports/RenameOnImport.kt	rejects invalid	on an expected line	
 tests/imports/RootPackage.kt	accepts valid		
 tests/imports/RootPackageImportsA.kt	accepts valid		
 tests/imports/RootPackageImportsB.kt	accepts valid		
@@ -5457,7 +5457,7 @@ tests/j+k/recursiveSelfTypes.kt	accepts valid
 tests/j+k/runnableOrCallable.kt	accepts valid		
 tests/j+k/safeCallDefinitelyNotNull.kt	accepts valid		
 tests/j+k/sam/compatibilityResolveToOuterScopeForKotlinFunctions.kt	accepts valid		
-tests/j+k/sam/conversionForDerivedGenericClass.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	test.kt:6: ARGUMENT_TYPE_MISMATCH
+tests/j+k/sam/conversionForDerivedGenericClass.kt	rejects invalid	on an expected line	
 tests/j+k/sam/conversionsWithNestedGenerics.kt	accepts valid		
 tests/j+k/sam/enhancedSamConstructor.kt	rejects invalid	on an expected line	
 tests/j+k/sam/fakeOverrideFunctionForStaticSam.kt	accepts valid		
@@ -5471,7 +5471,7 @@ tests/j+k/sam/lambdaParameterRemainFlexibleRegularConstructorWithoutWrtHack.kt	r
 tests/j+k/sam/lambdaParameterRemainFlexibleWithoutWrtHack.kt	rejects invalid	on an expected line	
 tests/j+k/sam/privateCandidatesWithWrongArguments.kt	rejects invalid	on an expected line	
 tests/j+k/sam/recursiveSamsAndInvoke.kt	accepts valid		
-tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH; CANNOT_INFER_PARAMETER_TYPE; INAPPLICABLE_CANDIDATE	test.kt:3: INITIALIZER_TYPE_MISMATCH
+tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt	rejects invalid	on an expected line	
 tests/j+k/sam/runWithSamArgumentAndIfInside.kt	accepts valid		
 tests/j+k/sam/samOnTypeParameter.kt	accepts valid		
 tests/j+k/sam/staticSamFromImportWithStar.kt	accepts valid		
@@ -7185,7 +7185,7 @@ tests/problems/kt23677.kt	rejects invalid	on an expected line
 tests/problems/kt23909.kt	rejects invalid	on an expected line	
 tests/problems/kt24210.kt	accepts valid		
 tests/problems/kt24230.kt	parse/unsupported	callable reference	
-tests/problems/kt24507.kt	accepts invalid	INAPPLICABLE_CANDIDATE	test.kt:6: INAPPLICABLE_CANDIDATE
+tests/problems/kt24507.kt	rejects invalid	on an expected line	
 tests/problems/kt24994.kt	accepts valid		
 tests/problems/kt27650.kt	rejects invalid	on an expected line	
 tests/problems/kt27790.kt	accepts valid		
@@ -7904,7 +7904,7 @@ tests/scopes/VisibilityInClassObject.kt	rejects invalid	on an expected line
 tests/scopes/VisibilityInheritModifier.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/annotationOnClass.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/annotationOnConstructors.kt	rejects invalid	on an expected line	
-tests/scopes/classHeader/classGenericParameters.kt	accepts invalid	UNRESOLVED_REFERENCE	classGenericParameters.kt:4: UNRESOLVED_REFERENCE
+tests/scopes/classHeader/classGenericParameters.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/classParents.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/companionNestedVsOuter.kt	accepts valid		
 tests/scopes/classHeader/companionObjectParents.kt	rejects invalid	on an expected line	
@@ -8961,7 +8961,7 @@ tests/thisAndSuper/traitSuperCall.kt	accepts valid
 tests/thisAndSuper/unqualifiedSuper/ambiguousSuperWithGenerics.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuper.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithAbstractMembers.kt	rejects invalid	on an expected line	
-tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithCallableProperty.kt	accepts invalid	AMBIGUOUS_SUPER	unqualifiedSuperWithCallableProperty.kt:17: AMBIGUOUS_SUPER
+tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithCallableProperty.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithDeeperHierarchies.kt	accepts valid		
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithGenerics.kt	accepts valid		
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithInnerClass.kt	rejects invalid	on an expected line	
@@ -9092,7 +9092,7 @@ tests/typealias/inGenerics.kt	accepts valid
 tests/typealias/inSupertypesList.kt	rejects invalid	on an expected line	
 tests/typealias/inheritedNestedTypeAlias.kt	rejects invalid	on an expected line	
 tests/typealias/inhreritedTypeAliasQualifiedByDerivedClass.kt	rejects invalid	on an expected line	
-tests/typealias/innerClassTypeAliasConstructor.kt	accepts invalid	UNRESOLVED_REFERENCE_WRONG_RECEIVER	innerClassTypeAliasConstructor.kt:22: UNRESOLVED_REFERENCE_WRONG_RECEIVER
+tests/typealias/innerClassTypeAliasConstructor.kt	rejects invalid	on an expected line	
 tests/typealias/innerClassTypeAliasConstructorInSupertypes.kt	rejects invalid	on an expected line	
 tests/typealias/innerClassTypeAliasConstructorReference.kt	accepts valid		
 tests/typealias/innerTypeAliasAsType.kt	rejects invalid	on an expected line	
@@ -9568,7 +9568,7 @@ testsWithStdLib/InaccessibleInternalClass.kt	skip	ALLOW_KOTLIN_PACKAGE
 testsWithStdLib/KillerTest.kt	skip	LANGUAGE	
 testsWithStdLib/KillerTestSimplified2.kt	skip	LANGUAGE	
 testsWithStdLib/PropertyDelegateWithPrivateSet.kt	rejects invalid	on an expected line	
-testsWithStdLib/RenameOnImportHidesDefaultImport.kt	accepts invalid	UNRESOLVED_REFERENCE	RenameOnImportHidesDefaultImport.kt:7: UNRESOLVED_REFERENCE
+testsWithStdLib/RenameOnImportHidesDefaultImport.kt	rejects invalid	on an expected line	
 testsWithStdLib/addAllOnJavaCollection.kt	accepts valid		
 testsWithStdLib/addAllProjection.kt	rejects invalid	on an expected line	
 testsWithStdLib/ambiguityWithUnsignedSpecificity.kt	accepts valid		
@@ -10265,7 +10265,7 @@ testsWithStdLib/flatMapWithReverseOrder.kt	skip	LANGUAGE
 testsWithStdLib/flatMapWithReverseOrderLegacy.kt	skip	LANGUAGE	
 testsWithStdLib/forInArrayLoop/rangeVariableAssignment13.kt	accepts valid		
 testsWithStdLib/functionAndFunctionN.kt	accepts valid		
-testsWithStdLib/functionLiterals/nullableUnitLiteral.kt	accepts invalid	RETURN_TYPE_MISMATCH	nullableUnitLiteral.kt:7: RETURN_TYPE_MISMATCH
+testsWithStdLib/functionLiterals/nullableUnitLiteral.kt	rejects invalid	on an expected line	
 testsWithStdLib/functionLiterals/pseudocodeMemoryOverhead.kt	rejects invalid	on an expected line	
 testsWithStdLib/functionX.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	functionX.kt:5: INITIALIZER_TYPE_MISMATCH
 testsWithStdLib/genericContainer.kt	accepts valid		
