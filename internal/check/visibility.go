@@ -554,6 +554,20 @@ func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax
 	}
 }
 
+// strictProtectedVia reports whether the code may use a protected member
+// of owner on a receiver of class rc by Kotlin's rule alone (see
+// protectedVia), without the allowance of a member that overrides one
+// the code sees: in a subclass K of owner, or a class nested in one,
+// whose receiver is a K.
+func (c *Checker) strictProtectedVia(owner, rc *types.ClassSym) bool {
+	for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
+		if (k == owner || k.IsSubclassOf(owner)) && (rc == k || rc.IsSubclassOf(k)) {
+			return true
+		}
+	}
+	return false
+}
+
 // protectedFun reports whether f is a protected instance member, which
 // protectedVia checks the receiver of.
 func protectedFun(f *types.FunSym) bool {

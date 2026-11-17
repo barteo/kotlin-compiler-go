@@ -922,6 +922,37 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	})
 }
 
+// markInheritedProtected marks the properties of the file's classes that
+// override a protected property without a visibility of their own, which
+// are protected too, before any code that reads them is checked.
+func (c *Checker) markInheritedProtected() {
+	for _, cd := range c.classes {
+		cls := cd.Sym
+		if cls == nil {
+			continue
+		}
+		mark := func(p *types.VarSym, override bool) {
+			if p == nil || !override || explicitVisibility(p) {
+				return
+			}
+			for _, o := range c.superProps(cls, p.Name) {
+				if o.protected {
+					p.InheritsProtected = true
+					return
+				}
+			}
+		}
+		for _, cp := range cd.CtorParams {
+			mark(cp.PropSym, cp.Override)
+		}
+		for _, m := range cd.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv == nil {
+				mark(pd.Sym, pd.Override)
+			}
+		}
+	}
+}
+
 // javaFinalAccessor returns the Java superclass of cls below o's owner
 // that declares a final method with the JVM signature of o's getter or
 // setter, which Kotlin sees as o, final: or nil.

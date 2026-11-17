@@ -2390,6 +2390,18 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 				x.Prop = p
 			}
 		}
+		if p := x.Prop; p != nil && protectedMember(p) {
+			if d := c.declaredClass(x.X, cls); d != nil && p.Owner != d && !c.strictProtectedVia(p.Owner, cls) {
+				// As in K2, the protected override of a smart-cast
+				// variable's class that the code sees only as an override
+				// of what it sees gives way to the declared type's
+				// member: other.a of other: A smart-cast to B, in A's
+				// code, is A's a, not B's override.
+				if q := c.memberProp(d, x.Name); q != nil && cls.IsSubclassOf(q.Owner) {
+					x.Prop = q
+				}
+			}
+		}
 		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
 			break

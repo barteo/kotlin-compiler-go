@@ -899,6 +899,9 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	for _, c := range checkers {
 		c.delegations()
 	}
+	for _, c := range checkers {
+		c.markInheritedProtected()
+	}
 	checked := onlyCheckers(checkers, opts)
 	for _, c := range checked {
 		c.defaultImpls()
