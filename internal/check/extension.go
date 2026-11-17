@@ -190,6 +190,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Setter = ss
 	}
 	c.propContexts(d, sym)
+	c.unusedPropTypeParams(d, gs.Recv, sym.Contexts)
 	switch {
 	case d.Type != nil:
 		sym.Type, sym.Resolved = c.resolveType(d.Type), true
@@ -447,4 +448,40 @@ func (c *Checker) thisExtProp(x *syntax.Ident) (types.Type, bool) {
 	m.P = x.P
 	x.Member = m
 	return c.expr(m, noWant), true
+}
+
+// unusedPropTypeParams reports the type parameters of an extension
+// property that neither its receiver type nor its context parameters
+// mention, directly or through the bounds of those they mention, as
+// kotlinc's TYPE_PARAMETER_OF_PROPERTY_NOT_USED_IN_RECEIVER and
+// INCORRECT_TYPE_PARAMETER_OF_PROPERTY: a read couldn't infer them.
+func (c *Checker) unusedPropTypeParams(d *syntax.PropDecl, recv types.Type, ctxs []*types.VarSym) {
+	if len(d.TypeParams) == 0 || recv.K == types.Invalid {
+		return
+	}
+	used := map[*types.TypeParamSym]bool{}
+	var mark func(t types.Type)
+	mark = func(t types.Type) {
+		t.Has(func(u types.Type) bool {
+			if !u.IsParam() {
+				return false
+			}
+			if p := u.Param(); p != nil && !used[p] {
+				used[p] = true
+				for _, b := range p.Bounds {
+					mark(b)
+				}
+			}
+			return false
+		})
+	}
+	mark(recv)
+	for _, v := range ctxs {
+		mark(v.Type)
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Sym != nil && !used[tp.Sym] {
+			c.errorf(tp.P, "type parameter of a property must be used in its receiver type or context parameters")
+		}
+	}
 }

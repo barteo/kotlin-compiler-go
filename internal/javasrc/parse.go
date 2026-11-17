@@ -534,6 +534,9 @@ func (p *parser) typeArgs() []*TypeArg {
 
 // classBody parses { members }, with an enum's constants first.
 func (p *parser) classBody(c *Class) {
+	if p.tok().kind == tEOF {
+		return // public interface I, at the end of the file: kotlinc's Java parser reads an empty body
+	}
 	p.expect("{")
 	if c.Kind == KindEnum {
 		for {

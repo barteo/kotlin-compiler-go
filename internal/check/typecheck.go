@@ -845,6 +845,9 @@ func (c *Checker) sealedCovered(cls *types.ClassSym, cv *coverage, root *types.C
 		return false
 	}
 	if root == nil {
+		if len(cls.Subclasses) == 0 {
+			return false // kotlinc wants else in a when over a sealed class with no subclasses
+		}
 		root = cls
 	}
 	for _, s := range cls.Subclasses {

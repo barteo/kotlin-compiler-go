@@ -1911,6 +1911,9 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
 			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
 		}
+		if nothingLike(t) {
+			c.errorf(varargPos(p), "forbidden vararg parameter type: %s", t)
+		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
 			// An unsigned array: UIntArray for UInt.
@@ -2745,6 +2748,19 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Property == "" {
+		c.implicitNothingRet(d)
+	}
+}
+
+// implicitNothingRet reports an expression-bodied function whose inferred
+// return type is Nothing, as kotlinc's IMPLICIT_NOTHING_RETURN_TYPE: it
+// never returns, which kotlinc wants written. An override's is its
+// overridden function's.
+func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
+	if d.Ret == nil && d.ExprBody != nil && !d.Override && d.Sym.Ret.K == types.Nothing {
+		c.errorf(d.P, "return type 'Nothing' needs to be specified explicitly")
+	}
 }
 
 func (c *Checker) inferProp(d *syntax.PropDecl) {
@@ -2774,6 +2790,10 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if d.Setter != nil {
 		d.Setter.Sym.Params[0].Type = sym.Type
 		c.setterParamType(d)
+	}
+	if d.Type == nil && d.DelegateOf == nil && !d.Override && sym.Type.K == types.Nothing {
+		// As implicitNothingRet, kotlinc's IMPLICIT_NOTHING_PROPERTY_TYPE.
+		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
 	c.onUndo(func() { delete(c.done, d) })
@@ -2921,6 +2941,7 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		c.classRules(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}
@@ -3746,4 +3767,29 @@ func closing(b *syntax.Block) syntax.Pos {
 		return b.End
 	}
 	return b.P
+}
+
+// nothingLike reports whether t is Nothing, Nothing? or a type parameter
+// bounded by one, which no array can hold elements of.
+func nothingLike(t types.Type) bool {
+	switch t.K {
+	case types.Nothing, types.Null:
+		return true
+	case types.TypeParam:
+		if tp := t.Param(); tp != nil {
+			return slices.ContainsFunc(tp.Bounds, func(b types.Type) bool { return b.K == types.Nothing || b.K == types.Null })
+		}
+	}
+	return false
+}
+
+// varargPos returns the position of p's vararg modifier, where kotlinc
+// reports what is wrong with a vararg parameter, or of p.
+func varargPos(p *syntax.Param) syntax.Pos {
+	for _, m := range p.Mods {
+		if m.Name == "vararg" {
+			return m.P
+		}
+	}
+	return p.P
 }

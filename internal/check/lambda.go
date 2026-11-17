@@ -1110,6 +1110,14 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		c.errorf(x.TypeArgs[0].P, "no type arguments expected for 'invoke'")
 		x.TypeArgs = nil
 	}
+	for i := range x.Args {
+		if x.Name(i) != "" {
+			// Function types' parameter names are documentation only.
+			c.errorf(x.Args[i].Pos(), "named arguments are not allowed for function types")
+			x.Names = nil
+			break
+		}
+	}
 	return c.resolve(x, methodCallees(rt.C.Methods["invoke"], func(*types.FunSym) types.Subst { return classSubst(rt) }), want, sink)
 }
 

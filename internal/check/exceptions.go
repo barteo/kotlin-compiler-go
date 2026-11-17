@@ -104,6 +104,12 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	for _, cb := range x.Catches {
 		c.localAnnotations(cb.Annotations, catchSite)
 		t := c.resolveType(cb.Type)
+		if t.IsParam() && t.Param() != nil && !t.Param().Reified {
+			// The JVM's exception table names a class, which only an
+			// inlined copy knows.
+			c.errorf(cb.Type.P, "non-reified type parameters cannot be used by catch parameters")
+			t = types.InvalidType
+		}
 		if t.K != types.Invalid && !c.throwable(t) {
 			c.errorf(cb.Type.P, "the type of a catch parameter must be a subtype of Throwable")
 			t = types.InvalidType

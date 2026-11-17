@@ -2285,6 +2285,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 	}
 	if s, ok := x.X.(*syntax.Super); ok {
+		c.superSafeCall(x)
 		return c.superMember(x, s)
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "isInitialized" && !x.Safe {
@@ -2913,6 +2914,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.staticCall(x, fn, cls, want, sink)
 		}
 		if s, ok := fn.X.(*syntax.Super); ok {
+			c.superSafeCall(fn)
 			return c.superCall(x, fn, s, want, sink)
 		}
 		if _, ok := c.extFuncVar(fn.Name); ok && fn.Safe && !c.memberExtFirst(fn, x) {
@@ -4444,6 +4446,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			return types.NothingType
 		}
 		return types.UnitType
+	}
+	if len(x.Branches) == 0 {
+		return types.UnitType // when (n) {} of an n: Nothing, as kotlinc types it
 	}
 	if sink != nil {
 		return c.sinkBranches(sink, pending, result)

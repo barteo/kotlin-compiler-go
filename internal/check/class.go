@@ -103,7 +103,7 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	case t.K == types.Invalid:
 		return t
 	case t.K == types.Any:
-		if cd.Interface && st.Call != nil {
+		if cd.Interface {
 			c.errorf(st.Type.P, "an interface cannot inherit from a class")
 		}
 		return types.InvalidType // the default superclass
@@ -126,6 +126,11 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		c.errorf(st.Type.P, "a supertype appears twice")
 	case cd.Enum && !sc.Interface:
 		c.errorf(st.Type.P, "an enum class cannot inherit from a class")
+	case sc.Name == "java/lang/Enum" && !cd.Interface:
+		// Only an enum class extends kotlin.Enum. As in FIR, the class
+		// still inherits from it.
+		c.errorf(st.Type.P, "class 'Enum' cannot be extended directly")
+		return t
 	case sc.Interface:
 		if st.Call != nil {
 			c.errorf(st.Call.P, "this type has no constructor, and thus must not be called")
@@ -1797,6 +1802,9 @@ func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
 // instance the code reaches as this@Outer's.
 func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Type, bool) {
 	cls := c.cls
+	if s.Label != "" && c.ambiguousLabel(s.Label) {
+		c.errorf(s.P, "ambiguous label: %s", s.Label)
+	}
 	switch {
 	case s.Label != "" && (cls == nil || s.Label != simpleName(cls)):
 		r := c.outerRecv(s.Label)
@@ -2019,8 +2027,34 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 	t := c.resolve(x, c.memberCallees(c.superImpls(st.C, ms), st), want, sink)
 	if x.Sym != nil && x.Sym.Abstract {
 		c.errorf(fn.P, "abstract member cannot be accessed directly")
+	} else if x.Sym != nil && usesDefaults(x) {
+		// The super call would need the supertype's foo$default, which
+		// dispatches virtually.
+		c.errorf(fn.P, "super calls with default arguments are not allowed, specify all arguments of 'super.%s' explicitly", fn.Name)
 	}
 	return t
+}
+
+// usesDefaults reports whether a resolved call leaves a parameter of its
+// callee, other than a vararg, to its default value.
+func usesDefaults(x *syntax.Call) bool {
+	ps := x.Sym.Params
+	passed := make([]bool, len(ps))
+	for i := range x.Args {
+		j := i
+		if x.ArgMap != nil {
+			j = x.ArgMap[i]
+		}
+		if j >= 0 && j < len(ps) {
+			passed[j] = true
+		}
+	}
+	for j, p := range ps {
+		if !passed[j] && !p.Vararg {
+			return true
+		}
+	}
+	return false
 }
 
 // superImpls replaces the abstract methods among ms, members of supertype

@@ -57,8 +57,38 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 	return nil
 }
 
+// ambiguousLabel reports whether label names the receivers of more than
+// one declaration, as kotlinc's AMBIGUOUS_LABEL: an extension function's
+// and a class's, or two extension functions'. The label of a lambda with
+// a receiver shadows those around it instead.
+func (c *Checker) ambiguousLabel(label string) bool {
+	n := 0
+	if c.cls != nil && simpleName(c.cls) == label {
+		n++
+	}
+	innermost := true
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		r := &c.recvs[i]
+		if r.label != label {
+			continue
+		}
+		if _, lambda := r.owner.(*syntax.Lambda); lambda {
+			if innermost {
+				return false
+			}
+			continue
+		}
+		innermost = false
+		n++
+	}
+	return n > 1
+}
+
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
+	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
+		c.errorf(x.P, "ambiguous label: %s", x.Label)
+	}
 	r := c.receiverFor(x)
 	if obj := c.headerThis(x, r); obj != nil {
 		x.Obj = obj

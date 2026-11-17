@@ -17,6 +17,11 @@ func (c *Checker) pop()  { c.scope = c.scope.parent }
 func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.Type {
 	exit := c.exitWatch
 	c.exitWatch = nil
+	if lf, ok := braceless(b).(*syntax.LocalFun); ok {
+		// for (x in xs) fun f() {}: a body without braces is an
+		// expression, which a named function can't be.
+		c.errorf(lf.Decl.P, "anonymous functions with names are prohibited")
+	}
 	c.push()
 	t := c.stmts(b, want, valueUsed)
 	if exit != nil {
@@ -25,6 +30,15 @@ func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.
 	c.blockScope = c.scope
 	c.pop()
 	return t
+}
+
+// braceless returns the statement of a body without braces, as of if (c)
+// f(), or nil.
+func braceless(b *syntax.Block) syntax.Stmt {
+	if b.End.Line == 0 && len(b.Stmts) == 1 {
+		return b.Stmts[0]
+	}
+	return nil
 }
 
 // stmts checks a block's statements in the current scope.

@@ -140,6 +140,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 			t = types.InvalidType
 		}
 		sym.Ret, sym.Resolved, sym.InProgress = t, true, false
+		c.implicitNothingRet(d)
 	}
 	if d.Tailrec {
 		c.tailCalls(d)
