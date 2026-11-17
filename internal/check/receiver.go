@@ -887,6 +887,8 @@ func builtinRefParams(t types.Type, name string) ([]types.Type, bool) {
 	switch {
 	case t == types.StringType.Nullable() && name == "plus":
 		return []types.Type{types.AnyType.Nullable()}, true // String?.plus(Any?)
+	case types.MayBeNull(t) && !t.P && name == "toString":
+		return nil, true // Any?.toString(), a built-in extension
 	case builtinFun(t, name, 0):
 		return nil, true
 	case !builtinFun(t, name, 1):
