@@ -64,8 +64,10 @@ func readTest(abs, rel string) (*test, error) {
 		}
 		sb.Reset()
 	}
+	named := false // whether the module's files have a // FILE: name
 	newModule := func(name string) {
 		flush()
+		named = false
 		mod = &module{name: name, directives: map[string][]string{}}
 		t.modules = append(t.modules, mod)
 		file = &srcFile{name: defaultName}
@@ -97,6 +99,16 @@ func readTest(abs, rel string) (*test, error) {
 			if mod == nil {
 				newModule("main")
 			}
+			if len(mod.files) == 1 && file.name == defaultName && !named && !onlyComments(sb.String()) {
+				// As in the test infrastructure, the code before a
+				// module's first // FILE: is that file's start: the
+				// import java.util.*; of a Java file's AbstractList.
+				file.name = m[2]
+				named = true
+				sb.WriteString("\n")
+				continue
+			}
+			named = true
 			flush()
 			file = &srcFile{name: m[2], line: i + 2}
 			mod.files = append(mod.files, file)
