@@ -309,6 +309,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
+- A type written as a Java class that Kotlin maps to a built-in type,
+  as `java.lang.CharSequence` or `java.lang.Comparable`, is the
+  built-in type: `kotlinc` keeps the Java class, so that its
+  `length()` is a method and a `java.lang.Comparable<*>` isn't a
+  `kotlin.Comparable<*>`.
 - jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java
