@@ -10,17 +10,19 @@ questions from its [analysis facts](psi.md).
 
 detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
 4-core machine. Stock is the released `detekt-cli-2.0.0-alpha.6-all.jar`. "On
-kc" is `jvm/detekt/run.sh`. Both runs used the same inputs, class path and
-`-opt-in`s.
+kc" is `jvm/detekt/run.sh`, which runs the rules with `--parallel`. Both runs
+used the same inputs, class path and `-opt-in`s.
 
-| Target | Files | Stock | On kc | Speedup | Findings that match |
-|:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.5–28.3 s | 8.0–8.4 s | 3.2–3.5× | 1581 of 1597 (99.0%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 40.2 s | 13.8 s | 2.9× | 2730 of 2778 (98.3%) |
+| Target | Files | Stock | Stock, `--parallel` | On kc | Speedup | Findings that match |
+|:---|---:|---:|---:|---:|---:|---:|
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.0 s | 18.5 s | 4.9 s | 5.3×, 3.8× | 1581 of 1597 (99.0%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 37.2 s | 29.5 s | 8.9 s | 4.2×, 3.3× | 2730 of 2778 (98.3%) |
 
-With `--parallel` on kotlinx-coroutines-core, stock took 34.6 s and
-kc took 10.9 s. kc's findings with `--parallel` are identical to its serial
-run. kc analyzes kotlinpoet in about 1.5 s of that.
+- "On kc" is the median of 5 runs after the first, which writes the
+  class-data sharing archive.
+- kc's findings with `--parallel` are identical to its serial run's. Serially,
+  kc takes 7.3 s on kotlinpoet.
+- [Making detekt on kc faster](detekt-performance.md) has the details.
 
 A finding matches when its file, line, column and rule are the same.
 
@@ -70,13 +72,15 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
 - `0003` follows `JavaClassFinderImpl`'s constructor in kotlin-compiler 2.4.21.
 
 **Analysis.**
-- On the first `analyze`, kc's ka operations open the module with facts on.
-  One check of all the sources builds both the model KSP uses and package
-  analysis's facts per file.
+- When detekt opens the session, kc's ka operations open the module with
+  facts on, on a background thread. One check of all the sources, read from
+  disk, builds both the model KSP uses and package analysis's facts per
+  file. Meanwhile a small pool parses the PSI, and then decodes each file's
+  facts. The first `analyze` waits for the check and the round.
   - If the sources don't compile, kc prints the errors and the session has
     no facts, so detekt's type-resolution rules see no types.
-  - Otherwise, each file's facts are read when a rule first asks about the
-    file. The facts are keyed by `psi` node: types, symbols, resolved calls
+  - Otherwise, each file's facts are joined with its PSI when a rule first
+    asks about the file. The facts are keyed by `psi` node: types, symbols, resolved calls
     with argument mappings, smart casts, and whether an expression is used
     as one.
 - Symbols and types are kc-aa's own, the ones KSP sees. Source declarations

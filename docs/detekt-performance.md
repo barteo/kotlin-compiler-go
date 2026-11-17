@@ -7,6 +7,14 @@ at a time on the branch `work/detekt-perf-proposals`, where each could be
 switched off, and the findings were the same with and without each of
 them.
 
+They were measured on `jvm/kc-detekt`, the first detekt on kc: the
+released detekt-cli with its own Analysis API session (`KcSession`) and
+lint operations (`internal/lintops`, `OpLintAnalyze` and `OpLintFile`).
+detekt on kc now runs on `jvm/kc-aa`, kc's Analysis API that KSP uses too,
+and its facts come from `analysis/ka`'s check (`OpKaOpen`, `OpKaFacts`).
+All five changes carry over, and [On kc-aa](#on-kc-aa) measures them
+there. The sections below keep the names of the code they were made in.
+
 ## Summary
 
 | # | Change | kotlinpoet | kotlinx-coroutines-core |
@@ -52,8 +60,9 @@ them.
 rules such as `UnusedImport` and `MaxChainedCallsOnSameLine` take a name's
 or a call's `mainReference`, and kc's session registered no PSI reference
 providers, so `getMainReference` threw `NoSuchElementException`.
-[`KcReferences.kt`](../jvm/kc-detekt/src/io/github/barteo/kc/detekt/KcReferences.kt)
-now registers references that carry only their element. kc answers
+`KcReferences.kt` (now
+[in kc-aa](../jvm/kc-aa/src/io/github/barteo/kc/aa/KcReferences.kt))
+registers references that carry only their element. kc answers
 `resolveToSymbol` from the element, so they never resolve through PSI. With
 it, kc reports 1580 findings on kotlinpoet, and stock 1597.
 
@@ -92,9 +101,9 @@ kotlinpoet:
 | `KcAnalysis.call`: an element's `KaCall` | 85,794 | 20,508 | 76% |
 | `KcAnalysis.referenced`: the symbol a name refers to | 49,087 | 13,380 | 72% |
 
-On the Go side, `TestLintStages` in
-[`internal/lintops/bench_test.go`](../internal/lintops/bench_test.go)
-times each stage of the two operations. Before the changes, on
+On the Go side, `TestLintStages` in `internal/lintops/bench_test.go` (now
+[`internal/kaops/bench_test.go`](../internal/kaops/bench_test.go)) times
+each stage of the two operations. Before the changes, on
 kotlinpoet's 39 files, on 4 cores except the encoding:
 
 | Stage | Time |
@@ -124,7 +133,7 @@ facts afterwards is 63%, on one goroutine.
   computed before the rules run, and the session's lookups go through
   `ConcurrentHashMap`s and per-file locks, so the rules scale.
 
-**Change.** [`run.sh`](../jvm/kc-detekt/run.sh) passes `--parallel`
+**Change.** [`run.sh`](../jvm/detekt/run.sh) passes `--parallel`
 unless the arguments already have it.
 
 **Result.** −1.96 s on kotlinpoet (−29%) and −3.40 s on coroutines (−28%).
@@ -138,12 +147,12 @@ other changes save more on coroutines (−1.63 s) than on kotlinpoet
 thread: 1.15 s, and 60% of the samples of the first 1.25 s, before detekt
 has read a file. A run loads 7,437 classes, 5,234 of them from jars.
 
-**Change.** [`run.sh`](../jvm/kc-detekt/run.sh) runs the JVM with
-`-XX:SharedArchiveFile=build/kc-detekt-<key>.jsa -XX:+AutoCreateSharedArchive`
+**Change.** [`run.sh`](../jvm/detekt/run.sh) runs the JVM with
+`-XX:SharedArchiveFile=build/cds/detekt-<key>.jsa -XX:+AutoCreateSharedArchive`
 (JDK 19 and later). The first run writes the archive (44 MB) when it exits.
 Later runs map the classes from it, already parsed and verified.
 - The JVM rejects an archive once a jar on its class path changes, as
-  `kc-detekt.jar` does with every build, but on JDK 21 it doesn't write a
+  `kc-detekt.jar` (now `kc-aa.jar`) does with every build, but on JDK 21 it doesn't write a
   new one. Every later run then silently loses the archive.
 - So the key is a hash of every class-path jar's path, size and
   modification time. A rebuilt jar gets a new archive, and `run.sh`
@@ -214,7 +223,8 @@ kotlinpoet, on other cores. `Analyzer` still takes 2.33 s there.
 
 **Next.** The analysis could start earlier still: the source roots are
 known when `buildKtModuleProvider` runs, before detekt creates its
-`KotlinCoreEnvironment`.
+`KotlinCoreEnvironment`. On kc-aa, detekt's patched setup opens kc's
+session (`KcStandalone.open`) and the analysis starts there.
 
 ## 5. Stop wasting time in OpLintAnalyze
 
@@ -230,7 +240,8 @@ known when `buildKtModuleProvider` runs, before detekt creates its
 - One shared `Replacer`, and a per-class memo in `converter` of the
   converted name, class id and SAM-ness.
 - `Result.SharedData()` returns the facts and symbols without copying
-  them, for callers that only read them, and `lintops` uses it.
+  them, for callers that only read them, and `lintops` uses it (now
+  `kaops`, for `OpKaFacts`).
 
 **Result.** Median of 11 rounds, before and after, with the same timing
 code:
@@ -259,6 +270,47 @@ every file's facts on 4 goroutines instead of one already measures
 - **Replacing the `KaSession` proxy** with generated code isn't worth it.
   Its reflective dispatch is 0.03 s of the run, for about 300,000 calls.
 
+## On kc-aa
+
+detekt on kc-aa is detekt-cli built from its sources with
+[three patches](../jvm/detekt/patches), on `KcStandalone`'s session. The
+five changes are ported:
+
+| # | On kc-detekt | On kc-aa |
+|:---|:---|:---|
+| 1 | `run.sh` adds `--parallel` | the same, in [`jvm/detekt/run.sh`](../jvm/detekt/run.sh) |
+| 2 | a CDS archive named by the class path's jars | the same, in `jvm/detekt/build/cds` |
+| 3 | `KcSession.type`, `KcAnalysis.call` keep their results | `KcLint.type`, `KcLintAnalysis.call` |
+| 4 | `KcSession` analyzes in the background; a pool decodes the facts | `KcStandalone.Session` does, from when it is opened |
+| 5 | `Result.SharedData` and the `Replacer` memo, for `OpLintAnalyze` | the same, for `OpKaFacts` |
+
+Two more things matter on kc-aa, where kc's analysis also builds the
+model KSP uses, and where nothing parsed the PSI before the first rule:
+- **kc checks from the paths.** kc's check needs only the source files'
+  paths, so it no longer waits for the session's `KtFile`s, which took
+  0.5–0.6 s to make on kotlinpoet.
+- **The PSI is parsed on the pool.** While kc checks, the pool parses every
+  file's tree, which the round's index of the PSI needs. Building the
+  round then takes 0.13–0.18 s instead of 0.35–0.43 s.
+
+detekt's `ValidateClasspath` phase, which collects every file's
+diagnostics and so waits for kc's analysis, takes 1.07–1.32 s on
+kotlinpoet, against 1.38–1.59 s with the analysis in the background but
+the PSI made first.
+
+With all of it, `jvm/detekt/run.sh` with its defaults, 5 runs on a 4-core
+machine after the run that writes the archive (`--analysis-mode full
+--all-rules`; the findings were the same in every run, and the same as a
+serial run's):
+
+| Target | Stock, serial | Stock, `--parallel` | On kc-aa | Speedup |
+|:---|---:|---:|---:|---:|
+| kotlinpoet | 26.0 s | 18.5 s | 4.70–5.22 s, median 4.87 s | 5.3×, 3.8× |
+| kotlinx-coroutines-core | 37.2 s | 29.5 s | 8.19–9.52 s, median 8.86 s | 4.2×, 3.3× |
+
+That machine is slower than the one above: stock took 26.0 s on
+kotlinpoet there, against 23.4 s.
+
 ## Reproducing
 
 The comparison of each change alone needs `work/detekt-perf-proposals`,
@@ -284,13 +336,14 @@ RUNS=7 bench/detekt-ab.sh /tmp/ab \
 ```
 
 - Add `--parallel` after `$ARGS` for change 1.
-- On this branch, compare whole builds instead: a variant can name its own
-  `kc-detekt.jar`, such as one built at 400ff40 with the reference fix, as
-  `"base|/tmp/base/libkc.so||/tmp/base/kc-detekt.jar"`.
-- `KC_LINT_SRC=src/commonMain:src/jvmMain KC_LINT_CP=... go test ./internal/lintops -run TestLintStages -v`
-  times the Go stages.
-- `KC_JAVA_OPTS=-Dkc.trace=true jvm/kc-detekt/run.sh ...` prints the
-  repeat counts.
+- On kc-aa, [`bench/detekt-ab.sh`](../bench/detekt-ab.sh) runs
+  `jvm/detekt`'s build. A variant can name its own `kc-aa.jar`, as
+  `"base|/tmp/base/libkc.so||/tmp/base/kc-aa.jar"`, to compare whole
+  builds.
+- `KC_LINT_SRC=src/commonMain:src/jvmMain KC_LINT_CP=... go test ./internal/kaops -run TestLintStages -v`
+  times the Go stages of `OpKaUpdate` and `OpKaFacts`.
+- `KC_JAVA_OPTS=-Dkc.trace=true jvm/detekt/run.sh ...` prints the
+  repeat counts, and `KC_TIMING=1` kc's timings.
 - `KC_JAVA_OPTS="-XX:StartFlightRecording=filename=kc.jfr,settings=profile,jdk.ExecutionSample#period=1ms"`
   records the profile.
 

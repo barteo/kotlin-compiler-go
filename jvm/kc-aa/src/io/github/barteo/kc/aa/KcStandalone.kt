@@ -8,6 +8,9 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.Executors
 
 /**
  * kc's Analysis API for a client other than KSP: a linter, such as detekt
@@ -19,8 +22,8 @@ import java.io.File
 object KcStandalone {
     /**
      * Opens a session over [config]'s module, which lasts until
-     * [disposable] is disposed. kc analyzes the sources on the first
-     * `analyze` call.
+     * [disposable] is disposed. kc starts analyzing the sources right
+     * away, in the background; the first `analyze` call waits for it.
      */
     @JvmStatic
     fun open(disposable: Disposable, config: KcModuleConfig): Session {
@@ -64,48 +67,100 @@ object KcStandalone {
         private var handle = 0L
         private var model = 0L
 
+        /**
+         * kc's analysis of the module, run in the background from the
+         * moment the session is opened: kc reads the sources from disk, not
+         * the PSI, so it overlaps the linter's own setup, while a small pool
+         * parses the PSI for the round's index of it. As soon as kc's check
+         * is done, the pool decodes each file's facts, off the threads that
+         * run the rules.
+         */
+        private val analysis = CompletableFuture<KaSession>()
+
         init {
             registerProjectService(org.jetbrains.kotlin.psi.KotlinReferenceProvidersService::class.java, KcReferenceProviders)
-            environment.provider.lazySession = lazy(LazyThreadSafetyMode.SYNCHRONIZED) { analyze() }
+            environment.provider.lazySession = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+                try {
+                    analysis.join()
+                } catch (e: CompletionException) {
+                    throw e.cause ?: e
+                }
+            }
+            // A big stack: Go's runtime runs its calls on this thread's.
+            Thread(null, {
+                try {
+                    analysis.complete(analyze())
+                } catch (e: Throwable) {
+                    analysis.completeExceptionally(e)
+                }
+            }, "kc-analysis", 64L shl 20).apply { isDaemon = true }.start()
         }
 
         /** kc's analysis of the module: its model, the round of it and the facts of its code. */
         private fun analyze(): KaSession {
             val t = KcTimer()
             val start = System.nanoTime()
-            // kc analyzes the Kotlin files; it doesn't take scripts.
-            val files = ktFiles.filter { !it.isScript() && it.virtualFile != null }
-            handle = KcOps.open(
-                KcOps.Config(
-                    jdkHome = config.jdkHome?.path,
-                    noJdk = false,
-                    moduleName = config.moduleName,
-                    jobs = Runtime.getRuntime().availableProcessors(),
-                    classPath = (config.libraries + config.friends).map { it.path }.distinct(),
-                    friendPaths = config.friends.map { it.path },
-                    facts = true,
-                    optIns = config.optIns,
-                ),
-            )
-            val m = KcOps.update(handle, files.map { File(it.virtualFile.path).canonicalPath })
-            model = m.handle
-            t.mark("update")
-            val byPath = files.associateBy { File(it.virtualFile.path).canonicalPath }
-            val joined = m.files.map { f -> f to (byPath[f.path] ?: error("kc: no PSI for ${f.path}")) }
-            val errors = m.diagnostics
-            if (errors.isNotEmpty()) {
-                System.err.println("kc: kc can't compile the sources (${errors.size} errors), so the type-resolution rules see no types:")
-                errors.take(10).forEach { System.err.println("kc:   $it") }
+            val pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors().coerceIn(1, 4)) { r ->
+                Thread(null, r, "kc-pool", 16L shl 20).apply { isDaemon = true }
             }
-            val round = KcRound(joined, { id -> KcOps.cls(model, id) }, { fq -> KcOps.pkg(model, fq) }, emptyList(), project, errors)
-            val lint = KcLint(round, joined, model, hasFacts = errors.isEmpty())
-            t.mark("round")
-            t.print("standalone files=${files.size}")
-            KcMissing.log("analyzed ${files.size} files in ${(System.nanoTime() - start) / 1_000_000} ms")
-            return KcAnalysis.session(KcAnalysis(round, KcModule(project, config), KcLibraryModule(project, config), lint))
+            try {
+                // The PSI, every file's tree parsed, on the pool: kc checks
+                // the sources from disk meanwhile. kc takes the Kotlin files,
+                // not scripts.
+                val parsed = CompletableFuture.supplyAsync({ ktFiles.filter { !it.isScript() && it.virtualFile != null } }, pool)
+                    .thenCompose { files ->
+                        CompletableFuture.allOf(*files.map { f -> CompletableFuture.runAsync({ KcRound.preorder(f.node) }, pool) }.toTypedArray())
+                            .thenApply { files }
+                    }
+                val paths = config.sourceRoots.asSequence()
+                    .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension == "kt" } }
+                    .map { it.canonicalPath }
+                    .distinct()
+                    .sorted()
+                    .toList()
+                handle = KcOps.open(
+                    KcOps.Config(
+                        jdkHome = config.jdkHome?.path,
+                        noJdk = false,
+                        moduleName = config.moduleName,
+                        jobs = Runtime.getRuntime().availableProcessors(),
+                        classPath = (config.libraries + config.friends).map { it.path }.distinct(),
+                        friendPaths = config.friends.map { it.path },
+                        facts = true,
+                        optIns = config.optIns,
+                    ),
+                )
+                t.mark("open")
+                val m = KcOps.update(handle, paths)
+                model = m.handle
+                t.mark("update")
+                val errors = m.diagnostics
+                var facts: List<CompletableFuture<KcFileFacts>>? = null
+                if (errors.isEmpty()) {
+                    facts = m.files.mapIndexed { i, f -> CompletableFuture.supplyAsync({ KcOps.facts(m.handle, i, f.nodes) }, pool) }
+                } else {
+                    System.err.println("kc: kc can't compile the sources (${errors.size} errors), so the type-resolution rules see no types:")
+                    errors.take(10).forEach { System.err.println("kc:   $it") }
+                }
+                val files = parsed.join()
+                t.mark("psi")
+                val byPath = files.associateBy { File(it.virtualFile.path).canonicalPath }
+                val joined = m.files.map { f -> f to (byPath[f.path] ?: error("kc: no PSI for ${f.path}")) }
+                val round = KcRound(joined, { id -> KcOps.cls(model, id) }, { fq -> KcOps.pkg(model, fq) }, emptyList(), project, errors)
+                val lint = KcLint(round, joined, facts)
+                t.mark("round")
+                t.print("standalone files=${files.size}")
+                KcMissing.log("analyzed ${files.size} files in ${(System.nanoTime() - start) / 1_000_000} ms")
+                return KcAnalysis.session(KcAnalysis(round, KcModule(project, config), KcLibraryModule(project, config), lint))
+            } finally {
+                // Every task is submitted by now: the pool ends with them.
+                pool.shutdown()
+            }
         }
 
         private fun close() {
+            // The analysis owns the handles until it ends.
+            runCatching { analysis.join() }
             environment.provider.clear()
             if (model != 0L) KcOps.close(model)
             if (handle != 0L) KcOps.close(handle)

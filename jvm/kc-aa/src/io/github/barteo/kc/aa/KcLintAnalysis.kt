@@ -273,6 +273,19 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
 
     /** The call [e] makes, as the Analysis API's resolveToCall finds it. */
     fun call(e: KtElement): KaCall? {
+        KcStats.count("call(element)", e)
+        val c = calls[e] ?: (resolveCall(e) ?: noCall).let { calls.putIfAbsent(e, it) ?: it }
+        return c as? KaCall
+    }
+
+    /**
+     * The calls of elements, as [call] finds them, or [noCall]: rules
+     * resolve the same element several times, and a KaCall is immutable.
+     */
+    private val calls = java.util.concurrent.ConcurrentHashMap<KtElement, Any>()
+    private val noCall = Any()
+
+    private fun resolveCall(e: KtElement): KaCall? {
         when (e) {
             is KtQualifiedExpression -> return e.selectorExpression?.let(::call)
             is KtParenthesizedExpression -> return null

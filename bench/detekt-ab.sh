@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# detekt-ab.sh compares variants of detekt on kc (jvm/kc-detekt): each
-# variant is a libkc.so, JVM options and optionally a kc-detekt.jar (by
-# default jvm/kc-detekt/build's), run RUNS times, round robin so
-# that drift on the machine spreads over all of them. It prints each
-# variant's median and minimum wall time and detekt's CreateSettings and
+# detekt-ab.sh compares variants of detekt on kc (jvm/detekt): each variant
+# is a libkc.so, JVM options and optionally a kc-aa.jar (by default
+# jvm/kc-aa/build's), run RUNS times, round robin so that drift on the
+# machine spreads over all of them. It prints each variant's median and
+# minimum wall time and detekt's CreateSettings, ValidateClasspath and
 # Analyzer phases, and checks that every run's findings are the first
 # variant's.
 #
-#	DETEKT_HOME=... RUNS=7 bench/detekt-ab.sh out-dir 'name|libkc.so|jvm options[|kc-detekt.jar]' ... -- detekt arguments
+#	RUNS=7 bench/detekt-ab.sh out-dir 'name|libkc.so|jvm options[|kc-aa.jar]' ... -- detekt arguments
 #
 # For example, against a build of the base commit:
 #
-#	bench/detekt-ab.sh /tmp/ab 'base|/tmp/base/libkc.so||/tmp/base/kc-detekt.jar' \
-#		'new|jvm/kc-detekt/build/libkc.so|' -- -i src --analysis-mode full --all-rules -cp ...
+#	bench/detekt-ab.sh /tmp/ab 'base|/tmp/base/libkc.so||/tmp/base/kc-aa.jar' \
+#		'new|jvm/kc-aa/build/libkc.so|' -- -i src --analysis-mode full --all-rules --parallel -cp ...
 #
-# jvm/kc-detekt/build.sh must have run. A variant's options may name
-# -XX:SharedArchiveFile: its first run, which writes the archive, is
-# discarded.
+# jvm/detekt/build.sh must have run. Unlike jvm/detekt/run.sh, it adds
+# neither --parallel nor a class-data sharing archive: a variant's options
+# may name -XX:SharedArchiveFile, and then its first run, which writes the
+# archive, is discarded.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-: "${DETEKT_HOME:?set DETEKT_HOME to a detekt-cli distribution}"
 runs=${RUNS:-7}
 out=$1
 shift
@@ -31,9 +31,9 @@ done
 shift
 mkdir -p "$out"
 java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}
-cp=$(sed -n 's/^CLASSPATH=//p' "$DETEKT_HOME/bin/detekt-cli" | tr ':' '\n' |
-	grep -v 'detekt-kotlin-analysis-api-standalone' | sed "s|\$APP_HOME|$DETEKT_HOME|" | paste -sd: -)
-jar=$root/jvm/kc-detekt/build/kc-detekt.jar
+# detekt's class path, as jvm/detekt/build.sh wrote it, without kc-aa.jar.
+cp=$(tr ':' '\n' <"$root/jvm/detekt/build/classpath.txt" | grep -v '/kc-aa\.jar$' | paste -sd: -)
+jar=$root/jvm/kc-aa/build/kc-aa.jar
 
 run() { # name lib opts jar index detekt-arguments...
 	local log=$out/$1.$5 lib=$2 opts=$3 jar=${4:-$jar}
@@ -41,7 +41,8 @@ run() { # name lib opts jar index detekt-arguments...
 	local start end
 	start=$(date +%s%N)
 	# shellcheck disable=SC2086 # the options are words
-	LD_PRELOAD=$java_home/lib/libjsig.so java $opts -Dkc.lib="$lib" -cp "$jar:$cp" dev.detekt.cli.Main "$@" \
+	LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m $opts -Dkc.lib="$lib" -Didea.home.path="$root/jvm/detekt/build" \
+		-cp "$jar:$cp" dev.detekt.cli.Main "$@" \
 		--debug -r "checkstyle:$log.xml" >"$log.out" 2>"$log.err" || true
 	end=$(date +%s%N)
 	echo $(((end - start) / 1000000)) >"$log.ms"
@@ -69,7 +70,7 @@ for f in t.iter("file"):
 }
 first=${variants[0]%%|*}
 findings "$out/$first.1.xml" >"$out/reference.txt"
-printf '%-12s %8s %8s %16s %10s %s\n' variant median min CreateSettings Analyzer findings
+printf '%-12s %8s %8s %16s %18s %10s %s\n' variant median min CreateSettings ValidateClasspath Analyzer findings
 for v in "${variants[@]}"; do
 	name=${v%%|*}
 	same=yes
@@ -87,6 +88,7 @@ print(float(m[1]) / {"ms": 1000, "s": 1, "us": 1e6}[m[2]] if m else 0)'
 	ms=$(cat "$out/$name".[0-9]*.ms | sort -n)
 	median=$(echo "$ms" | awk '{a[NR] = $1} END {printf "%.2f", a[int((NR + 1) / 2)] / 1000}')
 	min=$(echo "$ms" | head -1 | awk '{printf "%.2f", $1 / 1000}')
-	printf '%-12s %7ss %7ss %15ss %9ss %s (%d)\n' "$name" "$median" "$min" "$(phase CreateSettings)" "$(phase Analyzer)" \
+	printf '%-12s %7ss %7ss %15ss %17ss %9ss %s (%d)\n' "$name" "$median" "$min" "$(phase CreateSettings)" \
+		"$(phase ValidateClasspath)" "$(phase Analyzer)" \
 		"$same" "$(wc -l <"$out/reference.txt")"
 done

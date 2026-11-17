@@ -4,14 +4,40 @@
 #
 #	jvm/detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ...
 #
-# KC_JAVA_OPTS adds JVM options: -Dkc.trace=true prints kc's timings and the
-# Analysis API members it doesn't answer, -Dkc.strict=true makes those fail.
+# It runs detekt with --parallel and a class-data sharing archive.
+# KC_JAVA_OPTS adds JVM options: -Dkc.trace=true prints kc's timings, the
+# Analysis API members it doesn't answer and how often it answers the
+# others, and -Dkc.strict=true makes the unanswered ones fail.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}
 [ -s "$here/build/classpath.txt" ] || { echo "run.sh: run build.sh first" >&2; exit 1; }
+cp=$(cat "$here/build/classpath.txt")
+# A class-data sharing archive of the classes detekt on kc loads: the JVM
+# writes it at the end of the first run and maps it on later ones, instead
+# of reading, parsing and verifying the thousands of classes it loads from
+# jars (docs/detekt-performance.md). JDK 19 and later. The JVM rejects an
+# archive once a jar on the class path changes, as kc-aa.jar does with
+# every build, but doesn't write it again, so the archive is named by the
+# jars' paths, sizes and times, and older ones are deleted.
+cds=
+java_version=$(sed -n 's/^JAVA_VERSION="\([0-9]*\).*/\1/p' "$java_home/release" 2>/dev/null || true)
+if [ "${java_version:-0}" -ge 19 ]; then
+	key=$(echo "$cp" | tr ':' '\n' | { xargs stat -L -c '%n %s %Y' 2>/dev/null || true; } | cksum | cut -d' ' -f1)
+	mkdir -p "$here/build/cds"
+	archive=$here/build/cds/detekt-$key.jsa
+	for old in "$here"/build/cds/detekt-*.jsa; do
+		[ "$old" = "$archive" ] || rm -f "$old"
+	done
+	cds="-XX:SharedArchiveFile=$archive -XX:+AutoCreateSharedArchive"
+fi
+# detekt runs its rules on all cores: kc's session is thread-safe, and its
+# findings are the same as a serial run's.
+parallel=--parallel
+for a in "$@"; do [ "$a" = --parallel ] && parallel=; done
 # Go's runtime installs signal handlers in the JVM's process; libjsig
 # chains them with the JVM's.
-LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
-	-Didea.home.path="$here/build" -cp "$(cat "$here/build/classpath.txt")" dev.detekt.cli.Main "$@"
+# shellcheck disable=SC2086 # the options are words
+LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m $cds ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
+	-Didea.home.path="$here/build" -cp "$cp" dev.detekt.cli.Main $parallel "$@"

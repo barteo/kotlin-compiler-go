@@ -17,6 +17,8 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.types.Variance
 import java.util.IdentityHashMap
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -35,11 +37,15 @@ internal class KcLint(
     val round: KcRound,
     /** The model's Kotlin files, in the model's order, which the facts' file indexes count. */
     private val files: List<Pair<KcFile, KtFile>>,
-    /** The model's handle, which the facts are read through. */
-    private val model: Long,
-    /** Whether the model has facts: the sources have no errors. */
-    val hasFacts: Boolean,
+    /**
+     * Each file's facts, being decoded in the background, if the model has
+     * facts: the sources have no errors.
+     */
+    private val prefetched: List<CompletableFuture<KcFileFacts>>?,
 ) {
+    /** Whether the model has facts: the sources have no errors. */
+    val hasFacts: Boolean get() = prefetched != null
+
     val token get() = round.token
     val noAnnotations: KaAnnotationList by lazy { KcAnnotationList(emptyList(), round.token) }
 
@@ -65,11 +71,15 @@ internal class KcLint(
             val ids = IdentityHashMap<ASTNode, Int>(nodes.size * 2)
             for (n in 1 until nodes.size) ids[nodes[n]] = n
             var facts: KcFileFacts? = null
-            if (hasFacts) {
+            if (prefetched != null) {
                 if (kf.nodes != nodes.size - 1 || kf.kinds != KcKinds.hash(nodes)) {
                     System.err.println("kc: the PSI of ${kf.path} differs from kc's tree (${kf.nodes} nodes in kc, ${nodes.size - 1} in PSI), so it has no types")
                 } else {
-                    facts = KcOps.facts(model, i, kf.nodes)
+                    facts = try {
+                        prefetched[i].join()
+                    } catch (e: CompletionException) {
+                        throw e.cause ?: e
+                    }
                     facts.symbols.forEach { syms.putIfAbsent(it.id, it) }
                 }
             }
@@ -79,6 +89,7 @@ internal class KcLint(
 
     /** The fact of [e]'s node, if kc has one. */
     fun fact(e: PsiElement?): KcFact? {
+        KcStats.count("fact(element)", e)
         if (e == null) return null
         val file = e.containingFile as? KtFile ?: return null
         val d = data(file) ?: return null
@@ -111,7 +122,25 @@ internal class KcLint(
 
     /** The KaType of [t]; [nonNull] drops its nullability, as a smart cast does. */
     fun type(t: KcFType?, nonNull: Boolean = false): KaType {
-        if (t == null || t.name.isEmpty()) return KcErrorType(round, "unresolved")
+        KcStats.count("type(KcFType)", t)
+        if (t == null) return KcErrorType(round, "unresolved")
+        val cache = if (nonNull) nonNullTypes else types
+        cache[t]?.let { return it }
+        val made = makeType(t, nonNull)
+        return cache.putIfAbsent(t, made) ?: made
+    }
+
+    /**
+     * The KaTypes made of the facts' types, by type, for [type] without and
+     * with nonNull. A file's types are interned, and rules ask for the same
+     * few thousand hundreds of thousands of times. KaTypes are immutable,
+     * so they are shared, along with what they compute lazily.
+     */
+    private val types = ConcurrentHashMap<KcFType, KaType>()
+    private val nonNullTypes = ConcurrentHashMap<KcFType, KaType>()
+
+    private fun makeType(t: KcFType, nonNull: Boolean): KaType {
+        if (t.name.isEmpty()) return KcErrorType(round, "unresolved")
         if (t.parameter) {
             val p = KcTypeParameterType(round, Name.identifier(t.name), typeParameter(t), t.markedNullable && !nonNull)
             return if (t.platform && !nonNull) KcFlexibleType(round, p.withNullability(false), p.withNullability(true)) else p

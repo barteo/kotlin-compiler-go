@@ -489,6 +489,7 @@ class KcAnalysis internal constructor(
         private class Handler(val analysis: KcAnalysis) : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val a = args ?: emptyArray()
+                KcStats.count("KaSession." + method.name, null)
                 when (method.name) {
                     "equals" -> if (a.size == 1 && method.parameterTypes[0] == Any::class.java) return proxy === a[0]
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
