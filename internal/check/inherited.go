@@ -15,8 +15,10 @@ import (
 // the group overrides, as Kotlin's intersection override of them has.
 // Only the program's methods, of Kotlin or Java sources, are grouped, and
 // not those of an interface that d delegates to, whose members delegation
-// implements.
-func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
+// implements. With jdk, it returns instead the groups whose only members
+// from the class path are the JDK's Java methods and that have an
+// implementation of the program's (see checkJDKImpls).
+func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl, jdk bool) [][]*types.FunSym {
 	cls := d.Sym
 	this := cls.This()
 	var delegated []*types.ClassSym
@@ -27,17 +29,20 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 	}
 	var groups [][]*types.FunSym
 	external := map[int]bool{}
-	add := func(g *types.FunSym, ext bool) {
+	notJDK := map[int]bool{} // has a member from the class path other than a JDK Java method
+	add := func(g *types.FunSym, ext, jdkMember bool) {
 		for i, gr := range groups {
 			if gr[0].Name == g.Name && c.sameParams(this, gr[0], g) {
 				if !slices.Contains(gr, g) {
 					groups[i] = append(gr, g)
 				}
 				external[i] = external[i] || ext
+				notJDK[i] = notJDK[i] || ext && !jdkMember
 				return
 			}
 		}
 		external[len(groups)] = ext
+		notJDK[len(groups)] = ext && !jdkMember
 		groups = append(groups, []*types.FunSym{g})
 	}
 	cls.Supertypes(func(s *types.ClassSym) bool {
@@ -55,14 +60,26 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 				_, ok := g.Decl.(*syntax.FunDecl)
 				// And a method of the program's Java sources.
 				java := s.External && isJavaClass(s) && c.u.ext.javaSource(s)
-				add(g, !ok && !java || s.External && !java || slices.ContainsFunc(delegated, func(i *types.ClassSym) bool { return i.IsSubclassOf(s) }))
+				viaDelegate := slices.ContainsFunc(delegated, func(i *types.ClassSym) bool { return i.IsSubclassOf(s) })
+				// A built-in collection type's members are its Java class's.
+				add(g, !ok && !java || s.External && !java || viaDelegate, (isJavaClass(s) || s.Java != nil) && !java && !viaDelegate)
 			}
 		}
 		return true
 	})
 	var out [][]*types.FunSym
 	for i, gr := range groups {
-		if external[i] || len(gr) < 2 || !sameJVMParams(gr) {
+		if jdk {
+			if !external[i] || notJDK[i] || !slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !g.Abstract && !g.Owner.External }) {
+				continue
+			}
+			if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Owner.External && renamedJDK(g) }) {
+				continue
+			}
+		} else if external[i] {
+			continue
+		}
+		if len(gr) < 2 || !sameJVMParams(gr, jdk) {
 			continue
 		}
 		// The class's own override of them.
@@ -90,13 +107,20 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 // sameJVMParams reports whether the members gr of a group, if it has a
 // Java method, all take the same parameters on the JVM: a Java method
 // that takes an Integer and a Kotlin function that takes an Int, an int,
-// are overloads, not one member, as in K2.
-func sameJVMParams(gr []*types.FunSym) bool {
-	if !slices.ContainsFunc(gr, func(g *types.FunSym) bool { return isJavaClass(g.Owner) }) {
+// are overloads, not one member, as in K2. With jdk, a built-in collection
+// type's method is a Java method.
+func sameJVMParams(gr []*types.FunSym, jdk bool) bool {
+	if !slices.ContainsFunc(gr, func(g *types.FunSym) bool { return isJavaClass(g.Owner) || jdk && g.Owner.Java != nil }) {
 		return true
 	}
 	params := func(g *types.FunSym) string {
 		d := jvmDesc(g)
+		if jdk {
+			// The JDK's generic methods take erased types, Map's
+			// replace(K, V) an Object for a String: only an int and
+			// an Integer differ.
+			return primitiveShape(d)
+		}
 		return d[:strings.IndexByte(d, ')')+1]
 	}
 	for _, g := range gr {
@@ -105,6 +129,48 @@ func sameJVMParams(gr []*types.FunSym) bool {
 		}
 	}
 	return true
+}
+
+// renamedJDK reports whether JDK method g is a member of another name, or
+// a property, in Kotlin: Collection's size() is the property size, and a
+// function size() of an interface isn't one member with it. As in
+// kotlinc's mapped scopes (BuiltinSpecialProperties and
+// BuiltinMethodsWithDifferentJvmName), and the built-in types' members.
+func renamedJDK(g *types.FunSym) bool {
+	switch g.Name {
+	case "size", "keySet", "values", "entrySet", "length", "charAt", "name", "ordinal",
+		"intValue", "longValue", "shortValue", "byteValue", "floatValue", "doubleValue", "charValue", "booleanValue",
+		"getMessage", "getCause", "getLocalizedMessage", "getStackTrace":
+		return true
+	case "remove":
+		return primitiveShape(jvmDesc(g)) == "I" // List's removeAt
+	}
+	return false
+}
+
+// primitiveShape returns the parameters of method descriptor d as their
+// primitive types' letters, and L for any reference type: (ILjava/lang/Object;[I)V
+// is "ILL".
+func primitiveShape(d string) string {
+	var b strings.Builder
+	for i := 1; i < len(d) && d[i] != ')'; i++ {
+		switch d[i] {
+		case '[':
+			for d[i] == '[' {
+				i++
+			}
+			if d[i] == 'L' {
+				i += strings.IndexByte(d[i:], ';')
+			}
+			b.WriteByte('L')
+		case 'L':
+			i += strings.IndexByte(d[i:], ';')
+			b.WriteByte('L')
+		default:
+			b.WriteByte(d[i])
+		}
+	}
+	return b.String()
 }
 
 // checkInheritedFuns checks the methods class d inherits from more than
@@ -116,7 +182,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl) map[string]bool {
 	cls := d.Sym
 	this := cls.This()
 	reported := map[string]bool{}
-	for _, gr := range c.inheritedFunGroups(d) {
+	for _, gr := range c.inheritedFunGroups(d, false) {
 		name := gr[0].Name
 		if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
 			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
@@ -187,7 +253,44 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl) map[string]bool {
 			c.errorf(d.P, "return types of inherited members '%s' are incompatible", name)
 		}
 	}
+	c.checkJDKImpls(d, reported)
 	return reported
+}
+
+// checkJDKImpls checks that class d overrides the methods it inherits an
+// implementation of from the program and another from the JDK's Java
+// classes, the default replace(K, V) of a java.util.Map too: class ZS :
+// AbstractMutableMap<String, String>(), IS, for an IS with a
+// replace(String, String) that has a body. Unlike checkInheritedFuns, it
+// checks nothing else of them. A Kotlin function of an Int and a Java
+// method of an Integer aren't one member (see sameJVMParams).
+func (c *Checker) checkJDKImpls(d *syntax.ClassDecl, reported map[string]bool) {
+	cls := d.Sym
+	for _, gr := range c.inheritedFunGroups(d, true) {
+		name := gr[0].Name
+		if reported[name] {
+			continue
+		}
+		impls, viaClass := 0, false
+		for _, g := range gr {
+			if g.Abstract {
+				continue
+			}
+			impls++
+			// A JDK interface's default method that a superclass inherits
+			// is the superclass's implementation.
+			viaClass = viaClass || !g.Owner.Interface || cls.Super != nil && cls.Super.IsSubclassOf(g.Owner)
+		}
+		if impls < 2 {
+			continue
+		}
+		if viaClass {
+			c.errorf(d.P, "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
+		} else {
+			c.errorf(d.P, "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
+		}
+		reported[name] = true
+	}
 }
 
 // classKind describes a class in a message: class 'A', interface 'I', or
