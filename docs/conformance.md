@@ -102,7 +102,8 @@ like. `-serve=false` rules out such order effects.
 ## Box tests
 
 The harness compiles a test's modules (`// MODULE: main(lib)(friend)`,
-`// FILE: a.kt`) in order, each against the modules it names as
+`// FILE: a.kt`, where the code before a module's first `// FILE:` is
+that file's start) in order, each against the modules it names as
 dependencies and friends, as the test infrastructure does: only those,
 not theirs, so a library's own dependencies are missing from the class
 path unless the module names them too. Friends' output directories are
@@ -275,30 +276,29 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,343 | 50.9% |
-| accepts valid | 4,115 | 48.2% |
-| accepts invalid | 52 | 0.6% |
-| rejects valid | 7 | 0.1% |
+| rejects invalid | 4,341 | 50.9% |
+| accepts valid | 4,117 | 48.3% |
+| accepts invalid | 54 | 0.6% |
+| rejects valid | 5 | 0.1% |
 | parse/unsupported | 14 | 0.2% |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-18,559 of the 21,548 expected errors (86%) on their lines, and 507 of
+18,550 of the 21,548 expected errors (86%) on their lines, and 507 of
 the 3,634 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 20 of the 52
+none. Tests with Java sources are 1,221 of the run, and 22 of the 54
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 12), unresolved names
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 14), unresolved names
   (`UNRESOLVED_REFERENCE` 9), and callable references whose types
   can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2).
-- **Rejects valid**, by `kc`'s first error: unresolved names and
-  imports (4), type mismatches (2), and a property invoked as a
-  function (1). No box test is rejected.
+- **Rejects valid**, by `kc`'s first error: unresolved names (2),
+  type mismatches (2), and a property invoked as a function (1). No box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 

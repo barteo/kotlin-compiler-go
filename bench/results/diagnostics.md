@@ -6,16 +6,16 @@ Of 10827 test files, 2295 are skipped and 8532 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4343 | 50.9% |
-| accepts valid | 4115 | 48.2% |
-| accepts invalid | 52 | 0.6% |
-| rejects valid | 7 | 0.1% |
+| rejects invalid | 4341 | 50.9% |
+| accepts valid | 4117 | 48.3% |
+| accepts invalid | 54 | 0.6% |
+| rejects valid | 5 | 0.1% |
 | parse/unsupported | 14 | 0.2% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4343 tests both reject, kc reports an error on the line of an expected one in 4254.
+Of the 4341 tests both reject, kc reports an error on the line of an expected one in 4252.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -48,11 +48,12 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 12 | 10 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 14 | 10 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `UNRESOLVED_REFERENCE` | 9 | 6 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/inference/kt68570.kt` |
 | `(no error marked)` | 4 | 4 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
+| `INITIALIZER_TYPE_MISMATCH` | 4 | 1 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `testsWithStdLib/functionX.kt` |
 | `CANNOT_INFER_PARAMETER_TYPE` | 2 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 2 | 1 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `testsWithStdLib/functionX.kt` |
+| `NULL_FOR_NONNULL_TYPE` | 2 | 0 | `testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt`, `testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ACCIDENTAL_OVERRIDE` | 1 | 1 | `tests/j+k/kjkimplicitTypesCrash.kt` |
@@ -93,21 +94,20 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `unresolved reference: _` | 3 | `tests/classpathSubstitution/localClasspathSubstitution.kt`, `tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 2 | `tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt`, `testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt` |
+| `unresolved reference: _` | 2 | `tests/classpathSubstitution/localClasspathSubstitution.kt`, `tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 1 | `tests/nullabilityAndSmartCasts/kt1778.kt` |
-| `unresolved import: _` | 1 | `tests/platformTypes/notNullTypeParameter/enhancementFromKotlin.kt` |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 18559 of 21548 expected errors (86.1%) on their lines.
+kc reports 18550 of 21548 expected errors (86.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2504 | 2141 | 363 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1274 | 210 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1271 | 213 |
 | `UNSUPPORTED` | 233 | 111 | 122 |
 | `CONFLICTING_OVERLOADS` | 726 | 629 | 97 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 163 | 87 |
@@ -120,13 +120,13 @@ kc reports 18559 of 21548 expected errors (86.1%) on their lines.
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 213 | 167 | 46 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 180 | 44 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 388 | 40 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 385 | 43 |
+| `NULL_FOR_NONNULL_TYPE` | 155 | 120 | 35 |
 | `REDECLARATION` | 192 | 157 | 35 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 109 | 34 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 123 | 89 | 34 |
 | `NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE` | 60 | 28 | 32 |
-| `NULL_FOR_NONNULL_TYPE` | 155 | 123 | 32 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
 | `MUST_BE_INITIALIZED` | 102 | 72 | 30 |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 37 | 10 | 27 |
@@ -174,11 +174,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 145 | 4.9% | `ARGUMENT_TYPE_MISMATCH` 27, `UNRESOLVED_REFERENCE` 26, `INLINE_FROM_HIGHER_PLATFORM` 21, `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` 8, `SYNTAX` 6 |
-| syntax-error | 939 | 31.4% | `UNRESOLVED_REFERENCE` 180, `UNSUPPORTED` 122, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 50, `ARGUMENT_TYPE_MISMATCH` 48, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 32 |
+| accepted | 154 | 5.1% | `ARGUMENT_TYPE_MISMATCH` 30, `UNRESOLVED_REFERENCE` 26, `INLINE_FROM_HIGHER_PLATFORM` 21, `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` 8, `INITIALIZER_TYPE_MISMATCH` 6 |
+| syntax-error | 939 | 31.3% | `UNRESOLVED_REFERENCE` 180, `UNSUPPORTED` 122, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 50, `ARGUMENT_TYPE_MISMATCH` 48, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 32 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 230 | 7.7% | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` 36, `ARGUMENT_TYPE_MISMATCH` 30, `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
-| missing-check | 1675 | 56.0% | `UNRESOLVED_REFERENCE` 130, `ARGUMENT_TYPE_MISMATCH` 105, `CONFLICTING_OVERLOADS` 95, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `INVISIBLE_REFERENCE` 52 |
+| missing-check | 1675 | 55.9% | `UNRESOLVED_REFERENCE` 130, `ARGUMENT_TYPE_MISMATCH` 105, `CONFLICTING_OVERLOADS` 95, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `INVISIBLE_REFERENCE` 52 |
 
 ## Errors kotlinc doesn't report
 
@@ -186,10 +186,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 231 |
+| `unresolved reference: _` | 221 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 180 |
-| `type mismatch: inferred type is _ but _ was expected` | 176 |
+| `type mismatch: inferred type is _ but _ was expected` | 167 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 57 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
 | `unresolved or unsupported type: _` | 32 |
@@ -199,12 +199,12 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `operator '_' cannot be applied to Any?` | 14 |
 | `private setters are not allowed for open properties` | 13 |
-| `unresolved import: _` | 13 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
 | `this lambda must return a value of type _` | 12 |
 | `type checking has run into a recursive problem; specify the return type of '_'` | 12 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 11 |
+| `unresolved import: _` | 11 |
 | `ambiguous call: n candidates for '_' take (_)` | 10 |
 | `expected parameter of type _` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |

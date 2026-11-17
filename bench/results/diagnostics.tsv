@@ -7028,7 +7028,7 @@ tests/platformTypes/methodCall/visitor.kt	accepts valid
 tests/platformTypes/methodTypeParameterDefaultBound.kt	accepts valid		
 tests/platformTypes/noAnnotationInClassPath.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/enhancementFromAnnotation.kt	rejects invalid	on an expected line	
-tests/platformTypes/notNullTypeParameter/enhancementFromKotlin.kt	rejects valid	unresolved import: _	A.kt:2: unresolved import: org.jetbrains.annotations.NotNull
+tests/platformTypes/notNullTypeParameter/enhancementFromKotlin.kt	accepts valid		
 tests/platformTypes/notNullTypeParameter/methodTypeParameter.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/noInheritanceReturnType.kt	accepts valid		
 tests/platformTypes/notNullTypeParameter/noInheritanceValueParameter.kt	rejects invalid	on an expected line	
@@ -10671,15 +10671,15 @@ testsWithStdLib/pureReifiable.kt	accepts valid
 testsWithStdLib/pureReifiableArrayOperations.kt	accepts valid		
 testsWithStdLib/purelyImplementedCollection/arrayList.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/arrayListNullable.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	rejects invalid	on an expected line	
+testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	b.kt:6: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	b.kt:6: NULL_FOR_NONNULL_TYPE
 testsWithStdLib/purelyImplementedCollection/intersectionOfPrimitiveBasedFunctions.kt	accepts invalid	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	intersectionOfPrimitiveBasedFunctions.kt:18: MANY_IMPL_MEMBER_NOT_IMPLEMENTED
 testsWithStdLib/purelyImplementedCollection/invalidFqName.kt	accepts valid		
 testsWithStdLib/purelyImplementedCollection/maps.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableKey.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableValues.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/sets.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/wrongTypeParametersCount.kt	rejects valid	unresolved reference: _	b.kt:6: unresolved reference: add
+testsWithStdLib/purelyImplementedCollection/wrongTypeParametersCount.kt	accepts valid		
 testsWithStdLib/rangeTo.kt	accepts valid		
 testsWithStdLib/recursiveBug.kt	accepts valid		
 testsWithStdLib/reflection/classArrayInAnnotation.kt	accepts valid		
