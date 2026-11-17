@@ -235,12 +235,18 @@ func update(req []byte) ([]byte, error) {
 	if same {
 		return w.Message(), nil
 	}
+	writeFiles(&w, m)
+	return w.Message(), nil
+}
+
+// writeFiles writes model m's files and diagnostics.
+func writeFiles(w *wire.Writer, m *ka.Model) {
 	w.Uint(uint64(len(m.Files)))
 	for _, f := range m.Files {
 		w.String(f.Path)
 		w.String(f.Package)
-		writeAnnotations(&w, f.Annotations)
-		writeDecls(&w, f.Decls)
+		writeAnnotations(w, f.Annotations)
+		writeDecls(w, f.Decls)
 		w.Uint(uint64(len(f.Lookups)))
 		for _, l := range f.Lookups {
 			w.String(l.Scope)
@@ -258,7 +264,6 @@ func update(req []byte) ([]byte, error) {
 		w.String(d.Message)
 		w.String(d.Feature)
 	}
-	return w.Message(), nil
 }
 
 func writeDecls(w *wire.Writer, ds []*ka.Decl) {

@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
@@ -520,10 +521,23 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
 				cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 		})
-		for i, f := range files {
+		// The facts and the files' models only read what the check
+		// found, so the facts are built on a goroutine of their own while
+		// the files' models are built on the others.
+		var factsDone chan any
+		if rec.facts != nil && len(m.Diagnostics) == 0 && !SerialModel {
+			factsDone = make(chan any, 1)
+			go func() {
+				defer func() { factsDone <- recover() }()
+				m.Facts = facts.Build(snaps, files, provs, rec.facts, ml.cp).(*analysis.Result)
+			}()
+		}
+		m.Files = make([]*File, len(files))
+		build := func(i int) {
+			f := files[i]
 			if only != nil && !only[f] {
-				m.Files = append(m.Files, prev.files[i])
-				continue
+				m.Files[i] = prev.files[i]
+				return
 			}
 			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, annotAliases: rec.annotAliases[f], lib: m.lib,
 				tparams: map[*types.TypeParamSym]psi.NodeID{}}
@@ -535,10 +549,22 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					mf.Decls = append(mf.Decls, md)
 				}
 			}
-			m.Files = append(m.Files, mf)
+			m.Files[i] = mf
+		}
+		if !SerialModel {
+			eachFile(len(files), jobs, build)
+		} else {
+			for i := range files {
+				build(i)
+			}
 		}
 		tm.Mark("model")
-		if rec.facts != nil && len(m.Diagnostics) == 0 {
+		if factsDone != nil {
+			if p := <-factsDone; p != nil {
+				panic(p)
+			}
+			tm.Mark("facts")
+		} else if rec.facts != nil && len(m.Diagnostics) == 0 {
 			m.Facts = facts.Build(snaps, files, provs, rec.facts, ml.cp).(*analysis.Result)
 			tm.Mark("facts")
 		}
@@ -833,6 +859,53 @@ func (r *recorder) Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool) {
 func (r *recorder) StmtType(x syntax.Expr, t types.Type) {
 	if r.facts != nil {
 		r.facts.StmtType(x, t)
+	}
+}
+
+// SerialModel is whether Update builds the files' models one after
+// another and the facts after them, instead of on several goroutines and
+// alongside each other. KC_SERIAL_MODEL sets it, to time it.
+var SerialModel = os.Getenv("KC_SERIAL_MODEL") != ""
+
+// eachFile runs f(0) ... f(n-1) on at most jobs goroutines, files in
+// order of their index, and returns when all have.
+func eachFile(n, jobs int, f func(int)) {
+	jobs = max(1, min(jobs, n))
+	if jobs == 1 {
+		for i := range n {
+			f(i)
+		}
+		return
+	}
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failed any
+	for range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if p := recover(); p != nil {
+					mu.Lock()
+					if failed == nil {
+						failed = p
+					}
+					mu.Unlock()
+				}
+			}()
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= n {
+					return
+				}
+				f(i)
+			}
+		}()
+	}
+	wg.Wait()
+	if failed != nil {
+		panic(failed)
 	}
 }
 
