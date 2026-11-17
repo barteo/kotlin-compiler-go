@@ -575,6 +575,7 @@ func (p *parser) anonFun(label string) *Lambda {
 		p.op()
 		x := p.parseExpr()
 		l.Body = &Block{P: x.Pos(), Stmts: []Stmt{&ExprStmt{X: x}}}
+		l.AnonExpr = true
 	default:
 		p.unexpected("the body of an anonymous function")
 	}

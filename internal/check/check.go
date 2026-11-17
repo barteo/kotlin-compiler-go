@@ -3441,7 +3441,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type

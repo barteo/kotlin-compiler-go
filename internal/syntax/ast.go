@@ -1547,6 +1547,9 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonExpr is set on an anonymous function with an expression body,
+	// fun (): Unit = x, whose value isn't coerced to Unit.
+	AnonExpr bool
 	// AnonCtx are the context parameters of an anonymous function,
 	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
 	// names a lambda's it makes too, without types: see suspendConverted.

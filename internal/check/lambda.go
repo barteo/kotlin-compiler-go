@@ -505,6 +505,14 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		bt = c.unitBody(x.Body)
 		c.stubTail(lr)
+		if x.Anon && x.AnonExpr && x.AnonRet != nil {
+			// fun (): Unit = c?.close() returns a Unit?.
+			if e := tailExpr(x.Body); e != nil {
+				if t := c.safeUnit(e, e.Type()); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+					c.errorf(e.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+				}
+			}
+		}
 	} else if w.ret.K == types.Invalid && len(c.stubs) == 0 && endsInCall(x.Body) && leftBare(x) {
 		bt = c.bareTail(x.Body)
 	} else {
@@ -929,8 +937,10 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 			t := c.value(x.X, noWant)
 			// So does one whose lambda is coerced to it then:
 			// return@process processNested { proceed() }.
+			// But not a safe call of a Unit function, a Unit?:
+			// return@l c?.close().
 			if _, call := x.X.(*syntax.Call); len(c.errs) > n && simpleExpr(x.X) ||
-				call && len(c.errs) == n && t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+				call && len(c.errs) == n && t.K != types.Invalid && !c.subtype(t, types.UnitType) && !safeUnitCall(x.X, t) {
 				c.errs = c.errs[:n]
 				t = c.value(x.X, types.UnitType)
 			}
