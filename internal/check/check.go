@@ -1130,7 +1130,7 @@ type reservedRef struct{ *syntax.TypeRef }
 
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
-		c.errorf(ref.P, "function types with more than %d parameters are not supported", types.MaxVarArity)
+		c.errorf(ref.P, "function types with more than %d parameters are prohibited", types.MaxVarArity)
 		return types.InvalidType
 	}
 	ps := make([]types.Type, len(ref.Params))
@@ -1176,7 +1176,7 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	case ref.Suspend && !c.coroutines(ref.P):
 		return types.InvalidType
 	case ref.Suspend && len(ps)+1 > types.MaxVarArity:
-		c.errorf(ref.P, "suspend function types with more than %d parameters are not supported", types.MaxVarArity-1)
+		c.errorf(ref.P, "suspend function types with more than %d parameters are prohibited", types.MaxVarArity-1)
 		return types.InvalidType
 	case ref.Suspend:
 		t = c.u.ext.funcs.SuspendType(ps, r)

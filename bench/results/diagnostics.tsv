@@ -2872,7 +2872,7 @@ tests/destructuring/positionalDestructuringFullFormErrors.kt	skip	LANGUAGE
 tests/destructuring/positionalDestructuringShortForm.kt	skip	LANGUAGE	
 tests/destructuring/positionalDestructuringShortFormErrors.kt	skip	LANGUAGE	
 tests/destructuring/suppressOnNameBasedDestructuring.kt	skip	LANGUAGE	
-tests/destructuring/topLevelWithLambda.kt	parse/unsupported	destructuring declaration	topLevelWithLambda.kt:6: destructuring declarations are not supported
+tests/destructuring/topLevelWithLambda.kt	rejects invalid	on an expected line	
 tests/diagnostics/VirtualMemberHiddenOnMemberFromMappedJavaScope.kt	skip	LANGUAGE	
 tests/diagnostics/abstractSuperCall.kt	rejects invalid	on an expected line	
 tests/diagnostics/abstractSuperCallInPresenseOfNonAbstractMethodInParent.kt	rejects invalid	on an expected line	
@@ -2884,7 +2884,7 @@ tests/diagnostics/annotationArgumentRegex.kt	rejects invalid	on an expected line
 tests/diagnostics/annotationClassMember.kt	rejects invalid	on an expected line	
 tests/diagnostics/anonymousObjectByDelegate.kt	rejects invalid	on an expected line	
 tests/diagnostics/classInSupertypeForEnum.kt	rejects invalid	on an expected line	
-tests/diagnostics/conflictingOverloads.kt	parse/unsupported	destructuring declaration	conflictingOverloads.kt:37: destructuring declarations are not supported
+tests/diagnostics/conflictingOverloads.kt	rejects invalid	on an expected line	
 tests/diagnostics/conflictingOverloads2.kt	accepts valid		
 tests/diagnostics/conflictingProjection.kt	rejects invalid	on an expected line	
 tests/diagnostics/constructorInInterface.kt	rejects invalid	on an expected line	
@@ -5907,7 +5907,7 @@ tests/localClasses/typesFromSuperClasses.kt	accepts valid
 tests/localClassesInInlineFunctions.kt	rejects invalid	on an expected line	
 tests/localFunctionsHiding.kt	accepts valid		
 tests/localInsideInlineInsideLocal.kt	rejects invalid	on an expected line	
-tests/localInterfaces.kt	parse/unsupported	checker: '_' is not allowed here: local interfaces are not supported	
+tests/localInterfaces.kt	rejects invalid	on an expected line	
 tests/localNestedEnumCapturesOuterTypeParameters.kt	rejects invalid	on an expected line	
 tests/localNestedObjectCapturesOuterTypeParameters.kt	rejects invalid	on an expected line	
 tests/localObject.kt	accepts valid		
@@ -5929,7 +5929,7 @@ tests/missingMultipleDefaultsOnTransitiveInheritance1.kt	accepts valid
 tests/missingMultipleDefaultsOnTransitiveInheritance2.kt	rejects invalid	on an expected line	
 tests/missingVisibilityErrorAccessThroughTypealias.kt	rejects invalid	on an expected line	
 tests/missingWrongAnnotationTarget.kt	rejects invalid	on an expected line	
-tests/modifiers/IllegalModifiers.kt	parse/unsupported	package	IllegalModifiers.kt:3: 'package' is not supported
+tests/modifiers/IllegalModifiers.kt	rejects invalid	on an expected line	
 tests/modifiers/NoLocalVisibility.kt	rejects invalid	on an expected line	
 tests/modifiers/OpenInterface.kt	rejects invalid	on an expected line	
 tests/modifiers/OpenInterface2.kt	accepts valid		
@@ -8966,15 +8966,15 @@ tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithDeeperHierarchies.kt	acc
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithGenerics.kt	accepts valid		
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithInnerClass.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithInterfaces.kt	rejects invalid	on an expected line	
-tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt	parse/unsupported	checker: '_' is not allowed here: local interfaces are not supported	
+tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithUnresolvedBase.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/withMethodOfAnyOverridenInInterface.kt	accepts valid		
 tests/thisAndSuper/unqualifiedSuper/withMethodOverriddenInAnotherSupertype.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/withMethodsOfAny.kt	accepts valid		
 tests/throwableSubclass.kt	rejects invalid	on an expected line	
-tests/tooLargeFunctionNThroughACallableReference.kt	parse/unsupported	checker: lambdas with more than n parameters are not supported	
-tests/topLevelDestructuring.kt	parse/unsupported	destructuring declaration	topLevelDestructuring.kt:2: destructuring declarations are not supported
-tests/topLevelDestructuring2.kt	parse/unsupported	destructuring declaration	topLevelDestructuring2.kt:3: destructuring declarations are not supported
+tests/tooLargeFunctionNThroughACallableReference.kt	rejects invalid	on an expected line	
+tests/topLevelDestructuring.kt	rejects invalid	on an expected line	
+tests/topLevelDestructuring2.kt	rejects invalid	on an expected line	
 tests/traitWithRequired/traitRequiresAny.kt	rejects invalid	on an expected line	
 tests/traitWithRequired/traitSupertypeList.kt	rejects invalid	on an expected line	
 tests/treeSet.kt	accepts valid		

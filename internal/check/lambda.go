@@ -86,7 +86,7 @@ func (c *Checker) useArity(n int) {
 func (c *Checker) arityOK(p syntax.Pos, n int, what string) bool {
 	switch {
 	case n > types.MaxVarArity:
-		c.errorf(p, "%s with more than %d parameters are not supported", what, types.MaxVarArity)
+		c.errorf(p, "%s with more than %d parameters are prohibited", what, types.MaxVarArity)
 	case n > types.MaxArity && c.u.ext.funcs == types.KcFunctions:
 		c.errorf(p, "%s with more than %d parameters need the Kotlin standard library", what, types.MaxArity)
 	default:
@@ -279,7 +279,13 @@ func refAdaptation(x *syntax.Lambda, call *syntax.Call) (bool, int32) {
 func (c *Checker) lambdaType(x *syntax.Lambda, ps []types.Type, r types.Type) types.Type {
 	x.Ret = r
 	if n := len(ps); x.Suspend && n+1 > types.MaxVarArity {
-		c.errorf(x.P, "suspend lambdas with more than %d parameters are not supported", types.MaxVarArity-1)
+		c.errorf(x.P, "suspend lambdas with more than %d parameters are prohibited", types.MaxVarArity-1)
+		return types.InvalidType
+	} else if x.Suspend && x.Ref != nil && n >= types.MaxArity {
+		// Its KSuspendFunctionN, whose invoke takes a continuation too,
+		// can't be called: kotlinc's
+		// K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY.
+		c.errorf(x.P, "references to suspend functions with %d or more parameters are prohibited", types.MaxArity)
 		return types.InvalidType
 	} else if !c.arityOK(x.P, n, "lambdas") {
 		return types.InvalidType

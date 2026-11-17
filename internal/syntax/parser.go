@@ -607,13 +607,16 @@ func (p *parser) anonFunAt(i int) bool {
 }
 
 // localClass parses a local class, after its modifiers. Kotlin has no
-// local interfaces, objects or enum classes.
+// local objects or enum classes, nor local interfaces, which the checker
+// reports.
 func (p *parser) localClass(m Modifiers) *LocalClass {
 	NoContexts(&m, "classes", p)
 	t := p.tok()
 	switch {
-	case t.Kind == INTERFACE:
-		p.failAt(t.Pos, "'interface' is not allowed here: local interfaces are not supported")
+	case t.Kind == FUN:
+		cd := p.funInterface(m)
+		cd.Local = true
+		return &LocalClass{Decl: cd}
 	case t.Kind == OBJECT:
 		p.failAt(t.Pos, "named object cannot be local: use an anonymous object instead")
 	case m.Enum:
@@ -660,10 +663,49 @@ func (p *parser) localFun(m Modifiers) *LocalFun {
 // modifier or a name, an annotation, or a declaration keyword.
 func declStart(k Kind) bool {
 	switch k {
-	case IDENT, AT, FUN, VAL, VAR, CLASS, INTERFACE, OBJECT, TYPEALIAS, NL:
+	case IDENT, AT, FUN, VAL, VAR, CLASS, INTERFACE, OBJECT, TYPEALIAS, PACKAGE, NL:
 		return true
 	}
 	return false
+}
+
+// modifiedPackage reports whether the tokens ahead are modifiers or
+// annotations before a package directive: public package p.
+func (p *parser) modifiedPackage() bool {
+	j := p.i
+	for {
+		switch t := p.toks[j]; t.Kind {
+		case PACKAGE:
+			return j > p.i
+		case NL:
+			j++
+		case IDENT:
+			if !isModifier(t.Text) {
+				return false
+			}
+			j++
+		case AT:
+			j++
+			for p.toks[j].Kind == IDENT || p.toks[j].Kind == DOT || p.toks[j].Kind == COLON {
+				j++
+			}
+			if p.toks[j].Kind == LPAREN {
+				depth := 0
+				for ; p.toks[j].Kind != EOF; j++ {
+					if p.toks[j].Kind == LPAREN {
+						depth++
+					} else if p.toks[j].Kind == RPAREN {
+						if depth--; depth == 0 {
+							j++
+							break
+						}
+					}
+				}
+			}
+		default:
+			return false
+		}
+	}
 }
 
 func (p *parser) parseFile() *File {
@@ -685,8 +727,19 @@ func (p *parser) parseFile() *File {
 		})
 		p.skipSemis()
 	}
-	if p.at(PACKAGE) {
+	if p.at(PACKAGE) || p.modifiedPackage() {
 		p.decl(func() {
+			if !p.at(PACKAGE) {
+				// kotlinc's grammar has modifiers before package, which
+				// it reports in later phases.
+				m := p.modifiers()
+				for _, a := range m.Annotations {
+					p.errorLater(a.P, "annotations are not applicable to a package directive")
+				}
+				for _, w := range m.Written {
+					p.errorLater(w.P, "modifier '%s' is not applicable to 'package directive'", w.Name)
+				}
+			}
 			p.next()
 			f.PackageP = p.tok().Pos
 			var name string
@@ -761,7 +814,7 @@ func (p *parser) parseFile() *File {
 			case TYPEALIAS:
 				add(p.parseTypeAlias(m))
 			case PACKAGE:
-				p.notSupported(t, t.Kind.String())
+				p.unexpected("declaration")
 			case IDENT:
 				if t.Text == "import" {
 					p.failAt(t.Pos, "imports must come before declarations")
@@ -1178,9 +1231,6 @@ func (p *parser) funInterface(m Modifiers) *ClassDecl {
 
 func (p *parser) parseFun() *FunDecl {
 	pos := p.expect(FUN).Pos
-	if t := p.tok(); t.Kind == INTERFACE {
-		p.failAt(t.Pos, "'interface' is not allowed here: local interfaces are not supported")
-	}
 	var tps []*TypeParam
 	p.skipNL()
 	if p.at(LT) {
@@ -1414,7 +1464,7 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 	case p.at(LT):
 		tps = p.parseTypeParams()
 	case p.at(LPAREN) && p.receiverDot(false) < 0: // not a receiver: val (Int.() -> T).x
-		p.unsupported(p.tok().Pos, "destructuring declaration", "destructuring declarations are not supported")
+		p.failAt(p.tok().Pos, "Destructuring declarations are only allowed for local variables/values")
 	}
 	recv, recvAs := p.receiver(false)
 	if tps != nil && recv == nil && m.Contexts == nil {
@@ -2369,6 +2419,8 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 	case FUN:
 		if k := p.toks[p.i+1].Kind; (k == IDENT || k == LT) && !p.anonFunAt(p.i) {
 			return p.localFun(Modifiers{})
+		} else if k == INTERFACE {
+			return p.localClass(Modifiers{})
 		}
 	case IDENT:
 		if t.Text == "context" && p.contextDecl() {
@@ -2382,6 +2434,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 		if j > p.i {
 			switch p.toks[j].Kind {
 			case FUN:
+				if p.toks[j+1].Kind == INTERFACE {
+					return p.localClass(p.modifiers())
+				}
 				return p.localFun(p.modifiers())
 			case CLASS, INTERFACE, OBJECT:
 				// data class, open class, ... in a block.
