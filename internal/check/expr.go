@@ -3056,6 +3056,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
+				if alias != nil && !c.aliasOuterFits(alias, n, rt) {
+					// x.GIntI() for typealias GIntI = Generic<Int>.Inner
+					// needs an x that is a Generic<Int>.
+					c.errorf(fn.P, "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
+					c.args(x, nil)
+					return types.InvalidType
+				}
 				if alias != nil && hasUnderscore(x.TypeArgs) {
 					// outer.Alias<_>(): the class's, which the call infers.
 					if !c.aliasUnderscores(x, alias, n, fn.P) {
