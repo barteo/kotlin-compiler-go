@@ -346,6 +346,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	if info.Sig != "" || len(outer) > 0 {
 		t.classSignature(cls, info.Sig, outer)
 	}
+	pure := t.pureInterface(cls, info)
+	if pure != nil && t.kotlin {
+		addPureSuper(cls, pure)
+	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
 	cls.Fields = map[string]*types.VarSym{}
@@ -485,8 +489,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Methods[m.Name] = append(cls.Methods[m.Name], f)
 		}
 	}
+	if t.kotlin {
+		inheritPure(cls, pure)
+	}
 	mapCollectionMembers(cls)
-	purelyImplement(cls)
+	purelyImplement(cls, pure)
 	kotlinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its

@@ -10671,8 +10671,8 @@ testsWithStdLib/pureReifiable.kt	accepts valid
 testsWithStdLib/pureReifiableArrayOperations.kt	accepts valid		
 testsWithStdLib/purelyImplementedCollection/arrayList.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/arrayListNullable.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	b.kt:6: NULL_FOR_NONNULL_TYPE
-testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	b.kt:6: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	rejects invalid	on an expected line	
+testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/intersectionOfPrimitiveBasedFunctions.kt	accepts invalid	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	intersectionOfPrimitiveBasedFunctions.kt:18: MANY_IMPL_MEMBER_NOT_IMPLEMENTED
 testsWithStdLib/purelyImplementedCollection/invalidFqName.kt	accepts valid		
 testsWithStdLib/purelyImplementedCollection/maps.kt	rejects invalid	on an expected line	

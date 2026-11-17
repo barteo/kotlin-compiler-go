@@ -2,7 +2,9 @@ package check
 
 import (
 	"slices"
+	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
@@ -303,27 +305,64 @@ func mapCollectionMembers(cls *types.ClassSym) {
 
 // pureImplementations are the JDK classes that K2 sees as purely
 // implementing a Kotlin collection type (FakePureImplementationsProvider),
-// by the Java interface it is on the JVM.
+// as @kotlin.jvm.PurelyImplements does for other Java classes.
 var pureImplementations = map[string]string{
-	"java/util/ArrayList": "java/util/List", "java/util/LinkedList": "java/util/List",
-	"java/util/HashSet": "java/util/Set", "java/util/TreeSet": "java/util/Set", "java/util/LinkedHashSet": "java/util/Set",
-	"java/util/HashMap": "java/util/Map", "java/util/TreeMap": "java/util/Map", "java/util/LinkedHashMap": "java/util/Map",
-	"java/util/concurrent/ConcurrentHashMap": "java/util/Map", "java/util/concurrent/ConcurrentSkipListMap": "java/util/Map",
+	"java/util/ArrayList": "kotlin/collections/MutableList", "java/util/LinkedList": "kotlin/collections/MutableList",
+	"java/util/HashSet": "kotlin/collections/MutableSet", "java/util/TreeSet": "kotlin/collections/MutableSet", "java/util/LinkedHashSet": "kotlin/collections/MutableSet",
+	"java/util/HashMap": "kotlin/collections/MutableMap", "java/util/TreeMap": "kotlin/collections/MutableMap", "java/util/LinkedHashMap": "kotlin/collections/MutableMap",
+	"java/util/concurrent/ConcurrentHashMap": "kotlin/collections/MutableMap", "java/util/concurrent/ConcurrentSkipListMap": "kotlin/collections/MutableMap",
 }
 
-// purelyImplement makes the members of cls, one of pureImplementations,
-// that override its Kotlin collection type's take its type parameters as
-// they are, not as platform types, as the Kotlin type's members do:
-// ArrayList<String>'s add(E) takes a String, not a String!. Members only
-// Java declares, as TreeMap's ceilingKey(K), keep platform types, and so
-// do results, of which Kotlin's are sometimes nullable: Map's get. A
-// member that overrides one with a predefined enhancement has it too:
-// HashMap's compute() takes a function that may return null, as Map's.
-func purelyImplement(cls *types.ClassSym) {
-	iface, ok := pureImplementations[cls.Name]
-	if !ok {
-		return
+// pureInterface returns the Kotlin collection type Java class cls, being
+// loaded, purely implements: the one its @PurelyImplements names, or one
+// K2 knows a JDK class does, or nil. K2 ignores an annotation naming a
+// class that doesn't exist or has another number of type parameters.
+// Without Kotlin's standard library, it is a JDK class's Java interface.
+func (t *classTable) pureInterface(cls *types.ClassSym, info *classfile.Info) *types.ClassSym {
+	name := strings.ReplaceAll(info.PurelyImplements, ".", "/")
+	if name == "" {
+		name = pureImplementations[cls.Name]
+	} else if !t.kotlin {
+		return nil
 	}
+	if _, ok := kotlinCollectionKinds[name]; !ok || !strings.HasPrefix(name, "kotlin/") {
+		return nil
+	}
+	var c *types.ClassSym
+	if t.kotlin {
+		c = t.kclass(name)
+	} else {
+		c = t.class(collectionJVM[name])
+	}
+	if c == nil || len(ensured(c).TypeParams) != len(cls.TypeParams) || len(cls.TypeParams) == 0 {
+		return nil
+	}
+	return c
+}
+
+// addPureSuper gives Java class cls, which purely implements Kotlin
+// collection type pure, pure as a supertype with cls's type parameters as
+// its arguments, not platform types: an ArrayList<String> is a
+// MutableList<String>, and not a MutableList<String?>, which it is
+// through its Java supertypes.
+func addPureSuper(cls, pure *types.ClassSym) {
+	if cls.Supers == nil {
+		if cls.Super != nil {
+			cls.Supers = append(cls.Supers, rawType(cls.Super))
+		}
+		for _, i := range cls.Interfaces {
+			cls.Supers = append(cls.Supers, rawType(i))
+		}
+	}
+	args := cls.This().A.List
+	cls.Supers = append(cls.Supers, types.GenericType(pure, slices.Clone(args)))
+}
+
+// pureIfaces returns the classes among cls's supertypes, cls purely
+// implementing pure, whose members pure's override: pure's Java
+// interface, and Collection but for a map.
+func pureIfaces(cls, pure *types.ClassSym) []*types.ClassSym {
+	iface := pure.Name
 	var ifaces []*types.ClassSym
 	seen := map[*types.ClassSym]bool{}
 	var walk func(c *types.ClassSym)
@@ -351,6 +390,104 @@ func purelyImplement(cls *types.ClassSym) {
 		}
 	}
 	walk(cls)
+	return ifaces
+}
+
+// inheritPure gives Java class cls, which purely implements Kotlin
+// collection type pure, its own copies of the members it inherits from
+// its Java superclasses that override pure's, in terms of its own type
+// parameters, for purelyImplement and mapCollectionMembers to retype as
+// they do the members cls declares: an AbstractList's add(E) of a
+// @PurelyImplements("kotlin.collections.MutableList") class takes its T,
+// not a T!. The copies keep the inherited members' JVM descriptors.
+func inheritPure(cls, pure *types.ClassSym) {
+	if pure == nil {
+		return
+	}
+	arity := map[string]map[int]bool{}
+	for _, c := range pureIfaces(cls, pure) {
+		for name, fs := range c.Methods {
+			for _, f := range fs {
+				if !f.Static {
+					if arity[name] == nil {
+						arity[name] = map[int]bool{}
+					}
+					arity[name][len(f.Params)] = true
+				}
+			}
+		}
+	}
+	have := map[string]bool{} // name and descriptor
+	for name, fs := range cls.Methods {
+		for _, f := range fs {
+			have[name+f.Desc] = true
+		}
+	}
+	seen := map[*types.ClassSym]bool{cls: true}
+	queue := slices.Clone(cls.Supers)
+	for len(queue) > 0 {
+		t := queue[0]
+		queue = queue[1:]
+		if t.K != types.Class || seen[t.C] {
+			continue
+		}
+		seen[t.C] = true
+		if _, ok := kotlinCollectionKinds[t.C.Name]; ok {
+			continue
+		}
+		t.C.Ensure()
+		s := classSubst(t)
+		for name, fs := range t.C.Methods {
+			for _, f := range fs {
+				if f.Static || !arity[name][len(f.Params)] || have[name+f.Desc] || f.Private || f.Protected || f.PackagePrivate {
+					continue
+				}
+				have[name+f.Desc] = true
+				g := *f
+				g.Owner = cls
+				g.Params = slices.Clone(f.Params)
+				for j, p := range g.Params {
+					q := *p
+					q.Type = s.Apply(p.Type)
+					g.Params[j] = &q
+				}
+				g.Ret = s.Apply(f.Ret)
+				cls.Methods[name] = append(cls.Methods[name], &g)
+			}
+		}
+		supers := t.C.Supers
+		if supers == nil {
+			if t.C.Super != nil {
+				supers = append(supers, rawType(t.C.Super))
+			}
+			for _, i := range t.C.Interfaces {
+				supers = append(supers, rawType(i))
+			}
+		}
+		for _, st := range supers {
+			if s != nil {
+				st = s.Apply(st)
+			}
+			queue = append(queue, st)
+		}
+	}
+}
+
+// purelyImplement makes the members of cls, which purely implements
+// Kotlin collection type pure, that override pure's take its type
+// parameters as they are, not as platform types, as the Kotlin type's
+// members do: ArrayList<String>'s add(E) takes a String, not a String!.
+// Members only Java declares, as TreeMap's ceilingKey(K), keep platform
+// types, and so do results, of which Kotlin's are sometimes nullable:
+// Map's get. A member that overrides one with a predefined enhancement
+// has it too: HashMap's compute() takes a function that may return null,
+// as Map's.
+func purelyImplement(cls, pure *types.ClassSym) {
+	if pure == nil {
+		return
+	}
+	iface := pure.Name // the Java interface it is on the JVM
+	ifaces := pureIfaces(cls, pure)
 	own := map[*types.TypeParamSym]bool{}
 	for _, p := range cls.TypeParams {
 		own[p] = true
