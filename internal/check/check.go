@@ -181,18 +181,25 @@ type Checker struct {
 	fileVars     map[string]*types.VarSym
 	userExtProps map[string][]*types.FunSym // getters of extension properties
 	userStars    []*Package
-	cyclic       []*syntax.ClassDecl     // classes that inherit from themselves
-	classes      []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases      []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps        int                     // temporaries named so far, for unique names
-	inlineCalls  []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls  []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	// renamed are the dotted names that the file imports only under
+	// another name: import a.A as ER hides a.A's simple name in the
+	// file's package, the star imports and the default imports.
+	renamed     map[string]bool
+	cyclic      []*syntax.ClassDecl     // classes that inherit from themselves
+	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
+	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps       int                     // temporaries named so far, for unique names
+	inlineCalls []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
 	// supersOf is the class whose supertypes are being resolved, which
 	// may name its private nested classes: class A : I<A.N>.
 	supersOf *types.ClassSym
+	// headerBounds is the class whose type parameters' bounds are being
+	// resolved; they don't see its nested classes: class A<T : Nested>.
+	headerBounds *types.ClassSym
 	// anon are the classes of the file's object expressions, with the
 	// code around each; anonCount numbers them, by enclosing function.
 	anon      map[*types.ClassSym]*anonCtx
@@ -305,6 +312,12 @@ type Checker struct {
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// aliasCtors are the calls of typealiases' constructors, with their
+	// aliases: see ownParamArg.
+	aliasCtors map[*syntax.Call]*types.AliasSym
+	// samArg is the call being checked as an argument for a parameter of
+	// a fun interface type: see ownParamArg.
+	samArg *syntax.Call
 	// nothingTail is set while the value of the return that a lambda's
 	// last when gives is checked: see lambdaResult.nothingTail.
 	nothingTail bool
@@ -1399,14 +1412,15 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 
 // resolveClassBounds resolves the bounds of class type parameters, which
 // other files' signatures may need. Bounds are checked against each
-// other only where they are used.
+// other only where they are used. Like the supertypes, the bounds don't
+// see the class's own nested and inner classes: class A<T : Nested>.
 func (c *Checker) resolveClassBounds() {
 	c.noBoundChecks = true
 	for _, d := range c.classes {
-		c.tparams, c.lookupCls = d.Sym.TypeParams, d.Sym
+		c.tparams, c.lookupCls, c.headerBounds = d.Sym.TypeParams, d.Sym, d.Sym
 		c.resolveBounds(d.TypeParams)
 	}
-	c.tparams, c.lookupCls = nil, nil
+	c.tparams, c.lookupCls, c.headerBounds = nil, nil, nil
 	c.noBoundChecks = false
 }
 
@@ -1696,11 +1710,11 @@ func (c *Checker) topFunLevels(name string) [][]*types.FunSym {
 	if _, ok := c.callableImport(name); ok || len(c.funImports[name]) > 0 {
 		return levels
 	}
-	if fs := nonExt(c.pkg.Funs[name]); len(fs) > 0 {
+	if fs := nonExt(c.funsOf(c.pkg, name)); len(fs) > 0 {
 		levels = append(levels, fs)
 	}
 	cls, ok := c.imports[name]
-	if !ok {
+	if !ok && !c.renamedAway(c.pkg.Name, name) {
 		cls = c.pkg.Classes[name]
 	}
 	if cls != nil && !cls.Object && constructible(cls) {
@@ -1710,7 +1724,7 @@ func (c *Checker) topFunLevels(name string) [][]*types.FunSym {
 	}
 	var fs []*types.FunSym
 	for _, p := range c.userStars {
-		fs = append(fs, nonExt(p.Funs[name])...)
+		fs = append(fs, nonExt(c.funsOf(p, name))...)
 	}
 	if len(fs) > 0 {
 		levels = append(levels, fs)
@@ -1748,14 +1762,29 @@ func (c *Checker) topVar1(name string) *types.VarSym {
 	if c.valueImport(name) {
 		return nil // an explicitly imported member comes first
 	}
+	if c.renamedAway(c.pkg.Name, name) {
+		return c.topVarOutside(name)
+	}
 	if v, ok := c.fileVars[name]; ok {
 		return v
 	}
 	if v, ok := c.pkg.Vars[name]; ok {
 		return v
 	}
+	if v := c.topVarOutside(name); v != nil {
+		return v
+	}
+	if v, ok := c.pkg.PrivateVars[name]; ok {
+		return v // another file's, which checkTopVar reports
+	}
+	return nil
+}
+
+// topVarOutside is topVar1 below the file's package: the star imports,
+// then the default imports.
+func (c *Checker) topVarOutside(name string) *types.VarSym {
 	for _, p := range c.userStars {
-		if v, ok := p.Vars[name]; ok {
+		if v, ok := p.Vars[name]; ok && !c.renamedAway(p.Name, name) {
 			return v
 		}
 	}
@@ -1763,18 +1792,21 @@ func (c *Checker) topVar1(name string) *types.VarSym {
 		// A Kotlin library's, by a star import, then the standard
 		// library's default imports: DEFAULT_BUFFER_SIZE.
 		for _, pkg := range c.stars {
+			if c.renamedAway(pkg, name) {
+				continue
+			}
 			if v := c.u.ext.pkgVar(strings.ReplaceAll(pkg, "/", "."), name); v != nil {
 				return v
 			}
 		}
 		for _, pkg := range defaultPackages {
+			if c.renamedAway(pkg, name) {
+				continue
+			}
 			if v := c.u.ext.pkgVar(pkg, name); v != nil {
 				return v
 			}
 		}
-	}
-	if v, ok := c.pkg.PrivateVars[name]; ok {
-		return v // another file's, which checkTopVar reports
 	}
 	return nil
 }
@@ -3415,7 +3447,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type

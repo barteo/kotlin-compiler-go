@@ -346,6 +346,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	if info.Sig != "" || len(outer) > 0 {
 		t.classSignature(cls, info.Sig, outer)
 	}
+	pure := t.pureInterface(cls, info)
+	if pure != nil && t.kotlin {
+		addPureSuper(cls, pure)
+	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
 	cls.Fields = map[string]*types.VarSym{}
@@ -485,8 +489,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Methods[m.Name] = append(cls.Methods[m.Name], f)
 		}
 	}
+	if t.kotlin {
+		inheritPure(cls, pure)
+	}
 	mapCollectionMembers(cls)
-	purelyImplement(cls)
+	purelyImplement(cls, pure)
 	kotlinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
@@ -739,6 +746,17 @@ func (c *Checker) resolveImports() {
 	c.userFuns = map[string][]*types.FunSym{}
 	c.userVars = map[string]*types.VarSym{}
 	c.userExtProps = map[string][]*types.FunSym{}
+	c.renamed = map[string]bool{}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && imp.Alias != "" && imp.Alias != imp.Path[strings.LastIndexByte(imp.Path, '.')+1:] {
+			c.renamed[imp.Path] = true
+		}
+	}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && (imp.Alias == "" || imp.Alias == imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]) {
+			delete(c.renamed, imp.Path) // imported under its own name too
+		}
+	}
 	ext := c.u.ext
 	// The file's package on the class path, as a library's Java classes
 	// in it, or its classes in the default package: searched before the
@@ -1098,13 +1116,17 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 		return true
 	}
-	if cls, ok := c.pkg.Classes[name]; ok && visible(classifier{cls: cls}) {
+	own := !c.renamedAway(c.pkg.Name, name)
+	if cls, ok := c.pkg.Classes[name]; ok && own && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
-	if a, ok := c.pkg.Aliases[name]; ok && visible(classifier{alias: a}) {
+	if a, ok := c.pkg.Aliases[name]; ok && own && visible(classifier{alias: a}) {
 		return classifier{alias: a}
 	}
 	for _, p := range c.userStars {
+		if c.renamedAway(p.Name, name) {
+			continue
+		}
 		if cls, ok := p.Classes[name]; ok && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
@@ -1134,12 +1156,12 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 		return nil
 	}
 	for _, pkg := range c.stars {
-		if a := ext.pkgAlias(strings.ReplaceAll(pkg, "/", "."), name); a != nil {
+		if a := ext.pkgAlias(strings.ReplaceAll(pkg, "/", "."), name); a != nil && !c.renamedAway(pkg, name) {
 			return a
 		}
 	}
 	for _, pkg := range defaultPackages {
-		if a := ext.pkgAlias(pkg, name); a != nil {
+		if a := ext.pkgAlias(pkg, name); a != nil && !c.renamedAway(pkg, name) {
 			return a
 		}
 	}
@@ -1154,24 +1176,27 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 	ext := c.u.ext
 	// A built-in class, as kotlin.Array, comes before the star imports:
 	// import java.lang.reflect.* doesn't hide it.
-	if cls := types.ArrayByName(name); cls != nil {
+	if cls := types.ArrayByName(name); cls != nil && !c.renamedAway("kotlin", name) {
 		return cls
 	}
 	if builtinClasses[name] && ext.kotlin {
 		// But after the file's own package's: a Java interface Function
 		// in it hides kotlin.Function.
-		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) {
+		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) && !c.renamedAway(own, name) {
 			if cls := ext.pkgClass(c.file.Package, name); cls != nil {
 				return cls
 			}
 		}
 		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+			if cls := ext.pkgClass(pkg, name); cls != nil && !c.renamedAway(pkg, name) {
 				return cls
 			}
 		}
 	}
 	for _, pkg := range c.stars {
+		if c.renamedAway(pkg, name) {
+			continue
+		}
 		if ext.kotlin {
 			if cls := ext.pkgClass(strings.ReplaceAll(pkg, "/", "."), name); cls != nil {
 				return cls
@@ -1182,10 +1207,13 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 	}
 	if ext.kotlin {
 		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+			if cls := ext.pkgClass(pkg, name); cls != nil && !c.renamedAway(pkg, name) {
 				return cls
 			}
 		}
+	}
+	if c.renamedAway("java.lang", name) {
+		return nil
 	}
 	return ext.class("java/lang/" + name)
 }
@@ -1232,6 +1260,9 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 	}
 	var stars, defaults []*types.FunSym
 	for _, pkg := range c.stars {
+		if c.renamedAway(pkg, name) {
+			continue
+		}
 		stars = append(stars, keep(ext1.pkgFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
 		if c.file.SuppressInvisible {
 			// ktor's recoverStackTrace(e, cont) of kotlinx.coroutines.internal.*
@@ -1240,7 +1271,9 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 		}
 	}
 	for _, pkg := range defaultPackages {
-		defaults = append(defaults, keep(ext1.pkgFuns(pkg, name))...)
+		if !c.renamedAway(pkg, name) {
+			defaults = append(defaults, keep(ext1.pkgFuns(pkg, name))...)
+		}
 	}
 	return append(levels, stars, defaults)
 }
@@ -1389,9 +1422,9 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	}
 	var fs []*types.FunSym
 	for _, p := range c.userStars {
-		fs = append(fs, p.Funs[name]...)
+		fs = append(fs, c.funsOf(p, name)...)
 	}
-	if out := fits(c.pkg.Funs[name]); len(out) > 0 {
+	if out := fits(c.funsOf(c.pkg, name)); len(out) > 0 {
 		// They give way to the star-imported ones if only those take the
 		// arguments' types: kotlinx.coroutines.time's
 		// Flow<T>.debounce(Duration) to kotlinx.coroutines.flow's

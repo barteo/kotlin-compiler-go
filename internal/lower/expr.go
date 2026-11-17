@@ -405,7 +405,7 @@ func (l *lowerer) memberExpr(x syntax.Expr, name psi.NodeRef, safe bool) *syntax
 		l.fail(t, "expected a name")
 	}
 	l.underscoreRef(t)
-	m := &syntax.Member{X: x, Name: ident(t), Safe: safe}
+	m := &syntax.Member{X: x, Name: ident(t), Safe: safe, Written: true}
 	m.P = l.pos(t)
 	return record(l, m, name)
 }
@@ -794,6 +794,7 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 	case has(n, psi.KindEQ):
 		x := l.expr(exprAfter(n, psi.KindEQ))
 		lam.Body = &syntax.Block{P: x.Pos(), Stmts: []syntax.Stmt{&syntax.ExprStmt{X: x}}}
+		lam.AnonExpr = true
 	default:
 		l.failAt(l.end(n), "expected the body of an anonymous function")
 	}

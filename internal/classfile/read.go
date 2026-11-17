@@ -68,6 +68,11 @@ type Info struct {
 	// SubclassOptIn are the internal names of the markers of the class's
 	// @SubclassOptInRequired, which inheriting from it needs opt-in to.
 	SubclassOptIn []string
+	// PurelyImplements is the argument of the class's
+	// @kotlin.jvm.PurelyImplements, the qualified name of the Kotlin
+	// collection type it implements with its type arguments as they are,
+	// or "".
+	PurelyImplements string
 	// Unresolved has, if a supertype a Java source class wrote doesn't
 	// resolve, an entry per written supertype in order: the simple name of
 	// one that doesn't, "" for one that does. Super and Interfaces have
@@ -639,6 +644,24 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 				}
 				if info.DebugMetadata[name], err = constValues(r, p); err != nil {
 					return nil, fmt.Errorf("@DebugMetadata %s: %w", name, err)
+				}
+			}
+			continue
+		}
+		if typ == "Lkotlin/jvm/PurelyImplements;" {
+			info.Visible = append(info.Visible, typ)
+			for range r.u2() {
+				name, err := p.utf8(r.u2())
+				if err != nil {
+					return nil, err
+				}
+				if r.u1() != 's' || name != "value" {
+					r.pos--
+					skipValue(r)
+					continue
+				}
+				if v, err := p.utf8(r.u2()); err == nil {
+					info.PurelyImplements = v
 				}
 			}
 			continue

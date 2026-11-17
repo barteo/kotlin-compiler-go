@@ -300,13 +300,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
   keeps Java's platform types.
-- Of the JDK classes K2 sees as purely implementing a Kotlin collection
-  type (`ArrayList`, `HashSet`, `HashMap` and others), `kc` gives the
-  members that override the collection type's the class's type
-  parameters as they are, not as platform types: an `ArrayList<String>`
-  takes no `null`. Their results keep platform types, and their
-  supertypes Java's flexible arguments: an `ArrayList<String>` is also a
-  `MutableList<String?>`.
+- A Java class's `@kotlin.jvm.PurelyImplements` is honoured only when it
+  names one of Kotlin's collection types (`MutableList`, `Set`, `Map`
+  and the others), the only ones K2's JDK classes (`ArrayList`,
+  `HashSet`, `HashMap` and others) purely implement too.
 - A nullable argument for a Java method's `T!` makes `T` nullable,
   except in an in-projected type argument, where kc's substituted
   explicit type arguments stand for K2's equality constraints. Even

@@ -34,6 +34,23 @@ func (c *Checker) safeUnit(x syntax.Expr, t types.Type) types.Type {
 	return t
 }
 
+// returnValue checks x, the value a function returns, expecting want: a
+// safe call of a Unit function, x?.f(), is a Unit? there, which kotlinc
+// doesn't coerce to a Unit return type: fun f(): Unit = c?.close().
+func (c *Checker) returnValue(x syntax.Expr, want types.Type) types.Type {
+	t := c.value(x, want)
+	if want.K == types.Unit && !want.N {
+		t = c.safeUnit(x, t)
+	}
+	return t
+}
+
+// safeUnitCall reports whether x, of type t, is a safe call of a Unit
+// function, whose value is a Unit?.
+func safeUnitCall(x syntax.Expr, t types.Type) bool {
+	return safeCallOf(x) && t.K == types.Class && t.N && t.C.Name == "kotlin/Unit"
+}
+
 // rangeExpr checks an expression in a position where ranges are allowed.
 func (c *Checker) rangeExpr(x syntax.Expr) types.Type {
 	c.allowRange = true
@@ -3056,6 +3073,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
+				if alias != nil && !c.aliasOuterFits(alias, n, rt) {
+					// x.GIntI() for typealias GIntI = Generic<Int>.Inner
+					// needs an x that is a Generic<Int>.
+					c.errorf(fn.P, "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
+					c.args(x, nil)
+					return types.InvalidType
+				}
 				if alias != nil && hasUnderscore(x.TypeArgs) {
 					// outer.Alias<_>(): the class's, which the call infers.
 					if !c.aliasUnderscores(x, alias, n, fn.P) {
@@ -4571,7 +4595,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
-			c.assignable(c.value(x.X, c.retType), c.retType, x.X.Pos())
+			c.assignable(c.returnValue(x.X, c.retType), c.retType, x.X.Pos())
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
 			c.errorf(x.P, "this function must return a value of type %s", c.retType)
 		}

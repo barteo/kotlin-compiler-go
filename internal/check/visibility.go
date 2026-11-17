@@ -468,6 +468,31 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 	return lookup
 }
 
+// annotationThis returns the class whose instance is this in the
+// arguments of annotations on site in class owner, or nil: as with
+// kotlinc, those of a member, a parameter or a constructor see the
+// class's instance members, and those of an inner class its outer
+// class's, as do those of its supertypes. Those of other types are left
+// out: owner is only the class the type was first resolved in.
+func annotationThis(owner *types.ClassSym, site annotSite) *types.ClassSym {
+	if owner == nil {
+		return nil
+	}
+	switch site.kind {
+	case siteClass:
+		if owner.Inner {
+			return owner.Outer
+		}
+	case siteFun, siteProp, siteCtorProp, siteParam, siteCtor, siteEnumEntry, siteInit:
+		return owner
+	case siteType:
+		if site.outerThis {
+			return owner
+		}
+	}
+	return nil
+}
+
 // protectedVia reports whether the code may use a protected member of
 // owner on receiver x, by Kotlin's rule for protected members (Java's
 // too): on an explicit receiver, the member is visible in a subclass K

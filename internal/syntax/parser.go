@@ -575,6 +575,7 @@ func (p *parser) anonFun(label string) *Lambda {
 		p.op()
 		x := p.parseExpr()
 		l.Body = &Block{P: x.Pos(), Stmts: []Stmt{&ExprStmt{X: x}}}
+		l.AnonExpr = true
 	default:
 		p.unexpected("the body of an anonymous function")
 	}
@@ -2584,7 +2585,7 @@ func (p *parser) parsePostfix() Expr {
 				continue
 			}
 			name := p.underscoreRef(p.ident())
-			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT}
+			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT, Written: true}
 			m.P = name.Pos
 			x = m
 		case LBRACK:
@@ -3353,7 +3354,7 @@ func (p *parser) parseWhen() Expr {
 func Parenthesized(x Expr) {
 	switch x := x.(type) {
 	case *Member:
-		x.Paren = x.Safe
+		x.Paren, x.Written = x.Safe, false
 	case *Call:
 		x.Paren = true
 	case *Index:

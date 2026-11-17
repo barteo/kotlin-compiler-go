@@ -49,6 +49,8 @@ type Modifiers struct {
 type Annotation struct {
 	Name string   // as written: Retention or java.lang.annotation.Retention
 	Args []string // the identifiers among its arguments
+	// Strings are the string literals among its arguments, decoded.
+	Strings []string
 }
 
 // Class is a class, interface, enum, record or annotation type.
@@ -335,8 +337,11 @@ func (p *parser) annotation() *Annotation {
 		start := p.pos
 		p.skipBalanced()
 		for _, t := range p.toks[start:p.pos] {
-			if t.kind == tIdent {
+			switch t.kind {
+			case tIdent:
 				a.Args = append(a.Args, t.text)
+			case tString:
+				a.Strings = append(a.Strings, t.text)
 			}
 		}
 	}

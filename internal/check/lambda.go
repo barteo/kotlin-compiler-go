@@ -505,6 +505,14 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		bt = c.unitBody(x.Body)
 		c.stubTail(lr)
+		if x.Anon && x.AnonExpr && x.AnonRet != nil {
+			// fun (): Unit = c?.close() returns a Unit?.
+			if e := tailExpr(x.Body); e != nil {
+				if t := c.safeUnit(e, e.Type()); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+					c.errorf(e.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+				}
+			}
+		}
 	} else if w.ret.K == types.Invalid && len(c.stubs) == 0 && endsInCall(x.Body) && leftBare(x) {
 		bt = c.bareTail(x.Body)
 	} else {
@@ -929,8 +937,10 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 			t := c.value(x.X, noWant)
 			// So does one whose lambda is coerced to it then:
 			// return@process processNested { proceed() }.
+			// But not a safe call of a Unit function, a Unit?:
+			// return@l c?.close().
 			if _, call := x.X.(*syntax.Call); len(c.errs) > n && simpleExpr(x.X) ||
-				call && len(c.errs) == n && t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+				call && len(c.errs) == n && t.K != types.Invalid && !c.subtype(t, types.UnitType) && !safeUnitCall(x.X, t) {
 				c.errs = c.errs[:n]
 				t = c.value(x.X, types.UnitType)
 			}
@@ -1110,7 +1120,14 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	c.implicitArg(x, rt.Flex())
+	if m, ok := x.Fun.(*syntax.Member); ok && m.Written && !x.Recv {
+		// A property of an explicit receiver, a.foo() for a foo: B.() ->
+		// Unit, is invoked with its receiver passed: a.foo(b), not the
+		// implicit B, which (a.foo)() passes.
+		c.implicitContexts(x, rt.Flex())
+	} else {
+		c.implicitArg(x, rt.Flex())
+	}
 	x.Invoke = true
 	c.useArity(rt.A.Len() - 1)
 	if len(x.TypeArgs) > 0 {
@@ -1415,7 +1432,16 @@ func (c *Checker) argValue(arg *syntax.Expr, p types.Type, f *types.FunSym) type
 	l, ok := a.(*syntax.Lambda)
 	switch {
 	case !ok:
-		t := c.value(a, p)
+		var t types.Type
+		if call, ok := a.(*syntax.Call); ok && f != nil && samInterface(p.Flex().NonNull()) {
+			// See ownParamArg.
+			saved := c.samArg
+			c.samArg = call
+			t = c.value(a, p)
+			c.samArg = saved
+		} else {
+			t = c.value(a, p)
+		}
 		if _, ok := c.suspendConstraint(nil, t, p, a); ok && f != nil {
 			*arg = c.suspendConverted(a, p)
 			return p
@@ -1681,12 +1707,15 @@ type pendingLambda struct {
 	// scope is the call's, whose smart casts the lambda sees when it is
 	// checked with the call it is an argument of: x's in x?.let { { f(x) } }.
 	scope *scope
+	// noSAM marks one passed for a parameter of the callee's own type
+	// parameter's type, which it isn't converted for: see ownParamArg.
+	noSAM bool
 }
 
 // inputs returns the parameter types a lambda will be checked with.
 func (c *Checker) inputs(s *system, pl pendingLambda) []types.Type {
 	pt := s.apply(pl.p)
-	if !pt.Flex().IsFunc() {
+	if !pt.Flex().IsFunc() && !pl.noSAM {
 		if m, ft := c.samTarget(pt); m != nil {
 			pt = ft
 		}
@@ -1784,7 +1813,7 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		}
 		saved := c.scope
 		c.scope = pl.scope
-		c.postponedLambda(s, pl.l, p)
+		c.postponedLambda(s, pl.l, p, pl.noSAM)
 		c.scope = saved
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && shape.K != types.Invalid && s.unfixedVar(shape) == nil {
 			// The lambda's type is below the variable too, as K2's
@@ -2779,7 +2808,8 @@ func declaredIn(l *syntax.Lambda) map[string]bool {
 // postponedLambda checks a lambda argument of a call being inferred, for
 // a parameter of type p. The variables in its parameter types are fixed
 // first; its result then constrains the variables in the result type.
-func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
+// With noSAM it isn't converted to a fun interface p is.
+func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noSAM bool) {
 	pt := s.apply(p)
 	if wantsKProp(l, pt) {
 		// Its type doesn't depend on the parameter's.
@@ -2806,9 +2836,10 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			return
 		}
 	}
-	if pt.K == types.TypeVar && !l.Anon && l.Ref == nil {
+	if pt.K == types.TypeVar && !l.Anon && l.Ref == nil && !noSAM {
 		// As in Kotlin, a Java interface that is a variable's upper bound
-		// is the lambda's type: T of Java's select(T, T) for a Ticker.
+		// is the lambda's type: T of Java's select(T, T) passed for a
+		// Ticker.
 		if u := s.upperHint(pt).Flex(); u.K == types.Class && !u.C.Fun && JavaSAM(u.C) {
 			if m, _ := c.samTarget(u); m != nil {
 				s.sub(u.NonNull(), pt)
@@ -2818,7 +2849,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	}
 	ft := pt
 	var sam *types.FunSym
-	if !pt.Flex().IsFunc() {
+	if !pt.Flex().IsFunc() && !noSAM {
 		if m, f := c.samTarget(pt); m != nil {
 			sam, ft = m, f
 		}

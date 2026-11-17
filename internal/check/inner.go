@@ -328,3 +328,25 @@ func (c *Checker) outerAs(outer types.Type, k *types.ClassSym) (types.Type, bool
 	}
 	return types.GenericType(k, args), true
 }
+
+// aliasOuter returns the outer class type that typealias a, which
+// expands to inner class n, fixes: Generic<Int> for typealias GIntI =
+// Generic<Int>.Inner. It returns InvalidType where the alias has type
+// parameters, whose arguments the receiver gives, or the expansion
+// doesn't have the outer's arguments.
+func (c *Checker) aliasOuter(a *types.AliasSym, n *types.ClassSym) types.Type {
+	t := a.Type
+	if len(a.TypeParams) > 0 || !a.Resolved || t.K != types.Class || t.C != n || n.OuterParams == 0 || t.A == nil || t.A.Len() != len(n.TypeParams) {
+		return types.InvalidType
+	}
+	own := len(n.TypeParams) - n.OuterParams
+	return types.GenericType(n.Outer, t.A.List[own:])
+}
+
+// aliasOuterFits reports whether outer type rt can construct the inner
+// class n through typealias a: x.GIntI() needs an x that is a
+// Generic<Int>.
+func (c *Checker) aliasOuterFits(a *types.AliasSym, n *types.ClassSym, rt types.Type) bool {
+	ot := c.aliasOuter(a, n)
+	return ot.K == types.Invalid || c.subtype(rt.NonNull(), ot)
+}

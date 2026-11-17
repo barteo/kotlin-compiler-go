@@ -117,6 +117,30 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 	}
 }
 
+// superCtorCands returns the constructors of cls's superclass that its
+// secondary constructors can call, as superCands does, with the
+// superclass's type arguments given, the supertype's: super(x, 1) for
+// B<T1, T2> passes x to a Y of B<X, Y> as a T2, which isn't inferred.
+// They are still the call's own type parameters, as written ones are:
+// (X, String) is more specific than (X, Y).
+func superCtorCands(cls *types.ClassSym) []callee {
+	cands := superCands(cls)
+	sc := cls.Super
+	for _, t := range cls.Supers {
+		if t.K != types.Class || t.C != sc || t.A.Len() != len(sc.TypeParams) || len(sc.TypeParams) == 0 {
+			continue
+		}
+		recv := types.Subst{}
+		for i, tp := range sc.TypeParams {
+			recv[tp] = t.A.Get(i)
+		}
+		for i := range cands {
+			cands[i].given = recv
+		}
+	}
+	return cands
+}
+
 // superCands returns the constructors of cls's superclass that its
 // constructors can call.
 func superCands(cls *types.ClassSym) []callee {
@@ -218,7 +242,7 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 				}
 			} else {
 				x.Ctor = cls.Super
-				cands = superCands(cls)
+				cands = superCtorCands(cls)
 			}
 			if implicit && !hasNoArgCtor(cands) {
 				c.errorf(sc.P, "explicit 'this' or 'super' call is required: there is no constructor in the superclass that can be called without arguments")
