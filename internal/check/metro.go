@@ -133,6 +133,8 @@ var metroOptions = map[string]string{
 	"interop-include-hilt-annotations":                "false",
 	"interop-include-guice-annotations":               "false",
 	"enable-circuit-codegen":                          "false",
+	"enable-derived-bindings":                         "false",
+	"companion-mode":                                  "COMPANION_OBJECT",
 }
 
 // options reads the plugin's options.
@@ -146,6 +148,11 @@ func (m *metroAnalysis) options(opts map[string]string) error {
 			m.functionProviders = v != "false"
 		case key == "optional-binding-behavior":
 			if v != "DEFAULT" && v != "" {
+				return fmt.Errorf("Metro option %s=%s is not supported", key, v)
+			}
+		case key == "companion-mode":
+			// Metro reads companion-object and COMPANION_OBJECT alike.
+			if mode := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(v), "-", "_")); mode != def && mode != "" {
 				return fmt.Errorf("Metro option %s=%s is not supported", key, v)
 			}
 		case known:

@@ -44,9 +44,9 @@
 # compose selects it.
 #
 # And testdata/metro.out (TestMetro): kotlinc, with the Metro compiler
-# plugin 1.5.2, compiles metro/lib/, then metro/mid/ against it and
+# plugin 1.6.0, compiles metro/lib/, then metro/mid/ against it and
 # metro/app/ against both, and the program runs. The runtime is Metro's
-# runtime-jvm 1.5.2 and the plugin its compiler jar, from Gradle's cache,
+# runtime-jvm 1.6.0 and the plugin its compiler jar, from Gradle's cache,
 # or $KC_METRO_CP and $KC_METRO_PLUGIN. The argument metro selects it.
 #
 # And testdata/javasrc.out (TestJavaSources): kotlinc compiles javasrc/,
@@ -250,10 +250,10 @@ fi
 if [ -n "$metro" ]; then
 	cd "$root/metro"
 	cache=$HOME/.gradle/caches/modules-2/files-2.1/dev.zacsweers.metro
-	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
-	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.6.0" -name runtime-jvm-1.6.0.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.6.0" -name compiler-1.6.0.jar 2>/dev/null | head -1)}
 	if [ -z "$rt" ] || [ -z "$mp" ]; then
-		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		echo "Metro 1.6.0 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
 		exit 1
 	fi
 	out="$work/metro"
