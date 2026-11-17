@@ -4,7 +4,8 @@
 #
 #	jvm/detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ...
 #
-# It runs detekt with --parallel and a class-data sharing archive.
+# It runs detekt with --parallel, a class-data sharing archive and only the
+# C1 compiler.
 # KC_JAVA_OPTS adds JVM options: -Dkc.trace=true prints kc's timings, the
 # Analysis API members it doesn't answer and how often it answers the
 # others, and -Dkc.strict=true makes the unanswered ones fail.
@@ -32,6 +33,12 @@ if [ "${java_version:-0}" -ge 19 ]; then
 	done
 	cds="-XX:SharedArchiveFile=$archive -XX:+AutoCreateSharedArchive"
 fi
+# Only C1 compiles: on 4 cores, C2's compiler threads took about 9 s of CPU
+# in a 6 s run on kotlinpoet, while the rules and kc's check needed all the
+# cores. C1-only runs are 23-26% faster with --parallel
+# (docs/detekt-performance.md). KC_JAVA_OPTS=-XX:TieredStopAtLevel=4 turns
+# C2 back on.
+jit=-XX:TieredStopAtLevel=1
 # detekt runs its rules on all cores: kc's session is thread-safe, and its
 # findings are the same as a serial run's.
 parallel=--parallel
@@ -39,5 +46,5 @@ for a in "$@"; do [ "$a" = --parallel ] && parallel=; done
 # Go's runtime installs signal handlers in the JVM's process; libjsig
 # chains them with the JVM's.
 # shellcheck disable=SC2086 # the options are words
-LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m $cds ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
+LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m $cds $jit ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
 	-Didea.home.path="$here/build" -cp "$cp" dev.detekt.cli.Main $parallel "$@"
