@@ -4,6 +4,7 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"runtime"
@@ -1919,6 +1920,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		case d.External && owner.CompanionOf != nil && owner.CompanionOf.Interface:
 			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+		case owner.CompanionOf != nil && owner.CompanionOf.Interface && d.Visibility != syntax.Public:
+			// JVM_STATIC_ON_NON_PUBLIC_MEMBER: an interface's static
+			// methods are public.
+			c.errorf(d.Find("", "JvmStatic").P, jvmStaticNonPublic)
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
 		case d.Override:
@@ -2197,9 +2202,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// accessors don't use: it needn't be initialized.
 		sym.FieldUsed = true
 	}
-	if ext && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface &&
-		(d.Find("", "JvmStatic") != nil || d.Find("get", "JvmStatic") != nil || d.Find("set", "JvmStatic") != nil) {
-		c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	if a := cmp.Or(d.Find("", "JvmStatic"), d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")); ext && a != nil && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.errorf(a.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	} else if owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
 		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
@@ -4007,4 +4013,27 @@ func varargPos(p *syntax.Param) syntax.Pos {
 		}
 	}
 	return p.P
+}
+
+// jvmStaticNonPublic is the message of JVM_STATIC_ON_NON_PUBLIC_MEMBER.
+const jvmStaticNonPublic = "only public members in interface companion objects can be annotated with '@JvmStatic'"
+
+// jvmStaticInInterfaceCompanion reports @JvmStatic on a property of an
+// interface's companion object, or on its accessors, that isn't public,
+// or whose setter isn't (JVM_STATIC_ON_NON_PUBLIC_MEMBER): an
+// interface's static methods are public.
+func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
+	setter := d.Visibility
+	if d.SetterVisP.Line != 0 {
+		setter = d.SetterVis
+	}
+	if a := d.Find("", "JvmStatic"); a != nil && (d.Visibility != syntax.Public || d.Mutable && setter != syntax.Public) {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("get", "JvmStatic"); a != nil && d.Visibility != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
 }
