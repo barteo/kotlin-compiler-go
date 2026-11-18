@@ -3232,7 +3232,7 @@ var builtinOperators = map[string]bool{"get": true, "set": true, "contains": tru
 // its own declaration, and not an override that has the visibility of the
 // functions it overrides.
 func declaredPublic(o *types.FunSym) bool {
-	if o.Protected || o.Module != "" {
+	if o.Protected || o.Module != "" || o.PackagePrivate {
 		return false
 	}
 	od, ok := o.Decl.(*syntax.FunDecl)
@@ -3285,7 +3285,9 @@ func (c *Checker) inheritDefaults() {
 				}
 				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
-					case o.Protected || od != nil && od.Visibility == syntax.Protected:
+					case o.Protected || o.PackagePrivate || od != nil && od.Visibility == syntax.Protected:
+						// As K2, an override of a package-private Java
+						// method is protected, on the JVM too.
 						fd.Sym.Inherited = types.InheritProtected
 						if ow := o.Owner; ow != nil && ow.External && ow.JVMMethods[o.JVM()+types.FunDesc(o)]&classfile.AccPublic != 0 {
 							fd.Sym.PublicOnJVM = true

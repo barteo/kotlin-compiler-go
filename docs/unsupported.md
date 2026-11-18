@@ -324,9 +324,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java
   sources, not on packages, modules or class files.
-- A Kotlin override of a package-private Java method, declared without a
-  visibility, is visible to calls in its package, where K2 reports it as
-  invisible.
 - Of Java members, only those of the program's Java sources count
   toward an inherited member that must be overridden because it has
   several implementations; a class-path Java class's do not.
