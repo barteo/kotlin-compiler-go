@@ -2405,6 +2405,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
+			c.protectedGetter(x)
 			break
 		}
 		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
@@ -2441,6 +2442,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+		c.protectedGetter(x)
 	}
 	if x.Prop != nil && x.Prop.Ambiguous {
 		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)

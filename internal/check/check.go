@@ -323,6 +323,9 @@ type Checker struct {
 	branchSink *system
 	unitElvis  syntax.Expr    // see unitBody
 	varTarget  *syntax.Member // see propBound
+	// assignTarget is the member an assignment's target is while it is
+	// checked, whose getter isn't called (see protectedGetter).
+	assignTarget *syntax.Member
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the
@@ -2153,9 +2156,19 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			sym.JvmStatic = true
 		}
 	}
+	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
+		p := d.AccessorP
+		if p.Line == 0 {
+			p = d.Getter.P
+		}
+		c.errorf(p, "const 'val' should not have a getter")
+	}
 	if owner != nil {
 		// kc doesn't support const outside objects, which is an error.
 		sym.Const = d.Const && owner.Object
+		if d.Const && (!owner.Object || owner.Anonymous) {
+			c.errorf(modPos(d.Written, "const", d.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
 		if sym.JvmField && sym.JvmStatic {
@@ -2203,6 +2216,8 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "property in an interface cannot have a backing field")
 	case d.Init != nil && !hasField && !sym.FieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
+	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
+		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
 		c.errorf(d.P, "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
@@ -2347,6 +2362,9 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.errorf(d.P, "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {
+		if cp.Const && cp.IsProp {
+			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
 		c.tparams = nil

@@ -922,7 +922,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			return types.InvalidType, false
 		}
 		c.varTarget = x // see propBound
+		c.assignTarget = x
 		t := c.member(x)
+		c.assignTarget = nil
 		x.T = t
 		c.dslTarget(x)
 		if x.Getter != nil && x.Setter == nil {
