@@ -49,33 +49,37 @@ does. Gradle itself, incremental compilation and tests are left out.
 ## Results
 
 A Linux x86_64 cloud machine (4 CPUs, 15 GB), JDK 21, hyperfine 2.0.0,
-with the commands above, on 15 November 2026: the libraries at `f5f5cce`,
-the generated project at `0f87173`.
+with the commands above, on 18 November 2026, with `kc` at `2daf0f3`.
 
 Wall time:
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 7.13 s | 4.01 s | 98.1 s | 83.9 s | 12x |
-| kotlinpoet | 39 | 8.7k | 300 ms | 211 ms | 17.8 s | 3.44 s | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 796 ms | 643 ms | 28.5 s | 6.88 s | 8.6x |
-| Ktor, 3 modules | 236 | 24k | 849 ms | 698 ms | 45.7 s | 6.96 s | 8.2x |
+| Generated | 500 | 202k | 9.59 s | 5.21 s | 116.8 s | 79.5 s | 8.3x |
+| kotlinpoet | 39 | 8.7k | 455 ms | 315 ms | 20.0 s | 3.82 s | 8.4x |
+| kotlinx-coroutines-core | 169 | 34k | 876 ms | 603 ms | 27.5 s | 6.31 s | 7.2x |
+| Ktor, 3 modules | 236 | 24k | 991 ms | 755 ms | 46.5 s | 6.11 s | 6.2x |
 
 Peak memory (resident set size):
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 755 MB | 1.03 GB | 3.36 GB | 4.4x |
-| kotlinpoet | 39 | 8.7k | 88 MB | 100 MB | 944 MB | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 125 MB | 140 MB | 1.04 GB | 8.3x |
-| Ktor, 3 modules | 236 | 24k | 87 MB | 94 MB | 946 MB | 11x |
+| Generated | 500 | 202k | 769 MB | 1.00 GB | 3.54 GB | 4.6x |
+| kotlinpoet | 39 | 8.7k | 89 MB | 103 MB | 965 MB | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 128 MB | 139 MB | 1.05 GB | 8.2x |
+| Ktor, 3 modules | 236 | 24k | 89 MB | 98 MB | 987 MB | 11x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
 - Warm `kotlinc` doesn't settle at 500 files on this machine: its four
-  runs took 67–103 s.
-- `kotlinc`'s times vary by 10–20% between sessions although it doesn't
-  change. To measure a change to `kc`, time both builds in one session.
+  runs took 78–114 s.
+- Times vary by 10–20% between sessions, for both compilers. This
+  session's machine was slower than the previous one's (15 November):
+  `kc` at `e225d5b`, which measured those numbers, took 8.55 s on the
+  generated project and 403 ms on kotlinpoet here, against 7.13 s and
+  300 ms then. The current `kc` is 5–9% slower than `e225d5b` in the
+  same session. To measure a change to `kc`, time both builds in one
+  session.
 - Full tables, with CPU time, are in [bench/results](../bench/results/).
   Whether `kc`'s library builds are correct (API, `-Xverify:all`, the
   libraries' own tests) is checked in [Survey of real code](survey.md).
@@ -89,21 +93,21 @@ on one thread.
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 4.0 s | 0.65 s | ~6x |
-| Resolution and type checking | 26.8 s | 3.06 s | ~9x |
-| Checkers (warnings and errors) | 17.9 s | none | |
-| Reading the class path | 1.4 s | 0.03 s | |
-| Backend, with inlining and writing | 34.7 s | 3.39 s | ~10x |
-| **Total** | **84.8 s** | **7.13 s** | **12x** |
+| Parsing | 8.8 s | 0.76 s | ~12x |
+| Resolution and type checking | 25.1 s | 3.98 s | ~6x |
+| Checkers (warnings and errors) | 22.4 s | none | |
+| Reading the class path | 1.6 s | 0.03 s | |
+| Backend, with inlining and writing | 48.9 s | 3.49 s | ~14x |
+| **Total** | **106.8 s** | **9.59 s** | **11x** |
 
 - There is no hotspot: no single lowering or checker takes more than
-  about 2%. The time is spread over 93 IR lowerings and 330 checkers,
+  about 2%. The time is spread over 91 IR lowerings and 344 checkers,
   each walking the tree.
 - `kotlinc`'s frontend runs on one core; only its backend can use more.
   With `-Xbackend-threads=0` (a backend thread per core) and without the
-  profiler it took 58.4 s, against 87.9 s for the profiled runs. `kc`
+  profiler it took 59.4 s, against 110.0 s for the profiled runs. `kc`
   also checks in parallel.
-- Of `kc`'s backend, 1.52 s is writing 10,001 class files.
+- Of `kc`'s backend, 1.45 s is writing 10,001 class files.
 
 ## What the numbers don't show
 
