@@ -15,16 +15,17 @@ detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
 
 | Target | Files | Stock, `--parallel` | On kc | Speedup | Findings that match |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 15.5 s | 3.3 s | 4.7× | 1581 of 1597 (99.0%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 24.2 s | 5.7 s | 4.2× | 2730 of 2778 (98.3%) |
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 32.9 s | 5.8 s | 5.7× | 1581 of 1597 (99.0%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 53.5 s | 10.5 s | 5.1× | 2730 of 2778 (98.3%) |
 
 - Each time is the median of 5 runs, stock's and kc's round robin
   (`bench/detekt-vs-stock.sh`), after a first run of each that writes kc's
   class-data sharing archive.
 - kc's findings are the same in every run, and the same serially and with
   `--parallel`.
-- The ratio depends on the machine's load. On the same cloud machine, under
-  more load, stock took 2.2× longer than here, and kc 1.6× longer. Earlier measurements, on another machine, had stock at 18.5 s
+- The ratio depends on the machine's load. On the same cloud machine,
+  under less load, stock took 15.5 s and 24.2 s, and the second round's
+  kc 3.3 s and 5.7 s (4.7× and 4.2×). Earlier measurements, on another machine, had stock at 18.5 s
   and 29.5 s with `--parallel`, and 26.0 s and 37.2 s serially.
 - [Making detekt on kc faster](detekt-performance.md) has the details.
 
@@ -82,6 +83,14 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
 - `0005` starts kc's check in detekt-cli's `Runner`, as soon as the
   arguments are parsed (`KcStandalone.prestart`). The session takes it over
   when it gets the same module.
+- `0006` makes `DetektVisitor`'s walk step over the leaves of the tree
+  (tokens, white space and comments) for a visitor that overrides none of
+  `visitElement`, `visitWhiteSpace`, `visitComment` and `visitPlainText`.
+  Most of a tree's elements are leaves, and every rule walks every file.
+  `-Ddetekt.visitLeaves=true` walks everything. It speeds up stock detekt
+  too.
+- `0007` makes each rule's path filters once, not for each file.
+- `0008` reads each annotated element's suppressions once.
 
 **Analysis.**
 - When detekt opens the session, kc's ka operations open the module with
@@ -132,7 +141,11 @@ jvm/detekt/build.sh test
 
 - `run.sh` takes detekt-cli's arguments. Compiler options, such as
   `-opt-in`, go last.
-- `run.sh` runs detekt with `--parallel` and a class-data sharing archive.
+- `run.sh` runs detekt with `--parallel`, a class-data sharing archive and
+  the parallel collector. The run is CPU-bound on all cores, where G1's
+  barriers and concurrent work cost more than the parallel collector's
+  pauses. `KC_JAVA_OPTS` naming a collector replaces it. An archive under
+  8 MB, written by a run that stopped early, is deleted.
 - kc's check starts as soon as detekt-cli has parsed its arguments
   (patch `0005`), while detekt reads its configuration and the session
   builds its IntelliJ environment.

@@ -566,6 +566,129 @@ bench/detekt-ab.sh /tmp/ab "base|/tmp/base/libkc.so|-Dkc.overlap=false|/tmp/base
   from `jdk.Compilation` and `jdk.JavaMonitorEnter` (1 ms threshold)
   events.
 
+## A third round: less CPU
+
+This round started on a separate branch, `work/detekt-5x-cpu`, cut before
+the second round was merged. Its changes that the second round didn't
+already have were then ported on top of the second round. On the same
+4-core machine, the port takes detekt on kc from 6.18 s to 5.16 s on
+kotlinpoet (−16%), and from 10.65 s to 9.38 s on kotlinx-coroutines-core
+(−12%). The findings are unchanged.
+
+| | kotlinpoet | kotlinx-coroutines-core |
+|:---|---:|---:|
+| Stock detekt, `--parallel` | 32.87 s | 53.51 s |
+| **detekt on kc, after this round (`run.sh`)** | **5.82 s (5.65×)** | **10.47 s (5.11×)** |
+
+- The rows come from `bench/detekt-vs-stock.sh`: stock and `run.sh` round
+  robin, the median of 5 runs. kc took 5.29–6.60 s and 9.59–10.99 s, stock 29.9–36.4 s and
+  52.0–60.8 s.
+- The machine was slower than at the end of the second round: the second
+  round's head took 6.18 s and 10.65 s here, against 3.28 s and 5.71 s
+  there.
+- The findings were the same in every run, serially and with `--parallel`:
+  1601 on kotlinpoet and 2757 on coroutines, the same as the second
+  round's head.
+
+### Where the time goes
+
+The run is CPU-bound. JFR's CPU load shows the machine 97–99% busy from
+the first second to the last, the time detekt waits for kc's analysis
+included. So the run's time is its CPU time divided by four, and
+overlapping work or removing locks saves time only if it also saves CPU.
+Each thread's CPU time, read from `/proc` during one run on coroutines,
+before `work/detekt-5x-cpu`'s changes and after them (both builds without
+the second round):
+
+| Threads, coroutines | Before | After |
+|:---|---:|---:|
+| C2 and C1, the JIT compilers | 24.6 s (46%) | 17.1 s (39%) |
+| detekt's rules (`pool-1-thread-*`) | 17.8 s (34%) | 17.9 s (41%) |
+| `kc-pool`: the PSI, the facts' decoding | 3.9 s (7%) | 2.4 s (5%) |
+| `kc-analysis` and the Go threads it starts | 3.8 s (7%) | 4.0 s (9%) |
+| The main thread, GC and the rest | 2.9 s (5%) | 2.3 s (5%) |
+| **Total** | **53.1 s** | **43.7 s** |
+
+Of the rules' samples in JFR (2 ms period, full stacks), 51% were the walk
+of the tree itself: every rule walks every file as a `KtTreeVisitorVoid`.
+18% were in kc's session, spread thin over many questions. No rule took
+more than 4%.
+
+### The changes
+
+The measurements are A/B runs on `work/detekt-5x-cpu`, each change against
+the one before it, on coroutines and kotlinpoet.
+
+**1. The rules' walks step over the leaves (detekt patch `0006`):
+13.65 → 12.21 s and 7.79 → 6.86 s.** Most of a tree's elements are leaves:
+tokens, white space and comments. A leaf is visited only by
+`visitElement`, `visitWhiteSpace`, `visitComment` and `visitPlainText`, so
+a visitor that overrides none of them sees nothing of the leaves.
+`DetektVisitor`'s walk now steps over them, by the AST. Of detekt's rules,
+only `NoTabs` and `ForbiddenComment` visit leaves, and the lines-of-code
+processor does too. They still walk everything, as does any visitor with
+`-Ddetekt.visitLeaves=true`. This also speeds up stock detekt.
+
+**2. The parallel collector (`run.sh`): 11.73 → 10.87 s and
+6.82 → 6.52 s.** In a CPU-bound run, G1's write barriers and concurrent
+threads cost the rules' threads more than the parallel collector's pauses.
+`run.sh` passes `-XX:+UseParallelGC` unless `KC_JAVA_OPTS` names a
+collector. On top of the second round it is 10.41 → 9.38 s on coroutines,
+and 5.31 → 5.16 s on kotlinpoet.
+
+**3. Smaller changes, each within the noise:**
+- Each rule's path filters are made once (patch `0007`), instead of about
+  100,000 glob compilations on coroutines.
+- An annotated element's suppressions are read once (patch `0008`).
+- The `KaSession` proxy caches the members kc doesn't implement.
+  Previously it looked each one up again on every call.
+- `referenced` is memoized per name, as `call` is.
+- `run.sh` deletes a class-data sharing archive under 8 MB. A run that
+  stops on a usage error writes an archive of the few classes it loaded,
+  and the JVM then keeps using it instead of a full one, about 40 MB.
+
+`work/detekt-5x-cpu` also had changes that the second round made too:
+- not building every file's stub tree, which was its largest change,
+  14.56 → 12.77 s;
+- a lock-free round;
+- the callee keys and the parallel models;
+- skipping `ValidateClasspath` with the rules that need no types first,
+  which saved nothing there either.
+
+Where both rounds made the same change, the port kept the second round's
+version.
+
+### The port, measured
+
+A round robin like `bench/detekt-ab.sh`'s, 7 runs per variant after a run
+that writes each variant's archive, `--parallel`:
+
+| Variant | kotlinpoet | coroutines |
+|:---|---:|---:|
+| The second round's head (`a0ad932`) | 6.18 s | 10.65 s |
+| With patches `0006`–`0008` and the kc-aa changes | 5.31 s | 10.41 s |
+| And the parallel collector, as `run.sh` runs it | 5.16 s | 9.38 s |
+
+Most of `Analyzer`'s time went: 4.08 → 3.17 s on kotlinpoet, and
+7.32 → 6.16 s on coroutines.
+
+### Reproducing
+
+Keep each build's `libkc.so`, `kc-aa.jar` and `detekt.jar`. A variant's
+fifth field names its `detekt.jar`:
+
+```
+RUNS=7 bench/detekt-ab.sh /tmp/ab \
+	"before|/tmp/before/libkc.so|-XX:SharedArchiveFile=/tmp/b.jsa -XX:+AutoCreateSharedArchive|/tmp/before/kc-aa.jar|/tmp/before/detekt.jar" \
+	"after|jvm/kc-aa/build/libkc.so|-XX:+UseParallelGC -XX:SharedArchiveFile=/tmp/a.jsa -XX:+AutoCreateSharedArchive" \
+	-- $ARGS --parallel
+```
+
+Each thread's CPU time comes from `/proc/<pid>/task/*/stat` during the
+run. The profiles come from JFR with
+`-XX:FlightRecorderOptions:stackdepth=1024`: rules' walks are deeper than
+JFR's default of 64 frames.
+
 ## Reproducing the first round
 
 The comparison of each change alone needs `work/detekt-perf-proposals`,
