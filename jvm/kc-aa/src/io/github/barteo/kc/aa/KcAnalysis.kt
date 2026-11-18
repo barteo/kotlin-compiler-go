@@ -160,7 +160,7 @@ class KcAnalysis internal constructor(
         is KcLibraryTypeParameterSymbol -> null
         is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
-        else -> if (lint != null) KcLintAnalysis(this, lint).containingDeclaration(s) else unsupported("containingSymbol of $s")
+        else -> if (lint != null) linted.containingDeclaration(s) else unsupported("containingSymbol of $s")
     }
 
     /** The declaration [s] is in: its containing symbol, unless that's a file or package. */
@@ -467,7 +467,7 @@ class KcAnalysis internal constructor(
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.let(round::declared) ?: lint?.let { KcLintAnalysis(this, it).members(s) } ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: lint?.let { linted.members(s) } ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that
