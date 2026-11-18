@@ -1793,6 +1793,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
+		k.javaClass = x.Ref != nil && strings.HasPrefix(x.Ref.Name, "java.") && x.Target.K == types.Class && builtinJava[x.Target.C.Name]
 		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
 		if others != nil && !others.empty() {
 			n = c.excluding(n, key, others)

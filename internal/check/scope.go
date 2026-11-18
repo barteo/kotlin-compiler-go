@@ -21,6 +21,10 @@ type narrow struct {
 	// onlyNot is set when that is all it says: t is the type it had, not
 	// a smart cast, which the joins of types where paths meet leave out.
 	onlyNot bool
+	// javaClass is set by an is check whose type is written as the Java
+	// class that a built-in type stands for, x is java.lang.CharSequence:
+	// kotlinc keeps the Java class, whose length() is a method.
+	javaClass bool
 }
 
 type scope struct {
@@ -181,6 +185,19 @@ func (s *scope) narrowedMember(recv, v *types.VarSym, declared types.Type) types
 // excluded returns the values that property v of recv, or variable v, is
 // known not to be, or nil. The last smart cast of it says: one that
 // doesn't, as after an assignment, forgets them.
+// javaClassNarrowed tells whether an is check of v against a Java class
+// written for a built-in type, as java.lang.CharSequence, is in effect.
+func (s *scope) javaClassNarrowed(recv, v *types.VarSym) bool {
+	for sc := s; sc != nil; sc = sc.parent {
+		for _, n := range sc.narrows {
+			if n.sym == v && n.recv == recv && n.javaClass {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *scope) excluded(recv, v *types.VarSym) *coverage {
 	for sc := s; sc != nil; sc = sc.parent {
 		for i := len(sc.narrows) - 1; i >= 0; i-- {
