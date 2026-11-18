@@ -178,13 +178,16 @@ func primitiveShape(d string) string {
 // implementation of, or an implementation from an interface and an
 // abstract member of another, and that one of their return types is a
 // subtype of the others. It returns the names of those it reported.
-func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl) map[string]bool {
+// A class that mixes suspend and non-suspend function types, which
+// checkMixedSuspendSupertypes reported, isn't reported again for their
+// invoke methods.
+func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string]bool {
 	cls := d.Sym
 	this := cls.This()
 	reported := map[string]bool{}
 	for _, gr := range c.inheritedFunGroups(d, false) {
 		name := gr[0].Name
-		if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
+		if !mixed && slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
 			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
 		}
 		var impls, classImpls, classMembers int

@@ -1251,8 +1251,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	c.inheritedBridges(d)
 	reported := map[string]bool{}
+	mixed := c.checkMixedSuspendSupertypes(d)
 	if !d.Annotation {
-		reported = c.checkInheritedFuns(d)
+		reported = c.checkInheritedFuns(d, mixed)
 		c.checkInheritedProps(d, reported)
 	}
 	if d.Data && !d.Object {
@@ -2560,4 +2561,30 @@ func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
 	if c.lookupAlias(st.Type.Name) != nil {
 		c.errorf(st.Type.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
 	}
+}
+
+// checkMixedSuspendSupertypes reports a class that has both a suspend and
+// a non-suspend function type among its supertypes, directly or through
+// other supertypes (MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES), at its
+// supertype list, as kotlinc does. It reports whether it did.
+func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
+	if len(d.Supers) == 0 || d.Sym == nil {
+		return false
+	}
+	var suspend, plain bool
+	d.Sym.Supertypes(func(s *types.ClassSym) bool {
+		if s != d.Sym && s.Func {
+			if s.Suspend {
+				suspend = true
+			} else {
+				plain = true
+			}
+		}
+		return !(suspend && plain)
+	})
+	if suspend && plain {
+		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
+		return true
+	}
+	return false
 }
