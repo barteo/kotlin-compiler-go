@@ -1793,6 +1793,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
+		k.javaClass = x.Ref != nil && strings.HasPrefix(x.Ref.Name, "java.") && x.Target.K == types.Class && builtinJava[x.Target.C.Name]
 		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
 		if others != nil && !others.empty() {
 			n = c.excluding(n, key, others)
@@ -2404,6 +2405,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
+			c.protectedGetter(x)
 			break
 		}
 		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
@@ -2440,6 +2442,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+		c.protectedGetter(x)
 	}
 	if x.Prop != nil && x.Prop.Ambiguous {
 		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)

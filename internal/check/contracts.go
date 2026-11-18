@@ -25,7 +25,7 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.InPlace, d.Implies = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.AtLeastOnce, d.Implies = c.dropContract(d.Body, imported, o)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
 					if cls != nil {
@@ -88,9 +88,9 @@ func qualifiedName(x syntax.Expr) string {
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
 // place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace map[string]bool, implies []syntax.Implies) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -101,12 +101,12 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	if c.file != nil && c.file.Annotated != nil {
@@ -151,10 +151,16 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 				}
 				once[p.Name] = true
 			}
+			if kind.Name == "AT_LEAST_ONCE" {
+				if atLeast == nil {
+					atLeast = map[string]bool{}
+				}
+				atLeast[p.Name] = true
+			}
 		}
 		return true
 	})
-	return once, inPlace, implies
+	return once, inPlace, atLeast, implies
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or

@@ -473,7 +473,7 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	for k := cls; k != nil; k = k.Outer {
-		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal) {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal && cd.Find("", "PublishedApi") == nil) {
 			return
 		}
 	}
@@ -505,19 +505,26 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			}
 		case *syntax.Call:
 			if f := n.Sym; f != nil {
-				if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
+				if k := n.Ctor; k != nil {
+					// A class that isn't public API, internal or private,
+					// can't be constructed in other modules.
+					if _, ok := k.Decl.(*syntax.ClassDecl); ok && !localType(types.ClassType(k)) && !publicAPIClass(k) {
+						c.errorf(n.P, "public-API inline function cannot access non-public-API class '%s'", k.DisplayName())
+					}
+				} else if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
 					report(n.P, "function", f.Name, &fd.Modifiers)
+					if f.Owner == nil {
+						break
+					}
+					if _, ok := f.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(f.Owner) && !c.hasErrorAt(n.P, "public-API inline") {
+						c.errorf(n.P, "public-API inline function cannot access non-public-API function '%s'", f.Name)
+					}
 				}
 			}
 		}
 		return true
 	}
-	if d.Body != nil {
-		syntax.Inspect(d.Body, visit)
-	}
-	if d.ExprBody != nil {
-		syntax.Inspect(d.ExprBody, visit)
-	}
+	inspectInline(d, visit)
 }
 
 // varModifiers returns the modifiers of a property of the program, or nil.

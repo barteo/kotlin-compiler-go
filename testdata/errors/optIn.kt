@@ -43,7 +43,7 @@ open class Base
 class Sub1 : Base() // ERROR needs opt-in to inherit
 
 @SubclassOptInRequired(Exp::class)
-class Sub2 : Base()
+open class Sub2 : Base()
 
 @OptIn(Exp::class)
 class Sub3 : Base()

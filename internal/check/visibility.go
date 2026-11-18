@@ -570,6 +570,19 @@ func (c *Checker) strictProtectedVia(owner, rc *types.ClassSym) bool {
 
 // protectedFun reports whether f is a protected instance member, which
 // protectedVia checks the receiver of.
+// protectedGetter reports a read of a Java class's synthetic property x
+// whose getter is protected and isn't visible on x's receiver, as an
+// explicit call of the getter is: s.name, for a protected getName, in a
+// subclass of s's class, but not on its own instances. x isn't an
+// assignment's target, whose setter javaSetterVisible checks.
+func (c *Checker) protectedGetter(x *syntax.Member) {
+	g := x.Getter
+	if g == nil || c.assignTarget == x || g.Owner == nil || !g.Owner.External || !protectedFun(g) || c.protectedVia1(g.Owner, g, x.X) {
+		return
+	}
+	c.invisibleFun(x.P, g)
+}
+
 func protectedFun(f *types.FunSym) bool {
 	return !f.Static && !f.Ext && f.Owner != nil && memberVisibility(f) == syntax.Protected
 }

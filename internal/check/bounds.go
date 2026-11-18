@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -18,6 +20,11 @@ import (
 // (INCONSISTENT_TYPE_PARAMETER_BOUNDS).
 func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 	for _, d := range decls {
+		if d.Sym != nil && slices.ContainsFunc(d.Sym.Bounds, types.Type.IsArray) {
+			// A subtype of an array type is the array type: the type
+			// parameter would be it.
+			c.errorf(d.P, "upper bound of a type parameter cannot be an array")
+		}
 		if d.Sym == nil || len(d.Sym.Bounds) < 2 || len(d.Bounds) != len(d.Sym.Bounds) {
 			continue
 		}

@@ -2905,7 +2905,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	if fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls) {
+	if (fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls)) && !c.javaClassNarrowed(fn.X) {
 		c.errorf(fn.P, "expression '%s' of type Int cannot be invoked as a function", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
@@ -3491,4 +3491,11 @@ func javaAnnotationElement(cls *types.ClassSym, name string) *types.FunSym {
 		}
 	}
 	return nil
+}
+
+// javaClassNarrowed tells whether x is a stable value smart cast by an is
+// check against a Java class written for a built-in type.
+func (c *Checker) javaClassNarrowed(x syntax.Expr) bool {
+	k, ok := c.narrowKeyOf(x)
+	return ok && c.scope.javaClassNarrowed(k.recv, k.sym)
 }

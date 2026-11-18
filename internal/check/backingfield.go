@@ -3,6 +3,7 @@ package check
 import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
+	"slices"
 )
 
 // Explicit backing fields, val x: List<T> field = mutableListOf(): the
@@ -317,11 +318,55 @@ func (c *Checker) memberField(x *syntax.Member, rt, t types.Type) types.Type {
 			}
 		}
 	}
+	if crt, ok := c.captureReceiver(x, p, rt); ok {
+		rt = crt
+	}
 	if ft, ok := c.fieldRead(p, rt, x.P); ok {
 		x.Cast = needsCast(t, ft)
 		return ft
 	}
 	return t
+}
+
+// captureReceiver captures the projected type arguments of a stable
+// receiver of type rt whose property p's explicit backing field it reads,
+// and smart casts the receiver to the captured type, as K2 does: after
+// val v = o.p, for an o of type C<*> and a field of type E, v is of the
+// capture of the star, which o's members take, o.consume(v).
+func (c *Checker) captureReceiver(x *syntax.Member, p *types.VarSym, rt types.Type) (types.Type, bool) {
+	if p == nil || p.FieldT == nil || p.Owner == nil || c.inRef > 0 || !c.fieldVisible(p, x.P) {
+		return rt, false
+	}
+	r := rt.NonNull()
+	if r.K != types.Class || r.C != p.Owner || r.A == nil || r.A.Len() != len(p.Owner.TypeParams) {
+		return rt, false
+	}
+	args := slices.Clone(r.A.List)
+	changed := false
+	for i, a := range args {
+		tp := p.Owner.TypeParams[i]
+		if a.V == types.Inv || a.V == types.In || !p.FieldT.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }) {
+			continue
+		}
+		bounds := tp.Bounds
+		if a.V != types.Star {
+			bounds = []types.Type{a.T}
+		}
+		capt := &types.TypeParamSym{Name: "Captured(" + a.String() + ")", Var: types.Inv, Bounds: bounds, Index: tp.Index}
+		args[i] = types.Arg{T: types.ParamType(capt)}
+		changed = true
+	}
+	if !changed {
+		return rt, false
+	}
+	k, ok := c.narrowKeyOf(x.X)
+	if !ok {
+		return rt, false
+	}
+	k.t = types.GenericType(r.C, args)
+	k.not = nil
+	c.scope.narrows = append(c.scope.narrows, k)
+	return k.t, true
 }
 
 // isThis reports whether a receiver of type recv is this, an instance of

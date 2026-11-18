@@ -243,6 +243,15 @@ type Checker struct {
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
 	refLHS bool
+	// refLHSOuter is set while the outer class of an inner class on a
+	// callable reference's left side is resolved, Outer<A> of
+	// Outer<A>.Inner<B>::f: there, as on the left side itself, a class
+	// whose outer classes' type parameters it takes from the code around
+	// it, as Inner<B>::f in Outer's code, is an error in kotlinc.
+	refLHSOuter bool
+	// mustInit are the properties reported as needing an initializer
+	// (see initReported).
+	mustInit map[*types.VarSym]bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -314,6 +323,9 @@ type Checker struct {
 	branchSink *system
 	unitElvis  syntax.Expr    // see unitBody
 	varTarget  *syntax.Member // see propBound
+	// assignTarget is the member an assignment's target is while it is
+	// checked, whose getter isn't called (see protectedGetter).
+	assignTarget *syntax.Member
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the
@@ -1237,6 +1249,12 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
+	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 && ref.Args != nil {
+		// A local class of a generic function, Local<D>::f: kotlinc wants
+		// the type arguments of the type parameters it captures too.
+		c.errorf(ref.P, "%s expected for class %s", countArgs(len(ps)+len(hidden)), cls.DisplayName())
+		return types.InvalidType
+	}
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1282,14 +1300,21 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 // be its expansion's, as in One<Any> for TK<Any, Any>: errors in those
 // are reported on the whole reference.
 func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
+	c.checkBoundsOf(t, ref, len(t.A.List))
+}
+
+// checkBoundsOf checks the first n type arguments of t, as checkBounds:
+// an inner class's own, whose outer classes' are checked where they are
+// written.
+func (c *Checker) checkBoundsOf(t types.Type, ref *syntax.TypeRef, n int) {
 	ps := t.C.TypeParams
 	s := classSubst(t)
-	for i, a := range t.A.List {
+	for i, a := range t.A.List[:n] {
 		if a.V == types.Star {
 			continue
 		}
 		p := ref.P
-		if len(ref.Args) == len(t.A.List) {
+		if len(ref.Args) == len(t.A.List) || len(ref.Args) == n {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
@@ -1942,6 +1967,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			sym.InPlace[i] = d.InPlace[p.Name]
 		}
 	}
+	if d.AtLeastOnce != nil {
+		sym.AtLeastOnce = make([]bool, len(d.Params))
+		for i, p := range d.Params {
+			sym.AtLeastOnce[i] = d.AtLeastOnce[p.Name]
+		}
+	}
 	c.contractEffects(d, sym)
 	if d.Infix {
 		c.checkInfix(d, owner)
@@ -2125,17 +2156,25 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			sym.JvmStatic = true
 		}
 	}
+	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
+		p := d.AccessorP
+		if p.Line == 0 {
+			p = d.Getter.P
+		}
+		c.errorf(p, "const 'val' should not have a getter")
+	}
 	if owner != nil {
 		// kc doesn't support const outside objects, which is an error.
 		sym.Const = d.Const && owner.Object
+		if d.Const && (!owner.Object || owner.Anonymous) {
+			c.errorf(modPos(d.Written, "const", d.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
 		if sym.JvmField && sym.JvmStatic {
 			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
 		}
-		if sym.JvmField && owner.CompanionOf != nil && owner.CompanionOf.Interface && (d.Mutable || d.Visibility != syntax.Public) {
-			c.errorf(d.P, "JvmField could be applied only if all interface companion properties are 'public final val' with '@JvmField' annotation")
-		}
+
 	}
 	sym.Abstract = d.Abstract || owner != nil && owner.Interface && d.Init == nil && d.Getter == nil && d.Setter == nil
 	sym.Final = owner == nil || isFinal(d.Modifiers, owner)
@@ -2177,11 +2216,26 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "property in an interface cannot have a backing field")
 	case d.Init != nil && !hasField && !sym.FieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
+	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
+		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
 		c.errorf(d.P, "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
-		if owner == nil || owner.Interface {
+		switch {
+		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
+		case d.Mutable && d.Setter != nil && hasBody(d.Setter):
+			// The constructor's assignment would call the setter.
+			c.errorf(d.P, "property must be initialized")
+			c.initReported(sym)
+		case !sym.Final && !owner.Final && d.Visibility != syntax.Private:
+			// A subclass's override would be assigned instead.
+			if d.Getter != nil && hasBody(d.Getter) {
+				c.errorf(d.P, "property must be initialized or be final")
+			} else {
+				c.errorf(d.P, "property must be initialized, be final, or be abstract")
+			}
+			c.initReported(sym)
 		}
 		// Assigned in the constructor's code, as definite assignment
 		// checks.
@@ -2308,6 +2362,9 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.errorf(d.P, "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {
+		if cp.Const && cp.IsProp {
+			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
 		c.tparams = nil
@@ -2485,9 +2542,43 @@ func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
 			if m.Recv == nil && (m.Type != nil || m.Visibility == syntax.Private && m.Sym.Resolved) {
 				c.propVariance(m.Sym, m.Type, m.Mutable, m.Visibility != syntax.Private)
 			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				if m.Type != nil {
+					c.propVariance(m.Sym, m.Type, m.Mutable, true)
+				}
+				if g := m.Getter; g != nil && g.Sym != nil {
+					c.checkVariance(g.Sym.Recv, m.Recv, types.In, true)
+				}
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
 		case *syntax.FunDecl:
 			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
 				c.funVariance(m, m.Visibility != syntax.Private)
+			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				c.funVariance(m, true)
+				c.checkVariance(m.Sym.Recv, m.Recv, types.In, true)
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
+		}
+	}
+}
+
+// boundsVariance checks the upper bounds of a member's type parameters,
+// which are in in position: what a call passes for the parameter is
+// checked against them.
+func (c *Checker) boundsVariance(tps []*syntax.TypeParam) {
+	for _, tp := range tps {
+		if tp.Sym == nil {
+			continue
+		}
+		for i, b := range tp.Sym.Bounds {
+			if i < len(tp.Bounds) {
+				c.checkVariance(b, tp.Bounds[i], types.In, true)
 			}
 		}
 	}
@@ -2544,10 +2635,20 @@ func (c *Checker) markPrivateToThis(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.PropDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil {
 			c.propVariance(d.Sym, d.Type, d.Mutable, false)
+		} else if d.Visibility != syntax.Private && d.Type == nil && d.DelegateOf == nil {
+			// A type inferred from the initializer or the delegate,
+			// which breaks the variance as a written one would.
+			pos := types.Out
+			if d.Mutable {
+				pos = types.Inv
+			}
+			c.checkVariance1(d.Sym.Type, d.Sym.Type, nil, pos, d.P, true)
 		}
 	case *syntax.FunDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil && d.AccessorOf == nil {
 			c.funVariance(d, false)
+		} else if d.Visibility != syntax.Private && d.Ret == nil && d.AccessorOf == nil && d.Sym != nil {
+			c.checkVariance1(d.Sym.Ret, d.Sym.Ret, nil, types.Out, d.P, true)
 		}
 	}
 }
@@ -2831,6 +2932,9 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Operator && d.Ret == nil && !c.hasErrorAt(d.P, "'operator' modifier") {
+		c.operatorReturn(d, sym.Owner)
+	}
 	if d.Property == "" {
 		c.implicitNothingRet(d)
 	}
@@ -3314,11 +3418,22 @@ func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
 	if d.Setter != nil && d.Setter.Sym != nil && hasBody(d.Setter) { // nil: an extension property's without a getter
 		c.checkFun(d.Setter, cls)
 	}
+	c.inlineAccessorChecks(d, cls)
 }
 
 // hasBody reports whether a function or an accessor has a body: an
 // abstract extension property's accessors don't.
 func hasBody(d *syntax.FunDecl) bool { return d.Body != nil || d.ExprBody != nil }
+
+// initReported records that property v was reported as needing an
+// initializer where it is declared, which the constructor's code assigning
+// it doesn't change: its definite assignment isn't reported again.
+func (c *Checker) initReported(v *types.VarSym) {
+	if c.mustInit == nil {
+		c.mustInit = map[*types.VarSym]bool{}
+	}
+	c.mustInit[v] = true
+}
 
 // lateinitChecks reports the uses of lateinit that Kotlin forbids, on a
 // property or a local var. t is the type, or Invalid if it isn't known

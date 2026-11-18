@@ -1,6 +1,6 @@
 path	category	key	detail
 tests/Abstract.kt	rejects invalid	on an expected line	
-tests/AbstractAccessor.kt	rejects invalid	elsewhere	
+tests/AbstractAccessor.kt	rejects invalid	on an expected line	
 tests/AbstractInAbstractClass.kt	rejects invalid	on an expected line	
 tests/AbstractInClass.kt	rejects invalid	on an expected line	
 tests/AbstractInTrait.kt	rejects invalid	on an expected line	
@@ -5183,7 +5183,7 @@ tests/inner/traits.kt	accepts valid
 tests/inner/typeVarianceConflict.kt	rejects invalid	on an expected line	
 tests/inner/uninitializedSuperType.kt	rejects invalid	on an expected line	
 tests/inner/visibility.kt	rejects invalid	on an expected line	
-tests/innerClasses/inCallableReferenceLHS/adaptedReference.kt	rejects invalid	elsewhere	
+tests/innerClasses/inCallableReferenceLHS/adaptedReference.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/classReference.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/fromSuperclass.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/genericFunction.kt	rejects invalid	on an expected line	
@@ -5191,7 +5191,7 @@ tests/innerClasses/inCallableReferenceLHS/genericWithUnderscoreArgument.kt	rejec
 tests/innerClasses/inCallableReferenceLHS/innerClassInCallableReferenceLHS.kt	skip	LANGUAGE	
 tests/innerClasses/inCallableReferenceLHS/innerLocalClasses.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/javaInner.kt	rejects invalid	on an expected line	
-tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChain.kt	parse/unsupported	parse error: expected expression, found '_'	misplacedArgumentsInChain.kt:16: expected expression, found '.'
+tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChain.kt	accepts valid		
 tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChainWithNested.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt	accepts valid		
 tests/innerClasses/inCallableReferenceLHS/nullable.kt	rejects invalid	on an expected line	
@@ -5199,7 +5199,7 @@ tests/innerClasses/inCallableReferenceLHS/simple.kt	rejects invalid	on an expect
 tests/innerClasses/inCallableReferenceLHS/upperBoundViolated.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/withPackage.kt	rejects invalid	on an expected line	
-tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt	parse/unsupported	parse error: expected '_', found '_'	withParenthesizes.kt:12: expected ')', found ','
+tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt	accepts valid		
 tests/innerClasses/inCallableReferenceLHS/withProjections.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/withTypealias.kt	rejects invalid	on an expected line	
 tests/innerClasses/inner.kt	rejects invalid	on an expected line	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=42285 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/ac684b51-a81c-5e68-97f0-ad74268d7299/scratchpad/tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=39531 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/a2c3060c-8196-582d-abd9-054959b70225/scratchpad/tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -6619,7 +6619,7 @@ tests/nullabilityAndSmartCasts/funcLiteralArgsInsideAmbiguity.kt	rejects invalid
 tests/nullabilityAndSmartCasts/funcLiteralArgsInsideUnresolvedFunction.kt	rejects invalid	on an expected line	
 tests/nullabilityAndSmartCasts/kt1270.kt	rejects invalid	on an expected line	
 tests/nullabilityAndSmartCasts/kt1680.kt	accepts valid		
-tests/nullabilityAndSmartCasts/kt1778.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	kt1778.kt:11: expression 'length' of type Int cannot be invoked as a function
+tests/nullabilityAndSmartCasts/kt1778.kt	accepts valid		
 tests/nullabilityAndSmartCasts/kt2109.kt	accepts valid		
 tests/nullabilityAndSmartCasts/kt2125.kt	rejects invalid	on an expected line	
 tests/nullabilityAndSmartCasts/kt2146.kt	rejects invalid	on an expected line	
@@ -8830,7 +8830,7 @@ tests/syntheticExtensions/samAdapters/Deprecated.kt	accepts valid
 tests/syntheticExtensions/samAdapters/GenericClass.kt	accepts valid		
 tests/syntheticExtensions/samAdapters/GenericMethod.kt	accepts valid		
 tests/syntheticExtensions/samAdapters/GenericMethodInGenericClass.kt	accepts valid		
-tests/syntheticExtensions/samAdapters/InnerClassInGeneric.kt	parse/unsupported	unsupported types in signature	
+tests/syntheticExtensions/samAdapters/InnerClassInGeneric.kt	rejects invalid	on an expected line	
 tests/syntheticExtensions/samAdapters/NoNamedArgsAllowed.kt	rejects invalid	on an expected line	
 tests/syntheticExtensions/samAdapters/PackageLocal.kt	rejects invalid	on an expected line	
 tests/syntheticExtensions/samAdapters/ParameterTypeAnnotation.kt	rejects invalid	on an expected line	
@@ -9646,7 +9646,7 @@ testsWithStdLib/annotations/jvmDefault/jvmDefaults.kt	accepts valid
 testsWithStdLib/annotations/jvmDefault/jvmDefaultsWithJava.kt	accepts valid		
 testsWithStdLib/annotations/jvmField/inMultiFileFacade.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmField/inSingleFileFacade.kt	accepts valid		
-testsWithStdLib/annotations/jvmField/interface13.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/jvmField/interface13.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmField/jvmFieldApplicability_1_6.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmOverloads/JvmOverloadWithNoDefaults.kt	accepts valid		
 testsWithStdLib/annotations/jvmOverloads/jvmOverloadsOnAbstractMethods.kt	rejects invalid	on an expected line	
@@ -10621,7 +10621,7 @@ testsWithStdLib/properties/backingField/explicitBackingFieldInInterface.kt	rejec
 testsWithStdLib/properties/backingField/explicitBackingFieldIntersectionOverrides.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldIntersectionOverridesUnresolvedElements.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	rejects invalid	on an expected line	
-testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	explicitBackingFieldPrivateToThis.kt:20: type mismatch: inferred type is Any? but Nothing was expected
+testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldSubclassSOAccess.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldType.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldTypeVarianceProblem.kt	rejects invalid	on an expected line	
