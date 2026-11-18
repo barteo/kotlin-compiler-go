@@ -18,6 +18,12 @@ used the same inputs, class path and `-opt-in`s.
 | kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.0 s | 18.5 s | 4.9 s | 5.3×, 3.8× | 1581 of 1597 (99.0%) |
 | kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 37.2 s | 29.5 s | 8.9 s | 4.2×, 3.3× | 2730 of 2778 (98.3%) |
 
+On a slower 4-core machine, after the changes in
+[Toward 5×](detekt-performance.md#toward-5-stock-detekt-with---parallel),
+stock detekt with `--parallel` took 36.7 s on kotlinpoet and 59.0 s on
+coroutines. detekt on kc took 6.48 s (5.7×) and 10.94 s (5.4×), the median
+of 7 runs.
+
 - "On kc" is the median of 5 runs after the first, which writes the
   class-data sharing archive.
 - kc's findings with `--parallel` are identical to its serial run's. Serially,
@@ -70,6 +76,12 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
   name, such as `UNNECESSARY_SAFE_CALL`, not by FIR's `KaFirDiagnostic`
   classes.
 - `0003` follows `JavaClassFinderImpl`'s constructor in kotlin-compiler 2.4.21.
+- `0004` leaves out `ValidateClasspath`, which on kc only waited for kc's
+  analysis. It runs the rules in two waves: first the rules that read only
+  the PSI, while kc analyzes, then those that read the Analysis API.
+- `0005` makes a visitor that visits no leaves step over them in its walk.
+  Leaves are tokens, white space and comments.
+- `0006` makes each rule's path filters once instead of once per file.
 
 **Analysis.**
 - When detekt opens the session, kc's ka operations open the module with
@@ -120,8 +132,9 @@ jvm/detekt/build.sh test
 
 - `run.sh` takes detekt-cli's arguments. Compiler options, such as
   `-opt-in`, go last.
-- `run.sh` runs detekt with `--parallel` and a class-data sharing archive,
-  and kc analyzes in the background as soon as detekt builds the session.
+- `run.sh` runs detekt with `--parallel`, a class-data sharing archive and
+  the parallel collector. kc analyzes in the background as soon as detekt
+  builds the session.
   [Making detekt on kc faster](detekt-performance.md) measures these and
   the other speedups.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
