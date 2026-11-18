@@ -99,7 +99,7 @@ internal class KcRound(
     private val pendingPackages = HashMap<FqName, Any>()
     private val pendingMembers = IdentityHashMap<KcClassSymbol, KcClassMembers>()
 
-    /** The class-path packages loaded, a [LibraryPackage] or [NO_PACKAGE]. */
+    /** The class-path packages loaded, a [LibraryPackage] or [NONE]. */
     private val libraryPackages = ConcurrentHashMap<FqName, Any>()
 
     /** The classes' member scopes built so far. */
@@ -366,7 +366,7 @@ internal class KcRound(
                 val decls = Builder(key, noNodes, KaSymbolOrigin.LIBRARY, staged = true).decls(kp.decls, packageSymbol(fq), key)
                 LibraryPackage(kp.classes.map(ClassId::fromString), decls)
             }
-            pendingPackages[fq] = p ?: NO_PACKAGE
+            pendingPackages[fq] = p ?: NONE
             p
         }
     }
@@ -447,21 +447,28 @@ internal class KcRound(
         classes[id] ?: libraryClass(id)
             ?: unknownClasses[id] ?: KcLibraryClassSymbol(this, id).let { unknownClasses.putIfAbsent(id, it) ?: it }
 
-    /** Guarded by [loadLock]. */
-    private val classFiles = HashMap<String, PsiClass?>()
+    /** The class-file PSI found for each Java library class, or [NONE] for none. */
+    private val classFiles = ConcurrentHashMap<String, Any>()
+
+    /** Taken to look a class file up, which needs nothing [loadLock] guards. */
+    private val classFileLock = Any()
 
     /**
      * The class-file PSI of Java library class [id] (a model class ID), as
      * FIR has it: KSP gives such a class its .class file as containing file.
      */
-    fun classFilePsi(id: String): PsiClass? = synchronized(loadLock) {
-        if (id in classFiles) return classFiles[id]
+    fun classFilePsi(id: String): PsiClass? {
+        classFiles[id]?.let { return it as? PsiClass }
+        return synchronized(classFileLock) { classFiles[id]?.let { return it as? PsiClass }; findClassFile(id) }
+    }
+
+    private fun findClassFile(id: String): PsiClass? {
         val p = project ?: return null
         val fq = ClassId.fromString(id).asSingleFqName().asString()
         val c = com.intellij.psi.JavaPsiFacade.getInstance(p).findClass(fq, com.intellij.psi.search.GlobalSearchScope.allScope(p))
             ?.takeIf { it is com.intellij.psi.PsiCompiledElement }
-        classFiles[id] = c
-        c
+        classFiles[id] = c ?: NONE
+        return c
     }
 
     /** The class-path class [id], loading it with its outermost class, or null if there is none. */
@@ -1079,8 +1086,8 @@ internal class KcRound(
     }
 
     companion object {
-        /** A class-path package that doesn't exist, in [libraryPackages]. */
-        private val NO_PACKAGE = Any()
+        /** What [libraryPackages] and [classFiles] keep for a package or class file that doesn't exist. */
+        private val NONE = Any()
 
         /** The nodes of a library class: none. */
         @Suppress("UNCHECKED_CAST")

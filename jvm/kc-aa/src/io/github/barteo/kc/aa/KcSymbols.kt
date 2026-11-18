@@ -52,6 +52,9 @@ internal class KcToken : KaLifetimeToken() {
  * Go model, its PSI (null for a library symbol), the symbol it is declared
  * in (null for a top-level library class) and its pointer key.
  */
+/** [KcInfo]'s mark for a symbol whose PSI was looked for and not found. */
+private val NO_PSI = Any()
+
 internal class KcInfo(
     val round: KcRound,
     val decl: KcDecl,
@@ -69,7 +72,17 @@ internal class KcInfo(
 ) {
     private val givenPsi = psi
 
-    val psi: PsiElement? get() = givenPsi ?: findPsi?.invoke()
+    /** What [findPsi] found, once it has looked: a PsiElement, or [NO_PSI]. */
+    @Volatile
+    private var foundPsi: Any? = null
+
+    val psi: PsiElement?
+        get() {
+            givenPsi?.let { return it }
+            val find = findPsi ?: return null
+            val found = foundPsi ?: (find() ?: NO_PSI).also { foundPsi = it }
+            return found as? PsiElement
+        }
 
     /**
      * The symbol's `psi`: [psi], or for a member Kotlin generates in a
@@ -201,7 +214,9 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val location get() = info.location
     override val modality get() = info.modality
     override val superTypes: List<KaType> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        val java = (info.psi as? com.intellij.psi.PsiClass)?.takeIf { info.origin == KaSymbolOrigin.JAVA_SOURCE }
+        // Only a Java source's PSI has its supertypes' annotations. Asking
+        // a Java library class for its PSI finds its class file's.
+        val java = if (info.origin == KaSymbolOrigin.JAVA_SOURCE) info.psi as? com.intellij.psi.PsiClass else null
         info.decl.supertypes.map { info.type(if (java != null) info.round.javaSupertype(java, it) else it) }
     }
     /** The type of this class with its own type parameters as arguments, C<T>. */
