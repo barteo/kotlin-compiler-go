@@ -212,6 +212,13 @@ Four things differ from the test infrastructure:
   `kc` reports these errors in its checker, and the harness drops them
   (by their messages, which begin as the backend's do) from such tests.
 
+`kotlinc`'s extra and experimental checkers report only with `-Wextra`
+and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
+ones for tests with `WITH_EXTRA_CHECKERS` and those of
+`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
+`WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
+same tests.
+
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. Like
 `kotlinc`'s Java parser, `kc` reads past the syntax errors that IntelliJ's

@@ -16,7 +16,11 @@ own tests.
   `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON`,
   `USELESS_ELVIS`, `OVERRIDE_BY_INLINE`, `NOTHING_TO_INLINE`,
   `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
-  `PLATFORM_CLASS_MAPPED_TO_KOTLIN` and `NO_TAIL_CALLS_FOUND`, and
+  `PLATFORM_CLASS_MAPPED_TO_KOTLIN`, `NO_TAIL_CALLS_FOUND`,
+  `USELESS_IS_CHECK`, `IMPOSSIBLE_IS_CHECK_WARNING`,
+  `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`, `CAST_NEVER_SUCCEEDS`,
+  `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL`,
+  `SAFE_CAST_RELYING_ON_NULL` and `UNSAFE_CAST_RELYING_ON_NULL`, and
   those only where the types make them certain, so
   that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
   never of a platform type, a type parameter or a type it couldn't
@@ -25,7 +29,14 @@ own tests.
   supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is reported where the
   Java class is named, not through a typealias or an inferred type, and
   `NO_TAIL_CALLS_FOUND` not where a recursive call in tail position may
-  be a tail call to `kotlinc`, as one on another receiver. `@Suppress`
+  be a tail call to `kotlinc`, as one on another receiver. Type checks
+  and casts are judged as `kotlinc` judges them, by the declared type and
+  then by its smart casts, but never where a platform type or a type `kc`
+  couldn't resolve is involved. With `-Wextra`, as `kotlinc`, it also
+  reports `UNREACHABLE_CODE`, after a statement that always jumps (not
+  the dead code of a class's initialization order), and with
+  `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
+  `@Suppress`
   silences a warning by its name, or all of them with `"warnings"`.
 
 - Reified type parameters of members of interfaces and value classes

@@ -133,6 +133,8 @@ Arguments can be files or directories. Flags:
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
 | `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
+| `-Wextra` | also report the warnings of `kotlinc`'s extra checkers (`UNREACHABLE_CODE`), as in `kotlinc` |
+| `-Xuse-fir-experimental-checkers` | also report the warnings of `kotlinc`'s experimental checkers (`REDUNDANT_INTERPOLATION_PREFIX`), as in `kotlinc` |
 | `-Werror` | fail if there are warnings, as in `kotlinc` |
 | `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
 
