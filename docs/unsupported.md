@@ -14,7 +14,8 @@ own tests.
   `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
   `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON`,
-  `USELESS_ELVIS` and `OVERRIDE_BY_INLINE`, and those only where the types make them certain, so
+  `USELESS_ELVIS`, `OVERRIDE_BY_INLINE` and `NOTHING_TO_INLINE`, and
+  those only where the types make them certain, so
   that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
   never of a platform type, a type parameter or a type it couldn't
   resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that

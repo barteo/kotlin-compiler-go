@@ -37,6 +37,38 @@ func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	c.inlineDecls = append(c.inlineDecls, d)
 }
 
+// nothingToInline warns of an inline function that has nothing for
+// inlining to gain (kotlinc's NOTHING_TO_INLINE, at the inline modifier):
+// no reified type parameter, and no parameter or context parameter of a
+// function type, not nullable or noinline, whose lambdas would be
+// inlined. A suspend, expect or @InlineOnly function is left alone, as
+// kotlinc leaves it.
+func (c *Checker) nothingToInline(d *syntax.FunDecl) {
+	if d.AccessorOf != nil || d.Suspend || d.Expect || d.Find("", "InlineOnly") != nil || d.Find("", "kotlin.internal.InlineOnly") != nil {
+		return // kotlinc checks named functions only
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Reified {
+			return
+		}
+	}
+	for _, p := range append(slices.Clip(d.Params), d.Contexts...) {
+		if p.Sym == nil {
+			return // not resolved: don't guess
+		}
+		if t := p.Sym.Type; !p.Noinline && !p.Vararg && !t.N && t.Flex().IsFunc() {
+			return
+		}
+	}
+	pos := d.P
+	for _, w := range d.Written {
+		if w.Name == "inline" {
+			pos = w.P
+		}
+	}
+	c.warnf(pos, "NOTHING_TO_INLINE", "expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types")
+}
+
 // forwardInlinable makes a crossinline parameter of the program's inline
 // function a function object if the function passes it on to a parameter
 // of another inline function, of the call's name, that is one: of the

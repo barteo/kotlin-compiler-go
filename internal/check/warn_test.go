@@ -86,7 +86,24 @@ open class O : I {
     final override inline fun foo() {}
     override fun bar() = 2
     private inline fun p() {}
-}`, []string{"12:OVERRIDE_BY_INLINE", "7:OVERRIDE_BY_INLINE"}},
+}`, []string{"12:NOTHING_TO_INLINE", "12:OVERRIDE_BY_INLINE", "14:NOTHING_TO_INLINE", "7:NOTHING_TO_INLINE", "7:OVERRIDE_BY_INLINE", "9:NOTHING_TO_INLINE"}},
+		{"nothing to inline", `
+typealias Action = () -> Unit
+inline fun plain(x: Int) = x
+inline fun withLambda(f: () -> Unit) = f()
+inline fun withAlias(f: Action) = f()
+inline fun withNoinline(noinline f: () -> Unit) = f
+inline fun <reified T> reified(x: Any) = x is T
+inline suspend fun susp() {}
+inline fun withVararg(vararg fs: () -> Unit) {}
+inline fun <T : () -> Unit> bounded(t: T) = t()
+inline fun (() -> Unit).receiver() = this()
+inline fun withExtType(f: Int.() -> Unit) = 1.f()
+@Suppress("NOTHING_TO_INLINE")
+inline fun suppressed() {}
+inline val prop: Int get() = 1
+inline val <reified T> T.ext: Int get() = 1
+`, []string{"10:NOTHING_TO_INLINE", "11:NOTHING_TO_INLINE", "3:NOTHING_TO_INLINE", "6:NOTHING_TO_INLINE", "9:NOTHING_TO_INLINE"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {
