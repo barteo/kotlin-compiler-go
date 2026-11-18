@@ -689,8 +689,12 @@ func (l *lowerer) callableRef(n psi.NodeRef) syntax.Expr {
 // in kc, so annotations in them aren't recorded and anonymous functions
 // in them are numbered from 1.
 func (l *lowerer) stringLit(n psi.NodeRef) syntax.Expr {
-	s := &syntax.StringLit{}
+	s := &syntax.StringLit{Src: n.Text()}
 	s.P = l.pos(n)
+	if p := child(n, psi.KindSTRING_INTERPOLATION_PREFIX); p.Valid() {
+		s.Prefix = len(p.Text())
+		s.Src = s.Src[s.Prefix:]
+	}
 	var sb strings.Builder
 	flush := func() {
 		if sb.Len() > 0 {

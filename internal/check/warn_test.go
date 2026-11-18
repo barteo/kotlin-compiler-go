@@ -16,6 +16,12 @@ import (
 // sorted.
 func checkWarnings(t *testing.T, src string) []string {
 	t.Helper()
+	return checkWarningsWith(t, src, Options{Warnings: true})
+}
+
+// checkWarningsWith is checkWarnings with the options opts.
+func checkWarningsWith(t *testing.T, src string, opts Options) []string {
+	t.Helper()
 	lib, err := classpath.FindStdlib()
 	if err != nil {
 		t.Skip(err)
@@ -32,7 +38,7 @@ func checkWarnings(t *testing.T, src string) []string {
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
-	ds, err := CheckOptions(context.Background(), []*syntax.File{f}, NewLibrary(cp), 1, nil, Options{Warnings: true})
+	ds, err := CheckOptions(context.Background(), []*syntax.File{f}, NewLibrary(cp), 1, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,5 +266,33 @@ fun f(s: String) = s?.length
 `)
 	if len(got) != 0 {
 		t.Errorf("got %v, want none", got)
+	}
+}
+
+// TestWarningsExperimental checks the warnings of kotlinc's experimental
+// checkers, which are reported only on request.
+func TestWarningsExperimental(t *testing.T) {
+	src := `
+fun f(x: Int) {
+    println($$"plain")
+    println($"x")
+    println($"x$x")
+    println($$"$$x")
+    println($$"a$b")
+    println($$"a${'$'}")
+    println($$"a$` + "`b`" + `")
+    println($$"$%")
+    println("$%")
+    println($$"""
+        raw
+    """)
+}`
+	if got := checkWarnings(t, src); len(got) != 0 {
+		t.Errorf("without the option: %v, want none", got)
+	}
+	got := checkWarningsWith(t, src, Options{Warnings: true, ExperimentalWarnings: true})
+	want := []string{"10:REDUNDANT_INTERPOLATION_PREFIX", "12:REDUNDANT_INTERPOLATION_PREFIX", "3:REDUNDANT_INTERPOLATION_PREFIX", "4:REDUNDANT_INTERPOLATION_PREFIX", "5:REDUNDANT_INTERPOLATION_PREFIX"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }

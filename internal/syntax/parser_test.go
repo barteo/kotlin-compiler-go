@@ -312,6 +312,11 @@ func TestMultiDollarString(t *testing.T) {
 		if got := strings.Join(parts, "|"); got != tt.want || toks[1].Kind != EOF {
 			t.Errorf("%s: got %q then %s, want %q", tt.src, got, toks[1].Kind, tt.want)
 		}
+		// The token keeps its prefix and its source after it.
+		prefix := len(tt.src) - len(strings.TrimLeft(tt.src, "$"))
+		if tok := toks[0]; tok.Prefix != prefix || tok.Text != tt.src[prefix:] {
+			t.Errorf("%s: prefix %d, text %q; want %d, %q", tt.src, tok.Prefix, tok.Text, prefix, tt.src[prefix:])
+		}
 	}
 }
 
