@@ -72,6 +72,21 @@ fun f(s: String, n: String?): Boolean {
 		{"useless elvis", `
 fun f(s: String, n: String?) = (s ?: "") + (n ?: "")
 `, []string{"2:USELESS_ELVIS"}},
+		{"override by inline", `
+interface I {
+    fun foo()
+    fun bar(): Int
+}
+class C : I {
+    override inline fun foo() {}
+    @Suppress("OVERRIDE_BY_INLINE")
+    override inline fun bar() = 1
+}
+open class O : I {
+    final override inline fun foo() {}
+    override fun bar() = 2
+    private inline fun p() {}
+}`, []string{"12:OVERRIDE_BY_INLINE", "7:OVERRIDE_BY_INLINE"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {

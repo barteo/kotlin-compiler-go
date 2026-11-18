@@ -19,6 +19,9 @@ import (
 func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if virtualMember(d.Modifiers, owner) {
 		c.errorf(d.P, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	} else if d.Override {
+		// A call through the overridden function isn't inlined.
+		c.warnf(d.P, "OVERRIDE_BY_INLINE", "override by an inline function")
 	}
 	if owner != nil && (owner.Interface || owner.Value || !isFinal(d.Modifiers, owner)) {
 		return // an ordinary method

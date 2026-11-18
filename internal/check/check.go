@@ -1998,6 +1998,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		case !tp.Reified:
 		case !d.Inline:
 			c.errorf(tp.P, "only type parameters of inline functions can be reified")
+		case d.Override:
+			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
+			// overridden function couldn't pass the type.
+			c.errorf(tp.P, "override by a function with reified type parameter")
 		case owner != nil && (owner.Interface || owner.Value):
 			c.unsupported(tp.P, "reified member type parameter", "reified type parameters of members of interfaces and value classes are not supported")
 		case owner != nil && !isFinal(d.Modifiers, owner):
