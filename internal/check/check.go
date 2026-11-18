@@ -2916,6 +2916,9 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Operator && d.Ret == nil && !c.hasErrorAt(d.P, "'operator' modifier") {
+		c.operatorReturn(d, sym.Owner)
+	}
 	if d.Property == "" {
 		c.implicitNothingRet(d)
 	}
