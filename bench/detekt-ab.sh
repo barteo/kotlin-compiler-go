@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # detekt-ab.sh compares variants of detekt on kc (jvm/detekt): each variant
-# is a libkc.so, JVM options and optionally a kc-aa.jar (by default
-# jvm/kc-aa/build's), run RUNS times, round robin so that drift on the
+# is a libkc.so, JVM options and optionally a kc-aa.jar and a detekt.jar
+# (by default jvm/kc-aa/build's and jvm/detekt/build's), run RUNS times, round robin so that drift on the
 # machine spreads over all of them. It prints each variant's median and
 # minimum wall time and detekt's CreateSettings, ValidateClasspath and
 # Analyzer phases, and checks that every run's findings are the first
 # variant's.
 #
-#	RUNS=7 bench/detekt-ab.sh out-dir 'name|libkc.so|jvm options[|kc-aa.jar]' ... -- detekt arguments
+#	RUNS=7 bench/detekt-ab.sh out-dir 'name|libkc.so|jvm options[|kc-aa.jar[|detekt.jar]]' ... -- detekt arguments
 #
 # For example, against a build of the base commit:
 #
@@ -31,18 +31,20 @@ done
 shift
 mkdir -p "$out"
 java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}
-# detekt's class path, as jvm/detekt/build.sh wrote it, without kc-aa.jar.
-cp=$(tr ':' '\n' <"$root/jvm/detekt/build/classpath.txt" | grep -v '/kc-aa\.jar$' | paste -sd: -)
+# detekt's class path, as jvm/detekt/build.sh wrote it, without kc-aa.jar
+# and detekt.jar.
+cp=$(tr ':' '\n' <"$root/jvm/detekt/build/classpath.txt" | grep -v '/kc-aa\.jar$\|/detekt\.jar$' | paste -sd: -)
 jar=$root/jvm/kc-aa/build/kc-aa.jar
+detekt=$root/jvm/detekt/build/detekt.jar
 
-run() { # name lib opts jar index detekt-arguments...
-	local log=$out/$1.$5 lib=$2 opts=$3 jar=${4:-$jar}
-	shift 5
+run() { # name lib opts jar detekt-jar index detekt-arguments...
+	local log=$out/$1.$6 lib=$2 opts=$3 jar=${4:-$jar} detekt=${5:-$detekt}
+	shift 6
 	local start end
 	start=$(date +%s%N)
 	# shellcheck disable=SC2086 # the options are words
 	LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m $opts -Dkc.lib="$lib" -Didea.home.path="$root/jvm/detekt/build" \
-		-cp "$jar:$cp" dev.detekt.cli.Main "$@" \
+		-cp "$detekt:$jar:$cp" dev.detekt.cli.Main "$@" \
 		--debug -r "checkstyle:$log.xml" >"$log.out" 2>"$log.err" || true
 	end=$(date +%s%N)
 	echo $(((end - start) / 1000000)) >"$log.ms"
@@ -50,13 +52,13 @@ run() { # name lib opts jar index detekt-arguments...
 
 # Archives first.
 for v in "${variants[@]}"; do
-	IFS='|' read -r name lib opts vjar <<<"$v"
-	case $opts in *SharedArchiveFile*) run "$name" "$lib" "$opts" "$vjar" warm "${@}" ;; esac
+	IFS='|' read -r name lib opts vjar vdetekt <<<"$v"
+	case $opts in *SharedArchiveFile*) run "$name" "$lib" "$opts" "$vjar" "$vdetekt" warm "${@}" ;; esac
 done
 for i in $(seq 1 "$runs"); do
 	for v in "${variants[@]}"; do
-		IFS='|' read -r name lib opts vjar <<<"$v"
-		run "$name" "$lib" "$opts" "$vjar" "$i" "${@}"
+		IFS='|' read -r name lib opts vjar vdetekt <<<"$v"
+		run "$name" "$lib" "$opts" "$vjar" "$vdetekt" "$i" "${@}"
 	done
 done
 
