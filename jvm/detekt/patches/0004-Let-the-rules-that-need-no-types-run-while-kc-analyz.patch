@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <kc@localhost>
 Date: Tue, 17 Nov 2026 22:30:00 +0000
-Subject: [PATCH] Run the rules that need no types while kc analyzes
+Subject: [PATCH] Let the rules that need no types run while kc analyzes
 
 kc's session analyzes the sources in the background from the moment
 detekt opens it. Stock detekt waits for it twice before any rule runs:
@@ -9,6 +9,7 @@ ValidateClasspath collects every file's diagnostics, which kc's session
 doesn't add to (it prints the errors it finds itself), and the first
 rule that needs types waits for it.
 
+With -Dkc.overlap=true:
 - ValidateClasspath is skipped when the session reports its own errors
   (EnvironmentAware.reportsOwnErrors).
 - With --parallel, the Analyzer first runs the rules that don't
@@ -17,19 +18,20 @@ rule that needs types waits for it.
   processors see it once, with all of them.
 - Files go largest first, and a large file's rules are split over
   several tasks, so that no thread is left with a long file at the
-  end.
+  end (-Dkc.schedule=false turns this off).
 
-With --auto-correct, which changes the PSI, each file's rules still run
-in one task. -Dkc.overlap=false turns all of it off, -Dkc.schedule=false
-the last point.
+It is off by default. On 4 cores the rules that need no types and kc's
+analysis compete for the same CPUs: it measured no faster on kotlinpoet
+and 3% slower on kotlinx-coroutines-core. With --auto-correct, which
+changes the PSI, each file's rules run in one task either way.
 ---
- .../main/kotlin/dev/detekt/core/Analyzer.kt   | 81 +++++++++++++++++++
+ .../main/kotlin/dev/detekt/core/Analyzer.kt   | 83 +++++++++++++++++++
  .../detekt/core/settings/EnvironmentAware.kt  | 12 +++
  .../dev/detekt/core/tooling/Lifecycle.kt      |  5 +-
- 3 files changed, 97 insertions(+), 1 deletion(-)
+ 3 files changed, 99 insertions(+), 1 deletion(-)
 
 diff --git a/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt b/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
-index db4a40f..5ec8f60 100644
+index db4a40f..4d5b2cb 100644
 --- a/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
 +++ b/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
 @@ -6,6 +6,7 @@ import dev.detekt.api.FileProcessListener
@@ -40,7 +42,7 @@ index db4a40f..5ec8f60 100644
  import dev.detekt.api.Rule
  import dev.detekt.api.RuleInstance
  import dev.detekt.api.Severity
-@@ -20,6 +21,17 @@ import dev.detekt.tooling.api.AnalysisMode
+@@ -20,6 +21,19 @@ import dev.detekt.tooling.api.AnalysisMode
  import org.jetbrains.kotlin.config.LanguageVersionSettings
  import org.jetbrains.kotlin.psi.KtFile
  import java.nio.file.Path
@@ -49,16 +51,18 @@ index db4a40f..5ec8f60 100644
 +import java.util.concurrent.atomic.AtomicIntegerArray
 +
 +// kc's session (kotlin-compiler-go) analyzes the sources in the background
-+// while detekt sets up, and the rules that need no types can run before it
-+// is done. -Dkc.overlap=false runs each file's rules in one task, as stock
-+// detekt does; -Dkc.schedule=false keeps the files' order and one task per
-+// file and phase.
-+private val overlap = System.getProperty("kc.overlap") != "false"
++// while detekt sets up, and with -Dkc.overlap=true the rules that need no
++// types run before it is done. It is off by default: on 4 cores, those rules
++// and kc's analysis compete for the same CPUs, and it measured no faster on
++// kotlinpoet and slower on kotlinx-coroutines-core. Without it each file's
++// rules run in one task, as in stock detekt. -Dkc.schedule=false keeps the
++// files' order and one task per file and phase.
++private val overlap = System.getProperty("kc.overlap") == "true"
 +private val schedule = System.getProperty("kc.schedule") != "false"
  
  internal class Analyzer(
      private val settings: ProcessingSettings,
-@@ -49,6 +61,75 @@ internal class Analyzer(
+@@ -49,6 +63,75 @@ internal class Analyzer(
          }
  
      private fun runAsync(ktFiles: Collection<KtFile>, languageVersionSettings: LanguageVersionSettings): List<Issue> {
@@ -135,7 +139,7 @@ index db4a40f..5ec8f60 100644
          val tasks: TaskList<List<Issue>?> = ktFiles.map { file ->
              service.task {
 diff --git a/detekt-core/src/main/kotlin/dev/detekt/core/settings/EnvironmentAware.kt b/detekt-core/src/main/kotlin/dev/detekt/core/settings/EnvironmentAware.kt
-index 812eef9..81a6225 100644
+index 812eef9..688da11 100644
 --- a/detekt-core/src/main/kotlin/dev/detekt/core/settings/EnvironmentAware.kt
 +++ b/detekt-core/src/main/kotlin/dev/detekt/core/settings/EnvironmentAware.kt
 @@ -29,6 +29,13 @@ import java.io.PrintStream
@@ -159,7 +163,7 @@ index 812eef9..81a6225 100644
 +    // kc prints the errors it finds in the sources (KcStandalone), and its
 +    // collectDiagnostics has none to add.
 +    override val reportsOwnErrors: Boolean
-+        get() = System.getProperty("kc.overlap") != "false"
++        get() = System.getProperty("kc.overlap") == "true"
 +
      // kc's Analysis API session (kotlin-compiler-go's jvm/kc-aa) stands in for
      // the standalone one: the source module, with the JDK, the friend paths
