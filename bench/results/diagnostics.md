@@ -211,14 +211,18 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 799 of the 3652 warnings the tests expect (21.9%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 1490 of the 3652 warnings the tests expect (40.8%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
+| `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 287 | 0 |
 | `DEPRECATION` | 199 | 115 | 3 |
+| `UNREACHABLE_CODE` | 158 | 101 | 0 |
+| `USELESS_IS_CHECK` | 127 | 112 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 7 | 0 |
 | `NOTHING_TO_INLINE` | 95 | 94 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 93 | 85 | 0 |
+| `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
 | `USELESS_CAST` | 91 | 28 | 2 |
 | `SENSELESS_COMPARISON` | 90 | 63 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 78 | 1 |
@@ -226,27 +230,25 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `OPT_IN_USAGE` | 83 | 62 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
+| `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 42 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
 | `USELESS_ELVIS` | 44 | 27 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 24 | 0 |
 | `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
+| `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
+| `UNSAFE_CAST_RELYING_ON_NULL` | 1 | 1 | 0 |
 
 The warnings the tests expect that kc doesn't report, as a backlog.
 
 | Warning | Count |
 |:---|---:|
-| `REDUNDANT_INTERPOLATION_PREFIX` | 355 |
-| `UNREACHABLE_CODE` | 158 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 |
 | `UNUSED_EXPRESSION` | 136 |
-| `USELESS_IS_CHECK` | 127 |
-| `CAST_NEVER_SUCCEEDS` | 92 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 |
-| `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
 | `UNUSED_VARIABLE` | 35 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |
@@ -266,5 +268,11 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `PROPERTY_HIDES_JAVA_FIELD` | 22 |
 | `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
 | `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
-| *89 more* | |
+| `EMPTY_RANGE` | 19 |
+| `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 |
+| `DEPRECATED_JAVA_ANNOTATION` | 16 |
+| `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 |
+| `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
+| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
+| *81 more* | |
 
