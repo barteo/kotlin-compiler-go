@@ -309,6 +309,9 @@ func (c *Checker) checkAliasBounds() {
 		if a == nil || !a.Resolved || a.Type.K == types.Invalid || d.Type == nil {
 			continue
 		}
+		if a.Type.K == types.Class && compilerRequiredAnnotations[a.Type.C.Name] {
+			c.errorf(d.Type.P, "typealias to a compiler-required annotation '%s' is not allowed. Remove the typealias and use the annotation directly", strings.ReplaceAll(a.Type.C.Name, "/", "."))
+		}
 		own := func(t types.Type) bool {
 			return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param().Owner == a })
 		}
@@ -324,6 +327,24 @@ func (c *Checker) checkAliasBounds() {
 	}
 	c.tparams, c.lookupCls = savedParams, savedCls
 	c.abbreviatedNothing()
+}
+
+// compilerRequiredAnnotations are the annotations kotlinc reads before it
+// resolves types, which a typealias can't stand for
+// (TYPEALIAS_EXPANDS_TO_COMPILER_REQUIRED_ANNOTATION_ERROR), by internal
+// name: its requiredAnnotations for the JVM.
+var compilerRequiredAnnotations = map[string]bool{
+	"kotlin/Deprecated":            true,
+	"kotlin/annotation/Target":     true,
+	"kotlin/DeprecatedSinceKotlin": true,
+	"kotlin/SinceKotlin":           true,
+	"kotlin/WasExperimental":       true,
+	"kotlin/IntroducedAt":          true,
+	"java/lang/annotation/Target":  true,
+	"java/lang/Deprecated":         true,
+	"kotlin/jvm/JvmName":           true,
+	"kotlin/jvm/JvmRecord":         true,
+	"kotlin/jvm/JvmInline":         true,
 }
 
 // refBounds checks the type arguments of type t, written as ref, and of
