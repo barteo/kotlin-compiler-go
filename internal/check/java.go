@@ -230,6 +230,20 @@ func (t *classTable) class(name string) *types.ClassSym {
 		}
 		return nil
 	}
+	// A class looked up before, as most are, is in the map, which holds
+	// only classes of the class path that aren't Kotlin's synthetic ones
+	// below: only a shadowing class comes before it.
+	t.mu.Lock()
+	c, ok := t.m[name]
+	t.mu.Unlock()
+	if ok {
+		if sh := t.shadow.Load(); sh != nil {
+			if s := (*sh)(name); s != nil {
+				return s
+			}
+		}
+		return c
+	}
 	if t.kotlin {
 		if id, ok := mutableOf[name]; ok {
 			return t.kclass(id)
@@ -257,12 +271,6 @@ func (t *classTable) class(name string) *types.ClassSym {
 			return (*src)(name)
 		}
 		return nil
-	}
-	t.mu.Lock()
-	c, ok := t.m[name]
-	t.mu.Unlock()
-	if ok {
-		return c
 	}
 	// Whether it is a value class is known before anyone sees it: a
 	// type's descriptor depends on it, as a field's of Compose's Color,
