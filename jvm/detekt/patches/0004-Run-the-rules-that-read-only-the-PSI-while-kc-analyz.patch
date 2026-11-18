@@ -1,0 +1,215 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <kc@localhost>
+Date: Wed, 18 Nov 2026 10:00:00 +0000
+Subject: [PATCH] Run the rules that read only the PSI while kc analyzes
+
+On kc, the session's collectDiagnostics has none of the compiler's
+checkers to report: kc reports the errors it finds in the sources
+itself. ValidateClasspath only waited for kc's analysis, on the main
+thread, so it is left out (-Dkc.validateClasspath=true keeps it).
+
+The rules run in two waves: the rules that read only the PSI on every
+file, then those that read the Analysis API (RequiresAnalysisApi). The
+first rule that reads kc's session waits for its analysis, so the first
+wave runs while kc analyzes in the background. Each file's issues keep
+the order of its rules, and the processors still see each file once.
+With auto-correct, which changes the PSI, or -Dkc.waves=false, the
+rules run in one wave.
+---
+ .../main/kotlin/dev/detekt/core/Analyzer.kt   | 108 ++++++++++++------
+ .../kotlin/dev/detekt/core/RuleDescriptor.kt  |   5 +-
+ .../dev/detekt/core/tooling/Lifecycle.kt      |   9 +-
+ 3 files changed, 85 insertions(+), 37 deletions(-)
+
+diff --git a/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt b/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
+index db4a40f..94010f8 100644
+--- a/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
++++ b/detekt-core/src/main/kotlin/dev/detekt/core/Analyzer.kt
+@@ -27,64 +27,102 @@ internal class Analyzer(
+     private val processors: List<FileProcessListener>,
+     private val analysisMode: AnalysisMode,
+ ) {
++    /**
++     * The rules run in two waves: first those that read only the PSI, then
++     * those that read the Analysis API. kc analyzes the sources in the
++     * background, and the first rule to read its session waits for it; so
++     * the rules of the first wave run on every file while it analyzes. Each
++     * file's issues are in the order of its rules, as in one wave. With
++     * auto-correct, which changes the PSI, all the rules run in one wave.
++     */
++    private val waves: List<(RuleDescriptor) -> Boolean> =
++        if (settings.spec.rulesSpec.autoCorrect || System.getProperty("kc.waves") == "false") {
++            listOf { _ -> true }
++        } else {
++            listOf({ !it.requiresAnalysisApi }, { it.requiresAnalysisApi })
++        }
++
+     fun run(ktFiles: Collection<KtFile>): List<Issue> {
+         val languageVersionSettings = settings.languageVersionSettings
+ 
+         return if (settings.spec.executionSpec.parallelAnalysis) {
+-            runAsync(ktFiles, languageVersionSettings)
++            runAsync(ktFiles.toList(), languageVersionSettings)
+         } else {
+-            runSync(ktFiles, languageVersionSettings)
++            runSync(ktFiles.toList(), languageVersionSettings)
+         }
+     }
+ 
+-    private fun runSync(ktFiles: Collection<KtFile>, languageVersionSettings: LanguageVersionSettings): List<Issue> =
+-        ktFiles.flatMap { file ->
+-            processors.forEach { it.onProcess(file) }
+-            val issues = runCatching { analyze(file, languageVersionSettings) }.fold(
+-                onSuccess = { it },
+-                onFailure = { throwIllegalStateException(file, it) }
+-            )
+-            processors.forEach { it.onProcessComplete(file, issues) }
+-            issues
++    private fun runSync(ktFiles: List<KtFile>, languageVersionSettings: LanguageVersionSettings): List<Issue> {
++        val results = waves.mapIndexed { wave, inWave ->
++            ktFiles.map { file ->
++                if (wave == 0) processors.forEach { it.onProcess(file) }
++                runCatching { analyze(file, languageVersionSettings, inWave) }.fold(
++                    onSuccess = { it },
++                    onFailure = { throwIllegalStateException(file, it) }
++                )
++            }
+         }
++        return ktFiles.flatMapIndexed { i, file -> complete(file, results.map { it[i] }) }
++    }
+ 
+-    private fun runAsync(ktFiles: Collection<KtFile>, languageVersionSettings: LanguageVersionSettings): List<Issue> {
++    private fun runAsync(ktFiles: List<KtFile>, languageVersionSettings: LanguageVersionSettings): List<Issue> {
+         val service = settings.taskPool
+-        val tasks: TaskList<List<Issue>?> = ktFiles.map { file ->
+-            service.task {
+-                processors.forEach { it.onProcess(file) }
+-                val issues = analyze(file, languageVersionSettings)
+-                processors.forEach { it.onProcessComplete(file, issues) }
+-                issues
+-            }.recover { throwIllegalStateException(file, it) }
++        // The pool takes the tasks in order: every file's first wave, then
++        // every file's second.
++        val tasks = waves.mapIndexed { wave, inWave ->
++            ktFiles.map { file ->
++                service.task {
++                    if (wave == 0) processors.forEach { it.onProcess(file) }
++                    analyze(file, languageVersionSettings, inWave)
++                }.recover { throwIllegalStateException(file, it) }
++            }
+         }
+-        return awaitAll(tasks).filterNotNull().flatten()
++        return ktFiles.flatMapIndexed { i, file -> complete(file, tasks.map { it[i].join().orEmpty() }) }
++    }
++
++    /** [file]'s issues from its waves' [results], in the order of its rules. */
++    private fun complete(file: KtFile, results: List<List<Pair<Int, List<Issue>>>>): List<Issue> {
++        val issues = results.flatten().sortedBy { it.first }.flatMap { it.second }
++        processors.forEach { it.onProcessComplete(file, issues) }
++        return issues
+     }
+ 
+-    private fun analyze(file: KtFile, languageVersionSettings: LanguageVersionSettings): List<Issue> {
++    /**
++     * The issues of the rules [inWave] takes on [file], each rule's with its
++     * place among the file's rules: the auto-correcting ones first.
++     */
++    private fun analyze(
++        file: KtFile,
++        languageVersionSettings: LanguageVersionSettings,
++        inWave: (RuleDescriptor) -> Boolean,
++    ): List<Pair<Int, List<Issue>>> {
+         val (correctableRules, otherRules) = rules.asSequence()
+-            .filter { ruleDescriptor ->
++            .withIndex()
++            .filter { (_, ruleDescriptor) -> inWave(ruleDescriptor) }
++            .filter { (_, ruleDescriptor) ->
+                 ruleDescriptor.config.parent?.shouldAnalyzeFile(file, settings.spec.projectSpec.basePath) != false
+             }
+-            .filter { ruleDescriptor ->
++            .filter { (_, ruleDescriptor) ->
+                 ruleDescriptor.config.shouldAnalyzeFile(file, settings.spec.projectSpec.basePath)
+             }
+-            .map { ruleDescriptor ->
+-                ruleDescriptor.ruleInstance to ruleDescriptor.ruleProvider(ruleDescriptor.config)
++            .map { (index, ruleDescriptor) ->
++                Triple(index, ruleDescriptor.ruleInstance, ruleDescriptor.ruleProvider(ruleDescriptor.config))
+             }
+-            .filterNot { (ruleInstance, rule) ->
++            .filterNot { (_, ruleInstance, rule) ->
+                 file.isSuppressedBy(ruleInstance.id, rule.aliases, ruleInstance.ruleSetId)
+             }
+-            .partition { (_, rule) -> rule.autoCorrect }
++            .partition { (_, _, rule) -> rule.autoCorrect }
+ 
+-        return (correctableRules + otherRules).flatMap { (ruleInstance, rule) ->
+-            rule.visitFile(file, languageVersionSettings)
+-                .filterNot {
+-                    it.entity.ktElement.isSuppressedBy(ruleInstance.id, rule.aliases, ruleInstance.ruleSetId)
+-                }
+-                .filterSuppressedFindings(rule, analysisMode)
+-                .map { it.toIssue(ruleInstance, ruleInstance.severity, settings.spec.projectSpec.basePath) }
+-        }
++        val ordered = correctableRules.map { it.first to it } + otherRules.map { rules.size + it.first to it }
++        return ordered.map { (order, r) ->
++                val (_, ruleInstance, rule) = r
++                order to rule.visitFile(file, languageVersionSettings)
++                    .filterNot {
++                        it.entity.ktElement.isSuppressedBy(ruleInstance.id, rule.aliases, ruleInstance.ruleSetId)
++                    }
++                    .filterSuppressedFindings(rule, analysisMode)
++                    .map { it.toIssue(ruleInstance, ruleInstance.severity, settings.spec.projectSpec.basePath) }
++            }
+     }
+ }
+ 
+diff --git a/detekt-core/src/main/kotlin/dev/detekt/core/RuleDescriptor.kt b/detekt-core/src/main/kotlin/dev/detekt/core/RuleDescriptor.kt
+index 1587d3f..151ffea 100644
+--- a/detekt-core/src/main/kotlin/dev/detekt/core/RuleDescriptor.kt
++++ b/detekt-core/src/main/kotlin/dev/detekt/core/RuleDescriptor.kt
+@@ -19,6 +19,8 @@ internal data class RuleDescriptor(
+     val ruleProvider: (Config) -> Rule,
+     val config: Config,
+     val ruleInstance: RuleInstance,
++    /** Whether the rule reads the Analysis API: it runs after the rules that read only the PSI. */
++    val requiresAnalysisApi: Boolean = false,
+ )
+ 
+ internal fun getRules(
+@@ -71,7 +73,8 @@ private fun RuleSet.getRules(
+                         description = rule.description,
+                         severity = ruleConfig.computeSeverity(),
+                         active = active && executable,
+-                    )
++                    ),
++                    requiresAnalysisApi = rule is RequiresAnalysisApi,
+                 )
+             }
+         }
+diff --git a/detekt-core/src/main/kotlin/dev/detekt/core/tooling/Lifecycle.kt b/detekt-core/src/main/kotlin/dev/detekt/core/tooling/Lifecycle.kt
+index 272c6b2..06beb48 100644
+--- a/detekt-core/src/main/kotlin/dev/detekt/core/tooling/Lifecycle.kt
++++ b/detekt-core/src/main/kotlin/dev/detekt/core/tooling/Lifecycle.kt
+@@ -34,7 +34,11 @@ internal class Lifecycle(
+     fun analyze(): Detektion {
+         measure(Phase.ValidateConfig) { checkConfiguration(settings, baselineConfig) }
+         val filesToAnalyze = measure(Phase.Parsing) { settings.ktFiles }
+-        if (settings.spec.projectSpec.analysisMode == AnalysisMode.full) {
++        // kc reports the errors it finds in the sources itself, and its
++        // session has no diagnostics of the compiler's checkers to collect:
++        // collecting them would only wait for kc's analysis, which the rules
++        // that read only the PSI run alongside instead (Analyzer).
++        if (settings.spec.projectSpec.analysisMode == AnalysisMode.full && validateOnKc) {
+             measure(Phase.ValidateClasspath) { validateClasspath(filesToAnalyze) }
+         }
+         val analysisMode = settings.spec.projectSpec.analysisMode
+@@ -59,6 +63,9 @@ internal class Lifecycle(
+         return measure(Phase.Reporting) { handleReportingExtensions(settings, result) }
+     }
+ 
++    // -Dkc.validateClasspath=true collects them all the same.
++    private val validateOnKc = System.getProperty("kc.validateClasspath") == "true"
++
+     private fun validateClasspath(files: List<KtFile>) {
+         val collector = DetektMessageCollector(
+             minSeverity = CompilerMessageSeverity.ERROR,
