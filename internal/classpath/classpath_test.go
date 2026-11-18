@@ -349,3 +349,26 @@ func TestOverlay(t *testing.T) {
 		t.Errorf("base after overlay Close: %v", err)
 	}
 }
+
+func TestModuleHidden(t *testing.T) {
+	p, err := Open(jdk(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	for _, tt := range []struct {
+		name, module string
+		hidden       bool
+	}{
+		{"java/util/List", "java.base", false},
+		{"sun/misc/Unsafe", "jdk.unsupported", false}, // exported
+		{"sun/awt/image/ImageDecoder", "java.desktop", true},
+		{"jdk/internal/misc/Unsafe", "java.base", true}, // exported to named modules only
+		{"java/awt/Image", "java.desktop", false},
+	} {
+		module, hidden := p.ModuleHidden(tt.name)
+		if hidden != tt.hidden || hidden && module != tt.module {
+			t.Errorf("ModuleHidden(%s) = %q, %v; want %q, %v", tt.name, module, hidden, tt.module, tt.hidden)
+		}
+	}
+}

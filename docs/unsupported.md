@@ -313,7 +313,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   explicit type arguments stand for K2's equality constraints. Even
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
-- Java module exports aren't checked.
 - A type written as a Java class that Kotlin maps to a built-in type,
   as `java.lang.CharSequence` or `java.lang.Comparable`, is the
   built-in type: `kotlinc` keeps the Java class, so that a

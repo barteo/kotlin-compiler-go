@@ -28,6 +28,7 @@ func init() {
 		"ASSIGNMENT_TYPE_MISMATCH":                    typeMismatch,
 		"CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR": `^method 'contains' from ConcurrentHashMap may have unexpected semantics`,
 		"CONFLICTING_OVERLOADS":                       `^conflicting overloads: `,
+		"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE":         `^symbol is declared in module '.*' which does not export package `,
 		"CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT":           `^const 'val' are only allowed on top level`,
 		"CONST_VAL_WITH_GETTER":                       `^const 'val' should not have a getter`,
 		"INAPPLICABLE_JVM_FIELD":                      `^JvmField `,
