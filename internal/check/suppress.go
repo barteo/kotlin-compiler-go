@@ -115,13 +115,26 @@ func (c *Checker) suppressErrors() {
 			continue
 		}
 		if n, ok := suppressedBy(e, rs); ok {
-			// kotlinc warns of the string that names the error.
-			c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			// kotlinc warns of the string that names the error, if it
+			// names it as it is spelled.
+			if !silentSuppression[n.name] && n.name == strings.ToUpper(n.name) {
+				c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			}
 		} else {
 			kept = append(kept, e)
 		}
 	}
 	c.errs = kept
+}
+
+// silentSuppression are the errors whose suppression kotlinc doesn't
+// warn of: those not in its FIR_NON_SUPPRESSIBLE_ERROR_NAMES, the JVM
+// checkers' among them.
+var silentSuppression = map[string]bool{
+	"DEPRECATION_ERROR":                   true,
+	"INVISIBLE_MEMBER":                    true,
+	"INAPPLICABLE_JVM_NAME":               true,
+	"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE": true,
 }
 
 // suppressedBy returns the name of the error e that a range of rs

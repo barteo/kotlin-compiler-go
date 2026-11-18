@@ -130,6 +130,18 @@ fun g(s: String) {
 @Suppress("TYPE_MISMATCH")
 fun f(): Int = ""
 `, []string{"2:ERROR_SUPPRESSION"}},
+		{"silent error suppression", `
+@Deprecated("no", level = DeprecationLevel.ERROR) fun gone() {}
+@Suppress("type_mismatch")
+fun f(): Int = ""
+@Suppress("DEPRECATION_ERROR")
+fun g() = gone()
+interface I {
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("h")
+    fun h()
+}
+`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := checkWarnings(t, tc.src)
