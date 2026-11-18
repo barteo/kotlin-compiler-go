@@ -243,6 +243,12 @@ type Checker struct {
 	// maybeNull are the x!! and x ?: y whose x some check of them found
 	// may be null: checked again, x may be smart cast by the first check.
 	maybeNull map[syntax.Expr]bool
+	// typeFacts are, for each x is T, x as T and is condition of a when,
+	// what its check knew of x (see noteTypeFacts).
+	typeFacts map[any]typeFacts
+	// coveredWhens are the whens with a subject whose branches cover all
+	// its values, without an else.
+	coveredWhens map[*syntax.When]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.

@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -294,5 +295,28 @@ fun f(x: Int) {
 	want := []string{"10:REDUNDANT_INTERPOLATION_PREFIX", "12:REDUNDANT_INTERPOLATION_PREFIX", "3:REDUNDANT_INTERPOLATION_PREFIX", "4:REDUNDANT_INTERPOLATION_PREFIX", "5:REDUNDANT_INTERPOLATION_PREFIX"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestWarningsCasts checks the warnings of type checks and casts whose
+// outcome the types decide against those kotlinc reports of
+// testdata/casts.kt, named by the comment that ends each line.
+func TestWarningsCasts(t *testing.T) {
+	b, err := os.ReadFile("testdata/casts.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for i, line := range strings.Split(string(b), "\n") {
+		if _, names, ok := strings.Cut(line, " // "); ok && !strings.HasPrefix(line, "//") {
+			for _, n := range strings.Fields(names) {
+				want = append(want, fmt.Sprintf("%d:%s", i+1, n))
+			}
+		}
+	}
+	sort.Strings(want)
+	got := checkWarnings(t, string(b))
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("got  %v\nwant %v", got, want)
 	}
 }

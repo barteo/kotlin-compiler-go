@@ -32,6 +32,11 @@ func (c *Checker) localWarnings() {
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)
+			c.castNeverSucceeds(n)
+		case *syntax.Is:
+			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
+		case *syntax.When:
+			c.whenIsWarnings(n)
 		case *syntax.StringLit:
 			if c.u.experimentalWarnings {
 				c.prefixWarnings(n)

@@ -4479,6 +4479,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if c.u.rec != nil {
 		c.u.rec.When(x, covered, valueUsed)
 	}
+	if c.coveredWhens == nil {
+		c.coveredWhens = map[*syntax.When]bool{}
+	}
+	c.coveredWhens[x] = covered
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
