@@ -56,3 +56,24 @@ open class Some {
             get() = "Omega"
     }
 }
+
+// An accessor isn't an override: kotlinc checks only whether it can be
+// overridden.
+interface Shape {
+    val sides: Int
+}
+
+class Square : Shape {
+    override val sides: Int
+        @JvmName("sideCount")
+        get() = 4
+}
+
+open class OpenSquare : Shape {
+    override val sides: Int
+        @JvmName("sideCount") // ERROR '@JvmName' annotation is not applicable to this declaration
+        get() = 4
+
+    @get:JvmName("fin")
+    val fin = 1
+}

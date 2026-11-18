@@ -97,14 +97,22 @@ func validPackageName(s string) bool {
 // inapplicableJvmName is the message of INAPPLICABLE_JVM_NAME.
 const inapplicableJvmName = "'@JvmName' annotation is not applicable to this declaration"
 
-// renamesVirtual reports whether @JvmName can't rename a member of owner
-// with modifiers m (INAPPLICABLE_JVM_NAME): an override, or one that can
-// be overridden, whose overrides would keep the JVM name it overrides.
+// renamesVirtual reports whether @JvmName can't rename a function of
+// owner with modifiers m (INAPPLICABLE_JVM_NAME): an override, or one
+// that can be overridden, whose overrides would keep the JVM name it
+// overrides.
 func renamesVirtual(m syntax.Modifiers, owner *types.ClassSym) bool {
-	if owner == nil {
+	return owner != nil && m.Override || overridable(m, owner)
+}
+
+// overridable reports whether a member of owner with modifiers m can be
+// overridden, as a property's accessors, which kotlinc checks for
+// INAPPLICABLE_JVM_NAME, can be: they aren't overrides themselves.
+func overridable(m syntax.Modifiers, owner *types.ClassSym) bool {
+	if owner == nil || m.Visibility == syntax.Private || owner.Final && !owner.Interface {
 		return false
 	}
-	return m.Override || m.Visibility != syntax.Private && (owner.Interface || (m.Open || m.Abstract) && !owner.Final)
+	return owner.Interface || m.Open || m.Abstract || m.Override && !m.Final
 }
 
 // jvmMemberAnnotations checks the JVM annotations of declaration d, in
@@ -118,7 +126,7 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.errorf(a.P, inapplicableJvmName)
 		}
 	case *syntax.PropDecl:
-		if renamesVirtual(d.Modifiers, owner) {
+		if overridable(d.Modifiers, owner) {
 			for _, a := range []*syntax.Annotation{d.Find("get", "JvmName"), d.Find("set", "JvmName")} {
 				if a != nil {
 					c.errorf(a.P, inapplicableJvmName)
