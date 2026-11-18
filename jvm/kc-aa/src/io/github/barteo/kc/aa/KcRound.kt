@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.IdentityHashMap
 
 /**
@@ -49,30 +50,40 @@ internal class KcRound(
 ) {
     val token = KcToken()
 
+    // The round's maps are read without a lock, by a linter's rules on all
+    // cores; library classes and packages are loaded under the round's
+    // lock, and a reader on another thread takes a library class, package
+    // or typealias only once its load is done (see [libraryClass]), never a
+    // symbol still being built.
+
     /** Every source symbol by its pointer key. */
-    val byKey = HashMap<String, KaSymbol>()
+    val byKey = ConcurrentHashMap<String, KaSymbol>()
 
-    /** Source symbols by their PSI, for `KaSession.symbol`. */
-    val byPsi = IdentityHashMap<PsiElement, KaSymbol>()
+    /** Source symbols by their PSI, for `KaSession.symbol`. PSI elements are equal only to themselves. */
+    val byPsi = ConcurrentHashMap<PsiElement, KaSymbol>()
 
-    val classes = HashMap<ClassId, KaNamedClassSymbol>()
-    val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
+    val classes = ConcurrentHashMap<ClassId, KaNamedClassSymbol>()
+    val typeAliases = ConcurrentHashMap<ClassId, KaTypeAliasSymbol>()
 
     /** The library classes loaded so far, nested ones included. */
-    private val libraryClasses = HashMap<ClassId, KaNamedClassSymbol>()
+    private val libraryClasses = ConcurrentHashMap<ClassId, KaNamedClassSymbol>()
 
-    /** The outermost classes asked of [library], found or not. */
+    /** The outermost classes asked of [library], found or not; guarded by the round. */
     private val loaded = HashSet<ClassId>()
 
+    /** The outermost classes whose load is done: their symbols are built. */
+    private val loadedDone: MutableSet<ClassId> = ConcurrentHashMap.newKeySet()
+
     /** The classes kc doesn't know, by ID. */
-    private val unknownClasses = HashMap<ClassId, KaNamedClassSymbol>()
+    private val unknownClasses = ConcurrentHashMap<ClassId, KaNamedClassSymbol>()
 
     /** The class of each annotation entry, for `KtTypeReference.type`. */
     val annotationClasses = IdentityHashMap<KtAnnotationEntry, ClassId>()
     /** The typealiases annotation entries name their classes by. */
     val annotationAliases = IdentityHashMap<KtAnnotationEntry, ClassId>()
 
-    private val annotations = IdentityHashMap<KcAnnotation, KaAnnotation>()
+    /** By identity: a [KcAnnotation] is equal only to itself. */
+    private val annotations = ConcurrentHashMap<KcAnnotation, KaAnnotation>()
 
     /**
      * The values of the expressions kc evaluated as annotation arguments
@@ -254,6 +265,9 @@ internal class KcRound(
     /** The sources' packages and the packages they are in. */
     private val sourcePackages = HashSet<FqName>()
 
+    /** The sources' typealiases, built with the round. */
+    private val sourceAliases: Set<ClassId>
+
     init {
         // Walking a file's tree has IntelliJ parse it, the first time:
         // most of a session's first round. Files parse independently.
@@ -266,6 +280,7 @@ internal class KcRound(
             }
         }.toList()
         fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
+        sourceAliases = HashSet(typeAliases.keys)
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
@@ -275,27 +290,30 @@ internal class KcRound(
     /** A class-path package: its classes' IDs and its top-level functions, properties and type aliases. */
     class LibraryPackage(val classes: List<ClassId>, val decls: List<KaDeclarationSymbol>)
 
-    private val libraryPackages = HashMap<FqName, LibraryPackage?>()
-    private val packageSymbols = HashMap<FqName, KcPackageSymbol>()
-    private val packageScopes = HashMap<FqName, List<KaDeclarationSymbol>>()
+    /** The class-path packages loaded, [noPackage] for none; a package is put once its load is done. */
+    private val libraryPackages = ConcurrentHashMap<FqName, LibraryPackage>()
+    private val noPackage = LibraryPackage(emptyList(), emptyList())
+    private val packageSymbols = ConcurrentHashMap<FqName, KcPackageSymbol>()
+    private val packageScopes = ConcurrentHashMap<FqName, List<KaDeclarationSymbol>>()
 
-    @Synchronized
-    fun packageSymbol(fq: FqName): KcPackageSymbol = packageSymbols.getOrPut(fq) { KcPackageSymbol(this, fq) }
+    fun packageSymbol(fq: FqName): KcPackageSymbol = packageSymbols.computeIfAbsent(fq) { KcPackageSymbol(this, it) }
 
     /** Whether package [fq], or a package in it, has a source file or a class-path class. */
     fun packageExists(fq: FqName) = fq in sourcePackages || libraryPackage(fq) != null
 
     /** The class-path package [fq], loading its top-level declarations, or null if there is none. */
-    @Synchronized
     fun libraryPackage(fq: FqName): LibraryPackage? {
-        if (libraryPackages.containsKey(fq)) return libraryPackages[fq]
-        val p = packages(fq.asString())?.let { kp ->
-            val key = "pkg:" + fq.asString()
-            val decls = Builder(key, noNodes, KaSymbolOrigin.LIBRARY).decls(kp.decls, packageSymbol(fq), key)
-            LibraryPackage(kp.classes.map(ClassId::fromString), decls)
+        libraryPackages[fq]?.let { return it.takeIf { it !== noPackage } }
+        synchronized(this) {
+            libraryPackages[fq]?.let { return it.takeIf { it !== noPackage } }
+            val p = packages(fq.asString())?.let { kp ->
+                val key = "pkg:" + fq.asString()
+                val decls = Builder(key, noNodes, KaSymbolOrigin.LIBRARY).decls(kp.decls, packageSymbol(fq), key)
+                LibraryPackage(kp.classes.map(ClassId::fromString), decls)
+            }
+            libraryPackages[fq] = p ?: noPackage
+            return p
         }
-        libraryPackages[fq] = p
-        return p
     }
 
     /**
@@ -306,7 +324,7 @@ internal class KcRound(
      * type aliases.
      */
     fun packageDeclarations(fq: FqName): List<KaDeclarationSymbol> {
-        synchronized(this) { packageScopes[fq]?.let { return it } }
+        packageScopes[fq]?.let { return it }
         val name = fq.asString()
         val sources = fileSymbols.filter { it.file.packageName == name }.flatMap { it.declarations }
         val lib = libraryPackage(fq)
@@ -319,9 +337,9 @@ internal class KcRound(
         val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
         for (f in javaFiles) if (f.packageName == name) f.classes.mapNotNullTo(javaNames) { it.name }
         for (n in javaNames) libraryClass(ClassId(fq, Name.identifier(n)))?.let { out += it }
-        lib?.let { p -> p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) } }
+        lib?.let { p -> p.classes.mapNotNullTo(out) { if (classes.containsKey(it)) null else libraryClass(it) } }
         lib?.decls?.filterTo(out) { it !is KaCallableSymbol }
-        return synchronized(this) { packageScopes.getOrPut(fq) { out } }
+        return packageScopes.putIfAbsent(fq, out) ?: out
     }
 
     /** The top-level functions and properties named [name] in package [fq], the sources' first. */
@@ -337,10 +355,14 @@ internal class KcRound(
 
     /** The type alias [id], of the sources or of the class path, or null if there is none. */
     fun typeAlias(id: ClassId): KaTypeAliasSymbol? {
-        typeAliases[id]?.let { return it }
+        // A library package's typealias is taken once its package is
+        // loaded, or by the thread loading it.
+        typeAliases[id]?.let { a ->
+            if (id in sourceAliases || libraryPackages.containsKey(id.packageFqName) || Thread.holdsLock(this)) return a
+        }
         if (id.isLocal || id.isNestedClass) return null
         libraryPackage(id.packageFqName)
-        return synchronized(this) { typeAliases[id] }
+        return typeAliases[id]
     }
 
     /**
@@ -371,16 +393,16 @@ internal class KcRound(
 
     /** The class [id], or a symbol that knows only its ID if kc doesn't have it. */
     fun classSymbol(id: ClassId): KaNamedClassSymbol =
-        classes[id] ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
+        classes[id] ?: libraryClass(id) ?: unknownClasses.computeIfAbsent(id) { KcLibraryClassSymbol(this, it) }
 
+    /** Guarded by itself. */
     private val classFiles = HashMap<String, PsiClass?>()
 
     /**
      * The class-file PSI of Java library class [id] (a model class ID), as
      * FIR has it: KSP gives such a class its .class file as containing file.
      */
-    @Synchronized
-    fun classFilePsi(id: String): PsiClass? {
+    fun classFilePsi(id: String): PsiClass? = synchronized(classFiles) {
         if (id in classFiles) return classFiles[id]
         val p = project ?: return null
         val fq = ClassId.fromString(id).asSingleFqName().asString()
@@ -391,11 +413,16 @@ internal class KcRound(
     }
 
     /** The class-path class [id], loading it with its outermost class, or null if there is none. */
-    @Synchronized
     fun libraryClass(id: ClassId): KaNamedClassSymbol? {
-        libraryClasses[id]?.let { return it }
         if (id.isLocal) return null
         val outer = id.outermostClassId
+        if (outer in loadedDone) return libraryClasses[id]
+        return synchronized(this) { loadLibraryClass(id, outer) }
+    }
+
+    /** [libraryClass], under the round's lock: the thread loading a class sees its symbols as they are built. */
+    private fun loadLibraryClass(id: ClassId, outer: ClassId): KaNamedClassSymbol? {
+        libraryClasses[id]?.let { return it }
         if (loaded.add(outer)) {
             library(outer.asString())?.let { d ->
                 val origin = when {
@@ -405,24 +432,29 @@ internal class KcRound(
                 }
                 Builder(outer.asString(), noNodes, origin).decl(d, null, "lib:" + outer.asString())
             }
+            loadedDone += outer
         }
         return libraryClasses[id]
     }
 
     val relations = KcTypeRelations(this)
 
-    private val memberCache = IdentityHashMap<KcClassSymbol, KcClassMembers>()
+    /** Each class's member scope, put once built; a class symbol is equal only to itself. */
+    private val memberCache = ConcurrentHashMap<KcClassSymbol, KcClassMembers>()
+    /** The classes whose members are being built; guarded by the round. */
     private val building = IdentityHashMap<KcClassSymbol, Boolean>()
 
     /** The member scope of class [c]; empty for a class among its own supertypes. */
-    @Synchronized
     fun members(c: KcClassSymbol): KcClassMembers {
         memberCache[c]?.let { return it }
-        if (building.put(c, true) != null) return KcClassMembers.EMPTY
-        try {
-            return KcMemberBuilder(this, c).build().also { memberCache[c] = it }
-        } finally {
-            building.remove(c)
+        synchronized(this) {
+            memberCache[c]?.let { return it }
+            if (building.put(c, true) != null) return KcClassMembers.EMPTY
+            try {
+                return KcMemberBuilder(this, c).build().also { memberCache[c] = it }
+            } finally {
+                building.remove(c)
+            }
         }
     }
 
@@ -432,7 +464,7 @@ internal class KcRound(
      */
     fun enhancement(s: KaCallableSymbol, owner: KaSymbol?): KcEnhancement? {
         val c = owner as? KcClassSymbol ?: return null
-        if (building.containsKey(c)) return null
+        if (Thread.holdsLock(this) && building.containsKey(c)) return null
         return members(c).enhanced[s]
     }
 
@@ -490,12 +522,12 @@ internal class KcRound(
         if (key.startsWith("pkgsym:")) return packageSymbol(FqName(key.removePrefix("pkgsym:")))
         if (key.startsWith("pkg:")) {
             libraryPackage(FqName(key.removePrefix("pkg:").split(memberKey, 2)[0]))
-            return synchronized(this) { byKey[key] }
+            return byKey[key]
         }
         if (!key.startsWith("lib:")) return null
         // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
         libraryClass(ClassId.fromString(key.removePrefix("lib:").split(memberKey, 2)[0]))
-        return synchronized(this) { byKey[key] }
+        return byKey[key]
     }
 
     fun annotation(a: KcAnnotation): KaAnnotation = annotations.getValue(a)
@@ -516,7 +548,7 @@ internal class KcRound(
          * The KaAnnotation of a type's annotation [a], built the first time
          * the type is, which may be after this builder's declarations.
          */
-        fun typeAnnotation(a: KcAnnotation): KaAnnotation = synchronized(this@KcRound) {
+        fun typeAnnotation(a: KcAnnotation): KaAnnotation = annotations[a] ?: synchronized(this@KcRound) {
             annotations[a] ?: run { annotation(a); annotations.getValue(a) }
         }
 

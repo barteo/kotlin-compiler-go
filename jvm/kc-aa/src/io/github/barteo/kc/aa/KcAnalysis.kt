@@ -84,13 +84,13 @@ class KcAnalysis internal constructor(
         p.restoreSymbol(session(this))
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
-        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.byPsi[c]?.let { return it as? KaNamedClassSymbol }
         round.libraryClass(round.javaClassId(c) ?: return null)
-        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+        return round.byPsi[c] as? KaNamedClassSymbol
     }
     fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
         m.containingClass?.let(::getNamedClassSymbol)
-        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+        return round.byPsi[m] as? KaCallableSymbol
     }
 
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
@@ -478,7 +478,9 @@ class KcAnalysis internal constructor(
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 
     companion object {
-        private val dispatch = ConcurrentHashMap<Method, Method?>()
+        /** The method of [KcAnalysis] each of the session's members dispatches to, or [none]. */
+        private val dispatch = ConcurrentHashMap<Method, Method>()
+        private val none: Method = Any::class.java.getMethod("hashCode")
 
         private val ANY = ClassId.fromString("kotlin/Any")
 
@@ -494,13 +496,16 @@ class KcAnalysis internal constructor(
         private class Handler(val analysis: KcAnalysis) : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val a = args ?: emptyArray()
-                KcStats.count("KaSession." + method.name, null)
+                if (KcStats.enabled) KcStats.count("KaSession." + method.name, null)
                 when (method.name) {
                     "equals" -> if (a.size == 1 && method.parameterTypes[0] == Any::class.java) return proxy === a[0]
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
                     "toString" -> if (a.isEmpty()) return "KcSession"
                 }
-                val impl = dispatch.computeIfAbsent(method) { implementation(it) }
+                // A member kc doesn't implement is cached as [none], so that
+                // it isn't looked for again on every call.
+                val found = dispatch[method] ?: (implementation(method) ?: none).let { dispatch.putIfAbsent(method, it) ?: it }
+                val impl = found.takeIf { it !== none }
                 try {
                     return when {
                         impl != null -> impl.invoke(analysis, *a)

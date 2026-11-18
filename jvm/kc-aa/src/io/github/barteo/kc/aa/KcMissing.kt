@@ -61,6 +61,9 @@ internal object KcStats {
     private val calls = ConcurrentHashMap<String, AtomicLong>()
     private val subjects = ConcurrentHashMap<String, MutableSet<Any>>()
 
+    /** Whether the counts are kept: under -Dkc.trace. */
+    val enabled get() = KcMissing.trace
+
     init {
         if (KcMissing.trace) Runtime.getRuntime().addShutdownHook(Thread { report() })
     }

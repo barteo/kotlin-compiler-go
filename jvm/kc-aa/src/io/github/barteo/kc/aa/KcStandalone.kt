@@ -107,7 +107,9 @@ object KcStandalone {
                 // The PSI, every file's tree parsed, on the pool: kc checks
                 // the sources from disk meanwhile. kc takes the Kotlin files,
                 // not scripts.
-                val parsed = CompletableFuture.supplyAsync({ ktFiles.filter { !it.isScript() && it.virtualFile != null } }, pool)
+                // A script is a .kts file: KtFile.isScript would build every
+                // file's stub tree, parsing it, one file after another.
+                val parsed = CompletableFuture.supplyAsync({ ktFiles.filter { it.virtualFile?.extension == "kt" } }, pool)
                     .thenCompose { files ->
                         CompletableFuture.allOf(*files.map { f -> CompletableFuture.runAsync({ KcRound.preorder(f.node) }, pool) }.toTypedArray())
                             .thenApply { files }
