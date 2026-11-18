@@ -211,12 +211,13 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 534 of the 3652 warnings the tests expect (14.6%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 628 of the 3652 warnings the tests expect (17.2%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `DEPRECATION` | 199 | 115 | 3 |
 | `ERROR_SUPPRESSION` | 102 | 7 | 0 |
+| `NOTHING_TO_INLINE` | 95 | 94 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 93 | 85 | 0 |
 | `USELESS_CAST` | 91 | 28 | 2 |
 | `SENSELESS_COMPARISON` | 90 | 63 | 1 |
@@ -236,7 +237,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 |
 | `UNUSED_EXPRESSION` | 136 |
 | `USELESS_IS_CHECK` | 127 |
-| `NOTHING_TO_INLINE` | 95 |
 | `CAST_NEVER_SUCCEEDS` | 92 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
@@ -261,5 +261,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `DIVISION_BY_ZERO` | 25 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
-| *94 more* | |
+| `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 |
+| *93 more* | |
 
