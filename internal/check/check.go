@@ -2526,9 +2526,43 @@ func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
 			if m.Recv == nil && (m.Type != nil || m.Visibility == syntax.Private && m.Sym.Resolved) {
 				c.propVariance(m.Sym, m.Type, m.Mutable, m.Visibility != syntax.Private)
 			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				if m.Type != nil {
+					c.propVariance(m.Sym, m.Type, m.Mutable, true)
+				}
+				if g := m.Getter; g != nil && g.Sym != nil {
+					c.checkVariance(g.Sym.Recv, m.Recv, types.In, true)
+				}
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
 		case *syntax.FunDecl:
 			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
 				c.funVariance(m, m.Visibility != syntax.Private)
+			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				c.funVariance(m, true)
+				c.checkVariance(m.Sym.Recv, m.Recv, types.In, true)
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
+		}
+	}
+}
+
+// boundsVariance checks the upper bounds of a member's type parameters,
+// which are in in position: what a call passes for the parameter is
+// checked against them.
+func (c *Checker) boundsVariance(tps []*syntax.TypeParam) {
+	for _, tp := range tps {
+		if tp.Sym == nil {
+			continue
+		}
+		for i, b := range tp.Sym.Bounds {
+			if i < len(tp.Bounds) {
+				c.checkVariance(b, tp.Bounds[i], types.In, true)
 			}
 		}
 	}
@@ -2585,10 +2619,20 @@ func (c *Checker) markPrivateToThis(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.PropDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil {
 			c.propVariance(d.Sym, d.Type, d.Mutable, false)
+		} else if d.Visibility != syntax.Private && d.Type == nil && d.DelegateOf == nil {
+			// A type inferred from the initializer or the delegate,
+			// which breaks the variance as a written one would.
+			pos := types.Out
+			if d.Mutable {
+				pos = types.Inv
+			}
+			c.checkVariance1(d.Sym.Type, d.Sym.Type, nil, pos, d.P, true)
 		}
 	case *syntax.FunDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil && d.AccessorOf == nil {
 			c.funVariance(d, false)
+		} else if d.Visibility != syntax.Private && d.Ret == nil && d.AccessorOf == nil && d.Sym != nil {
+			c.checkVariance1(d.Sym.Ret, d.Sym.Ret, nil, types.Out, d.P, true)
 		}
 	}
 }
@@ -3355,6 +3399,7 @@ func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
 	if d.Setter != nil && d.Setter.Sym != nil && hasBody(d.Setter) { // nil: an extension property's without a getter
 		c.checkFun(d.Setter, cls)
 	}
+	c.inlineAccessorChecks(d, cls)
 }
 
 // hasBody reports whether a function or an accessor has a body: an
