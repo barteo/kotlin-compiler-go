@@ -241,7 +241,7 @@ more:
 ```go
 r, err := analysis.AnalyzeArena(ctx, analysis.Config{ClassPath: cp}, snapshots)
 if err != nil { ... }
-if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
+if d := r.Diagnostics(); len(d) > 0 { ... } // errors; facts of what kc resolved, if any
 f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
 ```
 

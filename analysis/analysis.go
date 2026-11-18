@@ -7,8 +7,11 @@
 // It lowers each snapshot's tree to kc's AST directly, recording which
 // psi node each AST node comes from, checks the AST as the compiler
 // does, and walks it back to the psi nodes. Code that kc can't compile
-// is reported as diagnostics, with no facts: a caller must not act on
-// partial results.
+// is reported as diagnostics. Errors the checker finds don't stop the
+// facts of what it resolved, as kotlinc keeps resolving after an error:
+// with them, a missing fact means unknown. Syntax errors, constructs kc
+// doesn't support and duplicate facade classes stop analysis with no
+// facts.
 //
 // Not every fact family is computed yet. Data.Capabilities lists those
 // that are; a fact field outside them is always zero.
@@ -120,7 +123,8 @@ type Symbol struct {
 	// Owner is the JVM binary name of a member's class.
 	Owner string `json:"owner,omitempty"`
 	// Type is a variable's type, a function's return type, or a class's
-	// own type.
+	// own type. It is zero, with no Name, if kc couldn't resolve it, which
+	// only happens in sources with errors.
 	Type Type `json:"type"`
 	// Declaration is the psi node that declares the symbol, if it is in
 	// the sources.
@@ -353,8 +357,11 @@ func (r *Result) Symbol(id uint32) (Symbol, bool) {
 	return copySymbol(r.symbols[id-1]), true
 }
 
-// Diagnostics returns the errors that stopped analysis, if any. Facts
-// are only reported without them.
+// Diagnostics returns the errors in the sources, if any. Facts are
+// reported with source_error diagnostics from the checker, for what it
+// resolved, but not with syntax errors, unsupported:<feature> codes or
+// duplicate facade classes, which stop analysis before or during
+// checking.
 func (r *Result) Diagnostics() []Diagnostic {
 	if r == nil {
 		return nil
