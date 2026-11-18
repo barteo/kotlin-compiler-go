@@ -4,7 +4,8 @@
 #
 #	jvm/detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ...
 #
-# It runs detekt with --parallel and a class-data sharing archive.
+# It runs detekt with --parallel, a class-data sharing archive and the
+# parallel collector.
 # KC_JAVA_OPTS adds JVM options: -Dkc.trace=true prints kc's timings, the
 # Analysis API members it doesn't answer and how often it answers the
 # others, and -Dkc.strict=true makes the unanswered ones fail.
@@ -30,8 +31,17 @@ if [ "${java_version:-0}" -ge 19 ]; then
 	for old in "$here"/build/cds/detekt-*.jsa; do
 		[ "$old" = "$archive" ] || rm -f "$old"
 	done
+	# A run that stops early, on a usage error, writes an archive of the
+	# few classes it loaded, and the JVM keeps it: an archive of detekt's
+	# run is some 40 MB.
+	if [ -f "$archive" ] && [ "$(stat -c %s "$archive")" -lt 8000000 ]; then rm -f "$archive"; fi
 	cds="-XX:SharedArchiveFile=$archive -XX:+AutoCreateSharedArchive"
 fi
+# The run is CPU-bound on all cores, and the parallel collector costs the
+# rules' threads less than G1's barriers and concurrent work
+# (docs/detekt-performance.md). KC_JAVA_OPTS may choose another.
+gc=-XX:+UseParallelGC
+case ${KC_JAVA_OPTS:-} in *GC*) gc= ;; esac
 # detekt runs its rules on all cores: kc's session is thread-safe, and its
 # findings are the same as a serial run's.
 parallel=--parallel
@@ -39,5 +49,5 @@ for a in "$@"; do [ "$a" = --parallel ] && parallel=; done
 # Go's runtime installs signal handlers in the JVM's process; libjsig
 # chains them with the JVM's.
 # shellcheck disable=SC2086 # the options are words
-LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m $cds ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
+LD_PRELOAD=$java_home/lib/libjsig.so exec java -Xss8m $cds $gc ${KC_JAVA_OPTS:-} -Dkc.lib="$here/../kc-aa/build/libkc.so" \
 	-Didea.home.path="$here/build" -cp "$cp" dev.detekt.cli.Main $parallel "$@"
