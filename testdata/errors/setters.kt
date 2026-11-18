@@ -16,8 +16,8 @@ interface I {
 }
 
 open class C {
-    open var w = 1 // ERROR private setters are not allowed for open properties
-        private set
+    open var w = 1
+        private set // ERROR private setters are not allowed for open properties
 }
 
 fun f() {

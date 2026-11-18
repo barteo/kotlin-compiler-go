@@ -2,6 +2,7 @@ package check
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
@@ -28,6 +29,8 @@ func init() {
 		"ASSIGNMENT_TYPE_MISMATCH":                    typeMismatch,
 		"CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR": `^method 'contains' from ConcurrentHashMap may have unexpected semantics`,
 		"CONFLICTING_OVERLOADS":                       `^conflicting overloads: `,
+		"INAPPLICABLE_JVM_NAME":                       `^'@JvmName' annotation is not applicable to this declaration`,
+		"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE":         `^symbol is declared in module '.*' which does not export package `,
 		"CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT":           `^const 'val' are only allowed on top level`,
 		"CONST_VAL_WITH_GETTER":                       `^const 'val' should not have a getter`,
 		"INAPPLICABLE_JVM_FIELD":                      `^JvmField `,
@@ -112,13 +115,26 @@ func (c *Checker) suppressErrors() {
 			continue
 		}
 		if n, ok := suppressedBy(e, rs); ok {
-			// kotlinc warns of the string that names the error.
-			c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			// kotlinc warns of the string that names the error, if it
+			// names it as it is spelled.
+			if !silentSuppression[n.name] && n.name == strings.ToUpper(n.name) {
+				c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			}
 		} else {
 			kept = append(kept, e)
 		}
 	}
 	c.errs = kept
+}
+
+// silentSuppression are the errors whose suppression kotlinc doesn't
+// warn of: those not in its FIR_NON_SUPPRESSIBLE_ERROR_NAMES, the JVM
+// checkers' among them.
+var silentSuppression = map[string]bool{
+	"DEPRECATION_ERROR":                   true,
+	"INVISIBLE_MEMBER":                    true,
+	"INAPPLICABLE_JVM_NAME":               true,
+	"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE": true,
 }
 
 // suppressedBy returns the name of the error e that a range of rs
@@ -129,10 +145,11 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 			continue
 		}
 		for _, n := range r.names {
-			if e.Name != "" && e.Name == n.name {
+			// As kotlinc, names match whatever their case.
+			if e.Name != "" && strings.EqualFold(e.Name, n.name) {
 				return n, true
 			}
-			if m := suppressible[n.name]; m != nil && m.MatchString(e.Msg) {
+			if m := suppressible[strings.ToUpper(n.name)]; m != nil && m.MatchString(e.Msg) {
 				return n, true
 			}
 		}
@@ -147,7 +164,7 @@ func warningSuppressed(w *syntax.Error, rs []suppressRange) bool {
 			continue
 		}
 		for _, n := range r.names {
-			if n.name == w.Name || n.name == "warnings" {
+			if strings.EqualFold(n.name, w.Name) || strings.EqualFold(n.name, "warnings") {
 				return true
 			}
 		}
@@ -192,6 +209,15 @@ func paramRanges(rs []suppressRange, ps []*syntax.Param) []suppressRange {
 	return rs
 }
 
+// typeParamRanges adds to rs the ranges of the type parameters tps whose
+// @Suppress names diagnostics: their bounds, to the end of the line.
+func typeParamRanges(rs []suppressRange, tps []*syntax.TypeParam) []suppressRange {
+	for _, tp := range tps {
+		rs = annotationsRange(rs, tp.Annotations, tp.P, syntax.Pos{Line: tp.P.Line, Col: 1 << 30})
+	}
+	return rs
+}
+
 // funRanges adds to rs the ranges of function d and its parameters.
 func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 	if d == nil {
@@ -206,6 +232,7 @@ func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 		}
 	}
 	rs = annotationsRange(rs, d.Annotations, d.P, end)
+	rs = typeParamRanges(rs, d.TypeParams)
 	return paramRanges(rs, d.Params)
 }
 
@@ -227,10 +254,12 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 			}
 		}
 		rs = annotationsRange(rs, d.Annotations, d.P, end)
+		rs = typeParamRanges(rs, d.TypeParams)
 		rs = funRanges(rs, d.Getter)
 		rs = funRanges(rs, d.Setter)
 	case *syntax.ClassDecl:
 		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
+		rs = typeParamRanges(rs, d.TypeParams)
 		for _, p := range d.CtorParams {
 			rs = paramRanges(rs, []*syntax.Param{&p.Param})
 			end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}

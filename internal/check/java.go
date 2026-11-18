@@ -2047,9 +2047,27 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
 	default:
+		c.checkModuleExport(cls, p)
 		return true
 	}
 	return false
+}
+
+// checkModuleExport reports a use of a JDK class whose module doesn't
+// export its package to all modules, as the program's unnamed module
+// needs: sun.awt.image's, of java.desktop. The class's type stays, as in
+// FIR.
+func (c *Checker) checkModuleExport(cls *types.ClassSym, p syntax.Pos) {
+	if c.u.ext == nil || c.u.ext.cp == nil || cls.Source {
+		return
+	}
+	if module, hidden := c.u.ext.cp.ModuleHidden(cls.Name); hidden {
+		pkg := ""
+		if i := strings.LastIndexByte(cls.Name, '/'); i >= 0 {
+			pkg = strings.ReplaceAll(cls.Name[:i], "/", ".")
+		}
+		c.errorf(p, "symbol is declared in module '%s' which does not export package '%s'", module, pkg)
+	}
 }
 
 // boundWith returns the first bound for which has holds of a type
@@ -2674,6 +2692,7 @@ func outerCompanion(cls *types.ClassSym) *types.ClassSym {
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	cls.Ensure()
+	c.platformConstruct(x, cls, p)
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
 	}

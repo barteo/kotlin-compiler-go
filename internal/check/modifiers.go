@@ -278,6 +278,7 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 				m.mods(am, t, s.parent, false)
 			}
 			m.setterVisibility(d)
+			m.getterVisibility(d)
 		}
 		m.expr(d.Init, s)
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -522,6 +523,27 @@ func (m *modChecker) anon(cd *syntax.ClassDecl, s modScope) {
 	for _, d := range cd.Members {
 		m.decl(d, in)
 	}
+}
+
+// getterVisibility reports a getter whose visibility modifier isn't its
+// property's (GETTER_VISIBILITY_DIFFERS_FROM_PROPERTY_VISIBILITY), at the
+// modifier.
+func (m *modChecker) getterVisibility(d *syntax.PropDecl) {
+	for i, am := range d.AccessorMods {
+		if i < len(d.AccessorSets) && d.AccessorSets[i] {
+			continue
+		}
+		for _, w := range am {
+			if v, ok := visibilityNamed[w.Name]; ok && v != d.Visibility {
+				m.errorf(w.P, "getter visibility must be the same as property visibility")
+			}
+		}
+	}
+}
+
+// visibilityNamed are the visibility modifiers, by keyword.
+var visibilityNamed = map[string]syntax.Visibility{
+	"public": syntax.Public, "private": syntax.Private, "protected": syntax.Protected, "internal": syntax.Internal,
 }
 
 // setterVisibility reports a setter more visible than its property, or

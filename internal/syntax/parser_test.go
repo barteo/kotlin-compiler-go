@@ -343,7 +343,7 @@ func TestImports(t *testing.T) {
 	}
 	for i, w := range want {
 		g := *f.Imports[i]
-		g.P = Pos{}
+		g.P, g.PathP = Pos{}, Pos{}
 		if g != w {
 			t.Errorf("import %d: got %+v, want %+v", i, g, w)
 		}

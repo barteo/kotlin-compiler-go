@@ -19,6 +19,30 @@ import (
 // warnings. Neither are a suspend function's in inline lambdas, which
 // codegen can't always turn into jumps.
 func (c *Checker) tailCalls(d *syntax.FunDecl) {
+	found := false
+	c.tailPositions(d, false, func(call *syntax.Call) { call.Tail, found = true, true })
+	if !found {
+		// kotlinc finds more tail calls than codegen makes jumps of: it
+		// warns only where none of those is one either.
+		c.tailPositions(d, true, func(*syntax.Call) { found = true })
+	}
+	if !found && (d.Body != nil || d.ExprBody != nil) {
+		p := d.P
+		for _, w := range d.Written {
+			if w.Name == "tailrec" {
+				p = w.P
+			}
+		}
+		c.warnf(p, "NO_TAIL_CALLS_FOUND", "a function is marked as tail-recursive but no tail calls are found")
+	}
+}
+
+// tailPositions calls mark with each call of tailrec function d to itself
+// in tail position, as tailCalls describes. With loose, it also takes
+// those kotlinc does that codegen doesn't make jumps of: calls on another
+// receiver, the left side of ?: where d's result isn't nullable, returns labeled with d's name and those
+// in a suspend function's inline lambdas.
+func (c *Checker) tailPositions(d *syntax.FunDecl, loose bool, mark func(*syntax.Call)) {
 	sym := d.Sym
 	var tail func(e syntax.Expr)
 	tailStmt := func(s syntax.Stmt) {
@@ -34,8 +58,8 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	tail = func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.Call:
-			if e.Sym == sym && selfCall(e, sym) && !(sym.DefaultsOf != nil && omitsArgs(e, sym)) {
-				e.Tail = true
+			if e.Sym == sym && (loose || selfCall(e, sym)) && !(sym.DefaultsOf != nil && omitsArgs(e, sym)) {
+				mark(e)
 			}
 		case *syntax.If:
 			tailBlock(e.Then)
@@ -48,8 +72,11 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 			if e.Op == syntax.ELVIS || e.Op == syntax.AND || e.Op == syntax.OR {
 				tail(e.Y)
 			}
+			if loose && e.Op == syntax.ELVIS && !types.MayBeNull(sym.Ret) {
+				tail(e.X)
+			}
 		case *syntax.Jump:
-			if e.Kind == syntax.RETURN && e.Label == "" && e.X != nil {
+			if e.Kind == syntax.RETURN && (e.Label == "" || loose && e.Label == d.Name) && e.X != nil {
 				tail(e.X)
 			}
 		}
@@ -57,7 +84,7 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	walk := func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.Lambda:
-			return n.Inline && !sym.Suspend
+			return n.Inline && (loose || !sym.Suspend)
 		case *syntax.LocalFun, *syntax.ObjectExpr, *syntax.Try:
 			return false
 		case *syntax.Jump:

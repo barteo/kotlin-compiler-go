@@ -93,7 +93,7 @@ func (l *lowerer) importDirective(n psi.NodeRef) *syntax.Import {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindDOT_QUALIFIED_EXPRESSION, psi.KindREFERENCE_EXPRESSION:
-			imp.Path = l.dotted(c)
+			imp.Path, imp.PathP = l.dotted(c), l.pos(c)
 		case psi.KindMUL:
 			imp.Star = true
 		case psi.KindIMPORT_ALIAS:

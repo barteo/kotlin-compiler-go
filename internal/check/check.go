@@ -4,6 +4,7 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"runtime"
@@ -243,6 +244,13 @@ type Checker struct {
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
 	refLHS bool
+	// overrideBounds is set while the type parameters of an override
+	// property are resolved, which have no FINAL_UPPER_BOUND.
+	overrideBounds bool
+	// classLitLHS is set while the type of a class literal or on a
+	// callable reference's left side is resolved, which kotlinc doesn't
+	// take for a type reference: no PLATFORM_CLASS_MAPPED_TO_KOTLIN.
+	classLitLHS bool
 	// refLHSOuter is set while the outer class of an inner class on a
 	// callable reference's left side is resolved, Outer<A> of
 	// Outer<A>.Inner<B>::f: there, as on the left side itself, a class
@@ -908,6 +916,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	forwardInlinable(checkers)
 	for _, c := range checkers {
 		c.checkMemberImports()
+		c.platformClassImports()
 	}
 	for _, c := range checkers {
 		c.inheritDefaults()
@@ -1037,6 +1046,7 @@ func (c *Checker) hidesBuiltin(name string) bool {
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
 	c.javaBoundCycle(ref, t)
+	c.platformClassRef(ref, t)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -1285,6 +1295,8 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+		} else if a.Variance != types.Inv && a.Variance == ps[i].Var {
+			c.redundantProjection(a.P)
 		}
 	}
 	t := types.GenericType(cls, append(args, hidden...))
@@ -1919,6 +1931,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		case d.External && owner.CompanionOf != nil && owner.CompanionOf.Interface:
 			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+		case owner.CompanionOf != nil && owner.CompanionOf.Interface && d.Visibility != syntax.Public:
+			// JVM_STATIC_ON_NON_PUBLIC_MEMBER: an interface's static
+			// methods are public.
+			c.errorf(d.Find("", "JvmStatic").P, jvmStaticNonPublic)
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
 		case d.Override:
@@ -1991,6 +2007,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	}
 	if d.Inline {
 		c.inlineFun(d, owner)
+		c.nothingToInline(d)
 	}
 	c.inlineDecl(d, false)
 	for _, tp := range d.TypeParams {
@@ -1998,6 +2015,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		case !tp.Reified:
 		case !d.Inline:
 			c.errorf(tp.P, "only type parameters of inline functions can be reified")
+		case d.Override:
+			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
+			// overridden function couldn't pass the type.
+			c.errorf(tp.P, "override by a function with reified type parameter")
 		case owner != nil && (owner.Interface || owner.Value):
 			c.unsupported(tp.P, "reified member type parameter", "reified type parameters of members of interfaces and value classes are not supported")
 		case owner != nil && !isFinal(d.Modifiers, owner):
@@ -2193,9 +2214,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// accessors don't use: it needn't be initialized.
 		sym.FieldUsed = true
 	}
-	if ext && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface &&
-		(d.Find("", "JvmStatic") != nil || d.Find("get", "JvmStatic") != nil || d.Find("set", "JvmStatic") != nil) {
-		c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	if a := cmp.Or(d.Find("", "JvmStatic"), d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")); ext && a != nil && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.errorf(a.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	} else if owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
 		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
@@ -2219,7 +2241,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
 		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
-		c.errorf(d.P, "private setters are not allowed for open properties")
+		p := d.P
+		if d.SetterVisP.Line != 0 {
+			p = d.SetterVisP // at the modifier, as kotlinc
+		}
+		c.errorf(p, "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
 		switch {
 		case owner == nil || owner.Interface:
@@ -2277,7 +2303,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// Those of a property with context parameters, which they use.
 		g.Sym.TypeParams = c.declareTypeParams(d.TypeParams, g.Sym, false)
 		c.tparams = funTypeParams(g.Sym, owner)
+		c.overrideBounds = d.Override
 		c.resolveBounds(d.TypeParams)
+		c.overrideBounds = false
 		if d.Setter != nil {
 			d.Setter.Sym.TypeParams = g.Sym.TypeParams
 		}
@@ -3232,7 +3260,7 @@ var builtinOperators = map[string]bool{"get": true, "set": true, "contains": tru
 // its own declaration, and not an override that has the visibility of the
 // functions it overrides.
 func declaredPublic(o *types.FunSym) bool {
-	if o.Protected || o.Module != "" {
+	if o.Protected || o.Module != "" || o.PackagePrivate {
 		return false
 	}
 	od, ok := o.Decl.(*syntax.FunDecl)
@@ -3285,7 +3313,9 @@ func (c *Checker) inheritDefaults() {
 				}
 				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
-					case o.Protected || od != nil && od.Visibility == syntax.Protected:
+					case o.Protected || o.PackagePrivate || od != nil && od.Visibility == syntax.Protected:
+						// As K2, an override of a package-private Java
+						// method is protected, on the JVM too.
 						fd.Sym.Inherited = types.InheritProtected
 						if ow := o.Owner; ow != nil && ow.External && ow.JVMMethods[o.JVM()+types.FunDesc(o)]&classfile.AccPublic != 0 {
 							fd.Sym.PublicOnJVM = true
@@ -4001,4 +4031,27 @@ func varargPos(p *syntax.Param) syntax.Pos {
 		}
 	}
 	return p.P
+}
+
+// jvmStaticNonPublic is the message of JVM_STATIC_ON_NON_PUBLIC_MEMBER.
+const jvmStaticNonPublic = "only public members in interface companion objects can be annotated with '@JvmStatic'"
+
+// jvmStaticInInterfaceCompanion reports @JvmStatic on a property of an
+// interface's companion object, or on its accessors, that isn't public,
+// or whose setter isn't (JVM_STATIC_ON_NON_PUBLIC_MEMBER): an
+// interface's static methods are public.
+func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
+	setter := d.Visibility
+	if d.SetterVisP.Line != 0 {
+		setter = d.SetterVis
+	}
+	if a := d.Find("", "JvmStatic"); a != nil && (d.Visibility != syntax.Public || d.Mutable && setter != syntax.Public) {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("get", "JvmStatic"); a != nil && d.Visibility != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
 }

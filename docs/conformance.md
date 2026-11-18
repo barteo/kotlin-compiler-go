@@ -232,9 +232,8 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   extension, and for `typealias/starProjection`, whose index of a
   `Map<*, *>` the library's `get` extension resolves.
 - **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
-  (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
-  `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
-  (`nullSourceInJvmModuleChecker`).
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`) and
+  `JVM_TARGET` (`wrongInlineTarget`).
 - **The backend's analysis of inlined library bodies**:
   `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
   that reach `typeOf` through another reified function.
@@ -278,18 +277,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,364 | 51.1% |
+| rejects invalid | 4,366 | 51.2% |
 | accepts valid | 4,127 | 48.4% |
-| accepts invalid | 40 | 0.5% |
+| accepts invalid | 38 | 0.4% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,081 of the 21,714 expected errors (92%) on their lines, and 508 of
-the 3,652 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 14 of the 40
+20,205 of the 21,714 expected errors (93%) on their lines, and 799 of
+the 3,652 expected warnings (22%), with 8 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 13 of the 38
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 

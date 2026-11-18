@@ -179,6 +179,31 @@ func (p *Path) AddSource(name string, info func() (*classfile.Info, error)) {
 	}
 }
 
+// ModuleHidden reports whether a class of the JDK's image is in a package
+// its module doesn't export to all modules, which the program, in the
+// unnamed module, can't use (kotlinc's JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE),
+// and returns the module. A class of a jar, a directory or a source file
+// is never hidden.
+func (p *Path) ModuleHidden(name string) (module string, hidden bool) {
+	e, ok := p.classes[name]
+	if !ok {
+		if p.base != nil {
+			return p.base.ModuleHidden(name)
+		}
+		return "", false
+	}
+	j, ok := e.src.(*jimage)
+	if !ok {
+		return "", false
+	}
+	pkg := ""
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		pkg = name[:i]
+	}
+	module, exported := j.exported(pkg)
+	return module, !exported
+}
+
 // Overlay returns a class path with p's classes, to which AddSource adds
 // classes p doesn't see: a module's Java sources over a class path that
 // checks of other versions of the module, or other modules, share.

@@ -72,6 +72,89 @@ fun f(s: String, n: String?): Boolean {
 		{"useless elvis", `
 fun f(s: String, n: String?) = (s ?: "") + (n ?: "")
 `, []string{"2:USELESS_ELVIS"}},
+		{"override by inline", `
+interface I {
+    fun foo()
+    fun bar(): Int
+}
+class C : I {
+    override inline fun foo() {}
+    @Suppress("OVERRIDE_BY_INLINE")
+    override inline fun bar() = 1
+}
+open class O : I {
+    final override inline fun foo() {}
+    override fun bar() = 2
+    private inline fun p() {}
+}`, []string{"12:NOTHING_TO_INLINE", "12:OVERRIDE_BY_INLINE", "14:NOTHING_TO_INLINE", "7:NOTHING_TO_INLINE", "7:OVERRIDE_BY_INLINE", "9:NOTHING_TO_INLINE"}},
+		{"nothing to inline", `
+typealias Action = () -> Unit
+inline fun plain(x: Int) = x
+inline fun withLambda(f: () -> Unit) = f()
+inline fun withAlias(f: Action) = f()
+inline fun withNoinline(noinline f: () -> Unit) = f
+inline fun <reified T> reified(x: Any) = x is T
+inline suspend fun susp() {}
+inline fun withVararg(vararg fs: () -> Unit) {}
+inline fun <T : () -> Unit> bounded(t: T) = t()
+inline fun (() -> Unit).receiver() = this()
+inline fun withExtType(f: Int.() -> Unit) = 1.f()
+@Suppress("NOTHING_TO_INLINE")
+inline fun suppressed() {}
+inline val prop: Int get() = 1
+inline val <reified T> T.ext: Int get() = 1
+`, []string{"10:NOTHING_TO_INLINE", "11:NOTHING_TO_INLINE", "3:NOTHING_TO_INLINE", "6:NOTHING_TO_INLINE", "9:NOTHING_TO_INLINE"}},
+		{"final upper bound", `
+class F
+open class O
+enum class E { A }
+class G<T>
+class GO<out T>
+fun <T : F> f1() {}
+fun <T : O> f2() {}
+fun <T : String?> f3() {}
+fun <T : E> f4() {}
+fun <T : G<String>> f5() {}
+fun <T : GO<String>> f6() {}
+fun <T> f7() where T : Int {}
+interface I { fun <T : Int> m() }
+class Impl : I { override fun <T : Int> m() {} }
+fun <@Suppress("FINAL_UPPER_BOUND") T : F> f8() {}
+class C<T : Unit>
+`, []string{"12:FINAL_UPPER_BOUND", "13:FINAL_UPPER_BOUND", "14:FINAL_UPPER_BOUND", "17:FINAL_UPPER_BOUND", "7:FINAL_UPPER_BOUND"}},
+		{"redundant projection", `
+class GO<out T>
+class GI<in T>
+class G<T>
+typealias TL<T> = List<T>
+fun f1(a: List<out String>) {}
+fun f2(b: GO<out Int>) {}
+fun f3(c: GI<in Int>) {}
+fun f4(d: G<out Int>) {}
+fun f5(e: TL<out Int>) {}
+fun f6(g: MutableList<out Int>) {}
+`, []string{"10:REDUNDANT_PROJECTION", "6:REDUNDANT_PROJECTION", "7:REDUNDANT_PROJECTION", "8:REDUNDANT_PROJECTION"}},
+		{"platform class mapped to kotlin", `
+import java.lang.Integer
+fun f1(x: java.lang.Integer) {}
+fun f2(x: Integer) {}
+fun f3(x: List<Int>, y: Comparable<Int>, z: Any) {}
+fun f4(x: java.util.List<Int>) {}
+fun f5() = java.lang.Object()
+fun f6() = Any()
+val v = java.lang.String::class
+fun f7(x: Any) = x is java.lang.Number
+`, []string{"10:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "2:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "6:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "7:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
+		{"no tail calls found", `
+tailrec fun t1(n: Int): Int = if (n == 0) 0 else t1(n - 1)
+tailrec fun t2(n: Int): Int = 1
+tailrec fun t3(n: Int): Int = 1 + t3(n - 1)
+tailrec fun t5(n: Int) { while (n > 0) t5(n - 1) }
+class K { tailrec fun Int.t6(): Int = (this - 1).t6() }
+@Suppress("x")
+tailrec
+fun t7(n: Int) {}
+`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NO_TAIL_CALLS_FOUND", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {
@@ -115,6 +198,18 @@ fun g(s: String) {
 @Suppress("TYPE_MISMATCH")
 fun f(): Int = ""
 `, []string{"2:ERROR_SUPPRESSION"}},
+		{"silent error suppression", `
+@Deprecated("no", level = DeprecationLevel.ERROR) fun gone() {}
+@Suppress("type_mismatch")
+fun f(): Int = ""
+@Suppress("DEPRECATION_ERROR")
+fun g() = gone()
+interface I {
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("h")
+    fun h()
+}
+`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := checkWarnings(t, tc.src)
