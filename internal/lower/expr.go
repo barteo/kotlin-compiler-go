@@ -112,6 +112,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return ix
 	case psi.KindINTEGER_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
 		text := t.Text()
 		if syntax.IllegalUnderscore(text) {
@@ -126,6 +127,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return lit
 	case psi.KindFLOAT_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
 		if syntax.IllegalUnderscore(t.Text()) {
 			l.errorLater(l.pos(t), "illegal underscore")
@@ -136,9 +138,10 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return lit
 	case psi.KindCHARACTER_CONSTANT:
+		l.checkGlued(n)
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
-			l.fail(n, "%s", msg)
+			l.errorLater(l.pos(n), "%s", msg)
 		}
 		c := &syntax.CharLit{Val: r}
 		c.P = l.pos(n)
@@ -152,6 +155,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		x.P = l.pos(n)
 		return x
 	case psi.KindSTRING_TEMPLATE:
+		l.checkGlued(n)
 		return l.stringLit(n)
 	case psi.KindTHIS_EXPRESSION:
 		th := &syntax.This{Label: l.label(n)}
@@ -186,6 +190,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindLAMBDA_EXPRESSION:
 		return l.lambda(n)
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		name := l.label(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
@@ -262,6 +267,38 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
+}
+
+// checkGlued reports a literal n written against an identifier, a number
+// or a keyword, as kc's lexer does for its parser (see TreeErrors).
+func (l *lowerer) checkGlued(n psi.NodeRef) {
+	if p := prevLeaf(n); gluedAffix(p) {
+		l.errorLater(l.pos(p), gluedLiteralMsg)
+	}
+	if x := nextLeaf(n); gluedAffix(x) {
+		l.errorLater(l.pos(x), gluedLiteralMsg)
+	}
+}
+
+// innermostLabel returns the innermost of the labels n starts with, as
+// a@ b@ while (c), reporting the others, as kotlinc does.
+func (l *lowerer) innermostLabel(n psi.NodeRef) psi.NodeRef {
+	for x := exprChild(n); x.NumericKind() == psi.KindLABELED_EXPRESSION; x = exprChild(n) {
+		l.errorLater(l.pos(child(n, psi.KindLABEL_QUALIFIER)), "multiple labels are forbidden")
+		n = x
+	}
+	return n
+}
+
+// newLineBefore reports whether whitespace between n and the node before
+// it breaks the line (a comment that spans lines doesn't).
+func newLineBefore(n psi.NodeRef) bool {
+	for c := n.PreviousSibling(); c.Valid() && c.IsTrivia(); c = c.PreviousSibling() {
+		if c.NumericKind() == psi.KindWHITE_SPACE && strings.Contains(c.Text(), "\n") {
+			return true
+		}
+	}
+	return false
 }
 
 // label returns the label of n's LABEL_QUALIFIER, or "".
@@ -471,7 +508,14 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 			c.P = l.pos(a)
 		}
 		if trailing {
-			l.fail(a, "unexpected '{'")
+			// f() {} {}: kotlinc passes only the first, and reports the
+			// others.
+			if newLineBefore(a) {
+				l.errorLater(l.pos(a), "unexpected trailing lambda on a new line")
+			} else {
+				l.errorLater(l.pos(a), "only one lambda expression is allowed outside a parenthesized argument list")
+			}
+			continue
 		}
 		c.Args = append(c.Args, l.expr(first(a)))
 		trailing = true
