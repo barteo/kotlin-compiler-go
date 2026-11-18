@@ -149,6 +149,7 @@ object KcStandalone {
                 val byPath = files.associateBy { File(it.virtualFile.path).canonicalPath }
                 val joined = m.files.map { f -> f to (byPath[f.path] ?: error("kc: no PSI for ${f.path}")) }
                 val round = KcRound(joined, { id -> KcOps.cls(model, id) }, { fq -> KcOps.pkg(model, fq) }, emptyList(), project, errors)
+                t.mark("symbols")
                 val lint = KcLint(round, joined, facts)
                 t.mark("round")
                 t.print("standalone files=${files.size}")
