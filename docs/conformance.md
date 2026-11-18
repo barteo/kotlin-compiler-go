@@ -213,7 +213,11 @@ Four things differ from the test infrastructure:
   (by their messages, which begin as the backend's do) from such tests.
 
 Tests with Java sources run: `kc` gets a module's `.java` files with its
-`.kt` files and reads their declarations, as `kotlinc` does. The Java
+`.kt` files and reads their declarations, as `kotlinc` does. Like
+`kotlinc`'s Java parser, `kc` reads past the syntax errors that IntelliJ's
+Java PSI recovers from, leaving out the member, as some tests' malformed
+Java (`public statis void function()`, a parameter of type `?`) needs;
+`javac` reports them in a build. The Java
 sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
@@ -244,12 +248,6 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   is `kotlinc`'s view of a source root directory. Given the `.java`
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
-- **Malformed Java**: `j+k/deprecations/javaWithHiddenDeprecation`
-  declares `public statis void function()`,
-  `scopes/specialFunctionInJava_1` a method without its `;`, and
-  `generics/wildcardInValueParameter` parameters of the types `?` and
-  `? extends String`. `kotlinc`'s Java parser reads past them. `kc`
-  reports the syntax errors, as `javac` would in a build.
 - **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
   `kjkimplicitTypesCrash` and
   `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
@@ -280,29 +278,33 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,348 | 51.0% |
-| accepts valid | 4,117 | 48.3% |
-| accepts invalid | 47 | 0.6% |
-| rejects valid | 5 | 0.1% |
-| parse/unsupported | 14 | 0.2% |
+| rejects invalid | 4,363 | 51.1% |
+| accepts valid | 4,123 | 48.3% |
+| accepts invalid | 40 | 0.5% |
+| rejects valid | 2 | 0.0% |
+| parse/unsupported | 3 | 0.0% |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-18,661 of the 21,548 expected errors (87%) on their lines, and 507 of
-the 3,634 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 19 of the 47
+18,773 of the 21,712 expected errors (86%) on their lines, and 507 of
+the 3,644 expected warnings (14%), with 8 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 14 of the 40
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 11), unresolved names
-  (`UNRESOLVED_REFERENCE` 9), and callable references whose types
-  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2).
-- **Rejects valid**, by `kc`'s first error: unresolved names (2),
-  type mismatches (2), and a property invoked as a function (1). No box test is rejected.
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9), unresolved names
+  (`UNRESOLVED_REFERENCE` 6), and callable references whose types
+  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2). Some are out of
+  reach (see above).
+- **Rejects valid**, by `kc`'s first error: a type mismatch through a
+  star-projected explicit backing field, which needs captured types
+  (1), and a property invoked as a function, of a type written as
+  `java.lang.CharSequence` (1); [Unsupported Kotlin](unsupported.md)
+  lists both. No box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 

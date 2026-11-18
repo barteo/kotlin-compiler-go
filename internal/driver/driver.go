@@ -523,6 +523,12 @@ func addJava(cp *classpath.Path, paths []string, jobs int, outside *javaOutside)
 			return
 		}
 		files[i], errs[i] = javasrc.Parse(paths[i], string(src))
+		if files[i] != nil {
+			// A member left out, as Java PSI leaves it, but for which
+			// kotlinc goes on as well: javac reports Java's syntax
+			// errors.
+			errs[i] = nil
+		}
 	})
 	if err := errors.Join(errs...); err != nil {
 		return err

@@ -172,9 +172,36 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 // runs for all files before checkSupers breaks the cycles, so each class
 // in a cycle is reported.
 func (c *Checker) findCycles() {
+	walk := c.u.ext.javaSource
+	if c.u.shadowing {
+		// The class path's classes may inherit from the program's that
+		// take the place of theirs (see classTable.shadow):
+		//
+		//	// MODULE: dependency
+		//	interface ToSubstitute
+		//	interface Intermediate : ToSubstitute
+		//	// MODULE: main(dependency)
+		//	interface ToSubstitute : Intermediate // a cycle
+		walk = func(*types.ClassSym) bool { return true }
+	}
 	for _, cd := range c.classes {
-		if inherits(cd.Sym, cd.Sym, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
-			c.cyclic = append(c.cyclic, cd)
+		if !inherits(cd.Sym, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+			continue
+		}
+		c.cyclic = append(c.cyclic, cd)
+		if !c.u.shadowing {
+			continue
+		}
+		// A cycle through the class path is reported on the supertypes
+		// that lead back, as kotlinc does, before checkSupers breaks it.
+		if c.cyclicAt == nil {
+			c.cyclicAt = map[*syntax.ClassDecl][]syntax.Pos{}
+		}
+		for _, st := range cd.Supers {
+			if st.Type != nil && st.T.K == types.Class && st.T.C != nil &&
+				(st.T.C == cd.Sym || inherits(st.T.C, cd.Sym, walk, map[*types.ClassSym]bool{})) {
+				c.cyclicAt[cd] = append(c.cyclicAt[cd], st.Type.P)
+			}
 		}
 	}
 }
@@ -184,7 +211,13 @@ func (c *Checker) findCycles() {
 // arguments.
 func (c *Checker) checkSupers() {
 	for _, cd := range c.cyclic {
-		c.errorf(cd.P, "there's a cycle in the inheritance hierarchy for this type")
+		at := c.cyclicAt[cd]
+		if len(at) == 0 {
+			at = []syntax.Pos{cd.P}
+		}
+		for _, p := range at {
+			c.errorf(p, "there's a cycle in the inheritance hierarchy for this type")
+		}
 		cls := cd.Sym
 		cls.Super, cls.Interfaces, cls.Supers = c.u.ext.class("java/lang/Object"), nil, []types.Type{}
 		cd.SuperCall = nil
@@ -887,6 +920,37 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	return slices.DeleteFunc(c.superProps(cls, p.Name), func(o superProp) bool {
 		return !c.sameContextsIn(o.ctx, c.memberSubst(cls.This(), o.owner), p.Contexts, nil)
 	})
+}
+
+// markInheritedProtected marks the properties of the file's classes that
+// override a protected property without a visibility of their own, which
+// are protected too, before any code that reads them is checked.
+func (c *Checker) markInheritedProtected() {
+	for _, cd := range c.classes {
+		cls := cd.Sym
+		if cls == nil {
+			continue
+		}
+		mark := func(p *types.VarSym, override bool) {
+			if p == nil || !override || explicitVisibility(p) {
+				return
+			}
+			for _, o := range c.superProps(cls, p.Name) {
+				if o.protected {
+					p.InheritsProtected = true
+					return
+				}
+			}
+		}
+		for _, cp := range cd.CtorParams {
+			mark(cp.PropSym, cp.Override)
+		}
+		for _, m := range cd.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv == nil {
+				mark(pd.Sym, pd.Override)
+			}
+		}
+	}
 }
 
 // javaFinalAccessor returns the Java superclass of cls below o's owner

@@ -6,16 +6,16 @@ Of 10827 test files, 2295 are skipped and 8532 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4348 | 51.0% |
-| accepts valid | 4117 | 48.3% |
-| accepts invalid | 47 | 0.6% |
-| rejects valid | 5 | 0.1% |
-| parse/unsupported | 14 | 0.2% |
+| rejects invalid | 4363 | 51.1% |
+| accepts valid | 4123 | 48.3% |
+| accepts invalid | 40 | 0.5% |
+| rejects valid | 2 | 0.0% |
+| parse/unsupported | 3 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4348 tests both reject, kc reports an error on the line of an expected one in 4259.
+Of the 4363 tests both reject, kc reports an error on the line of an expected one in 4273.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -48,9 +48,9 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 11 | 10 | `tests/collectionLiterals/kt82964.kt`, `tests/generics/wildcardInValueParameter.kt` |
-| `UNRESOLVED_REFERENCE` | 9 | 6 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/inference/kt68570.kt` |
-| `(no error marked)` | 4 | 4 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 9 | 8 | `tests/collectionLiterals/kt82964.kt`, `tests/j+k/collectionOverrides/containsAll.kt` |
+| `UNRESOLVED_REFERENCE` | 6 | 4 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/inference/kt68570.kt` |
+| `(no error marked)` | 3 | 3 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
 | `CANNOT_INFER_PARAMETER_TYPE` | 2 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt` |
 | `INITIALIZER_TYPE_MISMATCH` | 2 | 1 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `testsWithStdLib/functionX.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
@@ -62,7 +62,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 1 | 1 | `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
 | `DELEGATE_SPECIAL_FUNCTION_MISSING` | 1 | 1 | `tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt` |
-| `DEPRECATION_ERROR` | 1 | 0 | `tests/j+k/deprecations/javaWithHiddenDeprecation.kt` |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `ILLEGAL_SUSPEND_FUNCTION_CALL` | 1 | 1 | `tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt` |
 | `INLINE_FROM_HIGHER_PLATFORM` | 1 | 1 | `tests/jvm/inline/wrongInlineTarget.kt` |
@@ -73,14 +72,12 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
 | `NOTHING_TO_OVERRIDE` | 1 | 1 | `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
 | `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 1 | 1 | `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
-| `SMARTCAST_IMPOSSIBLE` | 1 | 1 | `tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt` |
 | `SUSPENSION_POINT_INSIDE_MONITOR` | 1 | 1 | `tests/jvm/suspensionPointInMonitor.kt` |
 | `SYNTAX` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 1 | 1 | `tests/j+k/syntheticPropertyOverridden2.kt` |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 1 | 1 | `tests/platformTypes/commonSupertype/withNothing.kt` |
 | `UPPER_BOUND_VIOLATED` | 1 | 0 | `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
 | `VAL_REASSIGNMENT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
-| `VARIABLE_EXPECTED` | 1 | 0 | `tests/j+k/deprecations/javaWithHiddenDeprecation.kt` |
 
 ## Rejects valid
 
@@ -88,25 +85,25 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 2 | `tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt`, `testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt` |
-| `unresolved reference: _` | 2 | `tests/classpathSubstitution/localClasspathSubstitution.kt`, `tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 1 | `tests/nullabilityAndSmartCasts/kt1778.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 1 | `testsWithStdLib/properties/backingField/explicitBackingFieldPrivateToThis.kt` |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 18661 of 21548 expected errors (86.6%) on their lines.
+kc reports 18773 of 21712 expected errors (86.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2504 | 2141 | 363 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1304 | 180 |
+| `UNRESOLVED_REFERENCE` | 2511 | 2163 | 348 |
+| `ARGUMENT_TYPE_MISMATCH` | 1485 | 1308 | 177 |
 | `UNSUPPORTED` | 233 | 111 | 122 |
-| `CONFLICTING_OVERLOADS` | 726 | 629 | 97 |
+| `CONFLICTING_OVERLOADS` | 734 | 637 | 97 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 163 | 87 |
 | `RETURN_TYPE_MISMATCH` | 417 | 352 | 65 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 633 | 569 | 64 |
+| `WRONG_MODIFIER_TARGET` | 375 | 311 | 64 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 105 | 58 |
 | `INVISIBLE_REFERENCE` | 523 | 467 | 56 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
@@ -114,7 +111,7 @@ kc reports 18661 of 21548 expected errors (86.6%) on their lines.
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 213 | 167 | 46 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 180 | 44 |
-| `REDECLARATION` | 192 | 157 | 35 |
+| `REDECLARATION` | 196 | 161 | 35 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 109 | 34 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 123 | 89 | 34 |
@@ -125,8 +122,8 @@ kc reports 18661 of 21548 expected errors (86.6%) on their lines.
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 89 | 25 |
 | `SUBCLASS_OPT_IN_INAPPLICABLE` | 25 | 0 | 25 |
 | `CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR` | 24 | 0 | 24 |
-| `SMARTCAST_IMPOSSIBLE` | 183 | 159 | 24 |
 | `TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED` | 41 | 17 | 24 |
+| `SMARTCAST_IMPOSSIBLE` | 183 | 160 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 154 | 21 |
@@ -146,21 +143,20 @@ kc reports 18661 of 21548 expected errors (86.6%) on their lines.
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 21 | 13 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 114 | 13 |
 | `INFIX_MODIFIER_REQUIRED` | 46 | 33 | 13 |
-| `WRONG_ANNOTATION_TARGET` | 380 | 367 | 13 |
+| `WRONG_ANNOTATION_TARGET` | 382 | 369 | 13 |
+| `CLASSIFIER_REDECLARATION` | 48 | 36 | 12 |
+| `FUNCTION_DECLARATION_WITH_NO_NAME` | 17 | 5 | 12 |
 | `INAPPLICABLE_JVM_NAME` | 12 | 0 | 12 |
 | `MULTIPLE_LABELS_ARE_FORBIDDEN` | 17 | 5 | 12 |
+| `INCOMPATIBLE_MODIFIERS` | 74 | 63 | 11 |
 | `NAME_FOR_AMBIGUOUS_PARAMETER` | 31 | 20 | 11 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 144 | 11 |
 | `TYPE_PARAMETERS_NOT_ALLOWED` | 13 | 2 | 11 |
 | `UNRESOLVED_IMPORT` | 50 | 39 | 11 |
-| `CLASSIFIER_REDECLARATION` | 41 | 31 | 10 |
-| `FUNCTION_DECLARATION_WITH_NO_NAME` | 15 | 5 | 10 |
 | `ILLEGAL_SELECTOR` | 15 | 5 | 10 |
 | `NOT_A_MULTIPLATFORM_COMPILATION` | 16 | 6 | 10 |
 | `NOT_A_SUPERTYPE` | 14 | 4 | 10 |
-| `OPT_IN_CAN_ONLY_BE_USED_AS_ANNOTATION` | 10 | 0 | 10 |
-| `PRIVATE_SETTER_FOR_ABSTRACT_PROPERTY` | 13 | 3 | 10 |
-| *534 more* | | | |
+| *536 more* | | | |
 
 ### Missed errors by cause
 
@@ -168,11 +164,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 121 | 4.2% | `UNRESOLVED_REFERENCE` 26, `INLINE_FROM_HIGHER_PLATFORM` 21, `ARGUMENT_TYPE_MISMATCH` 19, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6 |
-| syntax-error | 939 | 32.5% | `UNRESOLVED_REFERENCE` 180, `UNSUPPORTED` 122, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 50, `ARGUMENT_TYPE_MISMATCH` 48, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 32 |
+| accepted | 99 | 3.4% | `INLINE_FROM_HIGHER_PLATFORM` 21, `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6 |
+| syntax-error | 1006 | 34.2% | `UNRESOLVED_REFERENCE` 180, `UNSUPPORTED` 122, `WRONG_MODIFIER_TARGET` 61, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 50, `ARGUMENT_TYPE_MISMATCH` 48 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 226 | 7.8% | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` 36, `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
-| missing-check | 1601 | 55.5% | `UNRESOLVED_REFERENCE` 130, `CONFLICTING_OVERLOADS` 95, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `INVISIBLE_REFERENCE` 52 |
+| nearby | 231 | 7.9% | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` 36, `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| missing-check | 1603 | 54.5% | `UNRESOLVED_REFERENCE` 131, `CONFLICTING_OVERLOADS` 95, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `INVISIBLE_REFERENCE` 52 |
 
 ## Errors kotlinc doesn't report
 
@@ -180,10 +176,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 221 |
+| `unresolved reference: _` | 223 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `type mismatch: inferred type is _ but _ was expected` | 173 |
+| `type mismatch: inferred type is _ but _ was expected` | 172 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 57 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
 | `unresolved or unsupported type: _` | 32 |
@@ -204,13 +200,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 10 |
+| `'_' overrides nothing` | 9 |
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' is not allowed outside a loop` | 8 |
 | `'_' modifier is required on '_'` | 8 |
 | `expected n parameter of type _ but n were declared` | 8 |
-| `'_' overrides nothing` | 7 |
-| *170 more* | |
+| *171 more* | |
 
 ## Unsupported features
 
@@ -218,11 +214,6 @@ By the features the parser (with error recovery) and the checker found. A test c
 
 | Feature | Tests | Only blocker | Examples |
 |:---|---:|---:|:---|
-| `destructuring declaration` | 4 | 4 | `tests/destructuring/topLevelWithLambda.kt`, `tests/diagnostics/conflictingOverloads.kt` |
-| `callable reference` | 3 | 3 | `tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt`, `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt` |
-| `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 2 | `tests/localInterfaces.kt`, `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt` |
-| `checker: lambdas with more than n parameters are not supported` | 1 | 1 | `tests/tooLargeFunctionNThroughACallableReference.kt` |
-| `package` | 1 | 1 | `tests/modifiers/IllegalModifiers.kt` |
 | `parse error: expected '_', found '_'` | 1 | 1 | `tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt` |
 | `parse error: expected expression, found '_'` | 1 | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChain.kt` |
 | `unsupported types in signature` | 1 | 1 | `tests/syntheticExtensions/samAdapters/InnerClassInGeneric.kt` |
@@ -233,18 +224,13 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 | Step | Feature | Tests unblocked | Total |
 |---:|:---|---:|---:|
-| 1 | `destructuring declaration` | 4 | 4 |
-| 2 | `callable reference` | 3 | 7 |
-| 3 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 9 |
-| 4 | `checker: lambdas with more than n parameters are not supported` | 1 | 10 |
-| 5 | `package` | 1 | 11 |
-| 6 | `parse error: expected '_', found '_'` | 1 | 12 |
-| 7 | `parse error: expected expression, found '_'` | 1 | 13 |
-| 8 | `unsupported types in signature` | 1 | 14 |
+| 1 | `parse error: expected '_', found '_'` | 1 | 1 |
+| 2 | `parse error: expected expression, found '_'` | 1 | 2 |
+| 3 | `unsupported types in signature` | 1 | 3 |
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 507 of the 3634 warnings the tests expect (14.0%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 507 of the 3644 warnings the tests expect (13.9%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -272,8 +258,8 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CAST_NEVER_SUCCEEDS` | 92 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
+| `FINAL_UPPER_BOUND` | 69 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 |
-| `FINAL_UPPER_BOUND` | 64 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 |
 | `IMPOSSIBLE_IS_CHECK_WARNING` | 57 |
@@ -293,5 +279,5 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `DIVISION_BY_ZERO` | 25 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
-| *94 more* | |
+| *95 more* | |
 

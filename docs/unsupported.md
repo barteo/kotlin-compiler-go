@@ -38,10 +38,9 @@ own tests.
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.
 - A class of the program with the name of a class of the class path
-  doesn't replace it in the class path's signatures and supertypes, as
-  it does in K2: a class path's class whose supertype is shadowed this
-  way still has the class path's supertype. Only the cycles of
-  supertypes this closes are reported.
+  takes its place in the class path's signatures and supertypes, as in
+  K2. A class of the program's Java sources doesn't: the class path's
+  signatures still name the class path's class of its name.
 - Two classes of one name on the class path, from different modules,
   are one class, the first; a signature that names the other with
   other type arguments isn't reported.
@@ -310,6 +309,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
+- A type written as a Java class that Kotlin maps to a built-in type,
+  as `java.lang.CharSequence` or `java.lang.Comparable`, is the
+  built-in type: `kotlinc` keeps the Java class, so that its
+  `length()` is a method and a `java.lang.Comparable<*>` isn't a
+  `kotlin.Comparable<*>`.
 - jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java
@@ -357,6 +361,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   so is a suspend reference whose `invoke` `kotlinc` makes a state machine (one
   that ignores the result, or to an inline suspend function or one
   returning a value class).
+- A reference to a library function that `kc` compiles as built in,
+  as `String::toInt`, names the receiver's class (`String`) as its
+  owner, where `kotlinc`'s names the library's file facade
+  (`StringsKt`).
 - A `when` over an enum compares entries with `equals`, not through a
   `$WhenMappings` ordinal switch.
 - Interfaces default to `-jvm-default=no-compatibility`; `kotlinc`'s

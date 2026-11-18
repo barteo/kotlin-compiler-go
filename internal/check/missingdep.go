@@ -179,11 +179,9 @@ func classOf(t types.Type) *types.ClassSym {
 }
 
 // classPathChecks runs the checks of what the program uses of the class
-// path that depend on which modules are on it: missing classes, and
-// classes the program's substitute.
+// path that depend on which modules are on it: missing classes.
 func (c *Checker) classPathChecks() {
 	c.missingDependencies()
-	c.classPathCycles()
 }
 
 // missingDependencies reports the uses of declarations whose signatures

@@ -5,7 +5,7 @@ it compiles 10x faster or more than `kotlinc` running in a warm JVM, and uses
 about a tenth of the memory. The libraries it builds pass their own test
 suites ([Survey of real code](docs/survey.md)). It passes all 6,575
 of `kotlinc`'s box tests that it runs, and rejects what `kotlinc` rejects
-in 98% of its diagnostics tests ([Conformance](docs/conformance.md)).
+in 99% of its diagnostics tests ([Conformance](docs/conformance.md)).
 
 It is a prototype: it compiles most of Kotlin but not all of it, and it
 checks less than `kotlinc` does ([What it doesn't do](#what-it-doesnt-do)).
@@ -43,7 +43,7 @@ How each number is measured, and the full tables with CPU time, are in
   warnings and errors after type checking. `kc` reports every syntax
   error, the errors that type checking finds, and only a few of those
   checkers' errors (opt-in and deprecation, for example), which is why it
-  agrees with `kotlinc` on only 98% of the diagnostics tests. Of the
+  agrees with `kotlinc` on only 99% of the diagnostics tests. Of the
   warnings, it reports ten kinds, such as deprecations, opt-ins, useless
   casts and unnecessary safe calls: 14% of those the diagnostics tests
   expect.

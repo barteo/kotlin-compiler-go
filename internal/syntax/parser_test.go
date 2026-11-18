@@ -229,7 +229,6 @@ func TestReservedAnnotationName(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"val (a, b) = p", "destructuring declaration"},
 		{"fun f() {\n  external fun g()\n}", "local external function"},
 	}
 	for _, tt := range tests {
@@ -446,9 +445,9 @@ fun ok2() {
 	f, errs := ParseAll("t.kt", src)
 	var got []string
 	for _, e := range errs {
-		got = append(got, e.Pos.String()+" "+e.Feature)
+		got = append(got, e.Pos.String()+" "+e.Msg)
 	}
-	want := []string{"6:5 destructuring declaration"}
+	want := []string{"6:5 Destructuring declarations are only allowed for local variables/values"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, ", "), strings.Join(want, ", "))
 	}
