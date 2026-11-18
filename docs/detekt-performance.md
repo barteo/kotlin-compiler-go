@@ -1,8 +1,12 @@
 # Making detekt on kc faster
 
-This page describes the five changes that most speed up
-[detekt on kc](detekt.md), ranked by the time they save, with the
-measurements behind each. All five are always on. They were measured one
+This page describes the changes that speed up [detekt on kc](detekt.md),
+with the measurements behind each, in two rounds. The first five took
+detekt on kc to 3.8× and 3.3× stock detekt with `--parallel`.
+[Five more](#five-more-5-stock---parallel) took it past 5×: 7.1× on
+kotlinpoet and 7.0× on kotlinx-coroutines-core.
+
+The first five are ranked by the time they save. All five are always on. They were measured one
 at a time on the branch `work/detekt-perf-proposals`, where each could be
 switched off, and the findings were the same with and without each of
 them.
@@ -264,9 +268,10 @@ every file's facts on 4 goroutines instead of one already measures
 
 ## What doesn't help
 
-- **C1 only** (`-XX:TieredStopAtLevel=1`) is often good for short JVM runs,
-  but here it is slower: `Analyzer` takes 6.0–7.6 s with the archive,
-  against 4.5–4.7 s. The rules run long enough for C2 to pay off.
+- **C1 only** (`-XX:TieredStopAtLevel=1`) is slower serially: `Analyzer`
+  takes 6.0–7.6 s with the archive, against 4.5–4.7 s, as C2's compiler
+  threads have idle cores to use. With `--parallel` it is the other way
+  round, and `run.sh` now uses it ([C1 only](#2-compile-with-c1-only)).
 - **Replacing the `KaSession` proxy** with generated code isn't worth it.
   Its reflective dispatch is 0.03 s of the run, for about 300,000 calls.
 
@@ -311,7 +316,220 @@ serial run's):
 That machine is slower than the one above: stock took 26.0 s on
 kotlinpoet there, against 23.4 s.
 
-## Reproducing
+## Five more: 5× stock `--parallel`
+
+The goal of this round was detekt on kc at least 5× faster than stock
+detekt with `--parallel`. These five changes, each with evidence from
+profiles of detekt on kc-aa, got it there. They were made on the branch
+`work/detekt-5x`, one commit each.
+
+| | kotlinpoet | kotlinx-coroutines-core |
+|:---|---:|---:|
+| Stock detekt, `--parallel` | 33.46 s | 52.21 s |
+| detekt on kc before this round | 5.56 s (6.0×) | 11.14 s (4.7×) |
+| **detekt on kc after it** | **4.72 s (7.1×)** | **7.47 s (7.0×)** |
+
+- The first two rows come from separate round robins on the same machine.
+  Stock vs kc is `bench/detekt-vs-stock.sh`. Before vs after is
+  `bench/detekt-ab.sh`, with the build of the branch's base against its
+  head, which gives 5.56 → 4.04 s and 11.14 → 7.59 s.
+- Each time is the median of 5 runs. Even kc's slowest run against
+  stock's fastest is 6.5× and 5.8×.
+- kc's findings were the same in every run, serially and with
+  `--parallel`. On coroutines, change 5 below removes 6 findings that
+  stock doesn't report. kc matches stock on 1581 of 1597 findings on
+  kotlinpoet and 2730 of 2778 on coroutines, as before.
+
+### Setup
+
+- A Linux x86_64 cloud machine with 4 CPUs and 15 GB, JDK 21.0.13. It is
+  slower than the machine of the first round: stock with `--parallel`
+  took 29.3–33.5 s on kotlinpoet here, against 18.5 s there.
+- The targets, class paths and `-opt-in`s are those of the first round.
+  The `-opt-in`s go after detekt's arguments, as `run.sh` takes them.
+- Every A/B below is `bench/detekt-ab.sh`: variants round robin, 5 runs
+  each, `--parallel`, each with its own class-data sharing archive. The
+  machine drifted by up to 20% over the hours of these runs, so only
+  numbers from the same round robin are compared.
+
+### Where the time went
+
+One run on kotlinpoet with `--parallel`, at the base of the branch, under
+JFR, with kc's timings (`KC_TIMING=1 -Dkc.trace=true`):
+
+- **detekt waits for kc before any rule runs.** `ValidateClasspath`
+  collects every file's diagnostics, so it waits for kc's analysis:
+  1.5–1.7 s of a 6.8 s run on kotlinpoet, 3.0–3.4 s on coroutines. kc's
+  session has no diagnostics to add, since kc prints the errors it finds.
+  Of that time:
+  - kc's check took 1029 ms in the JVM, against 700 ms alone, because the
+    JVM's threads compete with it for the cores.
+  - Waiting for the PSI after the check took 133 ms.
+  - Building the round took 226 ms.
+- **The JIT takes two of the four cores.** C2's compilations took 8.9 s of
+  CPU in the 6 s run, on two compiler threads. The largest compiled methods
+  were kc's own: `KcLintAnalysis.referenced`, `KcAnalysis.resolveToSymbol`
+  and `lintLibraryCallableId`, each 40–73 KB of code. So were the method
+  handles of the `KaSession` proxy.
+- **The rule threads block on the round's monitor.** They waited about 1 s
+  in total, in `KcRound.libraryClass`, `classSymbol` and
+  `KcLint.modelSymbol`. Every lookup took the monitor, also for what was
+  already loaded.
+- **Each file was parsed twice, the first time serially.** One pool thread
+  called `KtFile.isScript` on every file before the pool parsed them.
+  That builds the file's stubs, which parses it. It was 49 of the pool's
+  98 samples, and it later made the rules switch each file's PSI from the
+  stubs to the tree.
+- **`--parallel` scales badly.** `Analyzer` goes from 6.1 s serially to
+  3.4–4.0 s with `--parallel` (1.6×). In light mode, which needs no
+  types, it goes from 4.2 s to 3.5 s (1.2×), because kc's analysis runs
+  meanwhile and takes the cores.
+
+### 1. Start kc's check first, and parse each file once
+
+**Evidence.**
+- `KcStandalone.Session` built IntelliJ's environment before it started
+  kc's check. That environment is `KotlinCoreEnvironment` and the class
+  path's index, and the check needs neither: it reads the sources from
+  their paths.
+- The serial `isScript` calls above.
+
+**Change.**
+- The session starts the check on a thread of its own before it builds
+  its environment. `-Dkc.prestart=false` starts it after, as before.
+- A script is told by its extension, `.kts`.
+- `-Dkc.trace` prints when the check started and how long the first
+  `analyze` call waited for the analysis.
+
+**Result.** Waiting for the PSI after the check went from 133 ms to 14 ms.
+End to end, −0.14 s on kotlinpoet (6.19 → 6.05 s) and −0.86 s on
+coroutines (10.59 → 9.73 s).
+
+### 2. Compile with C1 only
+
+**Evidence.** The JIT's 8.9 s of CPU above. The rules, kc's check and the
+PSI pool need all four cores, so C2's compiler threads slow them down
+more than C2's code speeds them up.
+
+**Change.** [`run.sh`](../jvm/detekt/run.sh) passes
+`-XX:TieredStopAtLevel=1`. `KC_JAVA_OPTS=-XX:TieredStopAtLevel=4` turns C2
+back on.
+
+**Result.** −1.54 s on kotlinpoet (6.59 → 5.05 s, −23%) and −3.05 s on
+coroutines (11.64 → 8.59 s, −26%). This is the largest of the five. It
+also shortens `ValidateClasspath`, from 2.22 s to 1.55 s on coroutines,
+because kc's check gets more of the CPU. The first round measured C1 as
+slower, but serially.
+
+### 3. Run the rules that need no types while kc analyzes
+
+**Evidence.** The waits in `ValidateClasspath` above. Of detekt's roughly
+300 rules, 95 implement `RequiresAnalysisApi`. The rest need no types and
+can run before kc is done.
+
+**Change.** detekt patch
+[`0004`](../jvm/detekt/patches/0004-Run-the-rules-that-need-no-types-while-kc-analyzes.patch):
+- `ValidateClasspath` is skipped when the session reports its own errors
+  (`EnvironmentAware.reportsOwnErrors`).
+- With `--parallel`, the `Analyzer` first runs the rules that need no
+  types, for every file, and then the ones that need types.
+- A file's issues keep a serial run's order, and its processors see the
+  file once, with all of its issues.
+- With `--auto-correct`, which changes the PSI, each file's rules still
+  run in one task.
+- `-Dkc.overlap=false` turns it off.
+
+**Result.** It depends on the JIT, because the overlap only helps when
+there are cores to spare:
+
+| | kotlinpoet | kotlinx-coroutines-core |
+|:---|---:|---:|
+| C2 | 6.59 → 6.61 s | 11.64 → 12.20 s |
+| C1 only (change 2) | 5.05 → 4.56 s (−10%) | 8.59 → 7.60 s (−12%) |
+
+### 4. Read the round's symbols without its lock
+
+**Evidence.** The ~1 s the rule threads spent blocked on the round's
+monitor.
+
+**Change.**
+- `KcRound`'s maps are concurrent and read without a lock.
+- Loading a library class or package, or building a member scope, still
+  takes one lock, `loadLock`. A load registers its symbols in pending maps,
+  which only the loading thread reads, and the outermost load publishes
+  them when it ends. Until then, the symbols aren't complete.
+- `KcLint.modelSymbol` and `KcAnalysis` no longer synchronize on the round.
+
+This also ends some unsynchronized reads of `byPsi`, and of the maps that
+library loads write, which other threads made while one thread loaded.
+
+**Result.** −0.20 s on kotlinpoet (6.05 → 5.85 s) and −0.52 s on
+coroutines (9.73 → 9.21 s), with C2.
+
+**A deadlock.** Two runs out of about 500 hung during these measurements.
+The rule threads were stuck in a lock-order cycle:
+- one held a class symbol's lazy `superTypes`, whose class file
+  `classFilePsi` looks up under the round's lock;
+- another held that lock while building a member scope, which reads
+  `superTypes`.
+
+The cycle was there before, behind the round's monitor, but more paths
+now reach it concurrently. Every lazy value of the round's symbols and
+types is now computed under the round's `loadLock`, so one lock orders
+them. After that, 115 runs under a watchdog didn't hang.
+
+### 5. Key library callees by their owner and flags
+
+This one fixes the findings rather than the time. The scheduling it
+was found with saves nothing measurable (see below).
+
+**Evidence.** With files analyzed largest first instead of in path order,
+coroutines lost 7 `UnnamedParameterUse` findings, in every run. `KcLint`
+made one symbol for each library callee, keyed by its name, parameter
+types and receiver, and the symbol answered from the call that made it,
+for example whether its parameter names are stable. An invoke of a
+function-typed value and another call with the same key shared the
+symbol of whichever call a rule asked about first.
+
+**Change.** The key includes the callee's owner and flags.
+
+**Result.** The findings are the same in path order, largest first and
+serially. Coroutines has 6 fewer findings, none of which stock reports.
+
+### What didn't pay off end to end
+
+- **Largest files first, and splitting large files' rules over several
+  tasks** (in patch 0004, `-Dkc.schedule=false` to turn it off): 4.55 vs
+  4.56 s and 7.60 vs 7.60 s. No file is large enough to leave a thread
+  alone at the end on these targets.
+- **Building the facts alongside the files' models, and the models on all
+  cores** (`analysis/ka`, `KC_SERIAL_MODEL` to turn it off). The first,
+  cold update gets faster in `TestLintStages`: 744 → 614 ms on kotlinpoet
+  and 1128 → 951 ms on coroutines. End to end it is 4.55 vs 4.55 s and
+  7.61 vs 7.60 s, because the rules that need no types now run
+  meanwhile. `TestParallelModel` checks that the encoded models and facts
+  are the same byte for byte either way.
+
+Both stay in. They don't change the findings, and they would matter on a
+module with one very large file, or with fewer rules to overlap with.
+
+### Reproducing
+
+```
+jvm/detekt/build.sh
+ARGS="-i src/commonMain -i src/jvmMain --analysis-mode full --all-rules -cp ... --jdk-home $JAVA_HOME"
+STOCK_JAR=detekt-cli-2.0.0-alpha.6-all.jar bench/detekt-vs-stock.sh /tmp/vs -- $ARGS
+bench/detekt-ab.sh /tmp/ab "c2|jvm/kc-aa/build/libkc.so|-Dkc.overlap=false" \
+	"c1|jvm/kc-aa/build/libkc.so|-XX:TieredStopAtLevel=1" -- $ARGS --parallel
+```
+
+- A variant's fourth field names its `kc-aa.jar`, to compare builds of two
+  commits.
+- `KC_JAVA_OPTS="-XX:StartFlightRecording=filename=kc.jfr,settings=profile"`
+  records a profile for `run.sh`. The JIT and monitor figures above come from
+  `jdk.Compilation` and `jdk.JavaMonitorEnter` (1 ms threshold) events.
+
+## Reproducing the first round
 
 The comparison of each change alone needs `work/detekt-perf-proposals`,
 where `-Dkc.eager=false` and `-Dkc.cache=false` turn off changes 4 and 3,
