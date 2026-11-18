@@ -211,7 +211,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 628 of the 3652 warnings the tests expect (17.2%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 799 of the 3652 warnings the tests expect (21.9%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -224,7 +224,11 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNNECESSARY_SAFE_CALL` | 90 | 78 | 1 |
 | `UNCHECKED_CAST` | 87 | 39 | 1 |
 | `OPT_IN_USAGE` | 83 | 62 | 0 |
+| `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
+| `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
+| `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
 | `USELESS_ELVIS` | 44 | 27 | 0 |
+| `NO_TAIL_CALLS_FOUND` | 29 | 24 | 0 |
 | `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
 
@@ -240,19 +244,15 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CAST_NEVER_SUCCEEDS` | 92 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
-| `FINAL_UPPER_BOUND` | 69 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 |
-| `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 |
 | `IMPOSSIBLE_IS_CHECK_WARNING` | 57 |
-| `REDUNDANT_PROJECTION` | 49 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
 | `UNUSED_VARIABLE` | 35 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
 | `OVERRIDE_DEPRECATION` | 30 |
-| `NO_TAIL_CALLS_FOUND` | 29 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 |
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 |
 | `INLINE_CLASS_DEPRECATED` | 26 |
@@ -262,5 +262,9 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
 | `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 |
-| *93 more* | |
+| `NON_TAIL_RECURSIVE_CALL` | 22 |
+| `PROPERTY_HIDES_JAVA_FIELD` | 22 |
+| `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
+| `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
+| *89 more* | |
 
