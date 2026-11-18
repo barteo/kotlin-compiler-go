@@ -597,7 +597,70 @@ func (l *lowerer) colonColonLeft(n psi.NodeRef) (syntax.Expr, *syntax.TypeRef) {
 	if ref := l.genericName(left); ref != nil {
 		return nil, ref
 	}
+	if ref, ok := l.typeChain(left, true); ok && hasTypeArgs(ref) {
+		return nil, ref
+	}
 	return l.expr(left), nil
+}
+
+// typeChain returns the type that n, before ::, spells as a chain of
+// names with type arguments, possibly in parentheses, as kotlinc reads
+// it: Outer<A>.Inner<B> or (Outer<A>).Inner<B>. A dotted name's position
+// is its last name's, as kc's parser gives it, but in parentheses, where
+// the parser reads a type, its first's.
+func (l *lowerer) typeChain(n psi.NodeRef, lastPos bool) (*syntax.TypeRef, bool) {
+	switch n.NumericKind() {
+	case psi.KindPARENTHESIZED:
+		return l.typeChain(exprChild(n), false)
+	case psi.KindREFERENCE_EXPRESSION:
+		if t := first(n); t.NumericKind() == psi.KindIDENTIFIER {
+			return &syntax.TypeRef{P: l.pos(t), Name: ident(t)}, true
+		}
+	case psi.KindCALL_EXPRESSION:
+		if has(n, psi.KindVALUE_ARGUMENT_LIST) || has(n, psi.KindLAMBDA_ARGUMENT) || !has(n, psi.KindTYPE_ARGUMENT_LIST) {
+			return nil, false
+		}
+		ref, ok := l.typeChain(exprChild(n), lastPos)
+		if !ok || ref.Args != nil || ref.Outer != nil {
+			return nil, false
+		}
+		ref.Args = l.typeArgsOf(n)
+		return ref, true
+	case psi.KindDOT_QUALIFIED_EXPRESSION:
+		ops := operands(n)
+		if len(ops) != 2 {
+			return nil, false
+		}
+		outer, ok := l.typeChain(ops[0], lastPos)
+		if !ok {
+			return nil, false
+		}
+		seg, ok := l.typeChain(ops[1], lastPos)
+		if !ok || seg.Outer != nil || strings.Contains(seg.Name, ".") {
+			return nil, false
+		}
+		if outer.Args != nil {
+			return &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + seg.Name, Outer: outer, Args: seg.Args}, true
+		}
+		outer.Name += "." + seg.Name
+		outer.Args = seg.Args
+		if lastPos && outer.Outer == nil {
+			outer.P = seg.P
+		}
+		return outer, true
+	}
+	return nil, false
+}
+
+// hasTypeArgs reports whether a type or one of its outer classes' has type
+// arguments.
+func hasTypeArgs(ref *syntax.TypeRef) bool {
+	for ; ref != nil; ref = ref.Outer {
+		if ref.Args != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *lowerer) classLit(n psi.NodeRef) syntax.Expr {

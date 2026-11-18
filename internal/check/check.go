@@ -243,6 +243,12 @@ type Checker struct {
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
 	refLHS bool
+	// refLHSOuter is set while the outer class of an inner class on a
+	// callable reference's left side is resolved, Outer<A> of
+	// Outer<A>.Inner<B>::f: there, as on the left side itself, a class
+	// whose outer classes' type parameters it takes from the code around
+	// it, as Inner<B>::f in Outer's code, is an error in kotlinc.
+	refLHSOuter bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -1237,6 +1243,12 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
+	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 && ref.Args != nil {
+		// A local class of a generic function, Local<D>::f: kotlinc wants
+		// the type arguments of the type parameters it captures too.
+		c.errorf(ref.P, "%s expected for class %s", countArgs(len(ps)+len(hidden)), cls.DisplayName())
+		return types.InvalidType
+	}
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1282,14 +1294,21 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 // be its expansion's, as in One<Any> for TK<Any, Any>: errors in those
 // are reported on the whole reference.
 func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
+	c.checkBoundsOf(t, ref, len(t.A.List))
+}
+
+// checkBoundsOf checks the first n type arguments of t, as checkBounds:
+// an inner class's own, whose outer classes' are checked where they are
+// written.
+func (c *Checker) checkBoundsOf(t types.Type, ref *syntax.TypeRef, n int) {
 	ps := t.C.TypeParams
 	s := classSubst(t)
-	for i, a := range t.A.List {
+	for i, a := range t.A.List[:n] {
 		if a.V == types.Star {
 			continue
 		}
 		p := ref.P
-		if len(ref.Args) == len(t.A.List) {
+		if len(ref.Args) == len(t.A.List) || len(ref.Args) == n {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
