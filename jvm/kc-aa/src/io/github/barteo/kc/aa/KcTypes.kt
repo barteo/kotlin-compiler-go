@@ -378,22 +378,22 @@ internal class KcLibraryTypeParameterSymbol(private val round: KcRound, override
 internal class KcBuiltinTypes(private val round: KcRound) : KaBuiltinTypes() {
     override val token get() = round.token
     private fun t(id: String, nullable: Boolean = false) = KcClassType(round, ClassId.fromString(id), marked = nullable)
-    override val int by lazy(round.loadLock) { t("kotlin/Int") }
-    override val long by lazy(round.loadLock) { t("kotlin/Long") }
-    override val short by lazy(round.loadLock) { t("kotlin/Short") }
-    override val byte by lazy(round.loadLock) { t("kotlin/Byte") }
-    override val float by lazy(round.loadLock) { t("kotlin/Float") }
-    override val double by lazy(round.loadLock) { t("kotlin/Double") }
-    override val boolean by lazy(round.loadLock) { t("kotlin/Boolean") }
-    override val char by lazy(round.loadLock) { t("kotlin/Char") }
-    override val string by lazy(round.loadLock) { t("kotlin/String") }
-    override val unit by lazy(round.loadLock) { t("kotlin/Unit") }
-    override val nothing by lazy(round.loadLock) { t("kotlin/Nothing") }
-    override val any by lazy(round.loadLock) { t("kotlin/Any") }
-    override val throwable by lazy(round.loadLock) { t("kotlin/Throwable") }
-    override val nullableAny by lazy(round.loadLock) { t("kotlin/Any", true) }
-    override val nullableNothing by lazy(round.loadLock) { t("kotlin/Nothing", true) }
-    override val annotationType by lazy(round.loadLock) { t("kotlin/Annotation") }
+    override val int by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Int") }
+    override val long by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Long") }
+    override val short by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Short") }
+    override val byte by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Byte") }
+    override val float by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Float") }
+    override val double by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Double") }
+    override val boolean by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Boolean") }
+    override val char by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Char") }
+    override val string by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/String") }
+    override val unit by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Unit") }
+    override val nothing by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Nothing") }
+    override val any by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Any") }
+    override val throwable by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Throwable") }
+    override val nullableAny by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Any", true) }
+    override val nullableNothing by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Nothing", true) }
+    override val annotationType by lazy(LazyThreadSafetyMode.PUBLICATION) { t("kotlin/Annotation") }
 }
 
 /** The builder `buildClassType` runs its block on. */

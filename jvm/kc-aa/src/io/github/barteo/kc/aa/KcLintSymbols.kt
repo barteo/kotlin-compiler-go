@@ -273,8 +273,8 @@ internal class KcLintPropertySymbol(private val session: KcLint, private val p: 
     override val isVal: Boolean get() = !p.isVar
     override val hasGetter: Boolean get() = true
     override val hasSetter: Boolean get() = p.isVar
-    override val getter: KaPropertyGetterSymbol by lazy(session.round.loadLock) { KcLintGetterSymbol(session, this, p.getter) }
-    override val setter: KaPropertySetterSymbol? by lazy(session.round.loadLock) { if (p.isVar) KcLintSetterSymbol(session, this, p.setter) else null }
+    override val getter: KaPropertyGetterSymbol by lazy(LazyThreadSafetyMode.PUBLICATION) { KcLintGetterSymbol(session, this, p.getter) }
+    override val setter: KaPropertySetterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) { if (p.isVar) KcLintSetterSymbol(session, this, p.setter) else null }
     override val hasBackingField: Boolean
         get() = p.initializer != null || p.has(KtTokens.LATEINIT_KEYWORD) ||
             !p.hasDelegate() && (p.getter?.hasBody() != true || p.setter?.hasBody() == false) &&
@@ -530,7 +530,7 @@ internal class KcLintLibraryFunctionSymbol(private val session: KcLint, private 
     override val callableId: CallableId?
         get() = lintLibraryCallableId(fqName, call?.ownerClassId ?: sym?.owner?.takeIf { it.isNotEmpty() }?.let { KcLint.binaryClassId(it).asString() }.orEmpty())
     override val returnType: KaType get() = session.type(call?.declaredReturnType ?: call?.returnType ?: sym?.type)
-    override val valueParameters: List<KaValueParameterSymbol> by lazy(session.round.loadLock) {
+    override val valueParameters: List<KaValueParameterSymbol> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         call?.params.orEmpty().map { p ->
             KcLintLibraryValueParameterSymbol(session, Name.guessByFirstCharacter(p.name.ifEmpty { "p" }),
                 if (p.vararg) lintVarargElement(session, p.type) else session.type(p.type), p.vararg, p.crossinline, p.noinline, call?.fromJava == true)
@@ -571,7 +571,7 @@ internal class KcLintLibraryConstructorSymbol(private val session: KcLint, priva
     override val containingClassId: ClassId?
         get() = cls?.getClassId() ?: call.ownerClassId.takeIf { it.isNotEmpty() }?.let { ClassId.fromString(it) }
     override val returnType: KaType get() = session.type(call.declaredReturnType ?: call.returnType)
-    override val valueParameters: List<KaValueParameterSymbol> by lazy(session.round.loadLock) {
+    override val valueParameters: List<KaValueParameterSymbol> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         call.params.map { p ->
             KcLintLibraryValueParameterSymbol(session, Name.guessByFirstCharacter(p.name.ifEmpty { "p" }),
                 if (p.vararg) lintVarargElement(session, p.type) else session.type(p.type), p.vararg, p.crossinline, p.noinline, call.fromJava)

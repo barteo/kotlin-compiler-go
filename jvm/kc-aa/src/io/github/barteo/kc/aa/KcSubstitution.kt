@@ -120,7 +120,7 @@ internal class KcVariableSignature<S : KaVariableSymbol>(
 
 /** Substitution, subtyping and supertypes over kc's types. */
 internal class KcTypeRelations(private val round: KcRound) {
-    val empty: KaSubstitutor by lazy(round.loadLock) { KaSubstitutor.Empty(round.token) }
+    val empty: KaSubstitutor by lazy(LazyThreadSafetyMode.PUBLICATION) { KaSubstitutor.Empty(round.token) }
 
     fun substitutor(map: Map<KaTypeParameterSymbol, KaType>): KaSubstitutor =
         if (map.isEmpty()) empty else KcSubstitutor(round, map)

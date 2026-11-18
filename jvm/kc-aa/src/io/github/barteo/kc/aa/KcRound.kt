@@ -60,10 +60,13 @@ internal class KcRound(
      * pending maps, which only the thread holding the lock reads, and
      * they are published when the outermost load ends ([publish]). The
      * symbols of the sources are built before the round is shared.
-     * The symbols' lazy values are computed under [loadLock] too: a lazy
-     * value may load a class, and a load may read lazy values, so with
-     * locks of their own two threads could each hold one and wait for the
-     * other's.
+     * The symbols' lazy values hold no lock while they are computed
+     * (LazyThreadSafetyMode.PUBLICATION): a lazy value may load a class,
+     * and a load may read lazy values, so with locks of their own two
+     * threads could each hold one and wait for the other's. Two threads
+     * may compute one at the same time, and both get the value set first.
+     * They only make types and symbols of the model, which register
+     * nothing in the round.
      * The maps keyed by PSI or by kc's model objects compare them by
      * identity, which those classes' equals is.
      */
@@ -223,7 +226,7 @@ internal class KcRound(
     }
 
     /** The source files by their facade classes' names. */
-    private val facades: Map<FqName, KcFileSymbol> by lazy(loadLock) {
+    private val facades: Map<FqName, KcFileSymbol> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         fileSymbols.associateBy { JvmFileClassUtil.getFileClassInfoNoResolve(it.psi).facadeClassFqName }
     }
 
