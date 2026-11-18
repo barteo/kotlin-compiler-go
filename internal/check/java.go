@@ -147,10 +147,13 @@ func (t *classTable) sourceClass(name string) *types.ClassSym {
 // caches hold results that checking asks for again and again: supertypes
 // with their type arguments, and the methods of a class by name.
 type caches struct {
-	supers  sync.Map // superKey -> superResult
-	inters  sync.Map // interKey -> types.Type, see intersect
-	methods sync.Map // methodsKey -> []*types.FunSym
+	supers     sync.Map // superKey -> superResult
+	subclasses sync.Map // classPair -> bool, see isSubclass
+	inters     sync.Map // interKey -> types.Type, see intersect
+	methods    sync.Map // methodsKey -> []*types.FunSym
 }
+
+type classPair struct{ cls, target *types.ClassSym }
 
 // cache returns the caches for a result computed from ts: the library's
 // if they name only the class path's classes (or those every check
@@ -1548,8 +1551,7 @@ func (c *Checker) recvFits(rt, r types.Type) bool {
 	case types.Any:
 		return true
 	case types.Class:
-		_, ok := c.asSuper(rt, rn.C)
-		return ok
+		return c.isSubclass(rt, rn.C)
 	}
 	return rt.NonNull().K == rn.K
 }
