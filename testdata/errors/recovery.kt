@@ -27,3 +27,9 @@ fun g() {
 }
 
 val o = object<T> {} // ERROR type parameters are not allowed for objects
+
+fun multipleLabels() {
+    a@ b@ while (true) { // ERROR multiple labels are forbidden
+        break@b
+    }
+}

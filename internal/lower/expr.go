@@ -186,6 +186,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindLAMBDA_EXPRESSION:
 		return l.lambda(n)
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		name := l.label(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
@@ -262,6 +263,16 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
+}
+
+// innermostLabel returns the innermost of the labels n starts with, as
+// a@ b@ while (c), reporting the others, as kotlinc does.
+func (l *lowerer) innermostLabel(n psi.NodeRef) psi.NodeRef {
+	for x := exprChild(n); x.NumericKind() == psi.KindLABELED_EXPRESSION; x = exprChild(n) {
+		l.errorLater(l.pos(child(n, psi.KindLABEL_QUALIFIER)), "multiple labels are forbidden")
+		n = x
+	}
+	return n
 }
 
 // newLineBefore reports whether whitespace between n and the node before

@@ -102,6 +102,7 @@ func (l *lowerer) bodyOf(n psi.NodeRef) *syntax.Block {
 		return l.block(n)
 	}
 	if n.NumericKind() == psi.KindLABELED_EXPRESSION {
+		n = l.innermostLabel(n)
 		// while (c) a@ { ... }: a labeled block, kotlinc's parser's, where
 		// kc's reads a lambda. Its label names no loop, so a jump to it
 		// is an error.
@@ -236,6 +237,7 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {
 	switch n.NumericKind() {
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
 		case psi.KindFOR, psi.KindWHILE, psi.KindDO_WHILE:
