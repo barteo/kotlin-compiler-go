@@ -533,41 +533,16 @@ func addJava(cp *classpath.Path, paths []string, jobs int, outside *javaOutside)
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
-	addJavaSet(cp, files, outside, true)
+	addJavaSet(cp, files, outside)
 	return nil
 }
 
 // addJavaSet adds the classes of parsed Java sources files to the class
 // path, ahead of its own, and returns them.
-//
-// With byFileName, as when compiling, a top-level class not named as its
-// file, as a package-private second class of a file, isn't added: Kotlin
-// can't see it, as kotlinc finds a Java source's classes by their files'
-// names (KT-4455). The other classes' signatures that name it name a
-// class that is missing.
-func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside, byFileName bool) *javasrc.Set {
+func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside) *javasrc.Set {
 	set := javasrc.NewSet(files)
 	set.Outside = outside
-	var hidden []string
-	for _, f := range files {
-		if !byFileName {
-			break
-		}
-		base := strings.TrimSuffix(filepath.Base(f.Path), ".java")
-		prefix := ""
-		if f.Package != "" {
-			prefix = strings.ReplaceAll(f.Package, ".", "/") + "/"
-		}
-		for _, c := range f.Classes {
-			if c.Name != base {
-				hidden = append(hidden, prefix+c.Name)
-			}
-		}
-	}
 	for _, name := range set.Names() {
-		if slices.ContainsFunc(hidden, func(h string) bool { return name == h || strings.HasPrefix(name, h+"$") }) {
-			continue
-		}
 		cp.AddSource(name, sync.OnceValues(func() (*cf.Info, error) { return set.Info(name) }))
 	}
 	return set
@@ -591,7 +566,7 @@ type JavaSources struct {
 func AddJavaSources(cp *classpath.Path, files []*javasrc.File) *JavaSources {
 	outside := &javaOutside{cp: cp}
 	o := cp.Overlay()
-	return &JavaSources{Set: addJavaSet(o, files, outside, false), Path: o, outside: outside}
+	return &JavaSources{Set: addJavaSet(o, files, outside), Path: o, outside: outside}
 }
 
 // SetKotlin sets the module's Kotlin sources.
