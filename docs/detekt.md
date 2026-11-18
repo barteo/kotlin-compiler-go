@@ -15,17 +15,17 @@ detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
 
 | Target | Files | Stock, `--parallel` | On kc | Speedup | Findings that match |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 33.5 s | 4.7 s | 7.1× | 1581 of 1597 (99.0%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 52.2 s | 7.5 s | 7.0× | 2730 of 2778 (98.3%) |
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 15.5 s | 3.3 s | 4.7× | 1581 of 1597 (99.0%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 24.2 s | 5.7 s | 4.2× | 2730 of 2778 (98.3%) |
 
 - Each time is the median of 5 runs, stock's and kc's round robin
   (`bench/detekt-vs-stock.sh`), after a first run of each that writes kc's
   class-data sharing archive.
 - kc's findings are the same in every run, and the same serially and with
   `--parallel`.
-- That machine is slower than the one these were measured on before: there,
-  stock took 18.5 s and 29.5 s with `--parallel`, and 26.0 s and 37.2 s
-  serially.
+- The ratio depends on the machine's load. On the same cloud machine, under
+  more load, stock took 2.2× longer than here, and kc 1.6× longer. Earlier measurements, on another machine, had stock at 18.5 s
+  and 29.5 s with `--parallel`, and 26.0 s and 37.2 s serially.
 - [Making detekt on kc faster](detekt-performance.md) has the details.
 
 A finding matches when its file, line, column and rule are the same.
@@ -74,10 +74,14 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
   name, such as `UNNECESSARY_SAFE_CALL`, not by FIR's `KaFirDiagnostic`
   classes.
 - `0003` follows `JavaClassFinderImpl`'s constructor in kotlin-compiler 2.4.21.
-- `0004` runs the rules that need no types while kc analyzes. It skips
-  `ValidateClasspath`, whose diagnostics kc prints itself. With
-  `--parallel`, it runs those rules before the type-resolution rules, and
-  the largest files first.
+- `0004` lets the rules that need no types run while kc analyzes, with
+  `-Dkc.overlap=true`. It then skips `ValidateClasspath`, whose diagnostics
+  kc prints itself, and with `--parallel` runs those rules before the
+  type-resolution rules, largest files first. It is off by default: on 4
+  cores it competes with kc's check and measured no faster.
+- `0005` starts kc's check in detekt-cli's `Runner`, as soon as the
+  arguments are parsed (`KcStandalone.prestart`). The session takes it over
+  when it gets the same module.
 
 **Analysis.**
 - When detekt opens the session, kc's ka operations open the module with
@@ -128,12 +132,10 @@ jvm/detekt/build.sh test
 
 - `run.sh` takes detekt-cli's arguments. Compiler options, such as
   `-opt-in`, go last.
-- `run.sh` runs detekt with `--parallel`, a class-data sharing archive and
-  only the C1 compiler.
-- kc's check starts as soon as detekt opens the session, before the
-  session's IntelliJ environment is built.
-- detekt doesn't wait for it in `ValidateClasspath` (patch `0004`). The
-  rules that need no types run first, while kc analyzes.
+- `run.sh` runs detekt with `--parallel` and a class-data sharing archive.
+- kc's check starts as soon as detekt-cli has parsed its arguments
+  (patch `0005`), while detekt reads its configuration and the session
+  builds its IntelliJ environment.
 - [Making detekt on kc faster](detekt-performance.md) measures these and
   the other speedups.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
