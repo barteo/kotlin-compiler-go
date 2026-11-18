@@ -497,7 +497,7 @@ tests/annotations/wrongDslMarkerTargets.kt	accepts valid
 tests/annotationsSameLineSuggestion.kt	skip	LANGUAGE	
 tests/annotationsSameLineSuggestion_Vanilla.kt	skip	LANGUAGE	
 tests/argumentTypeMismatchVsTooManyArgs.kt	rejects invalid	on an expected line	
-tests/arguments/ambiguityOnJavaOverride.kt	accepts invalid	INVISIBLE_REFERENCE	main.kt:9: INVISIBLE_REFERENCE
+tests/arguments/ambiguityOnJavaOverride.kt	rejects invalid	on an expected line	
 tests/arguments/argParamTypeMismatch.kt	rejects invalid	on an expected line	
 tests/arguments/argumentsOfAnnotations.kt	rejects invalid	on an expected line	
 tests/arguments/argumentsOfJavaAnnotation.kt	rejects invalid	on an expected line	
@@ -2135,12 +2135,12 @@ tests/coroutines/suspendFunctionAsSupertype/kSuspendFunctionN/mixingSuspendAndNo
 tests/coroutines/suspendFunctionAsSupertype/kSuspendFunctionN/mixingSuspendAndNonSuspendSupertypesThruSuperinterface.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/kSuspendFunctionN/simple.kt	rejects invalid	elsewhere	
 tests/coroutines/suspendFunctionAsSupertype/simple/mixingSuspendAndNonSuspendSupertypes.kt	rejects invalid	on an expected line	
-tests/coroutines/suspendFunctionAsSupertype/simple/mixingSuspendAndNonSuspendSupertypesThruSuperClass.kt	rejects invalid	elsewhere	
+tests/coroutines/suspendFunctionAsSupertype/simple/mixingSuspendAndNonSuspendSupertypesThruSuperClass.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/simple/mixingSuspendAndNonSuspendSupertypesThruSuperFunInterface.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/simple/mixingSuspendAndNonSuspendSupertypesThruSuperinterface.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/simple/simple.kt	accepts valid		
 tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNonSuspendSupertypes.kt	rejects invalid	on an expected line	
-tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNonSuspendSupertypesThruSuperClass.kt	rejects invalid	elsewhere	
+tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNonSuspendSupertypesThruSuperClass.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNonSuspendSupertypesThruSuperFunInterface.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNonSuspendSupertypesThruSuperinterface.kt	rejects invalid	on an expected line	
 tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/simple.kt	accepts valid		
@@ -8909,7 +8909,7 @@ tests/testsWithJava17/jvmRecord/simpleRecordsDefaultConstructor.kt	rejects inval
 tests/testsWithJava17/jvmRecord/simpleRecordsWithSecondaryConstructor.kt	accepts valid		
 tests/testsWithJava17/jvmRecord/supertypesCheck.kt	skip	API_VERSION	
 tests/testsWithJava17/newListMethods.kt	rejects invalid	on an expected line	
-tests/testsWithJava17/nullSourceInJvmModuleChecker.kt	accepts invalid	JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE	nullSourceInJvmModuleChecker.kt:7: JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE
+tests/testsWithJava17/nullSourceInJvmModuleChecker.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/javaSealedClassExhaustiveness.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/sealedClasses/javaSealedInterfaceExhaustiveness.kt	rejects invalid	on an expected line	
