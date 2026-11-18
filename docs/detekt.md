@@ -9,26 +9,30 @@ questions from its [analysis facts](psi.md).
 ## Results
 
 detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
-4-core machine. Stock is the released `detekt-cli-2.0.0-alpha.6-all.jar`. "On
-kc" is `jvm/detekt/run.sh`, which runs the rules with `--parallel`. Both runs
-used the same inputs, class path and `-opt-in`s.
+4-core machine. Stock is the released `detekt-cli-2.0.0-alpha.6-all.jar` with
+`--parallel`. "On kc" is `jvm/detekt/run.sh`, which runs the rules with
+`--parallel`. Both used the same inputs, class path and `-opt-in`s.
 
-| Target | Files | Stock | Stock, `--parallel` | On kc | Speedup | Findings that match |
-|:---|---:|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 26.0 s | 18.5 s | 4.9 s | 5.3×, 3.8× | 1581 of 1597 (99.0%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 37.2 s | 29.5 s | 8.9 s | 4.2×, 3.3× | 2730 of 2778 (98.3%) |
+| Target | Files | Stock, `--parallel` | On kc | Speedup | Findings that match |
+|:---|---:|---:|---:|---:|---:|
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 15.5 s | 3.3 s | 4.7× | 1581 of 1597 (99.0%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 24.2 s | 5.7 s | 4.2× | 2730 of 2778 (98.3%) |
 
-- "On kc" is the median of 5 runs after the first, which writes the
+- Each time is the median of 5 runs, stock's and kc's round robin
+  (`bench/detekt-vs-stock.sh`), after a first run of each that writes kc's
   class-data sharing archive.
-- kc's findings with `--parallel` are identical to its serial run's. Serially,
-  kc takes 7.3 s on kotlinpoet.
+- kc's findings are the same in every run, and the same serially and with
+  `--parallel`.
+- The ratio depends on the machine's load. On the same cloud machine, under
+  more load, stock took 2.2× longer than here, and kc 1.6× longer. Earlier measurements, on another machine, had stock at 18.5 s
+  and 29.5 s with `--parallel`, and 26.0 s and 37.2 s serially.
 - [Making detekt on kc faster](detekt-performance.md) has the details.
 
 A finding matches when its file, line, column and rule are the same.
 
 - On kotlinpoet, stock has 16 findings that kc lacks, and kc has 5 that stock
   lacks.
-- On kotlinx-coroutines-core, the counts are 48 and 57. There, stock's
+- On kotlinx-coroutines-core, the counts are 48 and 51. There, stock's
   single-module session rejects `expect` and `actual` declarations. So stock
   reports, for example, `DefaultExecutor`'s private constants as unused, though
   they are used. Some of the differences are therefore stock's.
@@ -70,6 +74,14 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
   name, such as `UNNECESSARY_SAFE_CALL`, not by FIR's `KaFirDiagnostic`
   classes.
 - `0003` follows `JavaClassFinderImpl`'s constructor in kotlin-compiler 2.4.21.
+- `0004` lets the rules that need no types run while kc analyzes, with
+  `-Dkc.overlap=true`. It then skips `ValidateClasspath`, whose diagnostics
+  kc prints itself, and with `--parallel` runs those rules before the
+  type-resolution rules, largest files first. It is off by default: on 4
+  cores it competes with kc's check and measured no faster.
+- `0005` starts kc's check in detekt-cli's `Runner`, as soon as the
+  arguments are parsed (`KcStandalone.prestart`). The session takes it over
+  when it gets the same module.
 
 **Analysis.**
 - When detekt opens the session, kc's ka operations open the module with
@@ -120,9 +132,11 @@ jvm/detekt/build.sh test
 
 - `run.sh` takes detekt-cli's arguments. Compiler options, such as
   `-opt-in`, go last.
-- `run.sh` runs detekt with `--parallel` and a class-data sharing archive,
-  and kc analyzes in the background as soon as detekt builds the session.
-  [Making detekt on kc faster](detekt-performance.md) measures these and
+- `run.sh` runs detekt with `--parallel` and a class-data sharing archive.
+- kc's check starts as soon as detekt-cli has parsed its arguments
+  (patch `0005`), while detekt reads its configuration and the session
+  builds its IntelliJ environment.
+- [Making detekt on kc faster](detekt-performance.md) measures these and
   the other speedups.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
   `libjsig.so`. That chains Go's signal handlers with the JVM's.

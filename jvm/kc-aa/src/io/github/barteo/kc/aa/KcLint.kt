@@ -47,7 +47,7 @@ internal class KcLint(
     val hasFacts: Boolean get() = prefetched != null
 
     val token get() = round.token
-    val noAnnotations: KaAnnotationList by lazy { KcAnnotationList(emptyList(), round.token) }
+    val noAnnotations: KaAnnotationList by lazy(LazyThreadSafetyMode.PUBLICATION) { KcAnnotationList(emptyList(), round.token) }
 
     private val indexOf = IdentityHashMap<KtFile, Int>().also { m -> files.forEachIndexed { i, (_, f) -> m[f] = i } }
 
@@ -107,8 +107,8 @@ internal class KcLint(
 
     // Types.
 
-    val any: KaType by lazy { classType("kotlin/Any", false) }
-    val unit: KaType by lazy { classType("kotlin/Unit", false) }
+    val any: KaType by lazy(LazyThreadSafetyMode.PUBLICATION) { classType("kotlin/Any", false) }
+    val unit: KaType by lazy(LazyThreadSafetyMode.PUBLICATION) { classType("kotlin/Unit", false) }
 
     fun classType(classId: String, nullable: Boolean, args: List<KaTypeProjection> = emptyList()): KcClassType =
         KcClassType(round, ClassId.fromString(classId), args, nullable)
@@ -189,7 +189,7 @@ internal class KcLint(
 
     /** The model's symbol of a source declaration, if it has one. */
     private fun modelSymbol(e: PsiElement): KaDeclarationSymbol? =
-        synchronized(round) { round.byPsi[e] } as? KaDeclarationSymbol
+        round.byPsi[e] as? KaDeclarationSymbol
 
     /**
      * The symbol of a declaration in the sources: the model's, or else one
@@ -256,10 +256,15 @@ internal class KcLint(
                 return keyed("c:${call.name}:${call.params.size}") { KcLintLibraryConstructorSymbol(this, call, decl) }
             }
         }
+        // The symbol answers from the call it is made of: its owner and
+        // flags (Java, stable parameter names, ...) are part of the key, or
+        // which call made it first, which depends on the order the rules
+        // visit the files in, would decide them.
         val key = buildString {
             append(call.name).append('(')
             call.params.forEach { append(it.type).append(',') }
-            append(')').append(call.declaredReceiver ?: "")
+            append(')').append(call.declaredReceiver ?: "").append(' ').append(call.ownerClassId).append(' ').append(call.flags)
+            if (sym != null) append(' ').append(sym.kind).append(sym.qualifiedName)
         }
         return keyed(key) {
             if (call.isConstructor) KcLintLibraryConstructorSymbol(this, call, null) else KcLintLibraryFunctionSymbol(this, call, sym)
@@ -284,7 +289,7 @@ internal class KcLint(
     /** The top-level declarations of the sources in package [pkg]. */
     fun packageDeclarations(pkg: FqName): List<KtDeclaration> = byPackage[pkg].orEmpty()
 
-    private val byPackage: Map<FqName, List<KtDeclaration>> by lazy {
+    private val byPackage: Map<FqName, List<KtDeclaration>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         files.map { it.second }.groupBy { it.packageFqName }.mapValues { (_, fs) -> fs.flatMap { it.declarations } }
     }
 

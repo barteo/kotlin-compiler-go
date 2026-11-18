@@ -73,7 +73,16 @@ internal object KcStats {
         }
     }
 
+    private val times = ConcurrentHashMap<String, AtomicLong>()
+
+    /** Adds [nanos] to the time [what] took, reported in ms. */
+    fun time(what: String, nanos: Long) {
+        if (!KcMissing.trace) return
+        times.computeIfAbsent(what) { AtomicLong() }.addAndGet(nanos)
+    }
+
     private fun report() {
+        times.entries.sortedBy { it.key }.forEach { (k, v) -> System.err.println("kc: ${v.get() / 1_000_000} ms: $k") }
         if (calls.isEmpty()) return
         System.err.println("kc: questions the session answered (calls, distinct subjects, repeats):")
         calls.entries.sortedByDescending { it.value.get() }.forEach { (k, v) ->

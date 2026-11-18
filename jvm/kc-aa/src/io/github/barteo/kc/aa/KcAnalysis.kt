@@ -84,13 +84,13 @@ class KcAnalysis internal constructor(
         p.restoreSymbol(session(this))
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
-        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.byPsi[c]?.let { return it as? KaNamedClassSymbol }
         round.libraryClass(round.javaClassId(c) ?: return null)
-        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+        return round.byPsi[c] as? KaNamedClassSymbol
     }
     fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
         m.containingClass?.let(::getNamedClassSymbol)
-        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+        return round.byPsi[m] as? KaCallableSymbol
     }
 
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
@@ -271,7 +271,7 @@ class KcAnalysis internal constructor(
     fun getFullyExpandedType(type: KaType): KaType = round.expand(type)
 
     // KaJavaInteroperabilityComponent.
-    private val jvmTypes by lazy { KcJvmTypes(round) }
+    private val jvmTypes by lazy(LazyThreadSafetyMode.PUBLICATION) { KcJvmTypes(round) }
     fun mapToJvmTypeDescriptor(type: KaType): String = jvmTypes.descriptor(type)
     fun mapToJvmType(type: KaType, mode: TypeMappingMode): Type = Type.getType(jvmTypes.descriptor(type))
     fun isPrimitiveBacked(type: KaType): Boolean = jvmTypes.descriptor(type).length == 1
@@ -288,7 +288,7 @@ class KcAnalysis internal constructor(
 
     // KaBuiltinTypesProvider
     fun getBuiltinTypes(): org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes = builtins
-    private val builtins by lazy { KcBuiltinTypes(round) }
+    private val builtins by lazy(LazyThreadSafetyMode.PUBLICATION) { KcBuiltinTypes(round) }
 
     // KaTypeCreator
     fun withNullability(type: KaType, isMarkedNullable: Boolean): KaType = base(type).withNullability(isMarkedNullable)
@@ -370,7 +370,7 @@ class KcAnalysis internal constructor(
     // The members a linter (detekt) needs: what kc resolved in the code
     // (KcLint's facts). They are KcLintAnalysis's; KSP has no facts.
 
-    private val linted: KcLintAnalysis by lazy { KcLintAnalysis(this, lint ?: unsupported("the code's facts: not a linter's session")) }
+    private val linted: KcLintAnalysis by lazy(LazyThreadSafetyMode.PUBLICATION) { KcLintAnalysis(this, lint ?: unsupported("the code's facts: not a linter's session")) }
 
     // KaExpressionTypeProvider
     fun getExpressionType(e: KtExpression): KaType? = linted.expressionType(e)

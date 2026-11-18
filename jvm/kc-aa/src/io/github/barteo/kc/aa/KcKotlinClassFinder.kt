@@ -57,7 +57,7 @@ internal class KcKotlinClassFinder(private val manager: PsiManager) : PsiElement
 
     fun psiClass(id: ClassId): PsiClass? {
         val c = classes ?: return null
-        if (id !in c.round.classes) return null
+        if (!c.round.classes.containsKey(id)) return null
         return synchronized(c) { c.psi.getOrPut(id) { KcKotlinPsiClass(this, id, manager) } }
     }
 
