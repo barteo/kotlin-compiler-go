@@ -101,7 +101,7 @@ java -cp "$out/gen:$runtime:$aa:$lib/caffeine-2.9.3.jar" GenStubsKt "$out/Stubs.
 classes=$out/classes
 rm -rf "$classes"
 mkdir -p "$classes"
-javac -d "$classes" $(find "$here/../libkc/src" -name '*.java')
+javac --release 17 -d "$classes" $(find "$here/../libkc/src" -name '*.java')
 kotlinc -cp "$deps:$classes" -d "$classes" -module-name kc-aa -jvm-target 17 -jvm-default=enable $optins \
 	-nowarn "$out/Stubs.kt" $(find "$here/src" -name '*.kt')
 cp -R "$here/src/META-INF" "$classes/"
