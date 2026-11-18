@@ -2229,7 +2229,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
 		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
-		c.errorf(d.P, "private setters are not allowed for open properties")
+		p := d.P
+		if d.SetterVisP.Line != 0 {
+			p = d.SetterVisP // at the modifier, as kotlinc
+		}
+		c.errorf(p, "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
 		switch {
 		case owner == nil || owner.Interface:
