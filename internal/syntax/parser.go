@@ -61,11 +61,11 @@ type bailout struct{}
 // which is the first of the errors it returns; the others are those found
 // before it that parsing went on after (see File.Errors).
 func Parse(path, src string) (f *File, errs []*Error) {
-	toks, lexErrs := Tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src)
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
-	p := &parser{file: path, toks: toks}
+	p := &parser{file: path, toks: toks, later: glued}
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(bailout); !ok {
@@ -89,11 +89,11 @@ func Parse(path, src string) (f *File, errs []*Error) {
 // to the next one, so it returns the first error of each declaration that
 // fails. bench/survey uses it to see past unsupported constructs.
 func ParseAll(path, src string) (*File, []*Error) {
-	toks, lexErrs := Tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src)
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
-	p := &parser{file: path, toks: toks, recover: true}
+	p := &parser{file: path, toks: toks, recover: true, later: glued}
 	f := p.parseFile()
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible

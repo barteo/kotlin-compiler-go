@@ -19,13 +19,23 @@ type lexer struct {
 	errs   []*Error
 	toks   []Token
 	inExpr bool // lexing a ${...} template expression: newlines never matter
+	// glued are the errors for literals written against an identifier, a
+	// number or a keyword, which kotlinc reports after parsing.
+	glued []*Error
 }
 
 // Tokenize lexes a whole file.
 func Tokenize(file, src string) ([]Token, []*Error) {
+	toks, errs, _ := tokenize(file, src)
+	return toks, errs
+}
+
+// tokenize lexes a whole file, and also returns the errors of literals
+// glued to their neighbors (see lexer.glued).
+func tokenize(file, src string) ([]Token, []*Error, []*Error) {
 	lx := &lexer{src: src, line: 1, col: 1, file: file}
 	lx.run()
-	return lx.toks, lx.errs
+	return lx.toks, lx.errs, lx.glued
 }
 
 func tokenizeAt(file, src string, pos Pos) ([]Token, []*Error) {
@@ -147,6 +157,7 @@ func (lx *lexer) scanIdent() {
 }
 
 func (lx *lexer) run() {
+	lastEnd := -1 // where the last token ended
 	for {
 		p := lx.pos()
 		if lx.skipSpace() && lx.newlinesSignificant() {
@@ -158,8 +169,49 @@ func (lx *lexer) run() {
 			lx.emit(EOF, lx.pos(), "")
 			return
 		}
+		n, start := len(lx.toks), lx.off
 		lx.next()
+		if len(lx.toks) > n {
+			if n > 0 && start == lastEnd {
+				lx.checkGlued(n)
+			}
+			lastEnd = lx.off
+		}
 	}
+}
+
+// checkGlued checks the token at i, which its previous token ends right
+// before: a literal may not touch an identifier, a number or a keyword,
+// as in a foo"bar" or 1in a.
+func (lx *lexer) checkGlued(i int) {
+	prev, t := &lx.toks[i-1], &lx.toks[i]
+	switch {
+	case literalToken(prev.Kind) && gluedToken(t.Kind):
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: t.Pos, Msg: gluedLiteralMsg})
+	case gluedToken(prev.Kind) && literalToken(t.Kind):
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: prev.Pos, Msg: gluedLiteralMsg})
+	}
+}
+
+// gluedLiteralMsg is kotlinc's error for a literal glued to its neighbor.
+const gluedLiteralMsg = "unsupported [literal prefixes and suffixes]"
+
+func literalToken(k Kind) bool {
+	switch k {
+	case INT, DOUBLE, FLOAT, UNSIGNED, CHAR, STRING:
+		return true
+	}
+	return false
+}
+
+// gluedToken reports whether a token of kind k may not touch a literal:
+// an identifier, a number or a keyword.
+func gluedToken(k Kind) bool {
+	switch k {
+	case IDENT, INT, DOUBLE, FLOAT, UNSIGNED, NOT_IN, NOT_IS, AS_SAFE:
+		return true
+	}
+	return FUN <= k && k <= TYPEOF
 }
 
 func (lx *lexer) next() {

@@ -158,6 +158,10 @@ var (
 // isKeywordToken reports whether k is a KtKeywordToken, and isSoftKeyword
 // whether it is a soft one.
 func isKeywordToken(k Kind) bool { return keywordTokens.has(k) }
+
+// IsKeyword reports whether k is a token kind of a keyword, hard or soft,
+// as Kotlin's KtKeywordToken: !in, !is and as? included.
+func IsKeyword(k Kind) bool { return keywordTokens.has(k) }
 func isSoftKeyword(k Kind) bool  { return softKeywords.has(k) }
 
 // kExclEqEqEq is KtTokens.EXCLEQEQEQ ("!=="), which psi names EXCLEQEQ.
