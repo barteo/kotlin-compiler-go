@@ -2,6 +2,7 @@ package check
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
@@ -28,6 +29,7 @@ func init() {
 		"ASSIGNMENT_TYPE_MISMATCH":                    typeMismatch,
 		"CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR": `^method 'contains' from ConcurrentHashMap may have unexpected semantics`,
 		"CONFLICTING_OVERLOADS":                       `^conflicting overloads: `,
+		"INAPPLICABLE_JVM_NAME":                       `^'@JvmName' annotation is not applicable to this declaration`,
 		"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE":         `^symbol is declared in module '.*' which does not export package `,
 		"CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT":           `^const 'val' are only allowed on top level`,
 		"CONST_VAL_WITH_GETTER":                       `^const 'val' should not have a getter`,
@@ -130,10 +132,11 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 			continue
 		}
 		for _, n := range r.names {
-			if e.Name != "" && e.Name == n.name {
+			// As kotlinc, names match whatever their case.
+			if e.Name != "" && strings.EqualFold(e.Name, n.name) {
 				return n, true
 			}
-			if m := suppressible[n.name]; m != nil && m.MatchString(e.Msg) {
+			if m := suppressible[strings.ToUpper(n.name)]; m != nil && m.MatchString(e.Msg) {
 				return n, true
 			}
 		}
@@ -148,7 +151,7 @@ func warningSuppressed(w *syntax.Error, rs []suppressRange) bool {
 			continue
 		}
 		for _, n := range r.names {
-			if n.name == w.Name || n.name == "warnings" {
+			if strings.EqualFold(n.name, w.Name) || strings.EqualFold(n.name, "warnings") {
 				return true
 			}
 		}

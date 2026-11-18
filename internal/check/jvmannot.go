@@ -25,6 +25,9 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		if s, ok := a.Str("name"); ok && !validJvmName(s) {
 			c.errorf(a.P, "illegal JVM name")
 		}
+		if site == localFunSite {
+			c.errorf(a.P, inapplicableJvmName)
+		}
 	case "JvmPackageName":
 		if s, ok := a.Str("name"); ok && site == fileSite {
 			c.jvmPackageName(a, s)
@@ -91,6 +94,19 @@ func validPackageName(s string) bool {
 	return true
 }
 
+// inapplicableJvmName is the message of INAPPLICABLE_JVM_NAME.
+const inapplicableJvmName = "'@JvmName' annotation is not applicable to this declaration"
+
+// renamesVirtual reports whether @JvmName can't rename a member of owner
+// with modifiers m (INAPPLICABLE_JVM_NAME): an override, or one that can
+// be overridden, whose overrides would keep the JVM name it overrides.
+func renamesVirtual(m syntax.Modifiers, owner *types.ClassSym) bool {
+	if owner == nil {
+		return false
+	}
+	return m.Override || m.Visibility != syntax.Private && (owner.Interface || (m.Open || m.Abstract) && !owner.Final)
+}
+
 // jvmMemberAnnotations checks the JVM annotations of declaration d, in
 // class owner (nil at top level), that depend on what owner is.
 func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
@@ -98,7 +114,25 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.FunDecl:
 		c.overloads(&d.Modifiers, owner)
 		c.synchronized(&d.Modifiers, owner, "")
+		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
+			c.errorf(a.P, inapplicableJvmName)
+		}
 	case *syntax.PropDecl:
+		if renamesVirtual(d.Modifiers, owner) {
+			for _, a := range []*syntax.Annotation{d.Find("get", "JvmName"), d.Find("set", "JvmName")} {
+				if a != nil {
+					c.errorf(a.P, inapplicableJvmName)
+				}
+			}
+			for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
+				if acc == nil {
+					continue
+				}
+				if a := acc.Find("", "JvmName"); a != nil {
+					c.errorf(a.P, inapplicableJvmName)
+				}
+			}
+		}
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
 				c.synchronized(&acc.Modifiers, owner, "")
