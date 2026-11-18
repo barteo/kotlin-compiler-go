@@ -419,6 +419,8 @@ echo "loaders: ok"
 # resolves for room-compiler 2.8.4 and hilt-compiler 2.59.2, but for KSP's
 # API and the Kotlin standard library, which KSP provides. On kc, Room's
 # kotlinx-serialization is the one KSP's fork already has.
+# The database's @ConstructedBy names an expect object, whose actual one
+# Room generates.
 roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars androidx.room:room-runtime-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 \
 	androidx.collection:collection-jvm:1.5.0 androidx.sqlite:sqlite-jvm:2.6.2 androidx.annotation:annotation-jvm:1.9.1 \
 	org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1 org.jetbrains:annotations:23.0.0)

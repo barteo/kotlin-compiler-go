@@ -267,7 +267,7 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 		}
 	}
 	for _, pd := range props {
-		if missing[pd] && !c.mustInit[pd.Sym] {
+		if missing[pd] && !c.mustInit[pd.Sym] && !pd.Expect {
 			c.errorf(pd.P, "property must be initialized or be abstract")
 		}
 	}
