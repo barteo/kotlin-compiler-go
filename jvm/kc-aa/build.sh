@@ -17,10 +17,10 @@
 # kotlin-inject-anvil's) the same way, over
 # test/{dagger,room,hilt,hilt-android,inject}/src, runs Moshi's and Dagger's
 # in class loaders of one JVM (test/Loaders.java), checks incremental
-# processing's dirty set over test/ic, what a Java source's class literals
-# name in each of two rounds (test/rounds), and that a run a processor
-# fails (test/errors) reports the processor's errors only. "stock" does what
-# "test" does, and then runs
+# processing's dirty set over test/ic, what the class literals of a Java
+# source and of a generated one name in each round (test/rounds), and that
+# a run a processor fails (test/errors) reports the processor's errors
+# only. "stock" does what "test" does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
@@ -500,7 +500,10 @@ stock inject "$here/test/inject/src" "$injectlibs" "$procs"
 
 # test/rounds/Rounds.kt over test/rounds/src: the class literals in a Java
 # source's annotation that name Kotlin source classes, one of which the
-# processor generates in its first round and the second round must find.
+# processor generates in its first round and the second round must find,
+# and those in a Java source the second round generates, which name Java
+# and Kotlin classes the first round generated in packages of their own
+# and the third round must find.
 rm -rf "$out/rounds-classes" "$out/rounds"
 kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/rounds-classes" -jvm-target 17 -nowarn \
 	"$here/test/rounds/Rounds.kt"
