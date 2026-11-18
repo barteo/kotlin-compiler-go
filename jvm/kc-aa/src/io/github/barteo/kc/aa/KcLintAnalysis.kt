@@ -439,6 +439,19 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
 
     /** The declaration a name refers to. */
     fun referenced(e: KtSimpleNameExpression): KaSymbol? {
+        KcStats.count("referenced(element)", e)
+        val r = references[e] ?: (resolveReference(e) ?: noCall).let { references.putIfAbsent(e, it) ?: it }
+        return r as? KaSymbol
+    }
+
+    /**
+     * The declarations names refer to, as [referenced] finds them, or
+     * [noCall]: rules resolve the same name several times, and the
+     * session's symbols are shared.
+     */
+    private val references = java.util.concurrent.ConcurrentHashMap<KtSimpleNameExpression, Any>()
+
+    private fun resolveReference(e: KtSimpleNameExpression): KaSymbol? {
         (e.parent as? KtThisExpression)?.takeIf { it.instanceReference == e }?.let { thisTarget(it)?.let { t -> return t } }
         val f = s.fact(e) ?: return typeName(e) ?: annotationArgument(e)
         f.call?.let { c ->

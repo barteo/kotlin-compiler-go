@@ -160,7 +160,7 @@ class KcAnalysis internal constructor(
         is KcLibraryTypeParameterSymbol -> null
         is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
-        else -> if (lint != null) KcLintAnalysis(this, lint).containingDeclaration(s) else unsupported("containingSymbol of $s")
+        else -> if (lint != null) linted.containingDeclaration(s) else unsupported("containingSymbol of $s")
     }
 
     /** The declaration [s] is in: its containing symbol, unless that's a file or package. */
@@ -467,7 +467,7 @@ class KcAnalysis internal constructor(
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.let(round::declared) ?: lint?.let { KcLintAnalysis(this, it).members(s) } ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: lint?.let { linted.members(s) } ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that
@@ -478,7 +478,9 @@ class KcAnalysis internal constructor(
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 
     companion object {
-        private val dispatch = ConcurrentHashMap<Method, Method?>()
+        /** The method of [KcAnalysis] each of the session's members dispatches to, or [none]. */
+        private val dispatch = ConcurrentHashMap<Method, Method>()
+        private val none: Method = Any::class.java.getMethod("hashCode")
 
         private val ANY = ClassId.fromString("kotlin/Any")
 
@@ -494,13 +496,16 @@ class KcAnalysis internal constructor(
         private class Handler(val analysis: KcAnalysis) : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val a = args ?: emptyArray()
-                KcStats.count("KaSession." + method.name, null)
+                if (KcStats.enabled) KcStats.count("KaSession." + method.name, null)
                 when (method.name) {
                     "equals" -> if (a.size == 1 && method.parameterTypes[0] == Any::class.java) return proxy === a[0]
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
                     "toString" -> if (a.isEmpty()) return "KcSession"
                 }
-                val impl = dispatch.computeIfAbsent(method) { implementation(it) }
+                // A member kc doesn't implement is cached as [none], so that
+                // it isn't looked for again on every call.
+                val found = dispatch[method] ?: (implementation(method) ?: none).let { dispatch.putIfAbsent(method, it) ?: it }
+                val impl = found.takeIf { it !== none }
                 try {
                     return when {
                         impl != null -> impl.invoke(analysis, *a)
