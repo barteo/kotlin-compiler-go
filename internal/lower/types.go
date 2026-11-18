@@ -483,8 +483,13 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 		case psi.KindFUN_KEYWORD:
 			// fun interface: the class sets Fun.
 		default: // a modifier keyword, or a companion object's detached name (see detachName)
-			if !c.IsLeaf() || !m.Set(c.Text(), l.pos(c)) {
+			if !c.IsLeaf() {
 				l.fail(c, "'%s' is not supported", c.Text())
+			}
+			if !m.Set(c.Text(), l.pos(c)) {
+				// in, out or reified, which only type parameters take, as
+				// kotlinc's WRONG_MODIFIER_TARGET.
+				l.fail(c, "modifier '%s' is not applicable here", c.Text())
 			}
 		}
 	}

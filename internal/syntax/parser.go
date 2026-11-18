@@ -2982,7 +2982,8 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		r, msg := charValue(t.Text)
 		if msg != "" {
-			p.failAt(t.Pos, "%s", msg)
+			// As kotlinc, which reports it after parsing.
+			p.errorLater(t.Pos, "%s", msg)
 		}
 		c := &CharLit{Val: r}
 		c.P = t.Pos

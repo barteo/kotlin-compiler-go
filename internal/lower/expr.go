@@ -138,7 +138,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindCHARACTER_CONSTANT:
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
-			l.fail(n, "%s", msg)
+			l.errorLater(l.pos(n), "%s", msg)
 		}
 		c := &syntax.CharLit{Val: r}
 		c.P = l.pos(n)
@@ -262,6 +262,17 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
+}
+
+// newLineBefore reports whether whitespace between n and the node before
+// it breaks the line (a comment that spans lines doesn't).
+func newLineBefore(n psi.NodeRef) bool {
+	for c := n.PreviousSibling(); c.Valid() && c.IsTrivia(); c = c.PreviousSibling() {
+		if c.NumericKind() == psi.KindWHITE_SPACE && strings.Contains(c.Text(), "\n") {
+			return true
+		}
+	}
+	return false
 }
 
 // label returns the label of n's LABEL_QUALIFIER, or "".
@@ -471,7 +482,14 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 			c.P = l.pos(a)
 		}
 		if trailing {
-			l.fail(a, "unexpected '{'")
+			// f() {} {}: kotlinc passes only the first, and reports the
+			// others.
+			if newLineBefore(a) {
+				l.errorLater(l.pos(a), "unexpected trailing lambda on a new line")
+			} else {
+				l.errorLater(l.pos(a), "only one lambda expression is allowed outside a parenthesized argument list")
+			}
+			continue
 		}
 		c.Args = append(c.Args, l.expr(first(a)))
 		trailing = true

@@ -76,3 +76,43 @@ func BenchmarkFrontends(b *testing.B) {
 	run("psi-reused", func(f benchFile) { parser.Parse(f.path, f.src) })
 	run("psi+lower", func(f benchFile) { File(psi.Parse(f.path, f.src)) })
 }
+
+// BenchmarkRecovery compares the driver's recovery of a file kc's parser
+// rejects, psi.Parse followed by FileRecovering, with what it replaced,
+// psi.Parse (for the syntax errors) followed by syntax.ParseAll. The
+// files are those under testdata/errors that kc's parser rejects.
+func BenchmarkRecovery(b *testing.B) {
+	paths, _ := filepath.Glob("../../testdata/errors/*.kt")
+	var files []benchFile
+	var size int64
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, errs := syntax.Parse(path, string(data)); len(errs) > 0 {
+			files = append(files, benchFile{path, string(data)})
+			size += int64(len(data))
+		}
+	}
+	if len(files) == 0 {
+		b.Fatal("no files with syntax errors under testdata/errors")
+	}
+	b.Logf("%d files, %d bytes", len(files), size)
+	run := func(name string, parse func(benchFile)) {
+		b.Run(name, func(b *testing.B) {
+			b.SetBytes(size)
+			b.ReportAllocs()
+			for b.Loop() {
+				for _, f := range files {
+					parse(f)
+				}
+			}
+		})
+	}
+	run("psi+parseall", func(f benchFile) {
+		psi.Parse(f.path, f.src)
+		syntax.ParseAll(f.path, f.src)
+	})
+	run("psi+recovering", func(f benchFile) { FileRecovering(psi.Parse(f.path, f.src)) })
+}

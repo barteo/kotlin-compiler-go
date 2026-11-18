@@ -141,9 +141,6 @@ func TestParseErrors(t *testing.T) {
 		{"import a.B as", "1:14", "expected identifier"},
 		{"fun ((@receiver:A Int) -> Unit).f() {}", "1:7", "this annotation is not applicable to target 'type usage' and use-site target '@receiver'"},
 		{"val s = \"abc", "1:9", "unterminated string literal"},
-		{"val c = ''", "1:9", "empty character literal"},
-		{"val c = '\\q'", "1:9", "illegal escape"},
-		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 		{"fun f() { try { } }", "1:11", "'try' must have at least one 'catch' or 'finally' block"},
 		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
@@ -184,6 +181,9 @@ func TestLaterErrors(t *testing.T) {
 		{"class C { constructor(val x: Int) }", "1:23", "'val' on secondary constructor parameter is not allowed"},
 		{"fun f(var x: Int) {}", "1:7", "'var' on function parameter is not allowed"},
 		{"val f: suspend (() -> Unit)? = null", "1:8", "modifier 'suspend' is not applicable to 'nullable type'"},
+		{"val c = ''", "1:9", "empty character literal"},
+		{"val c = '\\q'", "1:9", "illegal escape"},
+		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {

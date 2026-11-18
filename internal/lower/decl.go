@@ -761,6 +761,10 @@ func (l *lowerer) objectExpr(n psi.NodeRef) *syntax.ObjectExpr {
 	if mods := child(od, psi.KindMODIFIER_LIST); mods.Valid() {
 		l.fail(mods, "unexpected modifiers")
 	}
+	if tps := child(od, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
+		// object<T> { }, which kc's parser reads as comparisons.
+		l.errorLater(l.pos(tps), "type parameters are not allowed for objects")
+	}
 	if st := child(od, psi.KindSUPER_TYPE_LIST); st.Valid() {
 		cd.Supers = l.supertypes(st)
 	}

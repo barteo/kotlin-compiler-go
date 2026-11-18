@@ -2002,14 +2002,21 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 	return sym
 }
 
-// checkVarargs checks that at most one parameter is a vararg.
+// checkVarargs checks that at most one parameter is a vararg: of more,
+// it reports each, as kotlinc does.
 func (c *Checker) checkVarargs(ps []*syntax.Param) {
 	n := 0
 	for _, p := range ps {
 		if p.Vararg {
-			if n++; n == 2 {
-				c.errorf(p.P, "multiple vararg-parameters are prohibited")
-			}
+			n++
+		}
+	}
+	if n < 2 {
+		return
+	}
+	for _, p := range ps {
+		if p.Vararg {
+			c.errorf(p.P, "multiple vararg-parameters are prohibited")
 		}
 	}
 }
