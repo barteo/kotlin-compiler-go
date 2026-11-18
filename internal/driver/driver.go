@@ -829,8 +829,11 @@ func parse(frontend, path, src string) (f *syntax.File, errs, soft []*syntax.Err
 	s := psi.Parse(path, src)
 	f, _, lerrs := lower.File(s)
 	if len(lerrs) > 0 {
-		errs, soft = syntaxErrors(path, src, s, lerrs, nil)
-		return f, errs, soft
+		// Checked as far as statement-level recovery gets, as with kc's
+		// parser.
+		rf, rerrs := lowerRecovering(s)
+		errs, soft = syntaxErrors(path, src, s, lerrs, rerrs)
+		return rf, errs, soft
 	}
 	return f, nil, nil
 }

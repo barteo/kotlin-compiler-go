@@ -112,6 +112,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return ix
 	case psi.KindINTEGER_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
 		text := t.Text()
 		if syntax.IllegalUnderscore(text) {
@@ -126,6 +127,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return lit
 	case psi.KindFLOAT_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
 		if syntax.IllegalUnderscore(t.Text()) {
 			l.errorLater(l.pos(t), "illegal underscore")
@@ -136,6 +138,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return lit
 	case psi.KindCHARACTER_CONSTANT:
+		l.checkGlued(n)
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
 			l.errorLater(l.pos(n), "%s", msg)
@@ -152,6 +155,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		x.P = l.pos(n)
 		return x
 	case psi.KindSTRING_TEMPLATE:
+		l.checkGlued(n)
 		return l.stringLit(n)
 	case psi.KindTHIS_EXPRESSION:
 		th := &syntax.This{Label: l.label(n)}
@@ -263,6 +267,17 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
+}
+
+// checkGlued reports a literal n written against an identifier, a number
+// or a keyword, as kc's lexer does for its parser (see TreeErrors).
+func (l *lowerer) checkGlued(n psi.NodeRef) {
+	if p := prevLeaf(n); gluedAffix(p) {
+		l.errorLater(l.pos(p), gluedLiteralMsg)
+	}
+	if x := nextLeaf(n); gluedAffix(x) {
+		l.errorLater(l.pos(x), gluedLiteralMsg)
+	}
 }
 
 // innermostLabel returns the innermost of the labels n starts with, as
