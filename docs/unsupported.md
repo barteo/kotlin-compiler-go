@@ -279,6 +279,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   parameter its receiver projects out, and for an invariant argument of
   a member property's type that a star captures, checked after the
   value is inferred against the read type.
+- Of K2's captured types, `kc` has only those of reading an explicit
+  backing field through a stable receiver whose type projects the
+  field's type parameters, `o.num` for an `o: C<*>`: the receiver is
+  smart cast to its type with the projections captured, whose members
+  then take the field's value, `o.consume(o.num)`.
 - A lambda's result chooses between overloads of the program's
   functions only when one of them is marked
   `@OverloadResolutionByLambdaReturnType`, as in K2, but between
@@ -311,9 +316,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Java module exports aren't checked.
 - A type written as a Java class that Kotlin maps to a built-in type,
   as `java.lang.CharSequence` or `java.lang.Comparable`, is the
-  built-in type: `kotlinc` keeps the Java class, so that its
-  `length()` is a method and a `java.lang.Comparable<*>` isn't a
-  `kotlin.Comparable<*>`.
+  built-in type: `kotlinc` keeps the Java class, so that a
+  `java.lang.Comparable<*>` isn't a `kotlin.Comparable<*>`. Only a
+  smart cast by `is java.lang.CharSequence` keeps the Java class's
+  `length()` method callable.
 - jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java

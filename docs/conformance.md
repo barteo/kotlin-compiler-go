@@ -278,17 +278,17 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,363 | 51.1% |
-| accepts valid | 4,123 | 48.3% |
+| rejects invalid | 4,364 | 51.1% |
+| accepts valid | 4,127 | 48.4% |
 | accepts invalid | 40 | 0.5% |
-| rejects valid | 2 | 0.0% |
-| parse/unsupported | 3 | 0.0% |
+| rejects valid | 0 | |
+| parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-19,560 of the 21,712 expected errors (90%) on their lines, and 507 of
-the 3,644 expected warnings (14%), with 8 warnings on lines that expect
+20,081 of the 21,714 expected errors (92%) on their lines, and 508 of
+the 3,652 expected warnings (14%), with 8 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 14 of the 40
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
@@ -300,11 +300,7 @@ largest groups are:
   (`UNRESOLVED_REFERENCE` 6), and callable references whose types
   can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2). Some are out of
   reach (see above).
-- **Rejects valid**, by `kc`'s first error: a type mismatch through a
-  star-projected explicit backing field, which needs captured types
-  (1), and a property invoked as a function, of a type written as
-  `java.lang.CharSequence` (1); [Unsupported Kotlin](unsupported.md)
-  lists both. No box test is rejected.
+- **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 
