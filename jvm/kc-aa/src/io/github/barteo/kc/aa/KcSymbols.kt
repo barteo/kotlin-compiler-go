@@ -105,7 +105,7 @@ internal class KcInfo(
     fun receiver(owner: KaCallableSymbol): KaReceiverParameterSymbol? =
         decl.receiver?.let { KcReceiverParameterSymbol(this, owner, type(it)) }
 
-    val annotations: KaAnnotationList by lazy { KcAnnotationList(annotations.map { round.annotation(it) }, round.token) }
+    val annotations: KaAnnotationList by lazy(round.loadLock) { KcAnnotationList(annotations.map { round.annotation(it) }, round.token) }
 
     val name: Name get() = Name.identifier(decl.name)
 
@@ -180,7 +180,7 @@ internal class KcPackageSymbol(val round: KcRound, override val fqName: FqName) 
 internal class KcFileSymbol(val round: KcRound, val file: KcFile, override val psi: KtFile) : StubKaFileSymbol() {
     override val token get() = round.token
     override val origin get() = KaSymbolOrigin.SOURCE
-    override val annotations: KaAnnotationList by lazy {
+    override val annotations: KaAnnotationList by lazy(round.loadLock) {
         KcAnnotationList(file.annotations.map { round.annotation(it) }, round.token)
     }
     val key = "file:" + file.path
@@ -200,7 +200,7 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    override val superTypes: List<KaType> by lazy {
+    override val superTypes: List<KaType> by lazy(info.round.loadLock) {
         val java = (info.psi as? com.intellij.psi.PsiClass)?.takeIf { info.origin == KaSymbolOrigin.JAVA_SOURCE }
         info.decl.supertypes.map { info.type(if (java != null) info.round.javaSupertype(java, it) else it) }
     }
@@ -249,10 +249,10 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    private val declaredType: KaType by lazy { info.type(info.decl.type) { info.unit } }
+    private val declaredType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) { info.unit } }
     override val returnType: KaType
         get() = (if (info.isJava) info.round.enhancement(this, info.parent)?.returnType else null) ?: declaredType
-    override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy(info.round.loadLock) { info.receiver(this) }
     override val isSuspend get() = info.decl.has(KcDecl.SUSPEND)
     override val isInline get() = info.decl.has(KcDecl.INLINE)
     override val isOperator get() = info.decl.has(KcDecl.OPERATOR)
@@ -297,7 +297,7 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
     // source class's own come from PSI in AA while its constructors' are
     // FIR symbols, so there they are separate, unequal symbols (KSP reports
     // an annotated one twice); copies give that identity.
-    override val typeParameters: List<KaTypeParameterSymbol> by lazy {
+    override val typeParameters: List<KaTypeParameterSymbol> by lazy(info.round.loadLock) {
         val c = info.parent as? KcClassSymbol ?: return@lazy emptyList()
         if (c.origin != KaSymbolOrigin.JAVA_SOURCE) c.typeParameters
         else c.typeParameters.map { if (it is KcTypeParameterSymbol) KcTypeParameterSymbol(it.info) else it }
@@ -322,7 +322,7 @@ internal class KcContextParameterSymbol(val info: KcInfo) : StubKaContextParamet
     override val annotations get() = info.annotations
     override val name: Name
         get() = info.decl.name.let { if (it == "_" || it.startsWith("<")) SpecialNames.UNDERSCORE_FOR_UNUSED_VAR else Name.identifier(it) }
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val returnType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override fun createPointer(): KaSymbolPointer<KaContextParameterSymbol> = info.pointer()
 }
 
@@ -334,7 +334,7 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val name get() = info.name
     override val visibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility get() = Visibilities.Local
-    private val declaredType: KaType by lazy { info.type(info.decl.type) }
+    private val declaredType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val returnType: KaType get() = enhanced() ?: declaredType
     override val isVararg get() = info.decl.has(KcDecl.VARARG)
     override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
@@ -343,7 +343,7 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val hasDefaultValue get() = hasDeclaredDefaultValue
     override val isImplicitLambdaParameter get() = false
     /** The property a primary constructor's `val`/`var` parameter declares: the class's property with the same PSI. */
-    override val generatedPrimaryConstructorProperty: KaKotlinPropertySymbol? by lazy {
+    override val generatedPrimaryConstructorProperty: KaKotlinPropertySymbol? by lazy(info.round.loadLock) {
         val p = info.psi as? KtParameter
         if (p == null || !p.hasValOrVar()) return@lazy null
         val c = (info.parent as? KcConstructorSymbol)?.info?.parent as? KcClassSymbol ?: return@lazy null
@@ -369,7 +369,7 @@ internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymb
     override val location get() = KaSymbolLocation.LOCAL
     // Empty for an implicit `Any?` bound, as FIR has it (KSP then makes a
     // synthetic `Any?` reference).
-    override val upperBounds: List<KaType> by lazy { info.decl.bounds.map { info.type(it) } }
+    override val upperBounds: List<KaType> by lazy(info.round.loadLock) { info.decl.bounds.map { info.type(it) } }
     override val isReified get() = info.decl.has(KcDecl.REIFIED)
     override val variance: Variance
         get() = when (info.decl.variance) {
@@ -396,7 +396,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val isConst get() = info.decl.has(KcDecl.CONST)
     override val isLateInit get() = info.decl.has(KcDecl.LATEINIT)
     /** Written, or for a library property, which metadata doesn't mark, whether it overrides one, as in FIR. */
-    override val isOverride: Boolean by lazy {
+    override val isOverride: Boolean by lazy(info.round.loadLock) {
         info.decl.has(KcDecl.OVERRIDE) || info.origin == KaSymbolOrigin.LIBRARY && info.round.directlyOverridden(this).isNotEmpty()
     }
     override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
@@ -405,8 +405,8 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val isDelegated get() = (info.psi as? KtProperty)?.hasDelegate() == true
     override val isExtension get() = info.decl.receiver != null
     override val isStatic get() = info.decl.has(KcDecl.STATIC)
-    override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy(info.round.loadLock) { info.receiver(this) }
+    override val returnType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override val contextParameters: List<KaContextParameterSymbol> get() = contexts
     override val typeParameters: List<KaTypeParameterSymbol> get() = typeParams
@@ -417,7 +417,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
 
     /** A const val's value; any other property's initializer, if it is in the sources. */
     @OptIn(KaExperimentalApi::class)
-    override val initializer: KaInitializerValue? by lazy {
+    override val initializer: KaInitializerValue? by lazy(info.round.loadLock) {
         val init = (info.psi as? KtProperty)?.initializer
         when (val c = info.decl.default) {
             is KcValue.Const -> KaConstantInitializerValue(KcConstant.of(c, init), init)
@@ -462,7 +462,7 @@ internal class KcJavaAnnotationPropertySymbol(val info: KcInfo) : StubKaSyntheti
     override val initializer: KaInitializerValue? get() = null
     override val receiverParameter: KaReceiverParameterSymbol? get() = null
     override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val returnType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val setter: KaPropertySetterSymbol? get() = null
     override val javaSetterSymbol: KaNamedFunctionSymbol? get() = null
     override fun createPointer(): KaSymbolPointer<KaSyntheticJavaPropertySymbol> = info.pointer()
@@ -524,7 +524,7 @@ internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val annotations get() = info.annotations
     override val name get() = info.name
     override val callableId get() = info.callableId(name)
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val returnType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
     override val isExternal get() = false
     override fun createPointer(): KaSymbolPointer<KaEnumEntrySymbol> = info.pointer()
@@ -540,7 +540,7 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
-    override val expandedType: KaType by lazy { info.type(info.decl.type) }
+    override val expandedType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val isExpect get() = info.decl.has(KcDecl.EXPECT)
     override val isActual get() = info.decl.has(KcDecl.ACTUAL)
     override fun createPointer(): KaSymbolPointer<KaTypeAliasSymbol> = info.pointer()
@@ -559,7 +559,7 @@ internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
     override val callableId get() = info.callableId(name)
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val returnType: KaType by lazy(info.round.loadLock) { info.type(info.decl.type) }
     override val isVal get() = !info.decl.has(KcDecl.MUTABLE)
     override val isStatic get() = info.decl.has(KcDecl.STATIC)
     override fun createPointer(): KaSymbolPointer<KaJavaFieldSymbol> = info.pointer()
@@ -604,7 +604,7 @@ internal class KcReceiverParameterSymbol(
     override val origin get() = info.origin
     // The annotations written on the receiver type: a library method's
     // receiver parameter's, or those inside the receiver type reference.
-    override val annotations: KaAnnotationList by lazy {
+    override val annotations: KaAnnotationList by lazy(info.round.loadLock) {
         val r = (info.psi as? KtCallableDeclaration)?.receiverTypeReference
         val own = info.decl.annotations.filter { it.target == "receiver" }.map { info.round.annotation(it) }
             .filter { a -> a.psi.let { it == null || PsiTreeUtil.isAncestor(r, it, false) } }

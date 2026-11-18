@@ -271,7 +271,7 @@ class KcAnalysis internal constructor(
     fun getFullyExpandedType(type: KaType): KaType = round.expand(type)
 
     // KaJavaInteroperabilityComponent.
-    private val jvmTypes by lazy { KcJvmTypes(round) }
+    private val jvmTypes by lazy(round.loadLock) { KcJvmTypes(round) }
     fun mapToJvmTypeDescriptor(type: KaType): String = jvmTypes.descriptor(type)
     fun mapToJvmType(type: KaType, mode: TypeMappingMode): Type = Type.getType(jvmTypes.descriptor(type))
     fun isPrimitiveBacked(type: KaType): Boolean = jvmTypes.descriptor(type).length == 1
@@ -288,7 +288,7 @@ class KcAnalysis internal constructor(
 
     // KaBuiltinTypesProvider
     fun getBuiltinTypes(): org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes = builtins
-    private val builtins by lazy { KcBuiltinTypes(round) }
+    private val builtins by lazy(round.loadLock) { KcBuiltinTypes(round) }
 
     // KaTypeCreator
     fun withNullability(type: KaType, isMarkedNullable: Boolean): KaType = base(type).withNullability(isMarkedNullable)
@@ -370,7 +370,7 @@ class KcAnalysis internal constructor(
     // The members a linter (detekt) needs: what kc resolved in the code
     // (KcLint's facts). They are KcLintAnalysis's; KSP has no facts.
 
-    private val linted: KcLintAnalysis by lazy { KcLintAnalysis(this, lint ?: unsupported("the code's facts: not a linter's session")) }
+    private val linted: KcLintAnalysis by lazy(round.loadLock) { KcLintAnalysis(this, lint ?: unsupported("the code's facts: not a linter's session")) }
 
     // KaExpressionTypeProvider
     fun getExpressionType(e: KtExpression): KaType? = linted.expressionType(e)

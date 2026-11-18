@@ -47,7 +47,7 @@ internal class KcLint(
     val hasFacts: Boolean get() = prefetched != null
 
     val token get() = round.token
-    val noAnnotations: KaAnnotationList by lazy { KcAnnotationList(emptyList(), round.token) }
+    val noAnnotations: KaAnnotationList by lazy(round.loadLock) { KcAnnotationList(emptyList(), round.token) }
 
     private val indexOf = IdentityHashMap<KtFile, Int>().also { m -> files.forEachIndexed { i, (_, f) -> m[f] = i } }
 
@@ -107,8 +107,8 @@ internal class KcLint(
 
     // Types.
 
-    val any: KaType by lazy { classType("kotlin/Any", false) }
-    val unit: KaType by lazy { classType("kotlin/Unit", false) }
+    val any: KaType by lazy(round.loadLock) { classType("kotlin/Any", false) }
+    val unit: KaType by lazy(round.loadLock) { classType("kotlin/Unit", false) }
 
     fun classType(classId: String, nullable: Boolean, args: List<KaTypeProjection> = emptyList()): KcClassType =
         KcClassType(round, ClassId.fromString(classId), args, nullable)
@@ -281,7 +281,7 @@ internal class KcLint(
     /** The top-level declarations of the sources in package [pkg]. */
     fun packageDeclarations(pkg: FqName): List<KtDeclaration> = byPackage[pkg].orEmpty()
 
-    private val byPackage: Map<FqName, List<KtDeclaration>> by lazy {
+    private val byPackage: Map<FqName, List<KtDeclaration>> by lazy(round.loadLock) {
         files.map { it.second }.groupBy { it.packageFqName }.mapValues { (_, fs) -> fs.flatMap { it.declarations } }
     }
 
