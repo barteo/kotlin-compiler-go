@@ -263,6 +263,13 @@ func (c *Checker) containsOp(x *syntax.Binary) types.Type {
 	if t.K != types.Invalid && t.Flex() != types.BoolType {
 		c.errorf(x.P, "'contains' must return Boolean, not %s", t)
 	}
+	if f := call.Sym; f != nil && f.Name == "contains" && len(f.Params) == 1 && types.MayBeNull(f.Params[0].Type) && f.Params[0].Type.Flex().NonNull() == types.AnyType {
+		// ConcurrentHashMap's contains(Object), which Kotlin calls for in
+		// as for its other operators, is containsValue, not containsKey.
+		if cls := c.classOf(yt.Flex().NonNull()); cls != nil && c.isSubclassOf(cls, "java/util/concurrent/ConcurrentHashMap") {
+			c.errorf(x.P, "method 'contains' from ConcurrentHashMap may have unexpected semantics: it calls 'containsValue' instead of 'containsKey'; use the explicit call or cast the value to kotlin.collections.Map")
+		}
+	}
 	return types.BoolType
 }
 

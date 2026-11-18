@@ -2161,9 +2161,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		if sym.JvmField && sym.JvmStatic {
 			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
 		}
-		if sym.JvmField && owner.CompanionOf != nil && owner.CompanionOf.Interface && (d.Mutable || d.Visibility != syntax.Public) {
-			c.errorf(d.P, "JvmField could be applied only if all interface companion properties are 'public final val' with '@JvmField' annotation")
-		}
+
 	}
 	sym.Abstract = d.Abstract || owner != nil && owner.Interface && d.Init == nil && d.Getter == nil && d.Setter == nil
 	sym.Final = owner == nil || isFinal(d.Modifiers, owner)
