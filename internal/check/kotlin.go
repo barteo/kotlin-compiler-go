@@ -680,6 +680,7 @@ func (t *classTable) markValue(cls *types.ClassSym) bool {
 		return true
 	}
 	t.valueOf(cls, kc)
+	t.decoded.Store(cls.Name, kc) // for load, which needn't decode it again
 	return true
 }
 

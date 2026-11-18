@@ -46,6 +46,9 @@ type classTable struct {
 type tableShared struct {
 	mu sync.Mutex
 	m  map[string]*types.ClassSym
+	// decoded holds the Kotlin metadata markValue decoded, by class name,
+	// until load takes it.
+	decoded sync.Map
 
 	// kotlin is set when the Kotlin standard library is on the class path:
 	// Kotlin declarations are then read from metadata (see kotlin.go).
@@ -371,7 +374,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 		return classfile.ReadMethodAnnotations(b, name, desc)
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
-		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+		kc, err := (*kmeta.Class)(nil), error(nil)
+		if v, ok := t.decoded.LoadAndDelete(cls.Name); ok {
+			kc = v.(*kmeta.Class) // decoded by markValue
+		} else {
+			kc, err = kmeta.ReadClass(info.Kotlin)
+		}
+		if err == nil {
 			cls.FromKotlin = true
 			t.loadKotlin(cls, info, kc)
 			return
