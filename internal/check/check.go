@@ -56,6 +56,9 @@ type Universe struct {
 	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
 	// has it, rather than being an error type as a whole.
 	partial bool
+	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
+	// Options.ExperimentalWarnings.
+	extraWarnings, experimentalWarnings bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -716,6 +719,13 @@ type Options struct {
 	// the diagnostics: Severity tells them apart. Without it, only the
 	// errors are returned.
 	Warnings bool
+	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
+	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
+	ExtraWarnings bool
+	// ExperimentalWarnings also reports the warnings of kotlinc's
+	// experimental checkers, which kotlinc reports only with
+	// -Xuse-fir-experimental-checkers, as REDUNDANT_INTERPOLATION_PREFIX.
+	ExperimentalWarnings bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -848,7 +858,8 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings}
 	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
