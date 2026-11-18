@@ -287,7 +287,7 @@ Kotlin 2.4.21's tests on `kc`:
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-18,773 of the 21,712 expected errors (86%) on their lines, and 507 of
+19,560 of the 21,712 expected errors (90%) on their lines, and 507 of
 the 3,644 expected warnings (14%), with 8 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 14 of the 40
 that *accept invalid* code. The reports break the failures down; the
@@ -323,8 +323,10 @@ by cause*), the first of these that applies:
 
 - *accepted*: `kc` compiled the test.
 - *syntax-error*: `kc`'s parser rejected the code. `kc` then checks
-  the declarations its parser recovers, but not one with a syntax
-  error, so the errors in such a declaration are missed.
+  it as `psi`, which has `kotlinc`'s grammar, parses it, leaving out
+  only the statements, or declarations outside function bodies, that
+  have a syntax error or that it can't lower, so the errors in those
+  are missed.
 - *module-not-compiled*: the error is in a module after one that
   failed, which the harness doesn't compile.
 - *nearby*: `kc` reported an error within three lines of it, on a line

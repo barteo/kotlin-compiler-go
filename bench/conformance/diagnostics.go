@@ -786,7 +786,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 // (missCause), each with the diagnostics it misses most.
 func reportMissCauses(sb *strings.Builder, missed map[string]map[string]int, total int) {
 	fmt.Fprintf(sb, "### Missed errors by cause\n\n")
-	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked the declarations it recovered, without those with a syntax error; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
+	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
 		causeAccepted, causeParse, causeModule, causeNearby, cascadeLines, causeMissingCheck)
 	fmt.Fprintf(sb, "| Cause | Missed | Share | Most missed |\n|:---|---:|---:|:---|\n")
 	for _, cause := range causes {

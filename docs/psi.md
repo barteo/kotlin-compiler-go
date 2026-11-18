@@ -73,7 +73,9 @@ Medians of 6 runs, Go 1.27.2, 4-core Intel Xeon (linux/amd64), on
 - **So `kc` parses a file with `psi` only when its own parser rejects
   it**, to report every syntax error as `kotlinc` does, with those of
   `lower.TreeErrors`: code `kotlinc`'s grammar accepts and its FIR builder
-  rejects. Parsing every file with both would add about 35 ms, 5%, to
+  rejects. The file is then checked as `lower.FileRecovering` lowers that
+  tree, which leaves out only the statements with an error, so the type
+  errors around them are reported too. Parsing every file with both would add about 35 ms, 5%, to
   compiling kotlinx-coroutines-core: the parse ends after the class path's
   index, so nothing hides it.
 
