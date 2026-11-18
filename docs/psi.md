@@ -97,9 +97,13 @@ module:
    keyed by `ElementID{Snapshot, Node}`.
 
 Code that `kc` can't compile is reported as diagnostics (`source_error`,
-or `unsupported:<feature>` for constructs `kc` doesn't support) and no
-facts at all: callers must not act on partial results. Scripts (`.kts`)
-return `ErrUnsupported`.
+or `unsupported:<feature>` for constructs `kc` doesn't support). Errors the
+checker finds in otherwise supported code don't stop the facts: like
+kotlinc, it resolves what it can, and the facts are of what it resolved, so
+an unresolved reference has no symbol and an expression of no type no type.
+A missing fact is then unknown, not absent. Syntax errors, unsupported
+constructs and duplicate facade classes stop analysis before checking, with
+no facts at all. Scripts (`.kts`) return `ErrUnsupported`.
 
 `Data.Capabilities` lists the fact families that are computed; a fact field
 of a family outside it is always zero, and a caller that needs it should
