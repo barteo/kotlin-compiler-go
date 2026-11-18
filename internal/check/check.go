@@ -249,6 +249,9 @@ type Checker struct {
 	// whose outer classes' type parameters it takes from the code around
 	// it, as Inner<B>::f in Outer's code, is an error in kotlinc.
 	refLHSOuter bool
+	// mustInit are the properties reported as needing an initializer
+	// (see initReported).
+	mustInit map[*types.VarSym]bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -1961,6 +1964,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			sym.InPlace[i] = d.InPlace[p.Name]
 		}
 	}
+	if d.AtLeastOnce != nil {
+		sym.AtLeastOnce = make([]bool, len(d.Params))
+		for i, p := range d.Params {
+			sym.AtLeastOnce[i] = d.AtLeastOnce[p.Name]
+		}
+	}
 	c.contractEffects(d, sym)
 	if d.Infix {
 		c.checkInfix(d, owner)
@@ -2199,8 +2208,21 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
 		c.errorf(d.P, "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
-		if owner == nil || owner.Interface {
+		switch {
+		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
+		case d.Mutable && d.Setter != nil && hasBody(d.Setter):
+			// The constructor's assignment would call the setter.
+			c.errorf(d.P, "property must be initialized")
+			c.initReported(sym)
+		case !sym.Final && !owner.Final && d.Visibility != syntax.Private:
+			// A subclass's override would be assigned instead.
+			if d.Getter != nil && hasBody(d.Getter) {
+				c.errorf(d.P, "property must be initialized or be final")
+			} else {
+				c.errorf(d.P, "property must be initialized, be final, or be abstract")
+			}
+			c.initReported(sym)
 		}
 		// Assigned in the constructor's code, as definite assignment
 		// checks.
@@ -3338,6 +3360,16 @@ func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
 // hasBody reports whether a function or an accessor has a body: an
 // abstract extension property's accessors don't.
 func hasBody(d *syntax.FunDecl) bool { return d.Body != nil || d.ExprBody != nil }
+
+// initReported records that property v was reported as needing an
+// initializer where it is declared, which the constructor's code assigning
+// it doesn't change: its definite assignment isn't reported again.
+func (c *Checker) initReported(v *types.VarSym) {
+	if c.mustInit == nil {
+		c.mustInit = map[*types.VarSym]bool{}
+	}
+	c.mustInit[v] = true
+}
 
 // lateinitChecks reports the uses of lateinit that Kotlin forbids, on a
 // property or a local var. t is the type, or Invalid if it isn't known

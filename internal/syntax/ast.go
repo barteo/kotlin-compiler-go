@@ -533,6 +533,8 @@ type FunDecl struct {
 	// InPlace names those it says it calls in place, callsInPlace of
 	// any kind.
 	InPlace map[string]bool
+	// AtLeastOnce names those it says it calls at least once.
+	AtLeastOnce map[string]bool
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies

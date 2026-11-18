@@ -798,6 +798,12 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			}
 			sym.Once[ip.Param] = true
 		}
+		if ip.Kind == kmeta.AtLeastOnce {
+			if sym.AtLeastOnce == nil {
+				sym.AtLeastOnce = make([]bool, len(f.Params))
+			}
+			sym.AtLeastOnce[ip.Param] = true
+		}
 	}
 	for _, im := range f.Implies {
 		// A context parameter's index follows the value parameters'.
