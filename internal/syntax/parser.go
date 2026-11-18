@@ -832,7 +832,9 @@ func (p *parser) parseFile() *File {
 
 func (p *parser) parseImport() *Import {
 	imp := &Import{P: p.next().Pos}
-	parts := []string{p.ident().Text}
+	first := p.ident()
+	imp.PathP = first.Pos
+	parts := []string{first.Text}
 	for p.at(DOT) {
 		p.next()
 		if p.at(STAR) {

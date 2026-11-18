@@ -131,6 +131,11 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 			return types.InvalidType
 		}
 	}
+	for i, arg := range args {
+		if (arg.V == types.In || arg.V == types.Out) && projectionRedundant(a.Type, a.TypeParams[i], arg.V) {
+			c.redundantProjection(ref.Args[i].P)
+		}
+	}
 	t := a.Expand(args)
 	if t.K == types.Invalid {
 		return t
@@ -190,6 +195,37 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 		}
 	}
 	return false
+}
+
+// projectionRedundant reports whether the expansion t of a typealias
+// passes its parameter p, given the projection v, to a class's type
+// parameter declared with variance v: List<out String> for TL<out String>
+// with typealias TL<T> = List<T>.
+func projectionRedundant(t types.Type, p *types.TypeParamSym, v types.Variance) bool {
+	if t.K != types.Class || t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		if a.V == types.Star {
+			continue
+		}
+		if a.T.IsParam() && a.T.Param() == p {
+			if i < len(t.C.TypeParams) && t.C.TypeParams[i].Var == v && (a.V == types.Inv || a.V == v) {
+				return true
+			}
+			continue
+		}
+		if projectionRedundant(a.T, p, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// redundantProjection warns of a use-site projection that repeats the
+// declared variance of its type parameter, as kotlinc does.
+func (c *Checker) redundantProjection(p syntax.Pos) {
+	c.warnf(p, "REDUNDANT_PROJECTION", "projection is redundant: the corresponding type parameter has the same variance")
 }
 
 // aliasConstruct checks Alias(args), a call of the constructor of the

@@ -124,10 +124,10 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 			}
 		}
 	}
-	old := c.refLHS
-	c.refLHS = callable && written
+	old, oldLit := c.refLHS, c.classLitLHS
+	c.refLHS, c.classLitLHS = callable && written, true
 	t := c.resolveType(ref)
-	c.refLHS = old
+	c.refLHS, c.classLitLHS = old, oldLit
 	if t.K != types.Invalid && !t.IsArray() && !callable {
 		if ref.Outer != nil {
 			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")

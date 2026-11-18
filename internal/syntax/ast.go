@@ -85,6 +85,7 @@ func (f *File) HasFacade() bool {
 // Import is `import a.b.C`, `import a.b.C as D` or `import a.b.*`.
 type Import struct {
 	P     Pos
+	PathP Pos    // where the path starts
 	Path  string // dotted, without the .*
 	Star  bool
 	Alias string

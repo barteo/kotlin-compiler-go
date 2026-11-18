@@ -2692,6 +2692,7 @@ func outerCompanion(cls *types.ClassSym) *types.ClassSym {
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	cls.Ensure()
+	c.platformConstruct(x, cls, p)
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
 	}

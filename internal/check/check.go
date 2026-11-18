@@ -244,6 +244,13 @@ type Checker struct {
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
 	refLHS bool
+	// overrideBounds is set while the type parameters of an override
+	// property are resolved, which have no FINAL_UPPER_BOUND.
+	overrideBounds bool
+	// classLitLHS is set while the type of a class literal or on a
+	// callable reference's left side is resolved, which kotlinc doesn't
+	// take for a type reference: no PLATFORM_CLASS_MAPPED_TO_KOTLIN.
+	classLitLHS bool
 	// refLHSOuter is set while the outer class of an inner class on a
 	// callable reference's left side is resolved, Outer<A> of
 	// Outer<A>.Inner<B>::f: there, as on the left side itself, a class
@@ -909,6 +916,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	forwardInlinable(checkers)
 	for _, c := range checkers {
 		c.checkMemberImports()
+		c.platformClassImports()
 	}
 	for _, c := range checkers {
 		c.inheritDefaults()
@@ -1038,6 +1046,7 @@ func (c *Checker) hidesBuiltin(name string) bool {
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
 	c.javaBoundCycle(ref, t)
+	c.platformClassRef(ref, t)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -1286,6 +1295,8 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+		} else if a.Variance != types.Inv && a.Variance == ps[i].Var {
+			c.redundantProjection(a.P)
 		}
 	}
 	t := types.GenericType(cls, append(args, hidden...))
@@ -2292,7 +2303,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// Those of a property with context parameters, which they use.
 		g.Sym.TypeParams = c.declareTypeParams(d.TypeParams, g.Sym, false)
 		c.tparams = funTypeParams(g.Sym, owner)
+		c.overrideBounds = d.Override
 		c.resolveBounds(d.TypeParams)
+		c.overrideBounds = false
 		if d.Setter != nil {
 			d.Setter.Sym.TypeParams = g.Sym.TypeParams
 		}

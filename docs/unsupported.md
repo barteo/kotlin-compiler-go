@@ -14,14 +14,19 @@ own tests.
   `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
   `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON`,
-  `USELESS_ELVIS`, `OVERRIDE_BY_INLINE` and `NOTHING_TO_INLINE`, and
+  `USELESS_ELVIS`, `OVERRIDE_BY_INLINE`, `NOTHING_TO_INLINE`,
+  `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
+  `PLATFORM_CLASS_MAPPED_TO_KOTLIN` and `NO_TAIL_CALLS_FOUND`, and
   those only where the types make them certain, so
   that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
   never of a platform type, a type parameter or a type it couldn't
   resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
   isn't reified, or to a generic type from `Any` or a star-projected
-  supertype. `@Suppress` silences a warning by its name, or all of them
-  with `"warnings"`.
+  supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is reported where the
+  Java class is named, not through a typealias or an inferred type, and
+  `NO_TAIL_CALLS_FOUND` not where a recursive call in tail position may
+  be a tail call to `kotlinc`, as one on another receiver. `@Suppress`
+  silences a warning by its name, or all of them with `"warnings"`.
 
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).

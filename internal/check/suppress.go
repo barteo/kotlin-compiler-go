@@ -209,6 +209,15 @@ func paramRanges(rs []suppressRange, ps []*syntax.Param) []suppressRange {
 	return rs
 }
 
+// typeParamRanges adds to rs the ranges of the type parameters tps whose
+// @Suppress names diagnostics: their bounds, to the end of the line.
+func typeParamRanges(rs []suppressRange, tps []*syntax.TypeParam) []suppressRange {
+	for _, tp := range tps {
+		rs = annotationsRange(rs, tp.Annotations, tp.P, syntax.Pos{Line: tp.P.Line, Col: 1 << 30})
+	}
+	return rs
+}
+
 // funRanges adds to rs the ranges of function d and its parameters.
 func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 	if d == nil {
@@ -223,6 +232,7 @@ func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 		}
 	}
 	rs = annotationsRange(rs, d.Annotations, d.P, end)
+	rs = typeParamRanges(rs, d.TypeParams)
 	return paramRanges(rs, d.Params)
 }
 
@@ -244,10 +254,12 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 			}
 		}
 		rs = annotationsRange(rs, d.Annotations, d.P, end)
+		rs = typeParamRanges(rs, d.TypeParams)
 		rs = funRanges(rs, d.Getter)
 		rs = funRanges(rs, d.Setter)
 	case *syntax.ClassDecl:
 		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
+		rs = typeParamRanges(rs, d.TypeParams)
 		for _, p := range d.CtorParams {
 			rs = paramRanges(rs, []*syntax.Param{&p.Param})
 			end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}
