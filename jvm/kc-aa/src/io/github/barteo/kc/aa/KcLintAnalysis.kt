@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolution.KtResolvable
 import org.jetbrains.kotlin.types.Variance
@@ -37,13 +38,23 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
             is KtParenthesizedExpression -> return e.expression?.let(::expressionType)
             is KtLabeledExpression -> return e.baseExpression?.let(::expressionType)
             is KtAnnotatedExpression -> return e.baseExpression?.let(::expressionType)
-            // A call's callee has the call's type.
-            is KtNameReferenceExpression -> (e.parent as? KtCallExpression)?.takeIf { it.calleeExpression == e } ?: e
+            // A call's callee has no type, as in kotlinc, unless it is a
+            // value the call invokes: block in block().
+            is KtNameReferenceExpression -> {
+                val call = (e.parent as? KtCallExpression)?.takeIf { it.calleeExpression == e }
+                if (call != null && s.fact(call)?.call?.valueInvocation != true) return null
+                // this's name has this's type.
+                (e.parent as? KtThisExpression)?.takeIf { it.instanceReference == e } ?: e
+            }
             else -> e
         }
         val f = s.fact(target) ?: return null
         val t = f.type ?: return null
-        return s.type(t, nonNull = f.flowNonNull && !t.parameter)
+        // A type parameter's value that a smart cast makes non-null is
+        // T & Any; so is an intersection's, which the facts name as a
+        // parameter.
+        if (f.flowNonNull && t.parameter) return KcDefinitelyNotNullType(round, s.type(t))
+        return s.type(t, nonNull = f.flowNonNull)
     }
 
     /**
@@ -57,7 +68,8 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
         val out = ArrayList<org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnosticWithPsi<*>>()
         fun add(name: String, message: String) { out += KcLintDiagnostic(e, name, message, round.token) }
         when (e) {
-            is KtSimpleNameExpression -> s.fact(e)?.deprecated?.let { message ->
+            // A type's name, whose deprecation is its type's.
+            is KtSimpleNameExpression -> (s.fact(e)?.deprecated ?: (e.parent as? KtUserType)?.takeIf { it.referenceExpression == e }?.let { s.fact(it)?.deprecated })?.let { message ->
                 if (com.intellij.psi.util.PsiTreeUtil.getParentOfType(e, KtImportDirective::class.java) == null && com.intellij.psi.util.PsiTreeUtil.getParentOfType(e, KtPackageDirective::class.java) == null) {
                     add("DEPRECATION", message)
                 }
@@ -84,6 +96,9 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
         val t = expressionType(e) ?: return false
         return t !is KcFlexibleType && t !is KcTypeParameterType && t !is KcErrorType && !a.isMarkedNullable(t)
     }
+
+    /** The operators for loop [e] calls: its iterator(), hasNext() and next(). */
+    fun loopOperators(e: KtForExpression): List<KaSymbol> = s.fact(e)?.operatorCalls?.map { s.callableSymbol(it) }.orEmpty()
 
     fun isUsedAsExpression(e: KtExpression): Boolean =
         s.fact(e)?.usedAsExpression ?: KcMissing.miss("KaSession.isUsedAsExpression without facts", true)
@@ -243,20 +258,28 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
 
     private fun importingScopes(file: KtFile, start: Int): List<KaScopeWithKind> {
         val imported = ArrayList<KaDeclarationSymbol>()
+        // A star import's package's declarations in the sources: a
+        // typealias Runnable in kotlinx.coroutines collides with
+        // java.lang.Runnable in a file that imports kotlinx.coroutines.*.
+        val starred = ArrayList<KaDeclarationSymbol>()
         for (d in file.importDirectives) {
-            if (d.isAllUnder) continue
+            if (d.isAllUnder) {
+                d.importedFqName?.let { fq -> s.packageDeclarations(fq).mapNotNullTo(starred) { s.declarationSymbol(it) } }
+                continue
+            }
             val ref = when (val e = d.importedReference) {
                 is KtQualifiedExpression -> e.selectorExpression
                 else -> e
             } as? KtSimpleNameExpression
             val sym = ref?.let(::referenced) as? KaDeclarationSymbol
-                ?: d.importedFqName?.let { fq -> s.sourceClass(ClassId.topLevel(fq))?.let { s.declarationSymbol(it) } }
+                ?: d.importedFqName?.let { fq -> s.sourceClass(ClassId.topLevel(fq))?.let { s.declarationSymbol(it) } ?: namedClass(fq.pathSegments().map { it.asString() }) }
             sym?.let(imported::add)
         }
         val pkg = s.packageDeclarations(file.packageFqName).mapNotNull { s.declarationSymbol(it) }
         return listOf(
             KcScopeWithKind(KcScope(imported, round.token), KcExplicitSimpleImportingScopeKind(start)),
             KcScopeWithKind(KcScope(pkg, round.token), KcPackageMemberScopeKind(start + 1)),
+            KcScopeWithKind(KcScope(starred, round.token), KcExplicitStarImportingScopeKind(start + 2)),
         )
     }
 
@@ -390,7 +413,12 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
         // The signature has the variable's type; the fact's is the
         // expression's, which a safe call (a?.b) makes nullable.
         val safeSelector = (e.parent as? KtSafeQualifiedExpression)?.selectorExpression == e
+        // A Java getter's T! stays T! there.
+        val platform = safeSelector && getter?.declaredReturnType?.platform == true
         val type = getter?.returnType?.let { s.type(it) }
+            ?: f.type?.takeIf { platform && !it.parameter }?.let {
+                s.type(KcFType(it.name, it.classId, it.flags and 2.inv() or 5, it.owner, it.projection, it.args, it.supertypes))
+            }
             ?: f.type?.let { s.type(it, nonNull = safeSelector && !it.parameter && !a.isMarkedNullable(vs.returnType)) }
             ?: vs.returnType
         val sig = KcLintVariableSignature<KaVariableSymbol>(vs, vs.name, type)
@@ -411,7 +439,8 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
 
     /** The declaration a name refers to. */
     fun referenced(e: KtSimpleNameExpression): KaSymbol? {
-        val f = s.fact(e) ?: return null
+        (e.parent as? KtThisExpression)?.takeIf { it.instanceReference == e }?.let { thisTarget(it)?.let { t -> return t } }
+        val f = s.fact(e) ?: return typeName(e) ?: annotationArgument(e)
         f.call?.let { c ->
             // A constructor call's callee names the constructor; a call's, the function.
             if (!c.valueInvocation) return s.callableSymbol(c, s.sym(f.symbol))
@@ -424,6 +453,95 @@ internal class KcLintAnalysis(private val a: KcAnalysis, private val s: KcLint) 
         if (sym.kind == KcFSym.PROPERTY) return s.propertySymbol(sym, f.accessors.firstOrNull())
         return s.symbol(sym)
     }
+
+    /**
+     * What this's reference resolves to: the class or object whose instance
+     * it is, or the receiver parameter of the function or lambda.
+     */
+    private fun thisTarget(e: KtThisExpression): KaSymbol? {
+        val target = s.psi(s.fact(e)?.receiverTarget) ?: return null
+        return when (target) {
+            is KtClassOrObject, is KtObjectLiteralExpression -> s.declarationSymbol(target)
+            is KtLambdaExpression -> (s.declarationSymbol(target.functionLiteral) as? KaCallableSymbol)?.receiverParameter
+            is KtCallableDeclaration -> (s.declarationSymbol(target) as? KaCallableSymbol)?.receiverParameter
+            else -> null
+        }
+    }
+
+    /**
+     * The property a simple name in an annotation's argument refers to,
+     * message in @Deprecated(message = message): kc evaluates the
+     * arguments, but has no facts on them. The name is looked up in the
+     * classes and objects around the annotation, their companions', and
+     * the file's top level.
+     */
+    private fun annotationArgument(e: KtSimpleNameExpression): KaSymbol? {
+        if (e !is KtNameReferenceExpression || e.parent is KtQualifiedExpression && (e.parent as KtQualifiedExpression).selectorExpression == e) return null
+        val arg = com.intellij.psi.util.PsiTreeUtil.getParentOfType(e, KtValueArgument::class.java) ?: return null
+        if (com.intellij.psi.util.PsiTreeUtil.getParentOfType(arg, KtAnnotationEntry::class.java) == null) return null
+        if (arg.getArgumentName()?.referenceExpression == e) return null
+        val name = e.getReferencedName()
+        fun find(ds: List<KtDeclaration>): KtProperty? = ds.firstOrNull { it is KtProperty && it.name == name } as KtProperty?
+        var c = com.intellij.psi.util.PsiTreeUtil.getParentOfType(e, KtClassOrObject::class.java)
+        while (c != null) {
+            val p = find(c.declarations) ?: (c as? KtClass)?.companionObjects?.firstNotNullOfOrNull { find(it.declarations) }
+            if (p != null) return s.declarationSymbol(p)
+            c = com.intellij.psi.util.PsiTreeUtil.getParentOfType(c, KtClassOrObject::class.java)
+        }
+        return find(e.containingKtFile.declarations)?.let(s::declarationSymbol)
+    }
+
+    /**
+     * The class the name of a type refers to: kc's facts are on the
+     * USER_TYPE, not on its name. A qualified name refers to the class
+     * written, as in kotlinc: java.lang.annotation.Annotation is the Java
+     * interface, not kotlin.Annotation, the type kc maps it to.
+     */
+    private fun typeName(e: KtSimpleNameExpression): KaSymbol? {
+        val u = e.parent as? KtUserType ?: return null
+        if (u.referenceExpression != e) return null
+        val f = s.fact(u) ?: return null
+        val t = f.type ?: return null
+        if (u.qualifier != null) writtenClass(u)?.let { return it }
+        // A typealias names its expansion's class: the alias, as the fact
+        // names it for one in the sources, or as an import of the name does.
+        f.importableName?.takeIf { it.isNotEmpty() }?.let { n -> round.typeAlias(ClassId.topLevel(FqName(n)))?.let { return it } }
+        val id = t.classId.takeIf { it.isNotEmpty() } ?: return null
+        val classId = runCatching { ClassId.fromString(id) }.getOrNull() ?: return null
+        importedAlias(e.containingKtFile, e.getReferencedName(), classId)?.let { return it }
+        return round.classes[classId] ?: round.libraryClass(classId)
+    }
+
+    /** The typealias an explicit import names [name] that expands to class [classId], as kotlin.concurrent.Volatile to kotlin.jvm.Volatile. */
+    private fun importedAlias(file: KtFile, name: String, classId: ClassId): KaSymbol? {
+        for (d in file.importDirectives) {
+            if (d.isAllUnder || d.importedName?.asString() != name) continue
+            val fq = d.importedFqName ?: continue
+            val alias = round.typeAlias(ClassId.topLevel(fq)) ?: continue
+            if ((alias.expandedType as? org.jetbrains.kotlin.analysis.api.types.KaClassType)?.classId == classId) return alias
+        }
+        return null
+    }
+
+    /** The class a qualified type's name spells, a.b.C.D: package a.b and class C.D, or a.b.C and D, and so on. */
+    private fun writtenClass(u: KtUserType): KaSymbol? {
+        val parts = generateSequence(u) { it.qualifier }.map { it.referencedName }.toList()
+        if (parts.any { it == null }) return null
+        return namedClassLike(parts.filterNotNull().asReversed())
+    }
+
+    /** The class a fully qualified name names: package a.b and class C.D, or a.b.C and D, and so on. */
+    private fun namedClass(names: List<String>): KaClassSymbol? {
+        for (i in names.size - 1 downTo 1) {
+            val id = ClassId(FqName.fromSegments(names.subList(0, i)), FqName.fromSegments(names.subList(i, names.size)), false)
+            (round.classes[id] ?: round.libraryClass(id))?.let { return it }
+        }
+        return null
+    }
+
+    /** The class or top-level typealias a fully qualified name names. */
+    private fun namedClassLike(names: List<String>): KaSymbol? =
+        namedClass(names) ?: names.takeIf { it.size > 1 }?.let { round.typeAlias(ClassId.topLevel(FqName.fromSegments(it))) }
 
     companion object {
         val primitives = setOf("kotlin.Int", "kotlin.Long", "kotlin.Short", "kotlin.Byte", "kotlin.Char", "kotlin.Boolean", "kotlin.Float", "kotlin.Double")
@@ -444,6 +562,7 @@ internal class KcLocalScopeKind(override val indexInTower: Int) : KaScopeKind.Lo
 internal class KcTypeScopeKind(override val indexInTower: Int) : KaScopeKind.TypeScope
 internal class KcExplicitSimpleImportingScopeKind(override val indexInTower: Int) : KaScopeKind.ExplicitSimpleImportingScope
 internal class KcPackageMemberScopeKind(override val indexInTower: Int) : KaScopeKind.PackageMemberScope
+internal class KcExplicitStarImportingScopeKind(override val indexInTower: Int) : KaScopeKind.ExplicitStarImportingScope
 
 /**
  * The compiler warnings a linter reads ([KcLintAnalysis.directDiagnostics]),

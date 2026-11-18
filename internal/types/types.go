@@ -250,6 +250,7 @@ type VarSym struct {
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	Pkg      string    // Global: Kotlin package, as FunSym.Pkg
 	// Annotations are the descriptors of the annotations of a top-level
 	// property of the class path, and Deprecated its deprecation: what
 	// the opt-in and deprecation checks know of it.
@@ -511,6 +512,7 @@ type FunSym struct {
 	Ret        Type
 	Owner      *ClassSym // methods
 	Facade     string    // top-level functions
+	Pkg        string    // a library top-level function's Kotlin package, if not Facade's (@JvmPackageName)
 	Builtin    Builtin
 	Decl       any
 

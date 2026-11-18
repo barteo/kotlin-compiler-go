@@ -400,13 +400,18 @@ class KcAnalysis internal constructor(
                 (r.element.calleeExpression as? KtSimpleNameExpression)?.getReferencedName() != "invoke"
         }
         is org.jetbrains.kotlin.idea.references.KtArrayAccessReference -> calledSymbol(r.element)
+        is org.jetbrains.kotlin.idea.references.KtForLoopInReference -> linted.loopOperators(r.element).singleOrNull()
         else -> KcMissing.miss("KaSession.resolveToSymbol(${r.javaClass.simpleName})", null)
     }
 
     private fun calledSymbol(e: KtElement): KaSymbol? =
         ((linted.resolveToCall(e) as? org.jetbrains.kotlin.analysis.api.resolution.KaSuccessCallInfo)?.call
             as? org.jetbrains.kotlin.analysis.api.resolution.KaCallableMemberCall<*, *>)?.partiallyAppliedSymbol?.signature?.symbol
-    fun resolveToSymbols(r: org.jetbrains.kotlin.idea.references.KtReference): Collection<KaSymbol> = listOfNotNull(resolveToSymbol(r))
+    fun resolveToSymbols(r: org.jetbrains.kotlin.idea.references.KtReference): Collection<KaSymbol> = when (r) {
+        // A for loop's: the iterator(), hasNext() and next() it calls.
+        is org.jetbrains.kotlin.idea.references.KtForLoopInReference -> linted.loopOperators(r.element)
+        else -> listOfNotNull(resolveToSymbol(r))
+    }
 
     // KaTypeInformationProvider and KaTypeProvider
     fun isUnitType(t: KaType) = linted.isClass(t, "kotlin.Unit")

@@ -110,6 +110,16 @@ func facadePackage(facade string) string {
 	return strings.ReplaceAll(facade[:i], "/", ".")
 }
 
+// kotlinPackage returns the Kotlin package of a top-level declaration of
+// a facade: pkg if it is set, as the metadata of a facade with a
+// @JvmPackageName gives it, or else the facade's package.
+func kotlinPackage(pkg, facade string) string {
+	if pkg != "" {
+		return pkg
+	}
+	return facadePackage(facade)
+}
+
 func qualify(pkg, name string) string {
 	if pkg == "" {
 		return name
@@ -127,7 +137,7 @@ func funFQ(f *types.FunSym) string {
 	case f.Owner != nil:
 		return classFQ(f.Owner) + "." + f.Name
 	case f.Facade != "":
-		return qualify(facadePackage(f.Facade), f.Name)
+		return qualify(kotlinPackage(f.Pkg, f.Facade), f.Name)
 	}
 	return f.Name
 }
@@ -137,7 +147,7 @@ func funFQ(f *types.FunSym) string {
 func varFQ(v *types.VarSym) string {
 	switch v.Kind {
 	case types.Global:
-		return qualify(facadePackage(v.Facade), v.Name)
+		return qualify(kotlinPackage(v.Pkg, v.Facade), v.Name)
 	case types.Prop, types.Static:
 		if v.Owner != nil {
 			return classFQ(v.Owner) + "." + v.Name
@@ -233,6 +243,10 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		n := cv.nameOf(c)
 		out.Name, out.ClassID, out.SAM = n.fq, n.id, n.sam
 		out.Suspend = c.Suspend
+		out.Receiver = t.E
+		if c.Anonymous && cv.decl != nil {
+			out.ParameterOwner = cv.decl(c.Decl)
+		}
 		if depth == 0 {
 			out.Supertypes = cv.supertypesOf(c)
 		}

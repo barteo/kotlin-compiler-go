@@ -204,6 +204,7 @@ type kpkg struct {
 type kpart struct {
 	meta    *kmeta.Package
 	facade  string          // the class to call
+	pkg     string          // the Kotlin package, if the facade's JVM package isn't it (@JvmPackageName)
 	class   string          // the class with the declarations: the facade, or a multifile part
 	methods map[string]bool // name+desc of the public methods
 	friend  bool            // in a friend path: its internal declarations are visible
@@ -2155,7 +2156,7 @@ func (t *classTable) pkg(name string) *kpkg {
 				if facade == "" {
 					facade = part.Class
 				}
-				read[i] = &kpart{meta: meta, facade: facade, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info), annots: annotatedMethods(info)}
+				read[i] = &kpart{meta: meta, facade: facade, pkg: info.Kotlin.PN, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info), annots: annotatedMethods(info)}
 			})
 		}
 		wg.Wait()
@@ -2221,7 +2222,7 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 				continue
 			}
 			sym := t.kfun(f, nil, nil, part.methods)
-			sym.Facade = part.facade
+			sym.Facade, sym.Pkg = part.facade, part.pkg
 			sym.LowPriority = part.low[f.JVM.Name+f.JVM.Desc]
 			annotate(sym, part.annots[f.JVM.Name+f.JVM.Desc])
 			if sym.Why != "" && typesOK(sym) {
@@ -2297,7 +2298,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
-			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true}
+			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Pkg: part.pkg, Ext: true, Resolved: true}
 			if inlineOnly {
 				sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 			}
@@ -2358,7 +2359,7 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 				continue
 			}
 			prev := v
-			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
+			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade, Pkg: part.pkg,
 				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
 			if prev != nil && !sameContexts(prev.Contexts, ctx) {
 				// One with other context parameters.

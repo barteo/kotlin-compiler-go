@@ -55,7 +55,8 @@ import (
 // 65536 deprecated:String, 131072 flags:Uint.
 //
 // The bit sets: tflags 1 nullable, 2 marked nullable, 4 platform,
-// 8 parameter, 16 SAM, 32 suspend; projection 0 none, 1 in, 2 out, 3 star;
+// 8 parameter, 16 SAM, 32 suspend, 64 a function type's receiver;
+// projection 0 none, 1 in, 2 out, 3 star;
 // a symbol's kind 1 class, 2 function, 3 constructor, 4 property, 5 local,
 // 6 parameter; sflags 1 shadowed, 2 has abstract members, 4 has concrete
 // members, 8 has an abstract superclass; cflags 1 extension, 2 suspend,
@@ -234,6 +235,7 @@ func (e *encoder) fact(f *analysis.Fact) {
 	set(15, len(f.Accessors) > 0)
 	set(16, f.Deprecated != nil)
 	set(17, flags != 0)
+	set(18, len(f.OperatorCalls) > 0)
 	// Types first: the type table must be complete before the body
 	// refers to it, and interning is idempotent, so the fact's types are
 	// interned as they are written.
@@ -304,6 +306,12 @@ func (e *encoder) fact(f *analysis.Fact) {
 	if flags != 0 {
 		w.Uint(flags)
 	}
+	if len(f.OperatorCalls) > 0 {
+		w.Uint(uint64(len(f.OperatorCalls)))
+		for i := range f.OperatorCalls {
+			e.call(&f.OperatorCalls[i])
+		}
+	}
 }
 
 func (e *encoder) call(c *analysis.Call) {
@@ -360,7 +368,7 @@ func (e *encoder) typ(t *analysis.Type) int {
 	w := &e.types
 	w.String(t.Name)
 	w.String(t.ClassID)
-	w.Uint(bits(t.Nullable, t.MarkedNullable, t.Platform, t.Parameter, t.SAM, t.Suspend))
+	w.Uint(bits(t.Nullable, t.MarkedNullable, t.Platform, t.Parameter, t.SAM, t.Suspend, t.Receiver))
 	e.elem(w, t.ParameterOwner)
 	w.Uint(map[string]uint64{"in": 1, "out": 2, "*": 3}[t.Projection])
 	w.Uint(uint64(len(args)))
@@ -382,7 +390,7 @@ func typeKey(t *analysis.Type) string {
 		b.WriteByte(0)
 		b.WriteString(t.ClassID)
 		b.WriteByte(0)
-		b.WriteString(strconv.FormatUint(bits(t.Nullable, t.MarkedNullable, t.Platform, t.Parameter, t.SAM, t.Suspend), 10))
+		b.WriteString(strconv.FormatUint(bits(t.Nullable, t.MarkedNullable, t.Platform, t.Parameter, t.SAM, t.Suspend, t.Receiver), 10))
 		if o := t.ParameterOwner; o != nil {
 			b.WriteString("@" + strconv.Itoa(int(o.Snapshot)) + ":" + strconv.Itoa(int(o.Node)))
 		}

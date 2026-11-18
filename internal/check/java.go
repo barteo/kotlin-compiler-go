@@ -1737,6 +1737,42 @@ func (c *Checker) qualifiedName(x syntax.Expr) string {
 	return ""
 }
 
+// recvExtProp reports whether an implicit receiver has an extension
+// property name, which comes before a library package of that name:
+// kotlin in kotlin.runCatching { } in a fun Class<*>.f() is Class.kotlin.
+func (c *Checker) recvExtProp(name string) bool {
+	vals := c.implicitVals()
+	if len(vals) == 0 {
+		return false
+	}
+	cands := [][]*types.FunSym{c.userExtProps[name], c.pkg.ExtProps[name]}
+	for _, p := range c.userStars {
+		cands = append(cands, p.ExtProps[name])
+	}
+	if c.u.ext.kotlin {
+		for _, s := range c.stars {
+			cands = append(cands, c.u.ext.pkgExtProps(strings.ReplaceAll(s, "/", "."), name))
+		}
+		for _, pkg := range defaultPackages {
+			cands = append(cands, c.u.ext.pkgExtProps(pkg, name))
+		}
+	}
+	for _, v := range vals {
+		t := v.t
+		if v.sym != nil {
+			t = c.scope.narrowed(v.sym)
+		}
+		for _, gs := range cands {
+			for _, g := range gs {
+				if c.recvFits(t.Flex(), g.Recv) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // libraryPackageFuns returns the top-level functions of a library's
 // package that a qualified name a.b.f names, if a.b is that package rather
 // than a value or a class.
@@ -1749,7 +1785,7 @@ func (c *Checker) libraryPackageFuns(fn *syntax.Member) []*types.FunSym {
 	if name == "" || !ext.isKotlinPackage(name) {
 		return nil
 	}
-	if root, _, _ := strings.Cut(name, "."); c.findClass(root) != nil || c.u.Pkgs[root] != nil {
+	if root, _, _ := strings.Cut(name, "."); c.findClass(root) != nil || c.u.Pkgs[root] != nil || c.recvExtProp(root) {
 		return nil
 	}
 	fs := ext.pkgFuns(name, fn.Name)
@@ -1772,7 +1808,7 @@ func (c *Checker) libraryPackageVar(x *syntax.Member) *types.VarSym {
 	if name == "" || !ext.isKotlinPackage(name) {
 		return nil
 	}
-	if root, _, _ := strings.Cut(name, "."); c.findClass(root) != nil || c.u.Pkgs[root] != nil {
+	if root, _, _ := strings.Cut(name, "."); c.findClass(root) != nil || c.u.Pkgs[root] != nil || c.recvExtProp(root) {
 		return nil
 	}
 	return ext.pkgVar(name, x.Name)

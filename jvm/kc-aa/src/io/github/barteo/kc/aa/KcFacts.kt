@@ -30,6 +30,7 @@ internal class KcFType(
     val parameter get() = flags and 8 != 0
     val sam get() = flags and 16 != 0
     val suspend get() = flags and 32 != 0
+    val receiver get() = flags and 64 != 0
     val star get() = projection == 3
 
     override fun toString() = name + (if (args.isEmpty()) "" else args.joinToString(", ", "<", ">")) + if (markedNullable) "?" else if (platform) "!" else ""
@@ -128,6 +129,8 @@ internal class KcFact(
     val accessors: List<KcFCall>,
     val deprecated: String?,
     val flags: Int,
+    /** A for loop's iterator(), hasNext() and next() calls. */
+    val operatorCalls: List<KcFCall>,
 ) {
     val classifier get() = flags and 1 != 0
     val flowNonNull get() = flags and 2 != 0
@@ -207,8 +210,9 @@ internal class KcFileFacts(val facts: Array<KcFact?>, val symbols: List<KcFSym>)
                 val accessors = if (has(15)) List(r.readUint().toInt()) { call() } else emptyList()
                 val deprecated = if (has(16)) r.readString() else null
                 val flags = if (has(17)) r.readUint().toInt() else 0
+                val operators = if (has(18)) List(r.readUint().toInt()) { call() } else emptyList()
                 val f = KcFact(node, role, type, symbol, call, builtin, importable, pkg, whenInfo, elvis, lambda, ret, recv,
-                    implicit, delegate, delegated, accessors, deprecated, flags)
+                    implicit, delegate, delegated, accessors, deprecated, flags, operators)
                 if (node in facts.indices) facts[node] = f
             }
             return KcFileFacts(facts, syms)

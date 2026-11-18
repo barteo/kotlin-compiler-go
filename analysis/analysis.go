@@ -94,13 +94,17 @@ type Type struct {
 	// Platform is set on a Java type of unknown nullability, T!.
 	Platform bool `json:"platform,omitempty"`
 	// Parameter is set on a type parameter, declared at ParameterOwner
-	// if that is in the sources.
+	// if that is in the sources. On the type of an object expression,
+	// ParameterOwner is the expression's object declaration.
 	Parameter      bool       `json:"parameter,omitempty"`
 	ParameterOwner *ElementID `json:"parameterOwner,omitempty"`
 	// SAM is set on a fun interface or a Java interface with a single
 	// abstract method, Suspend on a suspend function type.
 	SAM     bool `json:"sam,omitempty"`
 	Suspend bool `json:"suspend,omitempty"`
+	// Receiver is set on a function type with a receiver, A.(B) -> R,
+	// whose first argument is the receiver's type.
+	Receiver bool `json:"receiver,omitempty"`
 	// Projection is a type argument's projection: "", "in", "out" or
 	// "*".
 	Projection string `json:"projection,omitempty"`
@@ -280,6 +284,10 @@ type Fact struct {
 	// DelegatedCalls the getValue and setValue calls the property makes.
 	DelegateType   *Type  `json:"delegateType,omitempty"`
 	DelegatedCalls []Call `json:"delegatedCalls,omitempty"`
+	// OperatorCalls are the calls a for loop over a collection makes
+	// without writing them: its iterator(), the iterator's hasNext() and
+	// next(), as kotlinc's for loop reference resolves to.
+	OperatorCalls []Call `json:"operatorCalls,omitempty"`
 
 	// Accessors are set on a reference to a property through a receiver,
 	// a.p: its getter, and its setter if it has one, as kotlinc's
@@ -538,6 +546,7 @@ func copyFact(f Fact) Fact {
 	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)
 	f.DelegatedCalls = copyCalls(f.DelegatedCalls)
+	f.OperatorCalls = copyCalls(f.OperatorCalls)
 	f.Accessors = copyCalls(f.Accessors)
 	if f.Deprecated != nil {
 		s := *f.Deprecated

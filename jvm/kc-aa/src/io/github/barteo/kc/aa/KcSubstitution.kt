@@ -236,13 +236,17 @@ internal class KcTypeRelations(private val round: KcRound) {
     fun equal(a: KaType, b: KaType, lenient: Boolean = false) =
         a == b || isSubtype(a, b, lenient) && isSubtype(b, a, lenient)
 
-    /** Whether a supertype of [t], or [t], is of class [id]. */
+    /**
+     * Whether a supertype of [t], or [t], is of class [id]. As the Analysis
+     * API's, it follows classes: Nothing, which has no supertypes, is a
+     * subtype of Any only.
+     */
     fun isSubtype(t0: KaType, id: ClassId, lenient: Boolean): Boolean = when (val t = round.expand(t0)) {
         is KaErrorType -> lenient
         is KcFlexibleType -> isSubtype(t.lowerBound, id, lenient)
         is KcDefinitelyNotNullType -> isSubtype(t.original, id, lenient)
         is KcTypeParameterType -> id == ANY || t.symbol.upperBounds.any { isSubtype(it, id, lenient) }
-        is KaClassType -> t.classId == NOTHING || id == ANY || asSuper(t, id) != null
+        is KaClassType -> id == ANY || t.classId != NOTHING && asSuper(t, id) != null
         else -> false
     }
 

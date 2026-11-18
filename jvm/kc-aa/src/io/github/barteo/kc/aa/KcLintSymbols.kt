@@ -239,8 +239,11 @@ internal class KcLintAnonymousFunctionSymbol(private val session: KcLint, privat
             val it = session.sym(fact.lambdaParameters?.firstOrNull() ?: 0) ?: return emptyList()
             return listOf(KcLintImplicitParameterSymbol(session, this, it))
         }
-    override val receiverParameter: KaReceiverParameterSymbol? get() = null
-    override val isExtension: Boolean get() = false
+    // A lambda's receiver, at the lambda, as FIR's is.
+    override val receiverParameter: KaReceiverParameterSymbol?
+        get() = f.receiverTypeReference?.let { r -> KcLintReceiverParameterSymbol(this, lintTypeOfRef(session, r) ?: KcErrorType(session.round, r.text), r) }
+            ?: (lambdaType as? KcFunctionType)?.receiverType?.takeIf { f is KtFunctionLiteral }?.let { KcLintReceiverParameterSymbol(this, it, f) }
+    override val isExtension: Boolean get() = receiverParameter != null
     override val visibility: KaSymbolVisibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility: Visibility get() = Visibilities.Local
     override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()

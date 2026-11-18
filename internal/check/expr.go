@@ -1774,6 +1774,12 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				otherSubclasses(k.t.NonNull().C, x.Target.C, others)
 			}
 		}
+		if x.Target.N && types.MayBeNull(k.t) {
+			// Where it isn't a T?, it isn't null.
+			nn := k
+			nn.t = k.t.NonNull()
+			not = append(append(not, nn), c.impliedBy(nn)...)
+		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
 		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
@@ -4228,6 +4234,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					} else {
 						later = append(append(later, n), c.impliedBy(n)...)
 					}
+				}
+				if cond.Is && cond.Target.K != types.Invalid && cond.Target.N && hasSubj && types.MayBeNull(subjType()) {
+					// Later branches see a subject that is not null, which
+					// is T? would have matched.
+					n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
+					later = append(append(later, n), c.impliedBy(n)...)
 				}
 			case cond.In || cond.NotIn:
 				if x.Subject == nil {

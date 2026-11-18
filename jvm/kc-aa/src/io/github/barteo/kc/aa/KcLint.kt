@@ -141,6 +141,12 @@ internal class KcLint(
 
     private fun makeType(t: KcFType, nonNull: Boolean): KaType {
         if (t.name.isEmpty()) return KcErrorType(round, "unresolved")
+        if (t.parameter && t.owner == null && " & " in t.name) {
+            // An intersection, A & B, which the facts name as a parameter:
+            // a value of it isn't null, unless it is A? & B?.
+            val p = KcTypeParameterType(round, Name.identifier(t.name), typeParameter(t), false)
+            return if (t.markedNullable && !nonNull) p.withNullability(true) else KcDefinitelyNotNullType(round, p)
+        }
         if (t.parameter) {
             val p = KcTypeParameterType(round, Name.identifier(t.name), typeParameter(t), t.markedNullable && !nonNull)
             return if (t.platform && !nonNull) KcFlexibleType(round, p.withNullability(false), p.withNullability(true)) else p
@@ -158,7 +164,9 @@ internal class KcLint(
         }
         val id = runCatching { ClassId.fromString(t.classId) }.getOrElse { ClassId.topLevel(FqName(t.name)) }
         if (t.sam) samClasses += id
-        return if (KcTypeContext.isFunctionClass(t.classId)) KcFunctionType(round, id, args, nullable, false, 0)
+        return if (KcTypeContext.isFunctionClass(t.classId)) KcFunctionType(round, id, args, nullable, t.receiver, 0)
+        // An object expression's type: its class is the expression's.
+        else if (t.owner != null) KcClassType(round, id, args, nullable, local = declarationSymbol(psi(t.owner)) as? KaClassLikeSymbol, localPsi = psi(t.owner))
         else KcClassType(round, id, args, nullable)
     }
 

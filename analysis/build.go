@@ -254,6 +254,9 @@ type builder struct {
 	varDecls map[*types.VarSym]ElementID
 	// getterProps are the properties of the sources' getters.
 	getterProps map[*syntax.FunDecl]*types.VarSym
+	// libProps are the extension properties of the class path, by
+	// their getters: see libExtProp.
+	libProps map[*types.FunSym]*types.VarSym
 	// classAt are the classes and objects the program declares, by
 	// their declarations' elements.
 	classAt map[ElementID]*types.ClassSym
@@ -264,7 +267,7 @@ type builder struct {
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
-		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, varDecls: map[*types.VarSym]ElementID{}, getterProps: map[*syntax.FunDecl]*types.VarSym{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
+		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, varDecls: map[*types.VarSym]ElementID{}, getterProps: map[*syntax.FunDecl]*types.VarSym{}, libProps: map[*types.FunSym]*types.VarSym{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
 }
@@ -443,6 +446,39 @@ func (b *builder) getterSym(g *types.FunSym) uint32 {
 	return b.sym(g)
 }
 
+// libExtProp returns the extension property of the class path that a
+// read of name through getter g reads, or nil: the checker knows only its
+// getter, but the property is what kotlinc resolves the name to, and
+// what an import of it names, kotlin.time.Duration.Companion.nanoseconds.
+func (b *builder) libExtProp(g *types.FunSym, name string) *types.VarSym {
+	if g == nil || !g.Ext || g.Decl != nil || name == "" {
+		return nil
+	}
+	if v := b.libProps[g]; v != nil {
+		return v
+	}
+	v := &types.VarSym{Name: name, Type: g.Ret, Kind: types.Global, Facade: g.Facade, Pkg: g.Pkg, Deprecated: g.Deprecated}
+	if g.Owner != nil {
+		v.Kind, v.Owner = types.Prop, g.Owner
+	}
+	b.libProps[g] = v
+	return v
+}
+
+// libExtPropRead sets the facts of a read of name through getter g, if
+// it is one of an extension property of the class path: the property,
+// with the getter as its accessor.
+func (b *builder) libExtPropRead(g *types.FunSym, name string, f *Fact) bool {
+	v := b.libExtProp(g, name)
+	if v == nil {
+		return false
+	}
+	f.Symbol = b.sym(v)
+	f.ImportableName = varFQ(v)
+	f.Accessors = []Call{b.funCall(g)}
+	return true
+}
+
 // merge sets the fields of f that are unset to src's.
 func merge(f *Fact, src Fact) {
 	if f.Role == "" {
@@ -497,6 +533,9 @@ func merge(f *Fact, src Fact) {
 	}
 	if f.DelegatedCalls == nil {
 		f.DelegatedCalls = src.DelegatedCalls
+	}
+	if f.OperatorCalls == nil {
+		f.OperatorCalls = src.OperatorCalls
 	}
 	if f.NonNullLeftSubtypeRight == nil {
 		f.NonNullLeftSubtypeRight = src.NonNullLeftSubtypeRight
@@ -620,11 +659,15 @@ func (b *builder) visit(n any, el ElementID) {
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
 		}
 		// A loop over a collection calls its iterator's operators.
+		lf := Fact{Role: "statement"}
 		for _, f := range []*types.FunSym{x.Iter, x.HasNext, x.Next} {
-			if f != nil && f.Suspend {
-				b.set(el, Fact{Role: "statement", SuspendOperation: true})
-				break
+			if f != nil {
+				lf.OperatorCalls = append(lf.OperatorCalls, b.funCall(f))
+				lf.SuspendOperation = lf.SuspendOperation || f.Suspend
 			}
+		}
+		if lf.OperatorCalls != nil {
+			b.set(el, lf)
 		}
 	case syntax.Expr:
 		b.expr(x, el)
@@ -908,6 +951,7 @@ func (b *builder) ident(x *syntax.Ident, el ElementID, f *Fact) {
 		if x.Getter.Owner == nil {
 			f.ImportableName = funFQ(x.Getter)
 		}
+		b.libExtPropRead(x.Getter, x.Name, f)
 	case x.Object != nil:
 		f.Symbol = b.sym(x.Object)
 		f.Classifier = true
@@ -1032,6 +1076,7 @@ func (b *builder) member(x *syntax.Member, f *Fact) {
 		f.ImportableName = classFQ(x.Object)
 		f.Deprecated = deprecated(classDeprecation(x.Object))
 	}
+	lib := x.Prop == nil && x.Field == nil && b.libExtPropRead(x.Getter, x.Name, f)
 	if x.Static != nil && !x.EvalX {
 		// X names the class: Math in Math.max.
 		if el, ok := b.where[x.X]; ok {
@@ -1041,18 +1086,26 @@ func (b *builder) member(x *syntax.Member, f *Fact) {
 	if x.Call != nil {
 		f.Call = b.call(x.Call)
 	}
-	f.Accessors = b.accessors(x)
+	if !lib {
+		f.Accessors = b.accessors(x)
+	}
 }
 
 // flow sets the facts of a read of v whose type t a smart cast may have
 // made non-null: as kotlinc's binding context, the type is the declared
-// one, with the cast a flag.
+// one, with the cast a flag. A smart cast to another type keeps that
+// type, as the Analysis API's expression type: a state: Any? that is
+// Empty has type Empty.
 func (b *builder) flow(v *types.VarSym, t types.Type, f *Fact) {
 	d := v.Type
 	if (d.N || d.P) && !t.N && !t.P && t.K != types.Invalid && t.K != types.Nothing {
-		if dt := b.cv.typ(d); dt != nil {
+		if dt := b.cv.typ(d); dt != nil && t == d.NonNull() {
 			f.Type = dt
 		}
+		f.FlowNonNull, f.DefinitelyNonNull = true, true
+	}
+	if d.IsParam() && !d.N && !d.D && t.IsParam() && t.D {
+		// A T whose bound is nullable that a smart cast makes T & Any.
 		f.FlowNonNull, f.DefinitelyNonNull = true, true
 	}
 }
@@ -1131,6 +1184,23 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 // function type reads when the checker rewrote it, f() in an inner class
 // being outer.f(): the callee, written f, is that property's reference.
 func (b *builder) invokeCallee(x *syntax.Call, el ElementID) {
+	if id, ok := x.Fun.(*syntax.Ident); ok {
+		// r.f() for a value f of an extension function type, which the
+		// checker made f(r): the callee names f.
+		if _, written := b.where[id]; written {
+			return
+		}
+		ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
+		if !ref.Valid() || ref.Text() != id.Name {
+			return
+		}
+		rel := ElementID{el.Snapshot, ref.ID()}
+		cf := Fact{UsedAsExpression: true}
+		b.ident(id, rel, &cf)
+		cf.Type = b.cv.typ(id.Type())
+		b.set(rel, cf)
+		return
+	}
 	m, ok := x.Fun.(*syntax.Member)
 	if !ok {
 		return
@@ -1189,11 +1259,23 @@ func (b *builder) builtinMember(m *syntax.Member, x *syntax.Call) *Call {
 	if recv == nil || recv.Name == "" {
 		return nil
 	}
+	// Built-ins are Kotlin's, whose parameter names are stable.
 	c := &Call{Name: recv.Name + "." + m.Name, Receiver: recv,
 		ReturnType: b.cv.typ(x.Type()), DeclaredReturnType: b.cv.typ(x.Type()),
-		ArgumentMapping: make([]int, len(x.Args))}
+		ArgumentMapping: make([]int, len(x.Args)), StableNames: true}
 	for i := range c.ArgumentMapping {
 		c.ArgumentMapping[i] = i
+	}
+	if names := builtinParamNames(m.Name, len(x.Args)); names != nil {
+		for i, a := range x.Args {
+			pt := b.cv.typ(builtinParamType(x.Builtin, a.Type()))
+			if pt == nil {
+				pt = &Type{}
+			}
+			c.Parameters = append(c.Parameters, *pt)
+			c.ParameterNames = append(c.ParameterNames, names[i])
+			c.Varargs = append(c.Varargs, false)
+		}
 	}
 	t := m.X.Type()
 	switch ext, ok := textExtensions[x.Builtin]; {
@@ -1209,6 +1291,41 @@ func (b *builder) builtinMember(m *syntax.Member, x *syntax.Call) *Call {
 		c.DeclaredReceiver = &Type{Name: ext.recv}
 	}
 	return c
+}
+
+// builtinParamNames returns the names of the parameters of a built-in
+// member function called with n arguments, as Kotlin declares them, or
+// nil if kc doesn't know them: a linter's rule reads the names, as
+// detekt's UnnamedParameterUse does of s.substring(a, b).
+func builtinParamNames(name string, n int) []string {
+	var names []string
+	switch name {
+	case "substring":
+		names = []string{"startIndex", "endIndex"}
+	case "get":
+		names = []string{"index"}
+	case "shl", "shr", "ushr":
+		names = []string{"bitCount"}
+	case "plus", "minus", "times", "div", "rem", "mod", "floorDiv", "compareTo", "equals",
+		"and", "or", "xor", "rangeTo", "rangeUntil":
+		names = []string{"other"}
+	}
+	if n == 0 || n > len(names) {
+		return nil
+	}
+	return names[:n]
+}
+
+// builtinParamType returns the declared type of a built-in's parameter
+// that takes an argument of type arg.
+func builtinParamType(bi types.Builtin, arg types.Type) types.Type {
+	switch bi {
+	case types.StrSubstring, types.StrGet:
+		return types.IntType
+	case types.StrPlus:
+		return types.AnyType.Nullable()
+	}
+	return arg.NonNull()
 }
 
 // textExtensions are the built-in functions of strings that are
@@ -1863,7 +1980,7 @@ func (b *builder) annotations() {
 			}
 			b.set(ElementID{sid, ref.ID()}, Fact{Role: "type", Type: ct})
 			if u := ref.ChildKind(psi.KindUSER_TYPE); u.Valid() {
-				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: copyType(ct)})
+				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: copyType(ct), Deprecated: deprecated(classDeprecation(cls))})
 			}
 		}
 	}
@@ -2123,7 +2240,7 @@ func (b *builder) packages(entries [][]entry) {
 				case x.Ctor != nil:
 					b.qualifier(m.X, classPackage(x.Ctor))
 				case x.Sym != nil && x.Sym.Owner == nil && !x.Sym.Ext:
-					b.qualifier(m.X, facadePackage(x.Sym.Facade))
+					b.qualifier(m.X, kotlinPackage(x.Sym.Pkg, x.Sym.Facade))
 				}
 			case *syntax.Member:
 				switch {
@@ -2132,7 +2249,7 @@ func (b *builder) packages(entries [][]entry) {
 				case x.Object != nil:
 					b.qualifier(x.X, classPackage(x.Object))
 				case x.Prop != nil && x.Prop.Kind == types.Global:
-					b.qualifier(x.X, facadePackage(x.Prop.Facade))
+					b.qualifier(x.X, kotlinPackage(x.Prop.Pkg, x.Prop.Facade))
 				}
 			}
 		}
