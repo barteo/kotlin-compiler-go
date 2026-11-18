@@ -1,235 +1,235 @@
 {
   "results": [
     {
-      "command": "/tmp/kc-kotlinpoet-time/kc -j 1 -module-name kotlinpoet -cp /opt/bench-tools/kotlinc/lib/kotlin-stdlib.jar:/opt/bench-tools/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain",
+      "command": "/tmp/kc-kotlinpoet-time/kc -j 1 -module-name kotlinpoet -cp /opt/kotlinc/lib/kotlin-stdlib.jar:/opt/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain",
       "name": "kc -j 1",
       "measurements": [
         {
           "time_wall_clock": {
-            "value": 0.33444390900000004,
+            "value": 0.40864447200000004,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.53555,
+            "value": 0.62556,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.477132,
+            "value": 0.543056,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.058418,
+            "value": 0.082504,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 96587776.0,
+            "value": 90824704.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.315454182,
+            "value": 0.445174169,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.5019009999999999,
+            "value": 0.67572,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.41267099999999995,
+            "value": 0.560122,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.08922999999999999,
+            "value": 0.11559799999999999,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 91541504.0,
+            "value": 91480064.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.299289264,
+            "value": 0.47349352400000005,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.487195,
+            "value": 0.714386,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.379562,
+            "value": 0.585855,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.10763299999999999,
+            "value": 0.128531,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 90038272.0,
+            "value": 93188096.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.29605653600000004,
+            "value": 0.448241219,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.479757,
+            "value": 0.68992,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.35604199999999997,
+            "value": 0.5788949999999999,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.12371499999999999,
+            "value": 0.111025,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 96194560.0,
+            "value": 98168832.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.266308193,
+            "value": 0.449817091,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.44268399999999997,
+            "value": 0.671682,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.341954,
+            "value": 0.592656,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.10073,
+            "value": 0.079026,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 90234880.0,
+            "value": 90759168.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.292551455,
+            "value": 0.45480649300000003,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.46518699999999996,
+            "value": 0.7217459999999999,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.366855,
+            "value": 0.6157779999999999,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.09833199999999999,
+            "value": 0.10596799999999999,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 94687232.0,
+            "value": 97247232.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.30414370100000004,
+            "value": 0.46201952,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.496949,
+            "value": 0.681546,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.42754899999999996,
+            "value": 0.58924,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.0694,
+            "value": 0.092306,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 89575424.0,
+            "value": 94101504.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.296126589,
+            "value": 0.43412252300000004,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.471694,
+            "value": 0.6694699999999999,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.403277,
+            "value": 0.5945119999999999,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.06841699999999999,
+            "value": 0.074958,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 93708288.0,
+            "value": 93577216.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.30699458500000004,
+            "value": 0.48301491100000005,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.481375,
+            "value": 0.7146049999999999,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.394682,
+            "value": 0.576683,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.08669299999999999,
+            "value": 0.137922,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 91410432.0,
+            "value": 91348992.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.28907889400000003,
+            "value": 0.48916941700000005,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.472915,
+            "value": 0.7427279999999999,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.372492,
+            "value": 0.6058819999999999,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.100423,
+            "value": 0.136846,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 92327936.0,
+            "value": 96460800.0,
             "unit": "byte"
           },
           "exit_code": 0
@@ -239,280 +239,280 @@
         "memory_peak_resident": {
           "unit": "byte",
           "count": 10,
-          "mean": 92630630.4,
-          "stddev": 2545420.3775800616,
-          "median": 91934720.0,
-          "min": 89575424.0,
-          "max": 96587776.0
+          "mean": 93715660.8,
+          "stddev": 2748380.9338382315,
+          "median": 93382656.0,
+          "min": 90759168.0,
+          "max": 98168832.0
         },
         "time_cpu": {
           "unit": "second",
           "count": 10,
-          "mean": 0.48352069999999986,
-          "stddev": 0.02475117281643213,
-          "median": 0.480566,
-          "min": 0.44268399999999997,
-          "max": 0.53555
+          "mean": 0.6907362999999999,
+          "stddev": 0.03361158974074268,
+          "median": 0.6857329999999999,
+          "min": 0.62556,
+          "max": 0.7427279999999999
         },
         "time_system": {
           "unit": "second",
           "count": 10,
-          "mean": 0.0902991,
-          "stddev": 0.020108210376471706,
-          "median": 0.09378099999999999,
-          "min": 0.058418,
-          "max": 0.12371499999999999
+          "mean": 0.10646839999999999,
+          "stddev": 0.023626974039573215,
+          "median": 0.1084965,
+          "min": 0.074958,
+          "max": 0.137922
         },
         "time_user": {
           "unit": "second",
           "count": 10,
-          "mean": 0.3932216,
-          "stddev": 0.03947296777739869,
-          "median": 0.38712199999999997,
-          "min": 0.341954,
-          "max": 0.477132
+          "mean": 0.5842679000000001,
+          "stddev": 0.02116192110293075,
+          "median": 0.5875475,
+          "min": 0.543056,
+          "max": 0.6157779999999999
         },
         "time_wall_clock": {
           "unit": "second",
           "count": 10,
-          "mean": 0.30004473080000005,
-          "stddev": 0.01773959063133385,
-          "median": 0.2977079265,
-          "min": 0.266308193,
-          "max": 0.33444390900000004
+          "mean": 0.45485033390000007,
+          "stddev": 0.023798404419353787,
+          "median": 0.45231179200000005,
+          "min": 0.40864447200000004,
+          "max": 0.48916941700000005
         }
       }
     },
     {
-      "command": "/tmp/kc-kotlinpoet-time/kc -j 4 -module-name kotlinpoet -cp /opt/bench-tools/kotlinc/lib/kotlin-stdlib.jar:/opt/bench-tools/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain",
+      "command": "/tmp/kc-kotlinpoet-time/kc -j 4 -module-name kotlinpoet -cp /opt/kotlinc/lib/kotlin-stdlib.jar:/opt/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain",
       "name": "kc -j 4",
       "measurements": [
         {
           "time_wall_clock": {
-            "value": 0.208836193,
+            "value": 0.33587555700000005,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.5398689999999999,
+            "value": 0.8281019999999999,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.432417,
+            "value": 0.7192,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.10745199999999999,
+            "value": 0.108902,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 107139072.0,
+            "value": 111796224.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.21282399300000002,
+            "value": 0.317547579,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.5547169999999999,
+            "value": 0.774105,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.42047599999999996,
+            "value": 0.610148,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.134241,
+            "value": 0.163957,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 110026752.0,
+            "value": 109109248.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.205554445,
+            "value": 0.286609273,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.533258,
+            "value": 0.740612,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.44195399999999996,
+            "value": 0.595631,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.091304,
+            "value": 0.144981,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 106618880.0,
+            "value": 110944256.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.20153566,
+            "value": 0.277790329,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.554688,
+            "value": 0.685336,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.451434,
+            "value": 0.596144,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.103254,
+            "value": 0.089192,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 109240320.0,
+            "value": 98557952.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.20458278700000002,
+            "value": 0.29951167300000003,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.5598299999999999,
+            "value": 0.7767660000000001,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.47298599999999996,
+            "value": 0.613947,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.08684399999999999,
+            "value": 0.162819,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 106029056.0,
+            "value": 110944256.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.203221316,
+            "value": 0.317886332,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.552685,
+            "value": 0.807144,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.470837,
+            "value": 0.634983,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.08184799999999999,
+            "value": 0.17216099999999998,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 99209216.0,
+            "value": 107864064.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.216860341,
+            "value": 0.31388609500000003,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.581237,
+            "value": 0.784381,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.46039599999999997,
+            "value": 0.627493,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.12084099999999999,
+            "value": 0.156888,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 101965824.0,
+            "value": 106553344.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.20341972200000003,
+            "value": 0.338040077,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.539731,
+            "value": 0.863768,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.446192,
+            "value": 0.708023,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.093539,
+            "value": 0.155745,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 102682624.0,
+            "value": 107929600.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.234123765,
+            "value": 0.318505148,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.600372,
+            "value": 0.823062,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.497044,
+            "value": 0.685205,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.10332799999999999,
+            "value": 0.137857,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 100585472.0,
+            "value": 104456192.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 0.217273618,
+            "value": 0.33976116,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 0.5493169999999999,
+            "value": 0.873578,
             "unit": "second"
           },
           "time_user": {
-            "value": 0.439187,
+            "value": 0.699647,
             "unit": "second"
           },
           "time_system": {
-            "value": 0.11012999999999999,
+            "value": 0.173931,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 105369600.0,
+            "value": 110485504.0,
             "unit": "byte"
           },
           "exit_code": 0
@@ -522,119 +522,119 @@
         "memory_peak_resident": {
           "unit": "byte",
           "count": 10,
-          "mean": 104886681.6,
-          "stddev": 3637914.4358429443,
-          "median": 105699328.0,
-          "min": 99209216.0,
-          "max": 110026752.0
+          "mean": 107864064.0,
+          "stddev": 3983285.531894605,
+          "median": 108519424.0,
+          "min": 98557952.0,
+          "max": 111796224.0
         },
         "time_cpu": {
           "unit": "second",
           "count": 10,
-          "mean": 0.5565703999999999,
-          "stddev": 0.020325963485158596,
-          "median": 0.5536865,
-          "min": 0.533258,
-          "max": 0.600372
+          "mean": 0.7956854000000001,
+          "stddev": 0.056564248173009216,
+          "median": 0.7957624999999999,
+          "min": 0.685336,
+          "max": 0.873578
         },
         "time_system": {
           "unit": "second",
           "count": 10,
-          "mean": 0.1032781,
-          "stddev": 0.015982934117016463,
-          "median": 0.103291,
-          "min": 0.08184799999999999,
-          "max": 0.134241
+          "mean": 0.14664329999999998,
+          "stddev": 0.027788894244723812,
+          "median": 0.1563165,
+          "min": 0.089192,
+          "max": 0.173931
         },
         "time_user": {
           "unit": "second",
           "count": 10,
-          "mean": 0.45329230000000004,
-          "stddev": 0.022495441252000866,
-          "median": 0.448813,
-          "min": 0.42047599999999996,
-          "max": 0.497044
+          "mean": 0.6490421,
+          "stddev": 0.048679087897622354,
+          "median": 0.631238,
+          "min": 0.595631,
+          "max": 0.7192
         },
         "time_wall_clock": {
           "unit": "second",
           "count": 10,
-          "mean": 0.21082318400000002,
-          "stddev": 0.009969306909767833,
-          "median": 0.207195319,
-          "min": 0.20153566,
-          "max": 0.234123765
+          "mean": 0.31454132230000004,
+          "stddev": 0.021177751447238467,
+          "median": 0.3177169555,
+          "min": 0.277790329,
+          "max": 0.33976116
         }
       }
     },
     {
-      "command": "kotlinc -nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,jvm -Xfragment-refines=jvm:common -Xfragment-sources=common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/CodePoint.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/DelicateKotlinPoetApi.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/ExperimentalKotlinPoetApi.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Import.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KModifier.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KOperator.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/NameAllocator.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Annotatable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.jvm.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextParameter.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextReceivable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Documentable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Dynamic.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberSpecHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/OriginatingElementsHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Taggable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeAliasSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpecHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Util.jvm.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/tags/TypeAliasTag.kt -Xjdk-release=8 -module-name kotlinpoet -jvm-default=no-compatibility -opt-in=com.squareup.kotlinpoet.DelicateKotlinPoetApi -cp /opt/bench-tools/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kotlinc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/CodePoint.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/DelicateKotlinPoetApi.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/ExperimentalKotlinPoetApi.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Import.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KModifier.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KOperator.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/NameAllocator.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Annotatable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.jvm.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextParameter.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextReceivable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Documentable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Dynamic.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberSpecHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/OriginatingElementsHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Taggable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeAliasSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpecHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Util.jvm.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/tags/TypeAliasTag.kt",
+      "command": "kotlinc -nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,jvm -Xfragment-refines=jvm:common -Xfragment-sources=common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/CodePoint.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/DelicateKotlinPoetApi.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/ExperimentalKotlinPoetApi.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Import.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KModifier.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KOperator.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/NameAllocator.kt,common:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Annotatable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.jvm.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextParameter.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextReceivable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Documentable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Dynamic.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberSpecHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/OriginatingElementsHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Taggable.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeAliasSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpecHolder.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Util.jvm.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt,jvm:/tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/tags/TypeAliasTag.kt -Xjdk-release=8 -module-name kotlinpoet -jvm-default=no-compatibility -opt-in=com.squareup.kotlinpoet.DelicateKotlinPoetApi -cp /opt/kotlinc/lib/kotlin-reflect.jar -d /tmp/kc-kotlinpoet-time/out-kotlinc /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/CodePoint.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/DelicateKotlinPoetApi.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/ExperimentalKotlinPoetApi.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Import.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KModifier.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/KOperator.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/NameAllocator.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Annotatable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.jvm.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextParameter.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ContextReceivable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Documentable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Dynamic.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/MemberSpecHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/OriginatingElementsHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Taggable.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeAliasSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpecHolder.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/Util.jvm.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt /tmp/kc-survey/kotlinpoet-2.4.0/kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/tags/TypeAliasTag.kt",
       "name": "kotlinc (cold JVM)",
       "measurements": [
         {
           "time_wall_clock": {
-            "value": 16.940658253,
+            "value": 20.169076617,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 51.388491,
+            "value": 61.823586999999996,
             "unit": "second"
           },
           "time_user": {
-            "value": 49.161066,
+            "value": 60.564189,
             "unit": "second"
           },
           "time_system": {
-            "value": 2.227425,
+            "value": 1.259398,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 1013006336.0,
+            "value": 1021071360.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 16.529265792,
+            "value": 20.051612769,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 49.950728,
+            "value": 61.8261,
             "unit": "second"
           },
           "time_user": {
-            "value": 48.234953,
+            "value": 60.658111,
             "unit": "second"
           },
           "time_system": {
-            "value": 1.7157749999999998,
+            "value": 1.167989,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 992833536.0,
+            "value": 997961728.0,
             "unit": "byte"
           },
           "exit_code": 0
         },
         {
           "time_wall_clock": {
-            "value": 19.826389191,
+            "value": 19.917993811,
             "unit": "second"
           },
           "time_cpu": {
-            "value": 59.857505,
+            "value": 61.899023,
             "unit": "second"
           },
           "time_user": {
-            "value": 57.361521,
+            "value": 60.568345,
             "unit": "second"
           },
           "time_system": {
-            "value": 2.495984,
+            "value": 1.330678,
             "unit": "second"
           },
           "memory_peak_resident": {
-            "value": 963190784.0,
+            "value": 1016844288.0,
             "unit": "byte"
           },
           "exit_code": 0
@@ -644,47 +644,47 @@
         "memory_peak_resident": {
           "unit": "byte",
           "count": 3,
-          "mean": 989676885.3333334,
-          "stddev": 25057346.983264238,
-          "median": 992833536.0,
-          "min": 963190784.0,
-          "max": 1013006336.0
+          "mean": 1011959125.3333334,
+          "stddev": 12304973.933483211,
+          "median": 1016844288.0,
+          "min": 997961728.0,
+          "max": 1021071360.0
         },
         "time_cpu": {
           "unit": "second",
           "count": 3,
-          "mean": 53.73224133333334,
-          "stddev": 5.35312356019197,
-          "median": 51.388491,
-          "min": 49.950728,
-          "max": 59.857505
+          "mean": 61.84957,
+          "stddev": 0.04284598229706208,
+          "median": 61.8261,
+          "min": 61.823586999999996,
+          "max": 61.899023
         },
         "time_system": {
           "unit": "second",
           "count": 3,
-          "mean": 2.1463946666666667,
-          "stddev": 0.39636593838312273,
-          "median": 2.227425,
-          "min": 1.7157749999999998,
-          "max": 2.495984
+          "mean": 1.2526883333333334,
+          "stddev": 0.08155177741982905,
+          "median": 1.259398,
+          "min": 1.167989,
+          "max": 1.330678
         },
         "time_user": {
           "unit": "second",
           "count": 3,
-          "mean": 51.58584666666667,
-          "stddev": 5.023269037761801,
-          "median": 49.161066,
-          "min": 48.234953,
-          "max": 57.361521
+          "mean": 60.59688166666666,
+          "stddev": 0.053066859049064045,
+          "median": 60.568345,
+          "min": 60.564189,
+          "max": 60.658111
         },
         "time_wall_clock": {
           "unit": "second",
           "count": 3,
-          "mean": 17.765437745333333,
-          "stddev": 1.7966501009624978,
-          "median": 16.940658253,
-          "min": 16.529265792,
-          "max": 19.826389191
+          "mean": 20.046227732333335,
+          "stddev": 0.12562799382356937,
+          "median": 20.051612769,
+          "min": 19.917993811,
+          "max": 20.169076617
         }
       }
     }

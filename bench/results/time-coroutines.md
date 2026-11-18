@@ -4,16 +4,16 @@ Kotlin/kotlinx.coroutines 1.11.0's kotlinx-coroutines-core for the JVM: 169 file
 
 - Machine: Linux x86_64, 4 CPUs
 - go version go1.27.2 linux/amd64
-- openjdk version "21.0.12.1" 2026-08-18
-- info: kotlinc-jvm 2.4.21 (JRE 21.0.12.1+1-1-24.04.4-Ubuntu)
+- Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock
+- info: kotlinc-jvm 2.4.21 (JRE 21.0.13.0.3+1-1-24.04.1-Ubuntu)
 - kotlinc JVM options: -Xmx8g
 - Cooldown before each run (outside timing): 0 s
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 796 ± 82 ms | — | 1,150 ms | 125 MB |
-| `kc -j 4` | 643 ± 33 ms | 1.2x faster | 1,850 ms | 140 MB |
-| `kotlinc (cold JVM)` | 28,531 ± 891 ms | 35.8x slower | 87,883 ms | 1,036 MB |
+| `kc -j 1` | 876 ± 62 ms | — | 1,221 ms | 128 MB |
+| `kc -j 4` | 603 ± 18 ms | 1.5x faster | 1,681 ms | 139 MB |
+| `kotlinc (cold JVM)` | 27,473 ± 805 ms | 31.4x slower | 88,956 ms | 1,053 MB |
 
-- kotlinc in a warm JVM (median of the last 5 of 10 runs in one JVM): 6884 ms
+- kotlinc in a warm JVM (median of the last 5 of 10 runs in one JVM): 6305 ms
 - Class files: kc 790, kotlinc 850
