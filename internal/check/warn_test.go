@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -300,9 +301,33 @@ fun f(x: Int) {
 
 // TestWarningsCasts checks the warnings of type checks and casts whose
 // outcome the types decide against those kotlinc reports of
-// testdata/casts.kt, named by the comment that ends each line.
+// testdata/casts.kt.
 func TestWarningsCasts(t *testing.T) {
-	b, err := os.ReadFile("testdata/casts.kt")
+	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnreachable checks the warnings of unreachable code against
+// those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
+// there are none without it.
+func TestWarningsUnreachable(t *testing.T) {
+	checkReference(t, "testdata/unreachable.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/unreachable.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":UNREACHABLE_CODE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
+// checkReference checks the warnings of file, with options opts, against
+// those named by the comment that ends each of its lines: each name once,
+// however many times kotlinc reports it on the line.
+func checkReference(t *testing.T, file string, opts Options) {
+	t.Helper()
+	b, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,8 +340,8 @@ func TestWarningsCasts(t *testing.T) {
 		}
 	}
 	sort.Strings(want)
-	got := checkWarnings(t, string(b))
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("got  %v\nwant %v", got, want)
+	// A line may have a warning more than once, at several columns.
+	if got := slices.Compact(checkWarningsWith(t, string(b), opts)); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
 }

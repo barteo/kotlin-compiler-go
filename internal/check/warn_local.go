@@ -37,6 +37,10 @@ func (c *Checker) localWarnings() {
 			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
 		case *syntax.When:
 			c.whenIsWarnings(n)
+		case *syntax.Block:
+			if c.u.extraWarnings {
+				c.unreachableWarnings(n)
+			}
 		case *syntax.StringLit:
 			if c.u.experimentalWarnings {
 				c.prefixWarnings(n)

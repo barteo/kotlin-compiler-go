@@ -395,15 +395,22 @@ func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string)
 // checkerFlags returns kc's flags for the warnings of kotlinc's checkers
 // that its command line enables only on request, as the diagnostics
 // tests' infrastructure enables them for module m: the extra checkers
-// (-Wextra, as UNREACHABLE_CODE) for all tests, as their markup expects
-// those warnings without WITH_EXTRA_CHECKERS, and the experimental ones
-// (as REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS.
+// (-Wextra, as UNREACHABLE_CODE) for WITH_EXTRA_CHECKERS and the tests of
+// controlFlowAnalysis/deadCode, whose markup expects their warnings
+// without it, and the experimental ones (as
+// REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS.
 func checkerFlags(t *test, m *module) []string {
-	flags := []string{"-Wextra"}
-	for _, ds := range []map[string][]string{m.directives, t.global} {
-		if _, ok := ds["WITH_EXPERIMENTAL_CHECKERS"]; ok {
-			return append(flags, "-Xuse-fir-experimental-checkers")
-		}
+	var flags []string
+	has := func(d string) bool {
+		_, inModule := m.directives[d]
+		_, inTest := t.global[d]
+		return inModule || inTest
+	}
+	if has("WITH_EXTRA_CHECKERS") || strings.HasPrefix(t.path, "tests/controlFlowAnalysis/deadCode/") {
+		flags = append(flags, "-Wextra")
+	}
+	if has("WITH_EXPERIMENTAL_CHECKERS") {
+		flags = append(flags, "-Xuse-fir-experimental-checkers")
 	}
 	return flags
 }

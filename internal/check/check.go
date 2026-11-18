@@ -249,6 +249,11 @@ type Checker struct {
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool
+	// blockJumps are, with -Wextra, the blocks with a statement that
+	// always jumps, and its index: what follows it is unreachable.
+	blockJumps map[*syntax.Block]int
+	// deadBlocks are the blocks in code reported as unreachable.
+	deadBlocks map[*syntax.Block]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
