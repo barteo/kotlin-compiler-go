@@ -134,6 +134,9 @@ classes load under `-Xverify:all`.
   `kc` has no language versions.
 - **Metadata.** `bench/metadump` finds it the same as `kotlinc`'s, but
   for the differences in [Unsupported Kotlin](unsupported.md#differences-from-kotlinc).
+- **Warnings.** With ktor's options, `kotlinc` reports 6 warnings on the
+  three modules, and `kc` 3 of them, with no others: the deprecated
+  `String(bytes, ...)` in `ktor-io` and two `ERROR_SUPPRESSION`s.
 - **Tests.** ktor's own JVM tests (`common` and `jvm`, and `jvmAndPosix`
   for `ktor-io`: 687 tests), compiled by `kotlinc` against either build
   and run with the JUnit 5 console under `-Xverify:all`, give each test
