@@ -327,6 +327,12 @@ func TestWarningsUnusedVar(t *testing.T) {
 
 // TestWarningsShadow checks the warnings of extensions that members
 // shadow against kotlinc's, which testdata/shadow.kt records.
+// TestWarningsErrorSuppression checks the warnings of the error names in
+// the @Suppress annotations of testdata/suppress.kt against kotlinc's.
+func TestWarningsErrorSuppression(t *testing.T) {
+	checkReference(t, "testdata/suppress.kt", Options{Warnings: true})
+}
+
 func TestWarningsShadow(t *testing.T) {
 	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
 }

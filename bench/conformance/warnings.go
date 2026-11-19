@@ -46,7 +46,8 @@ var uncheckedWarnings = []string{"UNUSED_EXPRESSION", "UNUSED_LAMBDA_EXPRESSION"
 
 // switchedOff returns the names of the diagnostics that test t, with
 // marks ms, switches off: those its DIAGNOSTICS directive does, -NAME,
-// and the uncheckedWarnings it doesn't ask for.
+// ERROR_SUPPRESSION with DONT_WARN_ON_ERROR_SUPPRESSION, and the
+// uncheckedWarnings it doesn't ask for.
 func switchedOff(t *test, ms []mark) map[string]bool {
 	off := map[string]bool{}
 	on := map[string]bool{}
@@ -58,6 +59,9 @@ func switchedOff(t *test, ms []mark) map[string]bool {
 				on[n] = true
 			}
 		}
+	}
+	if _, ok := t.directives["DONT_WARN_ON_ERROR_SUPPRESSION"]; ok {
+		off["ERROR_SUPPRESSION"] = true
 	}
 	if _, ok := t.directives["WITH_EXTRA_CHECKERS"]; !ok {
 		for _, n := range uncheckedWarnings {
@@ -75,11 +79,12 @@ func (dt *diagTest) warnHit(e mark) bool {
 }
 
 // strayWarnings returns kc's warnings on lines that don't expect them,
-// but those the test switches off.
+// but those the test switches off and those of the helper files, whose
+// diagnostics the tests don't check.
 func (dt *diagTest) strayWarnings() []diag {
 	var ds []diag
 	for _, d := range dt.kcWarns {
-		if dt.off[d.name] || dt.off["warnings"] {
+		if dt.off[d.name] || dt.off["warnings"] || strings.HasPrefix(d.file, "helpers/") {
 			continue
 		}
 		if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line && m.name == d.name }) {

@@ -8,10 +8,10 @@ import (
 )
 
 // suppressible maps the names of the errors that @Suppress may name to
-// kc's messages for each. kotlinc reports a suppressed error as a warning
-// (ERROR_SUPPRESSION) and compiles the code. Errors whose code the
-// backend can't generate, as an unresolved reference or a missing
-// argument, aren't listed. kc's messages don't tell apart some errors
+// kc's messages for each: kotlinc compiles the code without the error,
+// warning of the suppression (see errorSuppressionNames). Errors whose
+// code the backend can't generate, as an unresolved reference or a
+// missing argument, aren't listed. kc's messages don't tell apart some errors
 // kotlinc names differently: one type mismatch message is all of
 // ARGUMENT_TYPE_MISMATCH, INITIALIZER_TYPE_MISMATCH and the others.
 var suppressible = map[string]*regexp.Regexp{}
@@ -82,12 +82,12 @@ type suppressName struct {
 }
 
 // errorSuppression is kotlinc's warning about a suppressed error.
-const errorSuppression = "This code uses error suppression for '%s'. While it might compile and work, the compiler behavior is UNSPECIFIED and WON'T BE PRESERVED. Please report your use case to the Kotlin issue tracker instead: https://kotl.in/issue"
+const errorSuppression = "suppression of error '%s' might compile and work, but the compiler behavior is UNSPECIFIED and WILL NOT BE PRESERVED. Please report your use case to the Kotlin issue tracker instead: https://kotl.in/issue"
 
 // suppressErrors drops the errors and the warnings that the @Suppress of
 // a declaration, statement or expression they are in, or of their file,
-// names. A suppressed error is reported as a warning, ERROR_SUPPRESSION,
-// as kotlinc does; @Suppress("warnings") suppresses all warnings.
+// names; @Suppress("warnings") suppresses all warnings. As kotlinc, it
+// warns of each string that names an error (ERROR_SUPPRESSION).
 func (c *Checker) suppressErrors() {
 	var rs []suppressRange
 	if ns := suppressStrings(c.file.Annotations); len(ns) > 0 {
@@ -114,27 +114,22 @@ func (c *Checker) suppressErrors() {
 			kept = append(kept, e)
 			continue
 		}
-		if n, ok := suppressedBy(e, rs); ok {
-			// kotlinc warns of the string that names the error, if it
-			// names it as it is spelled.
-			if !silentSuppression[n.name] && n.name == strings.ToUpper(n.name) {
-				c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
-			}
-		} else {
+		if _, ok := suppressedBy(e, rs); !ok {
 			kept = append(kept, e)
 		}
 	}
 	c.errs = kept
-}
-
-// silentSuppression are the errors whose suppression kotlinc doesn't
-// warn of: those not in its FIR_NON_SUPPRESSIBLE_ERROR_NAMES, the JVM
-// checkers' among them.
-var silentSuppression = map[string]bool{
-	"DEPRECATION_ERROR":                   true,
-	"INVISIBLE_MEMBER":                    true,
-	"INAPPLICABLE_JVM_NAME":               true,
-	"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE": true,
+	// kotlinc warns of each string that names an error as it is spelled,
+	// whether or not the code has the error.
+	reported := map[syntax.Pos]bool{}
+	for _, r := range rs {
+		for _, n := range r.names {
+			if errorSuppressionNames[n.name] && !reported[n.p] {
+				reported[n.p] = true
+				c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			}
+		}
+	}
 }
 
 // suppressedBy returns the name of the error e that a range of rs
@@ -260,6 +255,14 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 	case *syntax.ClassDecl:
 		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
 		rs = typeParamRanges(rs, d.TypeParams)
+		if as := d.CtorMods.Annotations; len(as) > 0 {
+			// The primary constructor's: its parameters.
+			end := syntax.Pos{Line: as[len(as)-1].P.Line, Col: 1 << 30}
+			if n := len(d.CtorParams); n > 0 && before(end, d.CtorParams[n-1].P) {
+				end = syntax.Pos{Line: d.CtorParams[n-1].P.Line, Col: 1 << 30}
+			}
+			rs = annotationsRange(rs, as, as[0].P, end)
+		}
 		for _, p := range d.CtorParams {
 			rs = paramRanges(rs, []*syntax.Param{&p.Param})
 			end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}
