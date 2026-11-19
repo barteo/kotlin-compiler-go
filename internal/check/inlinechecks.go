@@ -466,20 +466,28 @@ func (c *Checker) inlineProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if !d.Inline && !d.InlineGetter && !d.InlineSetter {
 		return
 	}
-	if virtualMember(d.Modifiers, owner) {
-		p := d.P
-		switch {
-		case d.Inline:
-		case d.InlineGetter && d.Getter != nil:
-			p = d.Getter.P
-		case d.InlineSetter && d.Setter != nil:
-			p = d.Setter.P
-		}
-		c.errorf(p, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
-	}
+	c.virtualInlineProp(d, owner)
 	if d.Init != nil || d.Field != nil {
 		c.errorf(d.P, "inline property cannot have a backing field")
 	}
+}
+
+// virtualInlineProp reports an inline property of class owner, or one
+// with an inline accessor, that is virtual, and whether it is.
+func (c *Checker) virtualInlineProp(d *syntax.PropDecl, owner *types.ClassSym) bool {
+	if !d.Inline && !d.InlineGetter && !d.InlineSetter || !virtualMember(d.Modifiers, owner) {
+		return false
+	}
+	p := d.P
+	switch {
+	case d.Inline:
+	case d.InlineGetter && d.Getter != nil:
+		p = d.Getter.P
+	case d.InlineSetter && d.Setter != nil:
+		p = d.Setter.P
+	}
+	c.errorf(p, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	return true
 }
 
 // inlineFileChecks checks the file's inline functions after all its code

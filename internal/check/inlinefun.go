@@ -23,7 +23,7 @@ func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		// A call through the overridden function isn't inlined.
 		c.warnf(d.P, "OVERRIDE_BY_INLINE", "override by an inline function")
 	}
-	if owner != nil && (owner.Interface || owner.Value || !isFinal(d.Modifiers, owner)) {
+	if owner != nil && !copiedMember(d.Modifiers, owner) {
 		return // an ordinary method
 	}
 	d.Inlinable = make([]bool, len(d.Params))

@@ -261,7 +261,7 @@ func (c *Checker) setterVisible(p *types.VarSym) bool {
 		return false
 	}
 	v := setterVis(p)
-	return v == syntax.Public || c.canSee(v, p.Owner, p.Facade)
+	return v == syntax.Public || c.canSee(v, p.Owner, p.FieldClass())
 }
 
 // setterVis returns the visibility of the setter of a property of the

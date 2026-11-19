@@ -108,9 +108,13 @@ func (c *Checker) markInline(l *syntax.Lambda, f *types.FunSym, b *inline.Body, 
 }
 
 // jvmParam returns the index of f's parameter i in its body b, where an
-// extension's receiver comes first, after a member's dispatch receiver.
+// extension's receiver comes first, after a member's dispatch receiver,
+// or a value class's value, which its -impl method takes first.
 func jvmParam(f *types.FunSym, b *inline.Body, i int) int {
 	if f.Ext {
+		i++
+	}
+	if f.Impl {
 		i++
 	}
 	if b.This {

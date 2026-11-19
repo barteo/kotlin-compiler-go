@@ -56,3 +56,17 @@ fun local() {
         external fun ok()
     }
 }
+
+fun locals() {
+    external fun ok(x: Int): Int
+    external fun body() {} // ERROR external declaration cannot have a body
+    external fun expr() = 1 // ERROR external declaration cannot have a body
+}
+
+interface WithLocals {
+    fun m() {
+        // kotlinc writes a native method in the interface, which the JVM
+        // refuses to load.
+        external fun n() // ERROR local external functions in interfaces are not supported
+    }
+}

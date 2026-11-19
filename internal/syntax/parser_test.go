@@ -225,25 +225,6 @@ func TestReservedAnnotationName(t *testing.T) {
 	}
 }
 
-// TestUnsupportedFeatures checks the feature that each unsupported
-// construct is reported as, which bench/survey counts.
-func TestUnsupportedFeatures(t *testing.T) {
-	tests := []struct{ src, feature string }{
-		{"fun f() {\n  external fun g()\n}", "local external function"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.src, func(t *testing.T) {
-			_, errs := Parse("t.kt", tt.src)
-			if len(errs) == 0 {
-				t.Fatal("expected an error")
-			}
-			if errs[0].Feature != tt.feature {
-				t.Errorf("got feature %q (%s), want %q", errs[0].Feature, errs[0].Msg, tt.feature)
-			}
-		})
-	}
-}
-
 func TestTokens(t *testing.T) {
 	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; return@`f g`; this@A; 'c'; 1f; 2uL; is as")
 	if len(errs) > 0 {
