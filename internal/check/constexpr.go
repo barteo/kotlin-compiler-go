@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -25,12 +26,40 @@ func (c *Checker) nonConst(x syntax.Expr) syntax.Expr {
 // compile-time constant, as kotlinc's CONST_VAL_WITH_NON_CONST_INITIALIZER
 // and NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION.
 func (c *Checker) constInit(d *syntax.PropDecl) {
-	if !d.Const || d.Init == nil || d.Sym == nil || d.DelegateOf != nil || d.Init.Type().K == types.Invalid {
+	if !d.Const || d.Sym == nil || d.DelegateOf != nil || d.Mutable {
+		return
+	}
+	if t := d.Sym.Type; t.K != types.Invalid && (!constType(t) || t.N || t.K == types.Null || t.K == types.Nothing) {
+		c.errorf(modPos(d.Written, "const", d.P), "const 'val' has type '%s'. Only primitive types and String are allowed", t)
+		d.Sym.ConstBad = true
+		return
+	}
+	if d.Init == nil {
+		if d.Field == nil && d.Getter == nil && d.AccessorP.Line == 0 && !d.Expect && !d.External {
+			c.errorf(modPos(d.Written, "const", d.P), "const 'val' should have an initializer")
+		}
+		return
+	}
+	if d.Init.Type().K == types.Invalid {
 		return
 	}
 	bad := nonConst(d.Init, 0)
-	if bad == nil && constCycle(d.Sym, d.Init, map[*types.VarSym]bool{d.Sym: true}, 0) {
-		bad = d.Init // const val a = b + 1 with const val b = a + 1
+	if bad == nil {
+		var path []*types.VarSym
+		if constCycle(d.Sym, d.Init, map[*types.VarSym]bool{d.Sym: true}, 0, &path) {
+			bad = d.Init // const val a = b + 1 with const val b = a + 1
+			// The other const vals of the cycle, checked before this
+			// one, are reported too, if they are in this file.
+			for _, v := range path {
+				if pd, ok := v.Decl.(*syntax.PropDecl); ok && pd != d && !v.ConstBad && pd.Init != nil && propIn(c.file.Decls, pd) {
+					v.ConstBad = true
+					c.errorf(pd.Init.Pos(), "const 'val' initializer should be a constant value")
+				}
+			}
+		}
+	}
+	if bad != nil {
+		d.Sym.ConstBad = true
 	}
 	switch {
 	case bad == nil:
@@ -55,7 +84,7 @@ func nonConstRef(x syntax.Expr) bool {
 
 // constCycle reports whether the const vals that x reads, and those
 // their initializers read, read the one being checked, in seen.
-func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, depth int) bool {
+func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, depth int, path *[]*types.VarSym) bool {
 	found := false
 	syntax.Inspect(x, func(n any) bool {
 		if found || depth > 64 {
@@ -66,7 +95,7 @@ func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, 
 		case *syntax.Ident:
 			v = n.Sym
 		case *syntax.Member:
-			v = n.Prop
+			v = cmp.Or(n.Prop, n.Field)
 		case *syntax.Lambda, *syntax.ObjectExpr:
 			return false
 		}
@@ -82,7 +111,10 @@ func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, 
 		}
 		seen[v] = true
 		if pd, ok := v.Decl.(*syntax.PropDecl); ok && pd.Init != nil && pd.Init.Type().K != types.Invalid {
-			found = constCycle(self, pd.Init, seen, depth+1)
+			found = constCycle(self, pd.Init, seen, depth+1, path)
+			if found {
+				*path = append(*path, v)
+			}
 		}
 		return !found
 	})
@@ -106,8 +138,8 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 	case *syntax.Ident:
 		switch {
 		case x.Sym != nil:
-			if !constVar(x.Sym) {
-				return x
+			if !constVar(x.Sym) || x.Sym.ConstBad {
+				return x // const val copy = bad, with bad's initializer not constant
 			}
 		case x.Member != nil: // an imported member, or this.X
 			if nonConst(x.Member, depth+1) != nil {
@@ -118,14 +150,14 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 	case *syntax.Member:
 		switch {
 		case x.Prop != nil:
-			if !constVar(x.Prop) {
+			if !constVar(x.Prop) || x.Prop.ConstBad {
 				return x
 			}
 			if id, ok := x.X.(*syntax.Ident); ok && id.Sym != nil {
 				return x // a const read through a variable: v.CONST
 			}
 		case x.Field != nil:
-			if !constVar(x.Field) {
+			if !constVar(x.Field) || x.Field.ConstBad {
 				return x
 			}
 		case x.Static != nil || x.Object != nil:
@@ -174,6 +206,9 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 		}
 		if x.Call != nil && x.Call.Sym != nil && x.Call.Sym.Decl != nil {
 			return x // an operator function of the program's
+		}
+		if (x.Op == syntax.SLASH || x.Op == syntax.PERCENT) && integralConst(xt) && integralConst(yt) && zeroDivisor(x.Y) {
+			return x // 1 / 0, which kotlinc can't evaluate
 		}
 		return nil
 	case *syntax.Call:
@@ -229,6 +264,16 @@ func nonConstCall(x *syntax.Call, depth int) syntax.Expr {
 	}
 	if isUnsigned(m.X.Type()) {
 		return x // 1u.toInt(), which kotlinc doesn't evaluate
+	}
+	if m.Written {
+		switch m.Name {
+		case "inc", "dec":
+			return x // 1.inc(), which kotlinc doesn't evaluate
+		case "div", "rem":
+			if len(x.Args) == 1 && integralConst(m.X.Type()) && integralConst(x.Args[0].Type()) && zeroDivisor(x.Args[0]) {
+				return x // 0.div(0)
+			}
+		}
 	}
 	if r := nonConst(m.X, depth+1); r != nil {
 		return x
@@ -299,6 +344,65 @@ func constType(t types.Type) bool {
 		return t.N // null
 	case types.Class:
 		return isUnsigned(t)
+	}
+	return false
+}
+
+// integralConst reports whether t is an integer type whose constants
+// kotlinc evaluates: Int, Long, Short or Byte.
+func integralConst(t types.Type) bool {
+	switch t.K {
+	case types.Int, types.Long, types.Short, types.Byte:
+		return !t.N
+	}
+	return false
+}
+
+// zeroDivisor reports whether x, an integer divisor, is literal
+// arithmetic whose value is 0, or a const val of 0.
+func zeroDivisor(x syntax.Expr) bool {
+	x = uncheck(x)
+	if v, ok := arithValue(x); ok {
+		return v == 0
+	}
+	var sym *types.VarSym
+	switch x := x.(type) {
+	case *syntax.Ident:
+		sym = x.Sym
+	case *syntax.Member:
+		sym = cmp.Or(x.Prop, x.Field)
+	}
+	if sym == nil || !sym.Const {
+		return false
+	}
+	if pd, ok := sym.Decl.(*syntax.PropDecl); ok && pd.Init != nil {
+		if v, ok := arithValue(uncheck(pd.Init)); ok {
+			return v == 0
+		}
+	}
+	switch v := sym.Constant.(type) {
+	case int32:
+		return v == 0
+	case int64:
+		return v == 0
+	}
+	return false
+}
+
+// propIn reports whether property d is declared among ds, or in their
+// classes.
+func propIn(ds []syntax.Decl, d *syntax.PropDecl) bool {
+	for _, x := range ds {
+		switch x := x.(type) {
+		case *syntax.PropDecl:
+			if x == d {
+				return true
+			}
+		case *syntax.ClassDecl:
+			if propIn(x.Members, d) {
+				return true
+			}
+		}
 	}
 	return false
 }

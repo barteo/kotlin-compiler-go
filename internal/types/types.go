@@ -349,6 +349,9 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// ConstBad is set by the checker on a const val whose type or
+	// initializer isn't constant: reading it isn't constant either.
+	ConstBad bool
 	// MaybeConst is set on a static final field of a Java source with no
 	// Constant only because it reads a Kotlin class's const val.
 	MaybeConst bool
