@@ -270,6 +270,9 @@ func flagOptions(opts *Options, flags []string) {
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
+	if i := slices.Index(flags, "-jvm-target"); i >= 0 && i+1 < len(flags) {
+		opts.JVMTarget = flags[i+1]
+	}
 	for _, f := range flags {
 		if m, ok := strings.CutPrefix(f, "-opt-in="); ok {
 			opts.OptIns = append(opts.OptIns, m)
@@ -1586,11 +1589,12 @@ func TestMetro(t *testing.T) {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
 	cp := []string{lib, rt, libOut}
-	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true}
+	// For JVM 17, as gen_expected.sh compiles all three.
+	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "mid")), opts); err != nil {
 		t.Fatalf("compile mid: %v", err)
 	}
-	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true}
+	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
 		t.Fatalf("compile app: %v", err)
 	}
