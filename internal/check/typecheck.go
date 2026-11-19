@@ -24,6 +24,7 @@ func (c *Checker) isExpr(x *syntax.Is) types.Type {
 		orig = declared // kotlinc checks the type before smart casts
 	}
 	c.impossibleIs(x.P, orig, st, x.Target, x.Not)
+	c.noteTypeFacts(x, x.X, st)
 	return types.BoolType
 }
 
@@ -37,6 +38,41 @@ func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Ty
 		}
 	}
 	c.impossibleIs(cond.P, orig, st, cond.Target, cond.NotIs)
+	if x.SubjVar == "" {
+		c.noteTypeFacts(cond, x.Subject, st)
+	} else {
+		c.noteTypeFacts(cond, nil, st)
+	}
+}
+
+// typeFacts are what the check of x is T or x as T knew of x, for the
+// warnings about it (see isWarnings and castNeverSucceeds): its type before
+// smart casts, orig, and the types its smart casts gave it, all of
+// which hold, though kc's type of x keeps only the last.
+type typeFacts struct {
+	orig  types.Type
+	casts []types.Type
+}
+
+// noteTypeFacts records the typeFacts of the type check or cast n of x,
+// whose type, smart casts included, is st. x is nil for a when's subject
+// variable, which isn't smart cast.
+func (c *Checker) noteTypeFacts(n any, x syntax.Expr, st types.Type) {
+	f := typeFacts{orig: st}
+	if x != nil {
+		if v := c.narrowSym(x); v != nil && v.Type.K != types.Invalid {
+			f.orig = v.Type
+			for _, t := range append(c.earlierCasts(x, v), st) {
+				if t != f.orig && !slices.Contains(f.casts, t) {
+					f.casts = append(f.casts, t)
+				}
+			}
+		}
+	}
+	if c.typeFacts == nil {
+		c.typeFacts = map[any]typeFacts{}
+	}
+	c.typeFacts[n] = f
 }
 
 // impossibleIs reports x is T, or x !is T, that can never be true, or
@@ -51,16 +87,7 @@ func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool
 	}
 	l, ok1 := c.castInfo(orig, 0)
 	r, ok2 := c.castInfo(t, 0)
-	if !ok1 || !ok2 {
-		return
-	}
-	switch {
-	case l.final || r.final:
-	case l.concrete && r.concrete && l.class && r.class:
-	default:
-		return
-	}
-	if c.erasedSub(l.parts, r.parts) || c.erasedSub(r.parts, l.parts) {
+	if !ok1 || !ok2 || !c.rules1(l, r) {
 		return
 	}
 	null := types.MayBeNull(smart) && types.MayBeNull(t)
@@ -76,6 +103,56 @@ func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool
 		return
 	}
 	c.errorf(p, "check for instance is always '%v': %s and %s are incompatible", not, orig, t)
+}
+
+// rules1 reports whether values of the types l and r can't be the same
+// object, by kotlinc's RULES1: they are unrelated, with their type
+// arguments erased, and one of them is a final class, or both are
+// classes rather than interfaces.
+func (c *Checker) rules1(l, r castTypeInfo) bool {
+	switch {
+	case l.final || r.final:
+	case l.concrete && r.concrete && l.class && r.class:
+	default:
+		return false
+	}
+	return !c.erasedSub(l.parts, r.parts) && !c.erasedSub(r.parts, l.parts)
+}
+
+// intersectionInfo returns the castTypeInfo of the intersection of ts,
+// as kotlinc's of a smart-cast value: a part that is a supertype of
+// another adds nothing to it. It reports false if a part that does is a
+// type castInfo doesn't judge.
+func (c *Checker) intersectionInfo(ts []types.Type) (castTypeInfo, bool) {
+	var all []types.Type
+	for _, t := range ts {
+		if ti, ok := c.castInfo(t, 0); ok {
+			all = append(all, ti.parts...)
+		} else {
+			// Judged only if another part makes it redundant: Number
+			// in Number & Int.
+			t = t.NonNull()
+			t.P = false
+			all = append(all, t)
+		}
+	}
+	var info castTypeInfo
+	for i, p := range all {
+		redundant := slices.ContainsFunc(all[:i], func(q types.Type) bool { return c.subtype(q, p) }) ||
+			slices.ContainsFunc(all[i+1:], func(q types.Type) bool { return c.subtype(q, p) && !c.subtype(p, q) })
+		if redundant {
+			continue
+		}
+		pi, ok := c.castInfo(p, 0)
+		if !ok {
+			return castTypeInfo{}, false
+		}
+		info.parts = append(info.parts, p)
+		info.final = info.final || pi.final
+		info.class = info.class || pi.class
+	}
+	info.concrete = len(info.parts) == 1
+	return info, len(info.parts) > 0
 }
 
 // castTypeInfo describes a type, as impossibleIs compares it: the
@@ -102,7 +179,7 @@ func (c *Checker) castInfo(t types.Type, depth int) (castTypeInfo, bool) {
 	t = t.NonNull()
 	t.P = false
 	switch t.K {
-	case types.Bool, types.Int, types.Long, types.Double, types.Char, types.Float, types.Byte, types.Short, types.String:
+	case types.Bool, types.Int, types.Long, types.Double, types.Char, types.Float, types.Byte, types.Short, types.String, types.Unit:
 		return castTypeInfo{parts: []types.Type{t}, final: true, class: true, concrete: true}, true
 	case types.Any:
 		return castTypeInfo{parts: []types.Type{t}, class: true, concrete: true}, true
@@ -159,6 +236,7 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	st := c.castOperand(x) // see expected.go
 	t := c.checkTarget(x.Ref, st, nil, false)
 	x.Target = t
+	c.noteTypeFacts(x, x.X, st)
 	if t.K == types.Invalid || st.K == types.Invalid {
 		return types.InvalidType
 	}

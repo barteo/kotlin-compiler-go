@@ -49,33 +49,50 @@ does. Gradle itself, incremental compilation and tests are left out.
 ## Results
 
 A Linux x86_64 cloud machine (4 CPUs, 15 GB), JDK 21, hyperfine 2.0.0,
-with the commands above, on 15 November 2026: the libraries at `f5f5cce`,
-the generated project at `0f87173`.
+with the commands above, on 19 November 2026, with `kc` at `c81677a`.
 
 Wall time:
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 7.13 s | 4.01 s | 98.1 s | 83.9 s | 12x |
-| kotlinpoet | 39 | 8.7k | 300 ms | 211 ms | 17.8 s | 3.44 s | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 796 ms | 643 ms | 28.5 s | 6.88 s | 8.6x |
-| Ktor, 3 modules | 236 | 24k | 849 ms | 698 ms | 45.7 s | 6.96 s | 8.2x |
+| Generated | 500 | 202k | 5.82 s | 4.46 s | 97.9 s | 89.1 s | 15.3x |
+| kotlinpoet | 39 | 8.7k | 290 ms | 210 ms | 15.5 s | 3.03 s | 10.4x |
+| kotlinx-coroutines-core | 169 | 34k | 565 ms | 436 ms | 23.8 s | 5.88 s | 10.4x |
+| Ktor, 3 modules | 236 | 24k | 709 ms | 598 ms | 39.5 s | 5.78 s | 8.2x |
 
 Peak memory (resident set size):
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 755 MB | 1.03 GB | 3.36 GB | 4.4x |
-| kotlinpoet | 39 | 8.7k | 88 MB | 100 MB | 944 MB | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 125 MB | 140 MB | 1.04 GB | 8.3x |
-| Ktor, 3 modules | 236 | 24k | 87 MB | 94 MB | 946 MB | 11x |
+| Generated | 500 | 202k | 802 MB | 912 MB | 3.42 GB | 4.3x |
+| kotlinpoet | 39 | 8.7k | 89 MB | 99 MB | 966 MB | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 131 MB | 144 MB | 1.23 GB | 9.4x |
+| Ktor, 3 modules | 236 | 24k | 91 MB | 96 MB | 971 MB | 11x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
+- Since `a009992`, `kc -j 1` took 10% less time on kotlinpoet and
+  coroutines, and 2% less on the generated project and Ktor. Two changes
+  made it, each timed against its parent in one session: a filter of the
+  class path's names rules out absent classes without building their
+  names (5–8% on kotlinpoet, coroutines and the generated project, 2% on
+  Ktor), and the constant pool finds entries by the indexes they hold
+  instead of by concatenated strings (2–4%). The generated project's
+  `kc` time moved less here than in those one-session timings, within
+  the variation between sessions.
+- Against the run at `a009992`, warm `kotlinc` was 5% slower on
+  coroutines, 1% slower on Ktor and 4% faster on kotlinpoet. At that
+  run's times kotlinpoet would be 10.9x, coroutines 9.9x and Ktor 8.1x:
+  coroutines is at about 10x, and Ktor is still below it.
 - Warm `kotlinc` doesn't settle at 500 files on this machine: its four
-  runs took 67–103 s.
-- `kotlinc`'s times vary by 10–20% between sessions although it doesn't
-  change. To measure a change to `kc`, time both builds in one session.
+  runs took 87–102 s, against a median of 77.5 s in the run before
+  (13.3x at that time). The generated row is the least certain.
+- Times vary by 10–20% between sessions, for both compilers, and more
+  on a busy cloud machine. To measure a change to `kc`, time both builds
+  in one session.
+- `kc -j 1` checks and generates code on one goroutine. A few goroutines
+  of its own write the class files, and the class path is indexed and
+  the standard library's default imports read alongside parsing.
 - Full tables, with CPU time, are in [bench/results](../bench/results/).
   Whether `kc`'s library builds are correct (API, `-Xverify:all`, the
   libraries' own tests) is checked in [Survey of real code](survey.md).
@@ -89,21 +106,23 @@ on one thread.
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 4.0 s | 0.65 s | ~6x |
-| Resolution and type checking | 26.8 s | 3.06 s | ~9x |
-| Checkers (warnings and errors) | 17.9 s | none | |
-| Reading the class path | 1.4 s | 0.03 s | |
-| Backend, with inlining and writing | 34.7 s | 3.39 s | ~10x |
-| **Total** | **84.8 s** | **7.13 s** | **12x** |
+| Parsing | 9.2 s | 0.72 s | ~13x |
+| Resolution and type checking | 28.0 s | 3.53 s | ~8x |
+| Checkers (warnings and errors) | 22.8 s | none | |
+| Reading the class path | 1.7 s | 0.02 s | |
+| Backend, with inlining and writing | 50.8 s | 2.32 s | ~22x |
+| **Total** | **112.4 s** | **6.87 s** | **16x** |
 
 - There is no hotspot: no single lowering or checker takes more than
-  about 2%. The time is spread over 93 IR lowerings and 330 checkers,
-  each walking the tree.
+  about 2%. The time is spread over 93 IR lowerings and 347 checkers,
+  each walking the tree. `kc`'s is spread out too: each call it checks
+  is resolved once, and each lambda checked once.
 - `kotlinc`'s frontend runs on one core; only its backend can use more.
   With `-Xbackend-threads=0` (a backend thread per core) and without the
-  profiler it took 58.4 s, against 87.9 s for the profiled runs. `kc`
+  profiler it took 54.8 s, against 112.2 s for the profiled runs. `kc`
   also checks in parallel.
-- Of `kc`'s backend, 1.52 s is writing 10,001 class files.
+- `kc` writes the 10,001 class files on goroutines of their own, which
+  spent 3.3 s doing so, alongside code generation.
 
 ## What the numbers don't show
 

@@ -4,6 +4,7 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"runtime"
@@ -47,10 +48,17 @@ type Universe struct {
 	// built-in type, as TextValue.String, which hides it where it is
 	// in scope.
 	builtinNames bool
+	// shadowing is set if a class of the program has the name of a class
+	// of the class path, which it takes the place of: see
+	// classTable.shadow.
+	shadowing bool
 	// partial is Options.Signatures: a class type with an argument that
 	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
 	// has it, rather than being an error type as a whole.
 	partial bool
+	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
+	// Options.ExperimentalWarnings.
+	extraWarnings, experimentalWarnings bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -168,7 +176,8 @@ type Checker struct {
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport
-	stars        []string // star-imported packages of the class path (internal names)
+	stars        []string  // star-imported packages of the class path (internal names)
+	starRefs     []*pkgRef // stars, resolved: see starPkgs
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
@@ -181,18 +190,32 @@ type Checker struct {
 	fileVars     map[string]*types.VarSym
 	userExtProps map[string][]*types.FunSym // getters of extension properties
 	userStars    []*Package
-	cyclic       []*syntax.ClassDecl     // classes that inherit from themselves
-	classes      []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases      []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps        int                     // temporaries named so far, for unique names
-	inlineCalls  []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls  []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	// renamed are the dotted names that the file imports only under
+	// another name: import a.A as ER hides a.A's simple name in the
+	// file's package, the star imports and the default imports.
+	renamed map[string]bool
+	cyclic  []*syntax.ClassDecl // classes that inherit from themselves
+	// cyclicAt are, for a class of cyclic whose cycle goes through the
+	// class path, the supertypes that lead back to it.
+	cyclicAt map[*syntax.ClassDecl][]syntax.Pos
+	// contractAt are the positions of the contracts that dropContracts
+	// took out of the functions' bodies, by body, whose opt-in
+	// optInErrors checks.
+	contractAt  map[*syntax.Block]syntax.Pos
+	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
+	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps       int                     // temporaries named so far, for unique names
+	inlineCalls []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
 	// supersOf is the class whose supertypes are being resolved, which
 	// may name its private nested classes: class A : I<A.N>.
 	supersOf *types.ClassSym
+	// headerBounds is the class whose type parameters' bounds are being
+	// resolved; they don't see its nested classes: class A<T : Nested>.
+	headerBounds *types.ClassSym
 	// anon are the classes of the file's object expressions, with the
 	// code around each; anonCount numbers them, by enclosing function.
 	anon      map[*types.ClassSym]*anonCtx
@@ -210,8 +233,8 @@ type Checker struct {
 	// classifiers of isn't ambiguous: see classLitType.
 	starFallback bool
 	funCache     map[funKey][]*types.FunSym
-	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
-	looked       lookups                      // the lookups recorded (see lookups.go)
+	levelCache   map[levelKey][][]*types.FunSym // see extLevels
+	looked       lookups                        // the lookups recorded (see lookups.go)
 	errs         []*syntax.Error
 	// warns are the file's warnings, apart from errs, which speculative
 	// checks roll back and count. Warnings are found by passes over the
@@ -221,10 +244,37 @@ type Checker struct {
 	// maybeNull are the x!! and x ?: y whose x some check of them found
 	// may be null: checked again, x may be smart cast by the first check.
 	maybeNull map[syntax.Expr]bool
+	// typeFacts are, for each x is T, x as T and is condition of a when,
+	// what its check knew of x (see noteTypeFacts).
+	typeFacts map[any]typeFacts
+	// coveredWhens are the whens with a subject whose branches cover all
+	// its values, without an else.
+	coveredWhens map[*syntax.When]bool
+	// blockJumps are, with -Wextra, the blocks with a statement that
+	// always jumps, and its index: what follows it is unreachable.
+	blockJumps map[*syntax.Block]int
+	// deadBlocks are the blocks in code reported as unreachable.
+	deadBlocks map[*syntax.Block]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
 	refLHS bool
+	// overrideBounds is set while the type parameters of an override
+	// property are resolved, which have no FINAL_UPPER_BOUND.
+	overrideBounds bool
+	// classLitLHS is set while the type of a class literal or on a
+	// callable reference's left side is resolved, which kotlinc doesn't
+	// take for a type reference: no PLATFORM_CLASS_MAPPED_TO_KOTLIN.
+	classLitLHS bool
+	// refLHSOuter is set while the outer class of an inner class on a
+	// callable reference's left side is resolved, Outer<A> of
+	// Outer<A>.Inner<B>::f: there, as on the left side itself, a class
+	// whose outer classes' type parameters it takes from the code around
+	// it, as Inner<B>::f in Outer's code, is an error in kotlinc.
+	refLHSOuter bool
+	// mustInit are the properties reported as needing an initializer
+	// (see initReported).
+	mustInit map[*types.VarSym]bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -296,6 +346,9 @@ type Checker struct {
 	branchSink *system
 	unitElvis  syntax.Expr    // see unitBody
 	varTarget  *syntax.Member // see propBound
+	// assignTarget is the member an assignment's target is while it is
+	// checked, whose getter isn't called (see protectedGetter).
+	assignTarget *syntax.Member
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the
@@ -305,6 +358,12 @@ type Checker struct {
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// aliasCtors are the calls of typealiases' constructors, with their
+	// aliases: see ownParamArg.
+	aliasCtors map[*syntax.Call]*types.AliasSym
+	// samArg is the call being checked as an argument for a parameter of
+	// a fun interface type: see ownParamArg.
+	samArg *syntax.Call
 	// nothingTail is set while the value of the return that a lambda's
 	// last when gives is checked: see lambdaResult.nothingTail.
 	nothingTail bool
@@ -672,6 +731,13 @@ type Options struct {
 	// the diagnostics: Severity tells them apart. Without it, only the
 	// errors are returned.
 	Warnings bool
+	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
+	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
+	ExtraWarnings bool
+	// ExperimentalWarnings also reports the warnings of kotlinc's
+	// experimental checkers, which kotlinc reports only with
+	// -Xuse-fir-experimental-checkers, as REDUNDANT_INTERPOLATION_PREFIX.
+	ExperimentalWarnings bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -796,9 +862,16 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
+	shadows := lib.t.shadowedBy(files)
+	if shadows {
+		w := *lib
+		w.t = lib.t.private()
+		lib = &w
+	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings}
 	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
@@ -806,7 +879,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 			jumps:    map[*syntax.Lambda]inlineJumps{},
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, frameAssigns: map[varFrame][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, starCache: map[string][]classifier{}, funCache: map[funKey][]*types.FunSym{},
-			levelCache: map[funKey][][]*types.FunSym{}}
+			levelCache: map[levelKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
 	dropContracts(checkers)
@@ -819,6 +892,16 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	if lib.t.cp != nil && lib.t.cp.HasSources() {
 		find := u.sourceClass
 		lib.t.sources.Store(&find)
+	}
+	if shadows {
+		find := func(name string) *types.ClassSym {
+			if lib.t.cp.IsSource(name) {
+				return nil
+			}
+			return u.sourceClass(name)
+		}
+		lib.t.root().shadow.Store(&find)
+		u.shadowing = true
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
@@ -856,12 +939,16 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	forwardInlinable(checkers)
 	for _, c := range checkers {
 		c.checkMemberImports()
+		c.platformClassImports()
 	}
 	for _, c := range checkers {
 		c.inheritDefaults()
 	}
 	for _, c := range checkers {
 		c.delegations()
+	}
+	for _, c := range checkers {
+		c.markInheritedProtected()
 	}
 	checked := onlyCheckers(checkers, opts)
 	for _, c := range checked {
@@ -982,6 +1069,7 @@ func (c *Checker) hidesBuiltin(name string) bool {
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
 	c.javaBoundCycle(ref, t)
+	c.platformClassRef(ref, t)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -1094,7 +1182,7 @@ type reservedRef struct{ *syntax.TypeRef }
 
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
-		c.errorf(ref.P, "function types with more than %d parameters are not supported", types.MaxVarArity)
+		c.errorf(ref.P, "function types with more than %d parameters are prohibited", types.MaxVarArity)
 		return types.InvalidType
 	}
 	ps := make([]types.Type, len(ref.Params))
@@ -1140,7 +1228,7 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	case ref.Suspend && !c.coroutines(ref.P):
 		return types.InvalidType
 	case ref.Suspend && len(ps)+1 > types.MaxVarArity:
-		c.errorf(ref.P, "suspend function types with more than %d parameters are not supported", types.MaxVarArity-1)
+		c.errorf(ref.P, "suspend function types with more than %d parameters are prohibited", types.MaxVarArity-1)
 		return types.InvalidType
 	case ref.Suspend:
 		t = c.u.ext.funcs.SuspendType(ps, r)
@@ -1194,6 +1282,12 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
+	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 && ref.Args != nil {
+		// A local class of a generic function, Local<D>::f: kotlinc wants
+		// the type arguments of the type parameters it captures too.
+		c.errorf(ref.P, "%s expected for class %s", countArgs(len(ps)+len(hidden)), cls.DisplayName())
+		return types.InvalidType
+	}
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1224,6 +1318,8 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+		} else if a.Variance != types.Inv && a.Variance == ps[i].Var {
+			c.redundantProjection(a.P)
 		}
 	}
 	t := types.GenericType(cls, append(args, hidden...))
@@ -1239,14 +1335,21 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 // be its expansion's, as in One<Any> for TK<Any, Any>: errors in those
 // are reported on the whole reference.
 func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
+	c.checkBoundsOf(t, ref, len(t.A.List))
+}
+
+// checkBoundsOf checks the first n type arguments of t, as checkBounds:
+// an inner class's own, whose outer classes' are checked where they are
+// written.
+func (c *Checker) checkBoundsOf(t types.Type, ref *syntax.TypeRef, n int) {
 	ps := t.C.TypeParams
 	s := classSubst(t)
-	for i, a := range t.A.List {
+	for i, a := range t.A.List[:n] {
 		if a.V == types.Star {
 			continue
 		}
 		p := ref.P
-		if len(ref.Args) == len(t.A.List) {
+		if len(ref.Args) == len(t.A.List) || len(ref.Args) == n {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
@@ -1399,14 +1502,15 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 
 // resolveClassBounds resolves the bounds of class type parameters, which
 // other files' signatures may need. Bounds are checked against each
-// other only where they are used.
+// other only where they are used. Like the supertypes, the bounds don't
+// see the class's own nested and inner classes: class A<T : Nested>.
 func (c *Checker) resolveClassBounds() {
 	c.noBoundChecks = true
 	for _, d := range c.classes {
-		c.tparams, c.lookupCls = d.Sym.TypeParams, d.Sym
+		c.tparams, c.lookupCls, c.headerBounds = d.Sym.TypeParams, d.Sym, d.Sym
 		c.resolveBounds(d.TypeParams)
 	}
-	c.tparams, c.lookupCls = nil, nil
+	c.tparams, c.lookupCls, c.headerBounds = nil, nil, nil
 	c.noBoundChecks = false
 }
 
@@ -1696,11 +1800,11 @@ func (c *Checker) topFunLevels(name string) [][]*types.FunSym {
 	if _, ok := c.callableImport(name); ok || len(c.funImports[name]) > 0 {
 		return levels
 	}
-	if fs := nonExt(c.pkg.Funs[name]); len(fs) > 0 {
+	if fs := nonExt(c.funsOf(c.pkg, name)); len(fs) > 0 {
 		levels = append(levels, fs)
 	}
 	cls, ok := c.imports[name]
-	if !ok {
+	if !ok && !c.renamedAway(c.pkg.Name, name) {
 		cls = c.pkg.Classes[name]
 	}
 	if cls != nil && !cls.Object && constructible(cls) {
@@ -1710,7 +1814,7 @@ func (c *Checker) topFunLevels(name string) [][]*types.FunSym {
 	}
 	var fs []*types.FunSym
 	for _, p := range c.userStars {
-		fs = append(fs, nonExt(p.Funs[name])...)
+		fs = append(fs, nonExt(c.funsOf(p, name))...)
 	}
 	if len(fs) > 0 {
 		levels = append(levels, fs)
@@ -1748,33 +1852,51 @@ func (c *Checker) topVar1(name string) *types.VarSym {
 	if c.valueImport(name) {
 		return nil // an explicitly imported member comes first
 	}
+	if c.renamedAway(c.pkg.Name, name) {
+		return c.topVarOutside(name)
+	}
 	if v, ok := c.fileVars[name]; ok {
 		return v
 	}
 	if v, ok := c.pkg.Vars[name]; ok {
 		return v
 	}
+	if v := c.topVarOutside(name); v != nil {
+		return v
+	}
+	if v, ok := c.pkg.PrivateVars[name]; ok {
+		return v // another file's, which checkTopVar reports
+	}
+	return nil
+}
+
+// topVarOutside is topVar1 below the file's package: the star imports,
+// then the default imports.
+func (c *Checker) topVarOutside(name string) *types.VarSym {
 	for _, p := range c.userStars {
-		if v, ok := p.Vars[name]; ok {
+		if v, ok := p.Vars[name]; ok && !c.renamedAway(p.Name, name) {
 			return v
 		}
 	}
 	if c.u.ext.kotlin {
 		// A Kotlin library's, by a star import, then the standard
 		// library's default imports: DEFAULT_BUFFER_SIZE.
-		for _, pkg := range c.stars {
-			if v := c.u.ext.pkgVar(strings.ReplaceAll(pkg, "/", "."), name); v != nil {
+		for _, r := range c.starPkgs() {
+			if c.renamedAway(r.name, name) {
+				continue
+			}
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}
-		for _, pkg := range defaultPackages {
-			if v := c.u.ext.pkgVar(pkg, name); v != nil {
+		for _, r := range c.u.ext.defaultRefs() {
+			if c.renamedAway(r.name, name) {
+				continue
+			}
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}
-	}
-	if v, ok := c.pkg.PrivateVars[name]; ok {
-		return v // another file's, which checkTopVar reports
 	}
 	return nil
 }
@@ -1832,6 +1954,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		case d.External && owner.CompanionOf != nil && owner.CompanionOf.Interface:
 			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+		case owner.CompanionOf != nil && owner.CompanionOf.Interface && d.Visibility != syntax.Public:
+			// JVM_STATIC_ON_NON_PUBLIC_MEMBER: an interface's static
+			// methods are public.
+			c.errorf(d.Find("", "JvmStatic").P, jvmStaticNonPublic)
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
 		case d.Override:
@@ -1854,7 +1980,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		sym.External = c.external(d, owner, d.Abstract, d.P) && bodyless
 	case sym.Abstract && !bodyless:
 		c.errorf(d.P, "an abstract function cannot have a body")
-	case !sym.Abstract && bodyless:
+	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
 	}
 	seen := map[string]bool{}
@@ -1880,6 +2006,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			sym.InPlace[i] = d.InPlace[p.Name]
 		}
 	}
+	if d.AtLeastOnce != nil {
+		sym.AtLeastOnce = make([]bool, len(d.Params))
+		for i, p := range d.Params {
+			sym.AtLeastOnce[i] = d.AtLeastOnce[p.Name]
+		}
+	}
 	c.contractEffects(d, sym)
 	if d.Infix {
 		c.checkInfix(d, owner)
@@ -1898,6 +2030,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	}
 	if d.Inline {
 		c.inlineFun(d, owner)
+		c.nothingToInline(d)
 	}
 	c.inlineDecl(d, false)
 	for _, tp := range d.TypeParams {
@@ -1905,6 +2038,10 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		case !tp.Reified:
 		case !d.Inline:
 			c.errorf(tp.P, "only type parameters of inline functions can be reified")
+		case d.Override:
+			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
+			// overridden function couldn't pass the type.
+			c.errorf(tp.P, "override by a function with reified type parameter")
 		case owner != nil && (owner.Interface || owner.Value):
 			c.unsupported(tp.P, "reified member type parameter", "reified type parameters of members of interfaces and value classes are not supported")
 		case owner != nil && !isFinal(d.Modifiers, owner):
@@ -1940,14 +2077,21 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 	return sym
 }
 
-// checkVarargs checks that at most one parameter is a vararg.
+// checkVarargs checks that at most one parameter is a vararg: of more,
+// it reports each, as kotlinc does.
 func (c *Checker) checkVarargs(ps []*syntax.Param) {
 	n := 0
 	for _, p := range ps {
 		if p.Vararg {
-			if n++; n == 2 {
-				c.errorf(p.P, "multiple vararg-parameters are prohibited")
-			}
+			n++
+		}
+	}
+	if n < 2 {
+		return
+	}
+	for _, p := range ps {
+		if p.Vararg {
+			c.errorf(p.P, "multiple vararg-parameters are prohibited")
 		}
 	}
 }
@@ -2056,17 +2200,25 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			sym.JvmStatic = true
 		}
 	}
+	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
+		p := d.AccessorP
+		if p.Line == 0 {
+			p = d.Getter.P
+		}
+		c.errorf(p, "const 'val' should not have a getter")
+	}
 	if owner != nil {
 		// kc doesn't support const outside objects, which is an error.
 		sym.Const = d.Const && owner.Object
+		if d.Const && (!owner.Object || owner.Anonymous) {
+			c.errorf(modPos(d.Written, "const", d.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
 		if sym.JvmField && sym.JvmStatic {
 			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
 		}
-		if sym.JvmField && owner.CompanionOf != nil && owner.CompanionOf.Interface && (d.Mutable || d.Visibility != syntax.Public) {
-			c.errorf(d.P, "JvmField could be applied only if all interface companion properties are 'public final val' with '@JvmField' annotation")
-		}
+
 	}
 	sym.Abstract = d.Abstract || owner != nil && owner.Interface && d.Init == nil && d.Getter == nil && d.Setter == nil
 	sym.Final = owner == nil || isFinal(d.Modifiers, owner)
@@ -2085,9 +2237,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// accessors don't use: it needn't be initialized.
 		sym.FieldUsed = true
 	}
-	if ext && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface &&
-		(d.Find("", "JvmStatic") != nil || d.Find("get", "JvmStatic") != nil || d.Find("set", "JvmStatic") != nil) {
-		c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	if a := cmp.Or(d.Find("", "JvmStatic"), d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")); ext && a != nil && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.errorf(a.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+	} else if owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
+		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
 		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
@@ -2108,11 +2261,30 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "property in an interface cannot have a backing field")
 	case d.Init != nil && !hasField && !sym.FieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
+	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
+		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
-		c.errorf(d.P, "private setters are not allowed for open properties")
-	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
-		if owner == nil || owner.Interface {
+		p := d.P
+		if d.SetterVisP.Line != 0 {
+			p = d.SetterVisP // at the modifier, as kotlinc
+		}
+		c.errorf(p, "private setters are not allowed for open properties")
+	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect:
+		switch {
+		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
+		case d.Mutable && d.Setter != nil && hasBody(d.Setter):
+			// The constructor's assignment would call the setter.
+			c.errorf(d.P, "property must be initialized")
+			c.initReported(sym)
+		case !sym.Final && !owner.Final && d.Visibility != syntax.Private:
+			// A subclass's override would be assigned instead.
+			if d.Getter != nil && hasBody(d.Getter) {
+				c.errorf(d.P, "property must be initialized or be final")
+			} else {
+				c.errorf(d.P, "property must be initialized, be final, or be abstract")
+			}
+			c.initReported(sym)
 		}
 		// Assigned in the constructor's code, as definite assignment
 		// checks.
@@ -2154,7 +2326,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		// Those of a property with context parameters, which they use.
 		g.Sym.TypeParams = c.declareTypeParams(d.TypeParams, g.Sym, false)
 		c.tparams = funTypeParams(g.Sym, owner)
+		c.overrideBounds = d.Override
 		c.resolveBounds(d.TypeParams)
+		c.overrideBounds = false
 		if d.Setter != nil {
 			d.Setter.Sym.TypeParams = g.Sym.TypeParams
 		}
@@ -2239,6 +2413,9 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.errorf(d.P, "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {
+		if cp.Const && cp.IsProp {
+			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
 		c.tparams = nil
@@ -2416,9 +2593,43 @@ func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
 			if m.Recv == nil && (m.Type != nil || m.Visibility == syntax.Private && m.Sym.Resolved) {
 				c.propVariance(m.Sym, m.Type, m.Mutable, m.Visibility != syntax.Private)
 			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				if m.Type != nil {
+					c.propVariance(m.Sym, m.Type, m.Mutable, true)
+				}
+				if g := m.Getter; g != nil && g.Sym != nil {
+					c.checkVariance(g.Sym.Recv, m.Recv, types.In, true)
+				}
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
 		case *syntax.FunDecl:
 			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
 				c.funVariance(m, m.Visibility != syntax.Private)
+			}
+			if m.Recv != nil && m.Visibility != syntax.Private {
+				c.funVariance(m, true)
+				c.checkVariance(m.Sym.Recv, m.Recv, types.In, true)
+			}
+			if m.Visibility != syntax.Private {
+				c.boundsVariance(m.TypeParams)
+			}
+		}
+	}
+}
+
+// boundsVariance checks the upper bounds of a member's type parameters,
+// which are in in position: what a call passes for the parameter is
+// checked against them.
+func (c *Checker) boundsVariance(tps []*syntax.TypeParam) {
+	for _, tp := range tps {
+		if tp.Sym == nil {
+			continue
+		}
+		for i, b := range tp.Sym.Bounds {
+			if i < len(tp.Bounds) {
+				c.checkVariance(b, tp.Bounds[i], types.In, true)
 			}
 		}
 	}
@@ -2475,10 +2686,20 @@ func (c *Checker) markPrivateToThis(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.PropDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil {
 			c.propVariance(d.Sym, d.Type, d.Mutable, false)
+		} else if d.Visibility != syntax.Private && d.Type == nil && d.DelegateOf == nil {
+			// A type inferred from the initializer or the delegate,
+			// which breaks the variance as a written one would.
+			pos := types.Out
+			if d.Mutable {
+				pos = types.Inv
+			}
+			c.checkVariance1(d.Sym.Type, d.Sym.Type, nil, pos, d.P, true)
 		}
 	case *syntax.FunDecl:
 		if d.Visibility == syntax.Private && d.Recv == nil && d.AccessorOf == nil {
 			c.funVariance(d, false)
+		} else if d.Visibility != syntax.Private && d.Ret == nil && d.AccessorOf == nil && d.Sym != nil {
+			c.checkVariance1(d.Sym.Ret, d.Sym.Ret, nil, types.Out, d.P, true)
 		}
 	}
 }
@@ -2762,6 +2983,9 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	c.markPrivateToThis(d, sym.Owner)
+	if d.Operator && d.Ret == nil && !c.hasErrorAt(d.P, "'operator' modifier") {
+		c.operatorReturn(d, sym.Owner)
+	}
 	if d.Property == "" {
 		c.implicitNothingRet(d)
 	}
@@ -3059,7 +3283,7 @@ var builtinOperators = map[string]bool{"get": true, "set": true, "contains": tru
 // its own declaration, and not an override that has the visibility of the
 // functions it overrides.
 func declaredPublic(o *types.FunSym) bool {
-	if o.Protected || o.Module != "" {
+	if o.Protected || o.Module != "" || o.PackagePrivate {
 		return false
 	}
 	od, ok := o.Decl.(*syntax.FunDecl)
@@ -3112,7 +3336,9 @@ func (c *Checker) inheritDefaults() {
 				}
 				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
-					case o.Protected || od != nil && od.Visibility == syntax.Protected:
+					case o.Protected || o.PackagePrivate || od != nil && od.Visibility == syntax.Protected:
+						// As K2, an override of a package-private Java
+						// method is protected, on the JVM too.
 						fd.Sym.Inherited = types.InheritProtected
 						if ow := o.Owner; ow != nil && ow.External && ow.JVMMethods[o.JVM()+types.FunDesc(o)]&classfile.AccPublic != 0 {
 							fd.Sym.PublicOnJVM = true
@@ -3245,11 +3471,22 @@ func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
 	if d.Setter != nil && d.Setter.Sym != nil && hasBody(d.Setter) { // nil: an extension property's without a getter
 		c.checkFun(d.Setter, cls)
 	}
+	c.inlineAccessorChecks(d, cls)
 }
 
 // hasBody reports whether a function or an accessor has a body: an
 // abstract extension property's accessors don't.
 func hasBody(d *syntax.FunDecl) bool { return d.Body != nil || d.ExprBody != nil }
+
+// initReported records that property v was reported as needing an
+// initializer where it is declared, which the constructor's code assigning
+// it doesn't change: its definite assignment isn't reported again.
+func (c *Checker) initReported(v *types.VarSym) {
+	if c.mustInit == nil {
+		c.mustInit = map[*types.VarSym]bool{}
+	}
+	c.mustInit[v] = true
+}
 
 // lateinitChecks reports the uses of lateinit that Kotlin forbids, on a
 // property or a local var. t is the type, or Invalid if it isn't known
@@ -3415,7 +3652,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
@@ -3817,4 +4054,27 @@ func varargPos(p *syntax.Param) syntax.Pos {
 		}
 	}
 	return p.P
+}
+
+// jvmStaticNonPublic is the message of JVM_STATIC_ON_NON_PUBLIC_MEMBER.
+const jvmStaticNonPublic = "only public members in interface companion objects can be annotated with '@JvmStatic'"
+
+// jvmStaticInInterfaceCompanion reports @JvmStatic on a property of an
+// interface's companion object, or on its accessors, that isn't public,
+// or whose setter isn't (JVM_STATIC_ON_NON_PUBLIC_MEMBER): an
+// interface's static methods are public.
+func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
+	setter := d.Visibility
+	if d.SetterVisP.Line != 0 {
+		setter = d.SetterVis
+	}
+	if a := d.Find("", "JvmStatic"); a != nil && (d.Visibility != syntax.Public || d.Mutable && setter != syntax.Public) {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("get", "JvmStatic"); a != nil && d.Visibility != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
+	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
+		c.errorf(a.P, jvmStaticNonPublic)
+	}
 }

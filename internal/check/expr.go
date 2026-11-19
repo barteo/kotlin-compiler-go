@@ -34,6 +34,23 @@ func (c *Checker) safeUnit(x syntax.Expr, t types.Type) types.Type {
 	return t
 }
 
+// returnValue checks x, the value a function returns, expecting want: a
+// safe call of a Unit function, x?.f(), is a Unit? there, which kotlinc
+// doesn't coerce to a Unit return type: fun f(): Unit = c?.close().
+func (c *Checker) returnValue(x syntax.Expr, want types.Type) types.Type {
+	t := c.value(x, want)
+	if want.K == types.Unit && !want.N {
+		t = c.safeUnit(x, t)
+	}
+	return t
+}
+
+// safeUnitCall reports whether x, of type t, is a safe call of a Unit
+// function, whose value is a Unit?.
+func safeUnitCall(x syntax.Expr, t types.Type) bool {
+	return safeCallOf(x) && t.K == types.Class && t.N && t.C.Name == "kotlin/Unit"
+}
+
 // rangeExpr checks an expression in a position where ranges are allowed.
 func (c *Checker) rangeExpr(x syntax.Expr) types.Type {
 	c.allowRange = true
@@ -1782,6 +1799,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
+		k.javaClass = x.Ref != nil && strings.HasPrefix(x.Ref.Name, "java.") && x.Target.K == types.Class && builtinJava[x.Target.C.Name]
 		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
 		if others != nil && !others.empty() {
 			n = c.excluding(n, key, others)
@@ -2379,8 +2397,21 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 				x.Prop = p
 			}
 		}
+		if p := x.Prop; p != nil && protectedMember(p) {
+			if d := c.declaredClass(x.X, cls); d != nil && p.Owner != d && !c.strictProtectedVia(p.Owner, cls) {
+				// As in K2, the protected override of a smart-cast
+				// variable's class that the code sees only as an override
+				// of what it sees gives way to the declared type's
+				// member: other.a of other: A smart-cast to B, in A's
+				// code, is A's a, not B's override.
+				if q := c.memberProp(d, x.Name); q != nil && cls.IsSubclassOf(q.Owner) {
+					x.Prop = q
+				}
+			}
+		}
 		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
+			c.protectedGetter(x)
 			break
 		}
 		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
@@ -2417,6 +2448,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+		c.protectedGetter(x)
 	}
 	if x.Prop != nil && x.Prop.Ambiguous {
 		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
@@ -3062,6 +3094,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
+				if alias != nil && !c.aliasOuterFits(alias, n, rt) {
+					// x.GIntI() for typealias GIntI = Generic<Int>.Inner
+					// needs an x that is a Generic<Int>.
+					c.errorf(fn.P, "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
+					c.args(x, nil)
+					return types.InvalidType
+				}
 				if alias != nil && hasUnderscore(x.TypeArgs) {
 					// outer.Alias<_>(): the class's, which the call infers.
 					if !c.aliasUnderscores(x, alias, n, fn.P) {
@@ -4383,18 +4422,22 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.push()
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
+		npending := len(pending)
 		bt := c.branch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, &pending)
 		funcBranch = firstFuncBranch(funcBranch, bt)
 		bts = append(bts, bt)
 		c.pop()
 		c.pop()
-		if bt.K != types.Nothing {
+		// A branch whose check is pending, as 2 of null -> 2, has type
+		// Nothing until then, but doesn't jump.
+		jumped := bt.K == types.Nothing && len(pending) == npending
+		if !jumped {
 			allJump = false
 		}
 		if x.Subject != nil && nullFirst && !br.Else {
 			if _, null := br.Conds[0].X.(*syntax.NullLit); single && null && br.Guard == nil {
 				nullFirst = false
-				if bt.K == types.Nothing {
+				if jumped {
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						afterNull = append(append(afterNull, n), c.impliedBy(n)...)
@@ -4448,6 +4491,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if c.u.rec != nil {
 		c.u.rec.When(x, covered, valueUsed)
 	}
+	if c.coveredWhens == nil {
+		c.coveredWhens = map[*syntax.When]bool{}
+	}
+	c.coveredWhens[x] = covered
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
@@ -4583,7 +4630,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
-			c.assignable(c.value(x.X, c.retType), c.retType, x.X.Pos())
+			c.assignable(c.returnValue(x.X, c.retType), c.retType, x.X.Pos())
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
 			c.errorf(x.P, "this function must return a value of type %s", c.retType)
 		}

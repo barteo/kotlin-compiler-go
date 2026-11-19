@@ -131,6 +131,11 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 			return types.InvalidType
 		}
 	}
+	for i, arg := range args {
+		if (arg.V == types.In || arg.V == types.Out) && projectionRedundant(a.Type, a.TypeParams[i], arg.V) {
+			c.redundantProjection(ref.Args[i].P)
+		}
+	}
 	t := a.Expand(args)
 	if t.K == types.Invalid {
 		return t
@@ -192,6 +197,37 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 	return false
 }
 
+// projectionRedundant reports whether the expansion t of a typealias
+// passes its parameter p, given the projection v, to a class's type
+// parameter declared with variance v: List<out String> for TL<out String>
+// with typealias TL<T> = List<T>.
+func projectionRedundant(t types.Type, p *types.TypeParamSym, v types.Variance) bool {
+	if t.K != types.Class || t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		if a.V == types.Star {
+			continue
+		}
+		if a.T.IsParam() && a.T.Param() == p {
+			if i < len(t.C.TypeParams) && t.C.TypeParams[i].Var == v && (a.V == types.Inv || a.V == v) {
+				return true
+			}
+			continue
+		}
+		if projectionRedundant(a.T, p, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// redundantProjection warns of a use-site projection that repeats the
+// declared variance of its type parameter, as kotlinc does.
+func (c *Checker) redundantProjection(p syntax.Pos) {
+	c.warnf(p, "REDUNDANT_PROJECTION", "projection is redundant: the corresponding type parameter has the same variance")
+}
+
 // aliasConstruct checks Alias(args), a call of the constructor of the
 // class that a typealias expands to. The expansion is the call's expected
 // type when it is known, which infers the class's type arguments that the
@@ -199,6 +235,10 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 // ArrayList<String>. Type arguments of the call are the alias's.
 func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	c.checkAliasVisible(a, p)
+	if c.aliasCtors == nil {
+		c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
+	}
+	c.aliasCtors[x] = a
 	if c.inferAliasArgs[x] || len(x.TypeArgs) == 0 && len(a.TypeParams) > 0 && !bareAlias(a) && a.Type.K == types.Class && a.Type.C == cls {
 		// Alias(x) infers the alias's type arguments, as Alias<_>(x),
 		// and the class's are those the alias gives: Int for A of
@@ -305,6 +345,9 @@ func (c *Checker) checkAliasBounds() {
 		if a == nil || !a.Resolved || a.Type.K == types.Invalid || d.Type == nil {
 			continue
 		}
+		if a.Type.K == types.Class && compilerRequiredAnnotations[a.Type.C.Name] {
+			c.errorf(d.Type.P, "typealias to a compiler-required annotation '%s' is not allowed. Remove the typealias and use the annotation directly", strings.ReplaceAll(a.Type.C.Name, "/", "."))
+		}
 		own := func(t types.Type) bool {
 			return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param().Owner == a })
 		}
@@ -320,6 +363,24 @@ func (c *Checker) checkAliasBounds() {
 	}
 	c.tparams, c.lookupCls = savedParams, savedCls
 	c.abbreviatedNothing()
+}
+
+// compilerRequiredAnnotations are the annotations kotlinc reads before it
+// resolves types, which a typealias can't stand for
+// (TYPEALIAS_EXPANDS_TO_COMPILER_REQUIRED_ANNOTATION_ERROR), by internal
+// name: its requiredAnnotations for the JVM.
+var compilerRequiredAnnotations = map[string]bool{
+	"kotlin/Deprecated":            true,
+	"kotlin/annotation/Target":     true,
+	"kotlin/DeprecatedSinceKotlin": true,
+	"kotlin/SinceKotlin":           true,
+	"kotlin/WasExperimental":       true,
+	"kotlin/IntroducedAt":          true,
+	"java/lang/annotation/Target":  true,
+	"java/lang/Deprecated":         true,
+	"kotlin/jvm/JvmName":           true,
+	"kotlin/jvm/JvmRecord":         true,
+	"kotlin/jvm/JvmInline":         true,
 }
 
 // refBounds checks the type arguments of type t, written as ref, and of

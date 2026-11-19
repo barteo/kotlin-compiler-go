@@ -58,7 +58,7 @@ func publicAPIClass(cls *types.ClassSym) bool {
 		if !ok {
 			return false
 		}
-		if cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal || cd.Local || cd.Anonymous {
+		if cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal && cd.Find("", "PublishedApi") == nil || cd.Local || cd.Anonymous {
 			return false
 		}
 	}
@@ -172,11 +172,39 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 		}
 		return true
 	}
+	inspectInline(d, visit)
+}
+
+// inspectInline visits the code of inline function d that its copies
+// have: its body and its parameters' default values.
+func inspectInline(d *syntax.FunDecl, visit func(any) bool) {
+	for _, p := range d.Params {
+		if p.Default != nil {
+			syntax.Inspect(p.Default, visit)
+		}
+	}
 	if d.Body != nil {
 		syntax.Inspect(d.Body, visit)
 	}
 	if d.ExprBody != nil {
 		syntax.Inspect(d.ExprBody, visit)
+	}
+}
+
+// inlineAccessorChecks checks the accessors of property d, a member of
+// cls or not, that are inline, as inlineBodyChecks an inline function's
+// body: with the property's modifiers, which say whether they are public
+// API.
+func (c *Checker) inlineAccessorChecks(d *syntax.PropDecl, cls *types.ClassSym) {
+	for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+		if a == nil || !hasBody(a) || !(d.Inline || a == d.Getter && d.InlineGetter || a == d.Setter && d.InlineSetter) {
+			continue
+		}
+		f := &syntax.FunDecl{Modifiers: d.Modifiers, Name: a.Name, P: a.P, Body: a.Body, ExprBody: a.ExprBody, Params: a.Params}
+		c.publicInline(f, cls)
+		if publicAPIInline(f, cls) {
+			c.inlineAccess(f, protectedAPI(f, cls))
+		}
 	}
 }
 

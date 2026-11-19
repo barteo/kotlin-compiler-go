@@ -2,6 +2,7 @@ package check
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
@@ -20,35 +21,47 @@ func init() {
 	notImplemented := `^(class '.*' is|object is) not abstract and does not implement abstract member `
 	invisible := `^cannot access '.*': it is `
 	for n, m := range map[string]string{
-		"ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED":     notImplemented,
-		"ABSTRACT_FUNCTION_IN_NON_ABSTRACT_CLASS":   `^abstract function '.*' in non-abstract class `,
-		"ABSTRACT_MEMBER_NOT_IMPLEMENTED":           notImplemented,
-		"ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS":   `^abstract property '.*' in non-abstract class `,
-		"ARGUMENT_TYPE_MISMATCH":                    typeMismatch,
-		"ASSIGNMENT_TYPE_MISMATCH":                  typeMismatch,
-		"CONFLICTING_OVERLOADS":                     `^conflicting overloads: `,
-		"CREATING_AN_INSTANCE_OF_ABSTRACT_CLASS":    `^cannot create an instance of an abstract class`,
-		"DATA_CLASS_VARARG_PARAMETER":               `^primary constructor vararg parameters are forbidden for data classes`,
-		"DEPRECATION_ERROR":                         `' is deprecated with level ERROR`,
-		"EQUALITY_NOT_APPLICABLE":                   `^operator '(==|!=|===|!==)' cannot be applied to `,
-		"INITIALIZER_TYPE_MISMATCH":                 typeMismatch,
-		"INTERFACE_WITH_SUPERCLASS":                 `^an interface cannot inherit from a class`,
-		"INVISIBLE_MEMBER":                          invisible,
-		"INVISIBLE_REFERENCE":                       invisible,
-		"METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE":    `^an interface may not implement a method of 'Any'`,
-		"MUST_BE_INITIALIZED":                       `^property must be initialized`,
-		"MUST_BE_INITIALIZED_OR_BE_ABSTRACT":        `^property must be initialized or be abstract`,
-		"NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION": `^only 'const val' can be used in constant expressions`,
-		"NOTHING_TO_OVERRIDE":                       `' overrides nothing$`,
-		"OVERRIDING_FINAL_MEMBER":                   `' is final and cannot be overridden$`,
-		"PROPERTY_WITH_NO_TYPE_NO_INITIALIZER":      `^this property must have a type, be initialized`,
-		"REPEATED_ANNOTATION":                       `^this annotation is not repeatable`,
-		"RETURN_TYPE_MISMATCH":                      typeMismatch,
-		"TYPE_MISMATCH":                             typeMismatch,
-		"UNSAFE_CALL":                               `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
-		"UPPER_BOUND_VIOLATED":                      `^type argument is not within its bounds`,
-		"VAL_REASSIGNMENT":                          `^val cannot be reassigned`,
-		"VALUE_CLASS_CANNOT_EXTEND_CLASSES":         `^value class cannot extend classes`,
+		"ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED":       notImplemented,
+		"ABSTRACT_FUNCTION_IN_NON_ABSTRACT_CLASS":     `^abstract function '.*' in non-abstract class `,
+		"ABSTRACT_MEMBER_NOT_IMPLEMENTED":             notImplemented,
+		"ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS":     `^abstract property '.*' in non-abstract class `,
+		"ARGUMENT_TYPE_MISMATCH":                      typeMismatch,
+		"ASSIGNMENT_TYPE_MISMATCH":                    typeMismatch,
+		"CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR": `^method 'contains' from ConcurrentHashMap may have unexpected semantics`,
+		"CONFLICTING_OVERLOADS":                       `^conflicting overloads: `,
+		"INAPPLICABLE_JVM_NAME":                       `^'@JvmName' annotation is not applicable to this declaration`,
+		"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE":         `^symbol is declared in module '.*' which does not export package `,
+		"CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT":           `^const 'val' are only allowed on top level`,
+		"CONST_VAL_WITH_GETTER":                       `^const 'val' should not have a getter`,
+		"INAPPLICABLE_JVM_FIELD":                      `^JvmField `,
+		"INAPPLICABLE_OPERATOR_MODIFIER":              `^'operator' modifier is inapplicable on this function`,
+		"NON_PUBLIC_CALL_FROM_PUBLIC_INLINE":          `^public-API inline function cannot access non-public-API `,
+		"PRIVATE_SETTER_FOR_ABSTRACT_PROPERTY":        `^private setters are not allowed for abstract properties`,
+		"SUBCLASS_OPT_IN_INAPPLICABLE":                `^'@SubclassOptInRequired' is not applicable to `,
+		"TYPE_VARIANCE_CONFLICT_ERROR":                `^type parameter .* is declared as '.*' but occurs in '.*' position`,
+		"UPPER_BOUND_CANNOT_BE_ARRAY":                 `^upper bound of a type parameter cannot be an array`,
+		"CREATING_AN_INSTANCE_OF_ABSTRACT_CLASS":      `^cannot create an instance of an abstract class`,
+		"DATA_CLASS_VARARG_PARAMETER":                 `^primary constructor vararg parameters are forbidden for data classes`,
+		"DEPRECATION_ERROR":                           `' is deprecated with level ERROR`,
+		"EQUALITY_NOT_APPLICABLE":                     `^operator '(==|!=|===|!==)' cannot be applied to `,
+		"INITIALIZER_TYPE_MISMATCH":                   typeMismatch,
+		"INTERFACE_WITH_SUPERCLASS":                   `^an interface cannot inherit from a class`,
+		"INVISIBLE_MEMBER":                            invisible,
+		"INVISIBLE_REFERENCE":                         invisible,
+		"METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE":      `^an interface may not implement a method of 'Any'`,
+		"MUST_BE_INITIALIZED":                         `^property must be initialized`,
+		"MUST_BE_INITIALIZED_OR_BE_ABSTRACT":          `^property must be initialized or be abstract`,
+		"NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION":   `^only 'const val' can be used in constant expressions`,
+		"NOTHING_TO_OVERRIDE":                         `' overrides nothing$`,
+		"OVERRIDING_FINAL_MEMBER":                     `' is final and cannot be overridden$`,
+		"PROPERTY_WITH_NO_TYPE_NO_INITIALIZER":        `^this property must have a type, be initialized`,
+		"REPEATED_ANNOTATION":                         `^this annotation is not repeatable`,
+		"RETURN_TYPE_MISMATCH":                        typeMismatch,
+		"TYPE_MISMATCH":                               typeMismatch,
+		"UNSAFE_CALL":                                 `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
+		"UPPER_BOUND_VIOLATED":                        `^type argument is not within its bounds`,
+		"VAL_REASSIGNMENT":                            `^val cannot be reassigned`,
+		"VALUE_CLASS_CANNOT_EXTEND_CLASSES":           `^value class cannot extend classes`,
 	} {
 		suppressible[n] = regexp.MustCompile(m)
 	}
@@ -102,13 +115,26 @@ func (c *Checker) suppressErrors() {
 			continue
 		}
 		if n, ok := suppressedBy(e, rs); ok {
-			// kotlinc warns of the string that names the error.
-			c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			// kotlinc warns of the string that names the error, if it
+			// names it as it is spelled.
+			if !silentSuppression[n.name] && n.name == strings.ToUpper(n.name) {
+				c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+			}
 		} else {
 			kept = append(kept, e)
 		}
 	}
 	c.errs = kept
+}
+
+// silentSuppression are the errors whose suppression kotlinc doesn't
+// warn of: those not in its FIR_NON_SUPPRESSIBLE_ERROR_NAMES, the JVM
+// checkers' among them.
+var silentSuppression = map[string]bool{
+	"DEPRECATION_ERROR":                   true,
+	"INVISIBLE_MEMBER":                    true,
+	"INAPPLICABLE_JVM_NAME":               true,
+	"JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE": true,
 }
 
 // suppressedBy returns the name of the error e that a range of rs
@@ -119,10 +145,11 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 			continue
 		}
 		for _, n := range r.names {
-			if e.Name != "" && e.Name == n.name {
+			// As kotlinc, names match whatever their case.
+			if e.Name != "" && strings.EqualFold(e.Name, n.name) {
 				return n, true
 			}
-			if m := suppressible[n.name]; m != nil && m.MatchString(e.Msg) {
+			if m := suppressible[strings.ToUpper(n.name)]; m != nil && m.MatchString(e.Msg) {
 				return n, true
 			}
 		}
@@ -137,7 +164,7 @@ func warningSuppressed(w *syntax.Error, rs []suppressRange) bool {
 			continue
 		}
 		for _, n := range r.names {
-			if n.name == w.Name || n.name == "warnings" {
+			if strings.EqualFold(n.name, w.Name) || strings.EqualFold(n.name, "warnings") {
 				return true
 			}
 		}
@@ -182,6 +209,15 @@ func paramRanges(rs []suppressRange, ps []*syntax.Param) []suppressRange {
 	return rs
 }
 
+// typeParamRanges adds to rs the ranges of the type parameters tps whose
+// @Suppress names diagnostics: their bounds, to the end of the line.
+func typeParamRanges(rs []suppressRange, tps []*syntax.TypeParam) []suppressRange {
+	for _, tp := range tps {
+		rs = annotationsRange(rs, tp.Annotations, tp.P, syntax.Pos{Line: tp.P.Line, Col: 1 << 30})
+	}
+	return rs
+}
+
 // funRanges adds to rs the ranges of function d and its parameters.
 func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 	if d == nil {
@@ -196,6 +232,7 @@ func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 		}
 	}
 	rs = annotationsRange(rs, d.Annotations, d.P, end)
+	rs = typeParamRanges(rs, d.TypeParams)
 	return paramRanges(rs, d.Params)
 }
 
@@ -217,10 +254,12 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 			}
 		}
 		rs = annotationsRange(rs, d.Annotations, d.P, end)
+		rs = typeParamRanges(rs, d.TypeParams)
 		rs = funRanges(rs, d.Getter)
 		rs = funRanges(rs, d.Setter)
 	case *syntax.ClassDecl:
 		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
+		rs = typeParamRanges(rs, d.TypeParams)
 		for _, p := range d.CtorParams {
 			rs = paramRanges(rs, []*syntax.Param{&p.Param})
 			end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}

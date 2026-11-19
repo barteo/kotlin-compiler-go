@@ -49,5 +49,6 @@ if [ "$mode" = diagnostics ]; then
 fi
 "$TMPDIR/kc-conformance-harness" -mode "$mode" -kotlin "$repo" -tag "$tag" -kc bin/kc \
 	-stdlib "$kotlin_home/lib/kotlin-stdlib.jar" -test "$kotlin_home/lib/kotlin-test.jar" -reflect "$kotlin_home/lib/kotlin-reflect.jar" \
+	-annotations "$kotlin_home/lib/annotations-13.0.jar" \
 	-java "$JAVA_HOME/bin/java" -javac "$JAVA_HOME/bin/javac" \
 	-o "bench/results/$mode.md" -tsv "bench/results/$mode.tsv" ${missed:+-missed "$missed"} "$@"

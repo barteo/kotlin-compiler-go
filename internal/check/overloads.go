@@ -94,7 +94,7 @@ func conflicts(checkers []*Checker) {
 				}
 			}
 			for _, e := range d.Entries {
-				decls = append(decls, namedDecl{c: c, name: e.Name, pos: e.P, decl: e, prop: true})
+				decls = append(decls, namedDecl{c: c, name: e.Name, pos: e.P, decl: e, prop: true, entry: true})
 				if e.Name == "name" || e.Name == "ordinal" {
 					// Enum's properties.
 					c.errorf(e.P, "redeclaration: %s", e.Name)
@@ -257,8 +257,18 @@ func sameSignature(a, b *overload) bool {
 	if a.recv != nil && !same(*a.recv, *b.recv) {
 		return false
 	}
-	for i := range a.ctx {
-		if !same(a.ctx[i], b.ctx[i]) {
+	// The same context parameters' types, in any order: a call passes
+	// them by type.
+	used := make([]bool, len(b.ctx))
+	for _, x := range a.ctx {
+		found := false
+		for j, y := range b.ctx {
+			if !used[j] && same(x, y) {
+				used[j], found = true, true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
 	}
@@ -312,6 +322,7 @@ type namedDecl struct {
 	pos     syntax.Pos
 	decl    any
 	prop    bool // a property, or an enum entry; else a class or a typealias
+	entry   bool // an enum entry
 	private bool
 	hidden  bool
 }
@@ -346,8 +357,25 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 	}
 	for i := range decls {
 		a := &decls[i]
-		if !a.prop {
-			continue
+		if !a.prop || a.entry {
+			// Two classifiers of a name, or two enum entries: where they
+			// are declared, the second is reported, and kotlinc reports
+			// the first too.
+			for _, j := range byName[a.name] {
+				b := &decls[j]
+				if j == i || b.prop != a.prop || b.entry != a.entry || a.hidden || b.hidden || a.c != b.c && a.c.file.Package != b.c.file.Package {
+					continue
+				}
+				for _, o := range []*namedDecl{a, b} {
+					if !reported[o.decl] && !o.c.hasErrorAt(o.pos, "redeclaration") {
+						reported[o.decl] = true
+						o.c.errorf(o.pos, "redeclaration: %s", o.name)
+					}
+				}
+			}
+			if !a.prop {
+				continue
+			}
 		}
 		for _, j := range byName[a.name] {
 			b := &decls[j]
@@ -362,6 +390,17 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 			}
 		}
 	}
+}
+
+// hasErrorAt reports whether the file has an error at p whose message
+// starts with prefix.
+func (c *Checker) hasErrorAt(p syntax.Pos, prefix string) bool {
+	for _, e := range c.errs {
+		if e.Pos == p && strings.HasPrefix(e.Msg, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // programClass is a class of the program, by its Kotlin name.

@@ -523,6 +523,8 @@ type optWalker struct {
 	// annotated code the walk is in, and classes the classes.
 	scope   [][]syntax.Annotation
 	classes []*types.ClassSym
+	// inClassLit is set while the class of a class literal is walked.
+	inClassLit bool
 	// writes are the expressions assigned to.
 	writes map[syntax.Expr]bool
 	// entered is the annotated node whose annotations were just pushed.
@@ -624,6 +626,9 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 			return
 		}
 		w.require(r.P, w.o.classifierMarkers(k, 0))
+		if !w.inClassLit {
+			w.annotationAsType(r.P, k)
+		}
 		switch k := k.(type) {
 		case *types.ClassSym:
 			w.deprecatedUse(r.P, k.DisplayName(), classDepr(k))
@@ -638,6 +643,40 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 			}
 		}
 	})
+}
+
+// annotationAsType reports a type that names RequiresOptIn or OptIn, or
+// an opt-in requirement marker or a class nested in one, which can only
+// be used as annotations (and markers as @OptIn's arguments), through a
+// typealias too; but not in the marker's own code.
+func (w *optWalker) annotationAsType(p syntax.Pos, k any) {
+	var cls *types.ClassSym
+	switch k := k.(type) {
+	case *types.ClassSym:
+		cls = k
+	case *types.AliasSym:
+		if t := k.Type; t.K == types.Class {
+			cls = t.C
+		}
+	}
+	if cls == nil {
+		return
+	}
+	switch qualName(cls) {
+	case "kotlin.RequiresOptIn", "kotlin.OptIn":
+		w.errorf(p, "this class can only be used as an annotation or as an argument to @OptIn")
+		return
+	}
+	for m := cls; m != nil; m = m.Outer {
+		if w.o.marker(m) == nil {
+			continue
+		}
+		if slices.Contains(w.classes, m) {
+			return
+		}
+		w.errorf(p, "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", m.DisplayName())
+		return
+	}
 }
 
 // expansionDeprecated returns a class deprecated with level ERROR or
@@ -763,6 +802,23 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 		if !a.Is("SubclassOptInRequired") {
 			continue
 		}
+		if !subclassable(d) {
+			kind := "a final class"
+			switch {
+			case d.Local || d.Anonymous:
+				kind = "a local class"
+			case d.Fun:
+				kind = "a fun interface"
+			case d.Sealed:
+				kind = "a sealed class"
+			case d.Enum:
+				kind = "an enum class"
+			case d.Object:
+				kind = "an object"
+			}
+			w.errorf(a.P, "'@SubclassOptInRequired' is not applicable to %s", kind)
+			continue
+		}
 		for _, arg := range a.Args {
 			for _, n := range classLitNames(&syntax.Annotation{Args: []syntax.AnnotationArg{arg}}) {
 				if cls := w.o.classNamed(n); cls != nil && w.o.marker(cls) == nil {
@@ -775,6 +831,17 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 			}
 		}
 	}
+}
+
+// subclassable reports whether class d is one that code elsewhere can
+// subclass, which @SubclassOptInRequired asks an opt-in of: an open or
+// abstract class or an interface, but not a sealed, local or functional
+// one, an enum class or an object.
+func subclassable(d *syntax.ClassDecl) bool {
+	if d.Object || d.Enum || d.Annotation || d.Local || d.Anonymous || d.Sealed || d.Fun || d.Data || d.Value {
+		return false
+	}
+	return d.Open || d.Abstract || d.Interface
 }
 
 func (w *optWalker) decl(d syntax.Decl) {
@@ -835,6 +902,12 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 	}
 	w.annotationErrors(d.Annotations)
 	w.markerDeclErrors(d)
+	for i := range extra {
+		// A local class's annotations, which it doesn't keep.
+		if a := &extra[i]; a.Is("SubclassOptInRequired") {
+			w.errorf(a.P, "'@SubclassOptInRequired' is not applicable to a local class")
+		}
+	}
 	w.push(extra)
 	w.push(d.Annotations)
 	if d.Sym != nil {
@@ -1018,6 +1091,13 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 	w.typeRef(d.Recv)
 	w.params(d.Params)
 	w.typeRef(d.Ret)
+	if p, ok := w.c.contractAt[d.Body]; ok && d.Body != nil {
+		// kotlin.contracts.contract, which dropContracts took out of
+		// the body, is @ExperimentalContracts.
+		if m := w.o.marker(w.o.extNamed("kotlin.contracts.ExperimentalContracts")); m != nil {
+			w.require(p, []*optMarker{m})
+		}
+	}
 	if d.Body != nil {
 		w.node(d.Body)
 	}
@@ -1168,7 +1248,9 @@ func (w *optWalker) visit(n any) bool {
 	case *syntax.As:
 		w.typeRef(n.Ref)
 	case *syntax.ClassLit:
+		w.inClassLit = true
 		w.typeRef(n.Ref)
+		w.inClassLit = false
 	case *syntax.CallableRef:
 		w.typeRef(n.Type)
 	case *syntax.Lambda:

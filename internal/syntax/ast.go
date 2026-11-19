@@ -1,6 +1,10 @@
 package syntax
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"regexp"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // File is a parsed source file.
 type File struct {
@@ -85,6 +89,7 @@ func (f *File) HasFacade() bool {
 // Import is `import a.b.C`, `import a.b.C as D` or `import a.b.*`.
 type Import struct {
 	P     Pos
+	PathP Pos    // where the path starts
 	Path  string // dotted, without the .*
 	Star  bool
 	Alias string
@@ -533,6 +538,8 @@ type FunDecl struct {
 	// InPlace names those it says it calls in place, callsInPlace of
 	// any kind.
 	InPlace map[string]bool
+	// AtLeastOnce names those it says it calls at least once.
+	AtLeastOnce map[string]bool
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
@@ -1243,6 +1250,34 @@ type TmplPart struct {
 type StringLit struct {
 	exprBase
 	Parts []TmplPart
+	// Prefix is the number of $ of its interpolation prefix ($$"..."), 0
+	// if it has none, and Src its source after the prefix, quotes
+	// included, which escapes ("\$") make differ from Parts.
+	Prefix int
+	Src    string
+}
+
+// redundantPrefix matches what looks like an interpolation in a string
+// literal's source: kotlinc's RedundantInterpolationPrefixCheckerLiteral.
+var redundantPrefix = regexp.MustCompile("(\\$+)(\\w|\\{|`[^`])")
+
+// RedundantPrefix reports whether the literal's interpolation prefix is
+// redundant, as kotlinc's experimental REDUNDANT_INTERPOLATION_PREFIX
+// warning says: a single $, or a longer prefix of a literal without
+// template entries none of whose text looks like one.
+func (s *StringLit) RedundantPrefix() bool {
+	switch {
+	case s.Prefix == 1:
+		return true
+	case s.Prefix == 0:
+		return false
+	}
+	for _, p := range s.Parts {
+		if p.X != nil {
+			return false
+		}
+	}
+	return !redundantPrefix.MatchString(s.Src)
 }
 
 type Unary struct {
@@ -1309,6 +1344,11 @@ type Member struct {
 	Safe    bool
 	Prop    *types.VarSym
 	Builtin types.Builtin
+	// Written is set by the parser on x.f and x?.f as written, outside
+	// parentheses: a property of an explicit receiver, x.f() for an f:
+	// B.() -> Unit, isn't invoked with an implicit B, as (x.f)() is. The
+	// checker's own member accesses, this.f() for f(), don't have it.
+	Written bool
 	// Groups is set by the checker on a safe call in composable code that
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.
@@ -1547,6 +1587,9 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonExpr is set on an anonymous function with an expression body,
+	// fun (): Unit = x, whose value isn't coerced to Unit.
+	AnonExpr bool
 	// AnonCtx are the context parameters of an anonymous function,
 	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
 	// names a lambda's it makes too, without types: see suspendConverted.

@@ -30,9 +30,59 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
 			continue
 		}
-		out = append(out, l.stmt(c))
+		if !l.recovering {
+			out = append(out, l.stmt(c))
+			continue
+		}
+		var st syntax.Stmt
+		if l.attempt(func() {
+			l.syntaxError(c)
+			st = l.stmt(c)
+		}) {
+			out = append(out, st)
+			continue
+		}
+		// An error about a node that is missing is at the end of the
+		// file: it belongs to the statement.
+		if e := l.errs[len(l.errs)-1]; before(l.end(c), e.Pos) {
+			e2 := *e
+			e2.Pos = l.pos(c)
+			l.errs[len(l.errs)-1] = &e2
+		}
+		if v := l.placeholderVar(c); v != nil {
+			out = append(out, v)
+		}
 	}
 	return out
+}
+
+// before reports whether a is before b.
+func before(a, b syntax.Pos) bool {
+	return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
+}
+
+// placeholderVar returns the variable to keep for a local PROPERTY n that
+// failed to lower, so that its uses resolve: of an invalid type, which the
+// checker reports nothing about, and initialized. It returns nil if n
+// isn't a local variable with a name.
+func (l *lowerer) placeholderVar(n psi.NodeRef) *syntax.VarStmt {
+	name := child(n, psi.KindIDENTIFIER)
+	if n.NumericKind() != psi.KindPROPERTY || !name.Valid() {
+		return nil
+	}
+	kw := child(n, psi.KindVAR_KEYWORD)
+	pos := l.pos(name)
+	if !kw.Valid() {
+		kw = child(n, psi.KindVAL_KEYWORD)
+	}
+	if kw.Valid() {
+		pos = l.pos(kw)
+	}
+	invalid := func() *syntax.TypeRef { return &syntax.TypeRef{P: l.pos(name), Known: &types.InvalidType} }
+	init := &syntax.As{X: &syntax.NullLit{}, Ref: invalid()}
+	init.X.(*syntax.NullLit).P = l.pos(name)
+	init.P = l.pos(name)
+	return &syntax.VarStmt{P: pos, Name: ident(name), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD, Type: invalid(), Init: init}
 }
 
 // body lowers a control structure's body, a THEN, ELSE or BODY: a block,
@@ -50,6 +100,16 @@ func (l *lowerer) body(n psi.NodeRef) *syntax.Block {
 func (l *lowerer) bodyOf(n psi.NodeRef) *syntax.Block {
 	if n.NumericKind() == psi.KindBLOCK {
 		return l.block(n)
+	}
+	if n.NumericKind() == psi.KindLABELED_EXPRESSION {
+		n = l.innermostLabel(n)
+		// while (c) a@ { ... }: a labeled block, kotlinc's parser's, where
+		// kc's reads a lambda. Its label names no loop, so a jump to it
+		// is an error.
+		if x := exprChild(n); x.NumericKind() == psi.KindBLOCK {
+			l.label(n)
+			return l.block(x)
+		}
 	}
 	if n.NumericKind() == psi.KindANNOTATED_EXPRESSION {
 		// -> @Suppress("x") { ... }: a block, whose annotations are
@@ -197,6 +257,7 @@ func (l *lowerer) annotatedStmt(n psi.NodeRef) psi.NodeRef {
 func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {
 	switch n.NumericKind() {
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
 		case psi.KindFOR, psi.KindWHILE, psi.KindDO_WHILE:

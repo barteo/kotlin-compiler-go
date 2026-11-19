@@ -104,8 +104,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
-	written := ref.Args != nil
-	if ref.Args == nil && !kotlinTypes[ref.Name] {
+	written := ref.Args != nil || ref.Outer != nil
+	if !written && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
 		} else if own, _ := localOwnParams(cls); cls != nil && len(cls.TypeParams) > 0 {
@@ -124,11 +124,15 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 			}
 		}
 	}
-	old := c.refLHS
-	c.refLHS = callable && written
+	old, oldLit := c.refLHS, c.classLitLHS
+	c.refLHS, c.classLitLHS = callable && written, true
 	t := c.resolveType(ref)
-	c.refLHS = old
+	c.refLHS, c.classLitLHS = old, oldLit
 	if t.K != types.Invalid && !t.IsArray() && !callable {
+		if ref.Outer != nil {
+			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+			return types.InvalidType
+		}
 		for _, a := range ref.Args {
 			if a.Variance != types.Star {
 				c.errorf(a.P, "only classes are allowed on the left hand side of a class literal")
@@ -166,6 +170,30 @@ func ensured(cls *types.ClassSym) *types.ClassSym {
 // and lambdas, and so are code generation and inlining. The parameter
 // types are the expected function type's, or without one, those of the
 // only function the reference can name.
+
+// samConvertedArg reports whether the call that reference x's lambda
+// makes converts one of the lambda's parameters to a fun interface, which
+// kotlinc doesn't do: foo(A::invokeLater) for foo(x: (() -> Unit) -> Unit)
+// and Java's static void invokeLater(Runnable).
+func samConvertedArg(x *syntax.Lambda) bool {
+	if x.Body == nil || len(x.Body.Stmts) == 0 {
+		return false
+	}
+	es, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*syntax.Call)
+	if !ok || call.SAM {
+		return false // a fun interface's constructor converts it: ::KRunnable
+	}
+	for _, a := range call.Args {
+		if ch, ok := a.(*syntax.Checked); ok && ch.SAM != nil {
+			return true
+		}
+	}
+	return false
+}
 
 // refForm is a way to read a reference: its lambda's parameter types and
 // a builder of its body.
@@ -542,6 +570,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 			c.tailBlock, c.tailSink = x.Body, tail
 		}
 		ps, rt, ok := c.checkLambda1(x, w)
+		if ok && len(c.errs) == n && samConvertedArg(x) {
+			c.errorf(p, "inapplicable candidate: %s takes a fun interface, which a callable reference's parameter isn't converted to", refString(r))
+		}
 		if len(c.errs) == n || i == len(forms)-1 {
 			if tail != nil {
 				sink.merge(tail)
@@ -1149,6 +1180,9 @@ func (c *Checker) kfunRef(x *syntax.Lambda, want, fn types.Type) types.Type {
 	}
 	call := kfunCall(x)
 	if call == nil {
+		call = builtinKFunCall(x)
+	}
+	if call == nil {
 		c.unsupported(x.P, "callable reference", "%s as a kotlin.reflect object: only references to functions and constructors of classes are supported", refString(x.Ref))
 		return types.InvalidType
 	}
@@ -1186,6 +1220,37 @@ func kfunCall(x *syntax.Lambda) *syntax.Call {
 		return nil
 	}
 	if x.Suspend && x.SAM == nil && call.Sym.Suspend && refStateMachine(x, call.Sym) {
+		return nil
+	}
+	return call
+}
+
+// builtinKFunCall returns the call of reference x's lambda, if it is the
+// call of a built-in member of its receiver, as Int::and's: its
+// kotlin.reflect object names the receiver's class (see kfunArgs in
+// internal/codegen), as kotlinc's names kotlin.Int.
+func builtinKFunCall(x *syntax.Lambda) *syntax.Call {
+	if len(x.Body.Stmts) == 0 || x.Suspend || x.SAM != nil || x.KProp != nil {
+		return nil
+	}
+	s, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	call, ok := s.X.(*syntax.Call)
+	if !ok || call.Sym != nil || call.Builtin == 0 || call.Invoke || call.Ctor != nil {
+		return nil
+	}
+	var recv types.Type
+	switch ps := x.ParamSyms(); {
+	case x.Ref.Bound != nil:
+		recv = x.Ref.Bound.Type
+	case x.Ref.X != nil && len(ps) > 0:
+		recv = ps[0].Type
+	default:
+		return nil
+	}
+	if _, ok := types.Desc(types.Erase(recv.NonNull())); !ok {
 		return nil
 	}
 	return call

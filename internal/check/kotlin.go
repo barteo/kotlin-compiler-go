@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -173,8 +174,14 @@ type kotlinTable struct {
 	moduleOnce sync.Once
 	parts      map[string][]kmeta.Part // by package name
 
-	pkgMu sync.Mutex
-	pkgs  map[string]*kpkg
+	// pkgs are the packages of parts, by name, made with them. A package's
+	// declarations are read on first use (see pkg).
+	pkgs map[string]*kpkg
+	// refs are the packages lookups have asked pkgRef for, by the name asked.
+	refs sync.Map
+
+	defaultOnce sync.Once
+	defaultPkgs []*pkgRef // defaultPackages' refs
 
 	platformOnce sync.Once
 	platformSet  map[string]bool
@@ -182,6 +189,7 @@ type kotlinTable struct {
 
 // kpkg is a Kotlin package's top-level declarations.
 type kpkg struct {
+	name  string // dotted, kotlin.collections
 	once  sync.Once
 	parts []*kpart
 	// names are the names of the parts' functions, properties and type
@@ -191,6 +199,10 @@ type kpkg struct {
 
 	mu   sync.Mutex
 	funs map[string][]*types.FunSym
+	// entries are the functions by name, converted as lookups need
+	// them, and kinds the functions of a kind: see pkgFunsWhere.
+	entries map[kindKey][]*kfunEntry
+	kinds   map[kindKey][]*types.FunSym
 	// internalFuns are the internal functions, by pkgInternalFuns.
 	internalFuns map[string][]*types.FunSym
 	props        map[string][]*types.FunSym // getters of extension properties
@@ -216,6 +228,154 @@ type kpart struct {
 	// annots are the methods with annotations or a deprecation.
 	annots map[string]*classfile.Member
 }
+
+// pkgRef is a package that lookups of simple names probe, resolved
+// once: a star import or a default import.
+type pkgRef struct {
+	name string // as asked: kotlin.collections
+	path string // internal: kotlin/collections
+	hash uint64 // classpath.Hash(path)
+	k    *kpkg  // its Kotlin declarations, read on first use; nil if none
+}
+
+// pkgRef returns the package of a name, dotted as kotlin.collections. A
+// slashed name finds the package's classes but no Kotlin declarations, as
+// pkg finds none for it.
+func (t *classTable) pkgRef(name string) *pkgRef {
+	t = t.root()
+	if r, ok := t.refs.Load(name); ok {
+		return r.(*pkgRef)
+	}
+	path := strings.ReplaceAll(name, ".", "/")
+	r := &pkgRef{name: name, path: path, hash: classpath.Hash(path)}
+	if t.kotlin {
+		t.modules()
+		r.k = t.pkgs[name]
+	}
+	actual, _ := t.refs.LoadOrStore(name, r)
+	return actual.(*pkgRef)
+}
+
+// javaLangHash is classpath.Hash("java/lang").
+var javaLangHash = classpath.Hash("java/lang")
+
+// starPkgs returns the packages of c.stars, by their dotted names, in
+// order.
+func (c *Checker) starPkgs() []*pkgRef {
+	for len(c.starRefs) < len(c.stars) {
+		c.starRefs = append(c.starRefs, c.u.ext.pkgRef(strings.ReplaceAll(c.stars[len(c.starRefs)], "/", ".")))
+	}
+	return c.starRefs
+}
+
+// defaultRefs returns the packages of defaultPackages.
+func (t *classTable) defaultRefs() []*pkgRef {
+	t = t.root()
+	t.defaultOnce.Do(func() {
+		for _, pkg := range defaultPackages {
+			t.defaultPkgs = append(t.defaultPkgs, t.pkgRef(pkg))
+		}
+	})
+	return t.defaultPkgs
+}
+
+// absent reports whether class certainly returns nil for the internal
+// name that hashes to h, a name that isn't one of the classes without a
+// class file (see syntheticClass): no class of the class path has it,
+// and no class of the program takes its place.
+func (t *classTable) absent(h uint64) bool {
+	r := t.root()
+	return t.cp != nil && r.shadow.Load() == nil && t.sources.Load() == nil && r.sources.Load() == nil && !t.cp.MayHave(h)
+}
+
+// classIn is class(qualified(path, name)) for a package path whose hash
+// is h: it builds the name only if the class may be there.
+func (t *classTable) classIn(path string, h uint64, name string) *types.ClassSym {
+	if path != "" && !syntheticClass(path, name) && t.absent(classpath.HashJoin(h, '/', name)) {
+		if verifyFilter {
+			t.verifyAbsent(qualified(path, name), t.class(qualified(path, name)))
+		}
+		return nil
+	}
+	return t.class(qualified(path, name))
+}
+
+// nestedNamed is class(outer + "$" + name), building the name only if the
+// class may be there.
+func (t *classTable) nestedNamed(outer, name string) *types.ClassSym {
+	if (outer != "java/util/Map" || name != "Entry") && t.absent(classpath.HashJoin(classpath.Hash(outer), '$', name)) {
+		if verifyFilter {
+			t.verifyAbsent(outer+"$"+name, t.class(outer+"$"+name))
+		}
+		return nil
+	}
+	return t.class(outer + "$" + name)
+}
+
+// syntheticClass reports whether class path/name may be one that class
+// finds without a class file: a function interface or a mutable
+// collection interface.
+func syntheticClass(path, name string) bool {
+	switch path {
+	case "kotlin/jvm/functions", "kotlin":
+		return strings.HasPrefix(name, "Function")
+	case "kotlin/reflect":
+		return strings.HasPrefix(name, "K")
+	case "kotlin/coroutines":
+		return strings.HasPrefix(name, "Suspend")
+	case "java/lang", "java/util":
+		return mutableNames[path+"/"+name] // path and name have no other separators here
+	}
+	return false
+}
+
+// maybeSynthetic reports whether class may find a class of an internal
+// name without a class file, as syntheticClass does.
+func maybeSynthetic(name string) bool {
+	i := strings.LastIndexByte(name, '/')
+	if i < 0 {
+		return false
+	}
+	return syntheticClass(name[:i], name[i+1:])
+}
+
+// mutableNames are mutableOf's keys.
+var mutableNames = func() map[string]bool {
+	m := map[string]bool{}
+	for k := range mutableOf {
+		m[k] = true
+	}
+	return m
+}()
+
+// pkgSynthetic reports whether pkgClass may find a class of a package by
+// name without a class file: a built-in type, a collection or atomic
+// type, or a class standing for a java.lang one.
+func pkgSynthetic(path, name string) bool {
+	if strings.IndexByte(name, '.') >= 0 || strings.IndexByte(name, '/') >= 0 {
+		return true
+	}
+	if path == "kotlin" && (strings.HasPrefix(name, "Function") || types.ArrayByName(name) != nil) {
+		return true
+	}
+	return syntheticNames[path][name]
+}
+
+// syntheticNames are the classes pkgClass finds by id, by package and
+// simple name.
+var syntheticNames = func() map[string]map[string]bool {
+	m := map[string]map[string]bool{}
+	for _, ids := range []map[string]string{collectionJVM, atomicJVM, javaLangOf} {
+		for id := range ids {
+			i := strings.LastIndexByte(id, '/')
+			if m[id[:i]] == nil {
+				m[id[:i]] = map[string]bool{}
+			}
+			m[id[:i]][id[i+1:]] = true
+		}
+	}
+	return m
+}()
 
 // fieldConstant returns the value of a final static field's ConstantValue,
 // as types.VarSym.Constant holds it, or nil.
@@ -255,7 +415,12 @@ func (t *classTable) timed(start time.Time, n int) {
 // functionArity returns n for the class pkg+"FunctionN", such as
 // kotlin/jvm/functions/Function1 or kotlin/Function1.
 func functionArity(name, pkg string) (int, bool) {
-	s, ok := strings.CutPrefix(name, pkg+"Function")
+	// Without building pkg+"Function": class lookups call this for every
+	// name they're asked.
+	s, ok := strings.CutPrefix(name, pkg)
+	if ok {
+		s, ok = strings.CutPrefix(s, "Function")
+	}
 	if !ok {
 		return 0, false
 	}
@@ -676,6 +841,7 @@ func (t *classTable) markValue(cls *types.ClassSym) bool {
 		return true
 	}
 	t.valueOf(cls, kc)
+	t.decoded.Store(cls.Name, kc) // for load, which needn't decode it again
 	return true
 }
 
@@ -798,6 +964,12 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 				sym.Once = make([]bool, len(f.Params))
 			}
 			sym.Once[ip.Param] = true
+		}
+		if ip.Kind == kmeta.AtLeastOnce {
+			if sym.AtLeastOnce == nil {
+				sym.AtLeastOnce = make([]bool, len(f.Params))
+			}
+			sym.AtLeastOnce[ip.Param] = true
 		}
 	}
 	for _, im := range f.Implies {
@@ -2100,6 +2272,11 @@ func (t *classTable) modules() map[string][]kmeta.Part {
 				}
 			}
 		}
+		t.pkgs = make(map[string]*kpkg, len(t.parts))
+		for pkg := range t.parts {
+			t.pkgs[pkg] = &kpkg{name: pkg, funs: map[string][]*types.FunSym{}, props: map[string][]*types.FunSym{}, vars: map[string]*types.VarSym{},
+				aliases: map[string]*types.ClassSym{}, typeAliases: map[string]*types.AliasSym{}}
+		}
 		t.timed(start, 0)
 	})
 	return t.parts
@@ -2120,21 +2297,23 @@ func (t *classTable) isKotlinPackage(pkg string) bool {
 // use, or nil if it has none.
 func (t *classTable) pkg(name string) *kpkg {
 	t = t.root()
-	if !t.isKotlinPackage(name) {
+	if !t.kotlin {
 		return nil
 	}
-	t.pkgMu.Lock()
-	p := t.pkgs[name]
+	t.modules()
+	return t.read(t.pkgs[name])
+}
+
+// read reads the declarations of package p, if not read yet, and returns
+// it. p may be nil.
+func (t *classTable) read(p *kpkg) *kpkg {
 	if p == nil {
-		p = &kpkg{funs: map[string][]*types.FunSym{}, props: map[string][]*types.FunSym{}, vars: map[string]*types.VarSym{},
-			aliases: map[string]*types.ClassSym{}, typeAliases: map[string]*types.AliasSym{}}
-		t.pkgs[name] = p
+		return nil
 	}
-	t.pkgMu.Unlock()
 	p.once.Do(func() {
 		// A package can have dozens of classes, some large, so they are
 		// read in parallel.
-		parts := t.modules()[name]
+		parts := t.parts[p.name]
 		read := make([]*kpart, len(parts))
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, runtime.GOMAXPROCS(0))
@@ -2190,25 +2369,124 @@ func (t *classTable) pkgInternalFuns(pkg, name string) []*types.FunSym {
 }
 
 func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym {
+	return t.pkgFunsWhere(pkg, name, internal, allFuns, nil)
+}
+
+// funKind selects a package's functions by whether they are extensions.
+type funKind uint8
+
+const (
+	allFuns funKind = iota
+	extFuns
+	nonExtFuns
+)
+
+// kindKey keys kpkg.kinds.
+type kindKey struct {
+	name     string
+	internal bool
+	kind     funKind
+}
+
+// kfunEntry is a top-level function of a package, read from its metadata
+// and converted to a symbol only when a lookup can use it: a lookup of
+// extensions for a receiver needs only those whose receiver takes it, of
+// the dozens a name like map or forEach has.
+type kfunEntry struct {
+	f    *kmeta.Function
+	part *kpart
+	key  string // the method's name and descriptor
+	// recv is an extension's receiver type without its type arguments,
+	// which is enough for recvFits; recvOK is unset if it isn't had
+	// that cheaply, for a type parameter or a suspend function type.
+	recv           types.Type
+	recvOK, recvIn bool
+	sym            *types.FunSym // once converted
+}
+
+// pkgFunsWhere returns the top-level functions of a package with a name,
+// as pkgFunsOf, of a kind. If fits isn't nil, it leaves out the
+// extensions whose receiver type, without its type arguments, it rejects;
+// it must reject only receivers that can't take the call's, as recvFits
+// does, so the result is the others' in the same order, without the
+// duplicates pkgFunsOf leaves out.
+func (t *classTable) pkgFunsWhere(pkg, name string, internal bool, kind funKind, fits func(types.Type) bool) []*types.FunSym {
+	return t.pkgFunsWhereIn(t.pkgRef(pkg), name, internal, kind, fits)
+}
+
+// pkgFunsWhereIn is pkgFunsWhere of a package resolved once.
+func (t *classTable) pkgFunsWhereIn(r *pkgRef, name string, internal bool, kind funKind, fits func(types.Type) bool) []*types.FunSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	cache := p.funs
-	if internal {
+	var cache map[string][]*types.FunSym
+	var kk kindKey
+	switch {
+	case fits != nil:
+	case kind == allFuns && internal:
 		if p.internalFuns == nil {
 			p.internalFuns = map[string][]*types.FunSym{}
 		}
 		cache = p.internalFuns
+	case kind == allFuns:
+		cache = p.funs
+	default:
+		kk = kindKey{name, internal, kind}
+		if fs, ok := p.kinds[kk]; ok {
+			return fs
+		}
 	}
 	if fs, ok := cache[name]; ok {
 		return fs
 	}
-	start := time.Now()
 	var fs []*types.FunSym
+	for _, e := range t.pkgEntries(p, name, internal) {
+		if kind == extFuns && e.f.Recv == nil || kind == nonExtFuns && e.f.Recv != nil {
+			continue
+		}
+		if fits != nil && e.f.Recv != nil {
+			if !e.recvIn {
+				e.recv, e.recvOK = t.shallowType(e.f.Recv)
+				e.recvIn = true
+			}
+			if e.recvOK && !fits(e.recv) {
+				continue
+			}
+		}
+		sym := t.pkgFun(pkg, name, e)
+		// As in K2, one function of two modules on the class path, by
+		// its package, name and signature, is one candidate.
+		if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+			continue
+		}
+		fs = append(fs, sym)
+	}
+	switch {
+	case fits != nil:
+	case cache != nil:
+		cache[name] = fs
+	default:
+		if p.kinds == nil {
+			p.kinds = map[kindKey][]*types.FunSym{}
+		}
+		p.kinds[kk] = fs
+	}
+	return fs
+}
+
+// pkgEntries returns the entries of the functions of a package with a
+// name, public or internal ones, reading them on first use. p.mu is held.
+func (t *classTable) pkgEntries(p *kpkg, name string, internal bool) []*kfunEntry {
+	k := kindKey{name: name, internal: internal}
+	if es, ok := p.entries[k]; ok {
+		return es
+	}
+	var es []*kfunEntry
 	for _, part := range p.parts {
 		decls, err := part.meta.Functions(name)
 		if err != nil {
@@ -2218,64 +2496,109 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 			if internal != (f.Flags.Visibility() == kmeta.Internal && !part.friend) {
 				continue
 			}
-			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[f.JVM.Name+f.JVM.Desc] {
+			key := f.JVM.Name + f.JVM.Desc
+			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[key] {
 				continue
 			}
-			sym := t.kfun(f, nil, nil, part.methods)
-			sym.Facade, sym.Pkg = part.facade, part.pkg
-			sym.LowPriority = part.low[f.JVM.Name+f.JVM.Desc]
-			annotate(sym, part.annots[f.JVM.Name+f.JVM.Desc])
-			if sym.Why != "" && typesOK(sym) {
-				intrinsic(sym, part.facade, f.JVM)
-			}
-			switch {
-			case sym.Inline != nil && sym.Unsupported:
-				// An inline-only function is called by copying its body.
-				sym.Unsupported, sym.Why = false, ""
-			case sym.Inline != nil:
-				sym.Inline = nil // an intrinsic
-			case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
-				// A public inline function too, if its body can be copied.
-				// One with reified type parameters must be: its method
-				// doesn't know them.
-				sym.Inline = inlineInfo(f, hasReified(sym))
-			}
-			if in := sym.Inline; in != nil {
-				in.Class, in.Load = part.class, t.loadInline(part.class)
-			}
-			if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
-				// An intrinsic, as in kotlinc: its body only throws.
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.TypeOf
-			}
-			if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.SuspendIntrinsic
-			}
-			if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
-				// An intrinsic of Compose's plugin: its body doesn't
-				// start the movable group.
-				sym.Inline, sym.Builtin = nil, types.ComposeKey
-			}
-			// As in K2, one function of two modules on the class path, by
-			// its package, name and signature, is one candidate.
-			if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
-				continue
-			}
-			fs = append(fs, sym)
+			es = append(es, &kfunEntry{f: f, part: part, key: key})
 		}
 	}
-	cache[name] = fs
-	t.timed(start, len(fs))
-	return fs
+	if p.entries == nil {
+		p.entries = map[kindKey][]*kfunEntry{}
+	}
+	p.entries[k] = es
+	return es
+}
+
+// pkgFun converts entry e of a package's functions with a name to its
+// symbol, on first use. The package's lock is held.
+func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
+	if e.sym != nil {
+		return e.sym
+	}
+	start := time.Now()
+	f, part := e.f, e.part
+	sym := t.kfun(f, nil, nil, part.methods)
+	sym.Facade, sym.Pkg = part.facade, part.pkg
+	sym.LowPriority = part.low[e.key]
+	annotate(sym, part.annots[e.key])
+	if sym.Why != "" && typesOK(sym) {
+		intrinsic(sym, part.facade, f.JVM)
+	}
+	switch {
+	case sym.Inline != nil && sym.Unsupported:
+		// An inline-only function is called by copying its body.
+		sym.Unsupported, sym.Why = false, ""
+	case sym.Inline != nil:
+		sym.Inline = nil // an intrinsic
+	case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
+		// A public inline function too, if its body can be copied.
+		// One with reified type parameters must be: its method
+		// doesn't know them.
+		sym.Inline = inlineInfo(f, hasReified(sym))
+	}
+	if in := sym.Inline; in != nil {
+		in.Class, in.Load = part.class, t.loadInline(part.class)
+	}
+	if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
+		// An intrinsic, as in kotlinc: its body only throws.
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.TypeOf
+	}
+	if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.SuspendIntrinsic
+	}
+	if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
+		// An intrinsic of Compose's plugin: its body doesn't
+		// start the movable group.
+		sym.Inline, sym.Builtin = nil, types.ComposeKey
+	}
+	e.sym = sym
+	t.timed(start, 1)
+	return sym
+}
+
+// shallowType is a type of metadata without its type arguments, as ktype
+// would have it but for those, or false if it is a type parameter, a
+// suspend or @Composable function type, or a class that isn't there.
+func (t *classTable) shallowType(kt *kmeta.Type) (types.Type, bool) {
+	switch {
+	case kt.Class == "" || kt.Flags&kmeta.TypeSuspend != 0 || kt.Composable:
+		return types.InvalidType, false
+	case len(kt.Args) == 0 && kt.Outer == nil:
+		return t.ktype(kt, nil)
+	}
+	switch kt.Class {
+	case "kotlin/Int", "kotlin/Long", "kotlin/Double", "kotlin/Boolean", "kotlin/Char", "kotlin/Float", "kotlin/Byte", "kotlin/Short",
+		"kotlin/String", "kotlin/Any", "kotlin/Unit", "kotlin/Nothing":
+		return types.InvalidType, false // as ktype has them, which takes no arguments
+	}
+	cls := t.kclass(kt.Class)
+	if cls == nil {
+		return types.InvalidType, false
+	}
+	r := types.ClassType(cls)
+	switch {
+	case kt.Upper != nil:
+		r = r.Platform()
+	case kt.Nullable:
+		r = r.Nullable()
+	}
+	return r, true
 }
 
 // pkgExtProps returns the getters of a package's public extension
 // properties with a name. A getter takes the receiver and has the
 // property's type parameters.
 func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
+	return t.pkgExtPropsIn(t.pkgRef(pkg), name)
+}
+
+// pkgExtPropsIn is pkgExtProps of a package resolved once.
+func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2333,8 +2656,14 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 // pkgVar returns a package's public top-level property with a name that
 // isn't an extension, or nil.
 func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
+	return t.pkgVarIn(t.pkgRef(pkg), name)
+}
+
+// pkgVarIn is pkgVar of a package resolved once.
+func (t *classTable) pkgVarIn(r *pkgRef, name string) *types.VarSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2481,7 +2810,25 @@ func qualified(pkg, name string) string {
 // pkgClass returns the class that a simple name refers to in a package:
 // a class, a built-in type or a typealias of a class, or nil.
 func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
-	id := qualified(strings.ReplaceAll(pkg, ".", "/"), name)
+	return t.pkgClassIn(t.pkgRef(pkg), name)
+}
+
+// pkgClassIn is pkgClass of a package resolved once. It looks the class up
+// by name only if the class path may have it.
+func (t *classTable) pkgClassIn(r *pkgRef, name string) *types.ClassSym {
+	if r.path != "" && !pkgSynthetic(r.path, name) && !syntheticClass(r.path, name) && t.absent(classpath.HashJoin(r.hash, '/', name)) {
+		alias := t.pkgClassAlias(r, name)
+		if verifyFilter && t.pkgClassFull(r, name) != alias {
+			panic("check: the class path filter ruled out " + qualified(r.path, name))
+		}
+		return alias
+	}
+	return t.pkgClassFull(r, name)
+}
+
+// pkgClassFull is pkgClassIn without the filter.
+func (t *classTable) pkgClassFull(r *pkgRef, name string) *types.ClassSym {
+	id := qualified(r.path, name)
 	if _, ok := collectionJVM[id]; ok {
 		return t.kclass(id)
 	}
@@ -2500,7 +2847,13 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 	if c := t.class(id); c != nil {
 		return c
 	}
-	p := t.pkg(pkg)
+	return t.pkgClassAlias(r, name)
+}
+
+// pkgClassAlias returns the class a public typealias of a package named
+// name stands for, or nil.
+func (t *classTable) pkgClassAlias(r *pkgRef, name string) *types.ClassSym {
+	p := t.root().read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2529,8 +2882,14 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 // pkgClass doesn't return as a class, such as an alias of a function type
 // or of a class with fixed type arguments, or nil.
 func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
+	return t.pkgAliasIn(t.pkgRef(pkg), name)
+}
+
+// pkgAliasIn is pkgAlias of a package resolved once.
+func (t *classTable) pkgAliasIn(r *pkgRef, name string) *types.AliasSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2589,4 +2948,12 @@ func (t *classTable) aliasClass(a *kmeta.TypeAlias) *types.ClassSym {
 var platformDependent = map[string]int{
 	"kotlin/collections/Map.getOrDefault":  2,
 	"kotlin/collections/MutableMap.remove": 2,
+}
+
+// verifyAbsent panics if cls, what a full lookup of name found, is a
+// class that the class path's name filter ruled out.
+func (t *classTable) verifyAbsent(name string, cls *types.ClassSym) {
+	if cls != nil {
+		panic("check: the class path filter ruled out " + name)
+	}
 }

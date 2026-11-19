@@ -44,6 +44,13 @@ func TreeErrors(s *psi.Snapshot) []*syntax.Error {
 			if inExpressionContext(n) {
 				report(n, "expected an expression, found a declaration")
 			}
+		case psi.KindSTRING_TEMPLATE, psi.KindCHARACTER_CONSTANT, psi.KindFLOAT_CONSTANT, psi.KindINTEGER_CONSTANT:
+			if p := prevLeaf(n); gluedAffix(p) {
+				report(p, gluedLiteralMsg)
+			}
+			if x := nextLeaf(n); gluedAffix(x) {
+				report(x, gluedLiteralMsg)
+			}
 		case psi.KindWHEN:
 			if !has(n, psi.KindLPAR) {
 				continue // no subject
@@ -64,6 +71,46 @@ func TreeErrors(s *psi.Snapshot) []*syntax.Error {
 		}
 	}
 	return errs
+}
+
+// gluedLiteralMsg is kotlinc's error for a literal written against an
+// identifier, a number or a keyword, as a foo"bar" or 1in a.
+const gluedLiteralMsg = "unsupported [literal prefixes and suffixes]"
+
+// gluedAffix reports whether the leaf l, next to a literal, may not touch
+// it: an identifier, a number or a keyword. Whitespace, comments and any
+// other token separate the two.
+func gluedAffix(l psi.NodeRef) bool {
+	if !l.Valid() {
+		return false
+	}
+	k := l.NumericKind()
+	return k == psi.KindIDENTIFIER || k == psi.KindINTEGER_LITERAL || k == psi.KindFLOAT_LITERAL || psi.IsKeyword(k)
+}
+
+// prevLeaf returns the leaf just before n in the file, or an invalid
+// NodeRef. Nodes are in preorder, so the nodes before n are its
+// ancestors, which aren't leaves, and what ends before it.
+func prevLeaf(n psi.NodeRef) psi.NodeRef {
+	s := n.ContainingFile()
+	for id := n.ID() - 1; id > 0; id-- {
+		if c := s.Node(id); c.IsLeaf() {
+			return c
+		}
+	}
+	return psi.NodeRef{}
+}
+
+// nextLeaf returns the leaf just after n in the file, or an invalid
+// NodeRef.
+func nextLeaf(n psi.NodeRef) psi.NodeRef {
+	s := n.ContainingFile()
+	for id := n.SubtreeEnd(); int(id) <= s.NodeCount(); id++ {
+		if c := s.Node(id); c.IsLeaf() {
+			return c
+		}
+	}
+	return psi.NodeRef{}
 }
 
 // confusingOps are the binary operators of a when condition with a subject

@@ -93,7 +93,7 @@ func (c *Checker) superSafeCall(x *syntax.Member) {
 // internal, as kotlinc's NON_INTERNAL_PUBLISHED_API: it makes an internal
 // declaration usable from public inline functions, and others already
 // are, or can't be. An override without a visibility modifier has the
-// overridden member's visibility, which may be internal, so it isn't
+// visibility of the members it overrides, often internal, and isn't
 // reported.
 func (c *Checker) publishedApi(m *syntax.Modifiers) {
 	if m.Override && !m.Explicit {

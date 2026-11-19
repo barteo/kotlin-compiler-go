@@ -13,14 +13,31 @@ own tests.
 - Warnings: `kc` reports only `DEPRECATION`,
   `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
-  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON` and
-  `USELESS_ELVIS`, and those only where the types make them certain, so
+  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON`,
+  `USELESS_ELVIS`, `OVERRIDE_BY_INLINE`, `NOTHING_TO_INLINE`,
+  `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
+  `PLATFORM_CLASS_MAPPED_TO_KOTLIN`, `NO_TAIL_CALLS_FOUND`,
+  `USELESS_IS_CHECK`, `IMPOSSIBLE_IS_CHECK_WARNING`,
+  `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`, `CAST_NEVER_SUCCEEDS`,
+  `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL`,
+  `SAFE_CAST_RELYING_ON_NULL` and `UNSAFE_CAST_RELYING_ON_NULL`, and
+  those only where the types make them certain, so
   that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
   never of a platform type, a type parameter or a type it couldn't
   resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
   isn't reified, or to a generic type from `Any` or a star-projected
-  supertype. `@Suppress` silences a warning by its name, or all of them
-  with `"warnings"`.
+  supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is reported where the
+  Java class is named, not through a typealias or an inferred type, and
+  `NO_TAIL_CALLS_FOUND` not where a recursive call in tail position may
+  be a tail call to `kotlinc`, as one on another receiver. Type checks
+  and casts are judged as `kotlinc` judges them, by the declared type and
+  then by its smart casts, but never where a platform type or a type `kc`
+  couldn't resolve is involved. With `-Wextra`, as `kotlinc`, it also
+  reports `UNREACHABLE_CODE`, after a statement that always jumps (not
+  the dead code of a class's initialization order), and with
+  `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
+  `@Suppress`
+  silences a warning by its name, or all of them with `"warnings"`.
 
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
@@ -38,10 +55,9 @@ own tests.
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.
 - A class of the program with the name of a class of the class path
-  doesn't replace it in the class path's signatures and supertypes, as
-  it does in K2: a class path's class whose supertype is shadowed this
-  way still has the class path's supertype. Only the cycles of
-  supertypes this closes are reported.
+  takes its place in the class path's signatures and supertypes, as in
+  K2. A class of the program's Java sources doesn't: the class path's
+  signatures still name the class path's class of its name.
 - Two classes of one name on the class path, from different modules,
   are one class, the first; a signature that names the other with
   other type arguments isn't reported.
@@ -280,6 +296,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   parameter its receiver projects out, and for an invariant argument of
   a member property's type that a star captures, checked after the
   value is inferred against the read type.
+- Of K2's captured types, `kc` has only those of reading an explicit
+  backing field through a stable receiver whose type projects the
+  field's type parameters, `o.num` for an `o: C<*>`: the receiver is
+  smart cast to its type with the projections captured, whose members
+  then take the field's value, `o.consume(o.num)`.
 - A lambda's result chooses between overloads of the program's
   functions only when one of them is marked
   `@OverloadResolutionByLambdaReturnType`, as in K2, but between
@@ -300,26 +321,25 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
   keeps Java's platform types.
-- Of the JDK classes K2 sees as purely implementing a Kotlin collection
-  type (`ArrayList`, `HashSet`, `HashMap` and others), `kc` gives the
-  members that override the collection type's the class's type
-  parameters as they are, not as platform types: an `ArrayList<String>`
-  takes no `null`. Their results keep platform types, and their
-  supertypes Java's flexible arguments: an `ArrayList<String>` is also a
-  `MutableList<String?>`.
+- A Java class's `@kotlin.jvm.PurelyImplements` is honoured only when it
+  names one of Kotlin's collection types (`MutableList`, `Set`, `Map`
+  and the others), the only ones K2's JDK classes (`ArrayList`,
+  `HashSet`, `HashMap` and others) purely implement too.
 - A nullable argument for a Java method's `T!` makes `T` nullable,
   except in an in-projected type argument, where kc's substituted
   explicit type arguments stand for K2's equality constraints. Even
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
-- Java module exports aren't checked.
+- A type written as a Java class that Kotlin maps to a built-in type,
+  as `java.lang.CharSequence` or `java.lang.Comparable`, is the
+  built-in type: `kotlinc` keeps the Java class, so that a
+  `java.lang.Comparable<*>` isn't a `kotlin.Comparable<*>`. Only a
+  smart cast by `is java.lang.CharSequence` keeps the Java class's
+  `length()` method callable.
 - jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java
   sources, not on packages, modules or class files.
-- A Kotlin override of a package-private Java method, declared without a
-  visibility, is visible to calls in its package, where K2 reports it as
-  invisible.
 - Of Java members, only those of the program's Java sources count
   toward an inherited member that must be overridden because it has
   several implementations; a class-path Java class's do not.
@@ -360,6 +380,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   so is a suspend reference whose `invoke` `kotlinc` makes a state machine (one
   that ignores the result, or to an inline suspend function or one
   returning a value class).
+- A reference to a library function that `kc` compiles as built in,
+  as `String::toInt`, names the receiver's class (`String`) as its
+  owner, where `kotlinc`'s names the library's file facade
+  (`StringsKt`).
 - A `when` over an enum compares entries with `equals`, not through a
   `$WhenMappings` ordinal switch.
 - Interfaces default to `-jvm-default=no-compatibility`; `kotlinc`'s

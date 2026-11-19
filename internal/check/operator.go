@@ -63,6 +63,9 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case !ok:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
+	case d.Name == "mod" || d.Name == "modAssign":
+		// % calls rem, and %= remAssign: mod is an operator no longer.
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
 	case owner == nil && d.Recv == nil:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member or an extension function")
 	case n >= 0 && len(d.Params) != n && !((d.Name == "inc" || d.Name == "dec") && defaultsOnly(d.Params)):
@@ -71,12 +74,56 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
 	case d.Suspend && (d.Name == "equals" || d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate"):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must not be suspend")
-	case !d.Sym.Resolved:
-	case d.Name == "compareTo" && d.Sym.Ret.Flex() != types.IntType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")
-	case d.Name == "contains" && d.Sym.Ret.Flex() != types.BoolType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
+	case n >= 0 && d.Name != "inc" && d.Name != "dec" && slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Vararg || p.Default != nil }):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: should not have varargs or parameters with default values")
+	case d.Name == "equals" && d.Recv != nil:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member function")
+	case d.Name == "equals" && d.Params[0].Sym != nil && d.Params[0].Sym.Type != types.AnyType.Nullable():
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
+	case (d.Name == "getValue" || d.Name == "setValue") && !c.takesKProperty(d.Params[1]):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
+	case d.Sym.Resolved:
+		c.operatorReturn(d, owner)
 	}
+}
+
+// operatorReturn checks the return type of operator function d, a member
+// of owner or not, once it is known.
+func (c *Checker) operatorReturn(d *syntax.FunDecl, owner *types.ClassSym) {
+	ret := d.Sym.Ret.Flex()
+	if ret.K == types.Invalid {
+		return
+	}
+	switch {
+	case d.Name == "compareTo" && ret != types.IntType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")
+	case (d.Name == "contains" || d.Name == "hasNext") && ret != types.BoolType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
+	case strings.HasSuffix(d.Name, "Assign") && ret != types.UnitType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Unit")
+	case d.Name == "inc" || d.Name == "dec":
+		// The result is assigned to the receiver.
+		recv := d.Sym.Recv
+		if d.Recv == nil {
+			if owner == nil {
+				return
+			}
+			recv = owner.This()
+		}
+		if recv.K != types.Invalid && !c.subtype(d.Sym.Ret, recv) {
+			c.errorf(d.P, "'operator' modifier is inapplicable on this function: receiver must be a supertype of the return type")
+		}
+	}
+}
+
+// takesKProperty reports whether parameter p, a delegate operator's
+// second, can take a KProperty<*>.
+func (c *Checker) takesKProperty(p *syntax.Param) bool {
+	cls := c.u.ext.class("kotlin/reflect/KProperty")
+	if cls == nil || p.Sym == nil || p.Sym.Type.K == types.Invalid {
+		return true
+	}
+	return c.subtype(types.GenericType(cls, []types.Arg{{V: types.Star}}), p.Sym.Type)
 }
 
 // defaultsOnly reports whether every parameter has a default value: as
@@ -216,6 +263,13 @@ func (c *Checker) containsOp(x *syntax.Binary) types.Type {
 	if t.K != types.Invalid && t.Flex() != types.BoolType {
 		c.errorf(x.P, "'contains' must return Boolean, not %s", t)
 	}
+	if f := call.Sym; f != nil && f.Name == "contains" && len(f.Params) == 1 && types.MayBeNull(f.Params[0].Type) && f.Params[0].Type.Flex().NonNull() == types.AnyType {
+		// ConcurrentHashMap's contains(Object), which Kotlin calls for in
+		// as for its other operators, is containsValue, not containsKey.
+		if cls := c.classOf(yt.Flex().NonNull()); cls != nil && c.isSubclassOf(cls, "java/util/concurrent/ConcurrentHashMap") {
+			c.errorf(x.P, "method 'contains' from ConcurrentHashMap may have unexpected semantics: it calls 'containsValue' instead of 'containsKey'; use the explicit call or cast the value to kotlin.collections.Map")
+		}
+	}
 	return types.BoolType
 }
 
@@ -278,7 +332,25 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		return nil, nil, false
 	}
 	ts := make([]types.Type, len(ix.Args))
+	if slices.ContainsFunc(ix.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok }) {
+		// A lambda or a reference takes its type from get's parameter,
+		// as A[::f] += 1 for an operator get(IFoo) does a fun
+		// interface's: x.get(i) is checked first, and the index keeps the
+		// type it gave the lambda.
+		probe := &syntax.Index{X: checked(ix.X, xt), Args: slices.Clone(ix.Args)}
+		probe.P = ix.P
+		c.value(probe, noWant)
+		for i, a := range ix.Args {
+			if l, ok := a.(*syntax.Lambda); ok {
+				ts[i] = l.T
+				ix.Args[i] = checked(a, ts[i])
+			}
+		}
+	}
 	for i, a := range ix.Args {
+		if _, done := a.(*syntax.Checked); done {
+			continue
+		}
 		ts[i] = c.value(a, noWant)
 		ix.Args[i] = checked(a, ts[i])
 	}

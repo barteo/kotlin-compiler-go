@@ -39,6 +39,17 @@ func (l *lowerer) file(root psi.NodeRef) *syntax.File {
 		case psi.KindPACKAGE_DIRECTIVE:
 			if c.FirstChild().Valid() {
 				l.decl(c, func() {
+					// kotlinc's grammar has modifiers before package, which
+					// it reports in later phases.
+					if ml := child(c, psi.KindMODIFIER_LIST); ml.Valid() {
+						m := l.modifiers(ml)
+						for _, a := range m.Annotations {
+							l.errorLater(a.P, "annotations are not applicable to a package directive")
+						}
+						for _, w := range m.Written {
+							l.errorLater(w.P, "modifier '%s' is not applicable to 'package directive'", w.Name)
+						}
+					}
 					f.Package = l.dotted(c)
 					f.PackageP = l.pos(next(child(c, psi.KindPACKAGE_KEYWORD)))
 					for id, end := c.ID(), c.SubtreeEnd(); id < end; id++ {
@@ -82,7 +93,7 @@ func (l *lowerer) importDirective(n psi.NodeRef) *syntax.Import {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindDOT_QUALIFIED_EXPRESSION, psi.KindREFERENCE_EXPRESSION:
-			imp.Path = l.dotted(c)
+			imp.Path, imp.PathP = l.dotted(c), l.pos(c)
 		case psi.KindMUL:
 			imp.Star = true
 		case psi.KindIMPORT_ALIAS:
@@ -121,7 +132,7 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 		add(l.typeAlias(n, m))
 	case psi.KindDESTRUCTURING_DECLARATION:
 		l.newDestructuring(n)
-		l.unsupported(l.pos(child(n, psi.KindLPAR)), "destructuring declaration", "destructuring declarations are not supported")
+		l.failAt(l.pos(child(n, psi.KindLPAR)), "Destructuring declarations are only allowed for local variables/values")
 	default:
 		l.fail(n, "unexpected declaration")
 	}
@@ -722,8 +733,6 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
 	syntax.NoContexts(&m, "classes", l)
 	switch {
-	case has(n, psi.KindINTERFACE_KEYWORD):
-		l.fail(child(n, psi.KindINTERFACE_KEYWORD), "'interface' is not allowed here: local interfaces are not supported")
 	case has(n, psi.KindOBJECT_KEYWORD):
 		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
 			ident(child(n, psi.KindIDENTIFIER)))
@@ -751,6 +760,10 @@ func (l *lowerer) objectExpr(n psi.NodeRef) *syntax.ObjectExpr {
 	cd := record(l, &syntax.ClassDecl{P: l.pos(kw), Anonymous: true, HasPrimary: true}, od)
 	if mods := child(od, psi.KindMODIFIER_LIST); mods.Valid() {
 		l.fail(mods, "unexpected modifiers")
+	}
+	if tps := child(od, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
+		// object<T> { }, which kc's parser reads as comparisons.
+		l.errorLater(l.pos(tps), "type parameters are not allowed for objects")
 	}
 	if st := child(od, psi.KindSUPER_TYPE_LIST); st.Valid() {
 		cd.Supers = l.supertypes(st)

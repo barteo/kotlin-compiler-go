@@ -73,7 +73,9 @@ Medians of 6 runs, Go 1.27.2, 4-core Intel Xeon (linux/amd64), on
 - **So `kc` parses a file with `psi` only when its own parser rejects
   it**, to report every syntax error as `kotlinc` does, with those of
   `lower.TreeErrors`: code `kotlinc`'s grammar accepts and its FIR builder
-  rejects. Parsing every file with both would add about 35 ms, 5%, to
+  rejects. The file is then checked as `lower.FileRecovering` lowers that
+  tree, which leaves out only the statements with an error, so the type
+  errors around them are reported too. Parsing every file with both would add about 35 ms, 5%, to
   compiling kotlinx-coroutines-core: the parse ends after the class path's
   index, so nothing hides it.
 
@@ -95,9 +97,13 @@ module:
    keyed by `ElementID{Snapshot, Node}`.
 
 Code that `kc` can't compile is reported as diagnostics (`source_error`,
-or `unsupported:<feature>` for constructs `kc` doesn't support) and no
-facts at all: callers must not act on partial results. Scripts (`.kts`)
-return `ErrUnsupported`.
+or `unsupported:<feature>` for constructs `kc` doesn't support). Errors the
+checker finds in otherwise supported code don't stop the facts: like
+kotlinc, it resolves what it can, and the facts are of what it resolved, so
+an unresolved reference has no symbol and an expression of no type no type.
+A missing fact is then unknown, not absent. Syntax errors, unsupported
+constructs and duplicate facade classes stop analysis before checking, with
+no facts at all. Scripts (`.kts`) return `ErrUnsupported`.
 
 `Data.Capabilities` lists the fact families that are computed; a fact field
 of a family outside it is always zero, and a caller that needs it should

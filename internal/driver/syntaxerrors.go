@@ -18,11 +18,17 @@ import (
 // reports nothing on, the errors parsing went on after (which kotlinc
 // reports in later phases) and the error kc's parser stopped at if it is
 // before psi's first.
-func syntaxErrors(path, src string, s *psi.Snapshot, errs []*syntax.Error) []*syntax.Error {
+//
+// lerrs are the errors of lowering s to recover the file, each at a
+// declaration or statement left out of it, which are kept on lines with
+// no other error. kc's own errors on lines psi reports nothing on, where
+// its parser is stricter than kotlinc's, are returned apart, in soft:
+// kotlinc reports most such code in later phases, so a checker's error on
+// the same line replaces one (see checkRecovered).
+func syntaxErrors(path, src string, s *psi.Snapshot, errs, lerrs []*syntax.Error) (out, soft []*syntax.Error) {
 	if s == nil {
 		s = psi.Parse(path, src)
 	}
-	var out []*syntax.Error
 	for _, d := range s.Diagnostics() {
 		off := d.Range.Start
 		if off == len(src) {
@@ -47,20 +53,37 @@ func syntaxErrors(path, src string, s *psi.Snapshot, errs []*syntax.Error) []*sy
 			first = e
 		}
 	}
+	softLines := map[int]bool{}
 	for i, e := range errs {
 		// errs[0] is the error kc's parser stopped at. After psi's first
 		// error it is most likely a consequence of that one; before it,
 		// kc's parser is stricter than kotlinc's, which reports most such
 		// code in later phases.
 		stop := i == 0 && first != nil && !before(e.Pos, first.Pos)
-		if e.Feature != "" || !stop && !lines[e.Pos.Line] {
+		switch {
+		case e.Feature != "":
 			out = append(out, e)
+		case !stop && !lines[e.Pos.Line]:
+			soft = append(soft, e)
+			softLines[e.Pos.Line] = true
 		}
 	}
-	slices.SortStableFunc(out, func(a, b *syntax.Error) int {
+	for _, e := range lerrs {
+		if !lines[e.Pos.Line] && !softLines[e.Pos.Line] {
+			out = append(out, e)
+			lines[e.Pos.Line] = true
+		}
+	}
+	return sortErrors(out), sortErrors(soft)
+}
+
+// sortErrors sorts errs by position, and drops repeats of a message on a
+// line.
+func sortErrors(errs []*syntax.Error) []*syntax.Error {
+	slices.SortStableFunc(errs, func(a, b *syntax.Error) int {
 		return cmp.Or(cmp.Compare(a.Pos.Line, b.Pos.Line), cmp.Compare(a.Pos.Col, b.Pos.Col))
 	})
-	return slices.CompactFunc(out, func(a, b *syntax.Error) bool {
+	return slices.CompactFunc(errs, func(a, b *syntax.Error) bool {
 		return a.Pos.Line == b.Pos.Line && a.Msg == b.Msg
 	})
 }

@@ -172,9 +172,36 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 // runs for all files before checkSupers breaks the cycles, so each class
 // in a cycle is reported.
 func (c *Checker) findCycles() {
+	walk := c.u.ext.javaSource
+	if c.u.shadowing {
+		// The class path's classes may inherit from the program's that
+		// take the place of theirs (see classTable.shadow):
+		//
+		//	// MODULE: dependency
+		//	interface ToSubstitute
+		//	interface Intermediate : ToSubstitute
+		//	// MODULE: main(dependency)
+		//	interface ToSubstitute : Intermediate // a cycle
+		walk = func(*types.ClassSym) bool { return true }
+	}
 	for _, cd := range c.classes {
-		if inherits(cd.Sym, cd.Sym, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
-			c.cyclic = append(c.cyclic, cd)
+		if !inherits(cd.Sym, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+			continue
+		}
+		c.cyclic = append(c.cyclic, cd)
+		if !c.u.shadowing {
+			continue
+		}
+		// A cycle through the class path is reported on the supertypes
+		// that lead back, as kotlinc does, before checkSupers breaks it.
+		if c.cyclicAt == nil {
+			c.cyclicAt = map[*syntax.ClassDecl][]syntax.Pos{}
+		}
+		for _, st := range cd.Supers {
+			if st.Type != nil && st.T.K == types.Class && st.T.C != nil &&
+				(st.T.C == cd.Sym || inherits(st.T.C, cd.Sym, walk, map[*types.ClassSym]bool{})) {
+				c.cyclicAt[cd] = append(c.cyclicAt[cd], st.Type.P)
+			}
 		}
 	}
 }
@@ -184,7 +211,13 @@ func (c *Checker) findCycles() {
 // arguments.
 func (c *Checker) checkSupers() {
 	for _, cd := range c.cyclic {
-		c.errorf(cd.P, "there's a cycle in the inheritance hierarchy for this type")
+		at := c.cyclicAt[cd]
+		if len(at) == 0 {
+			at = []syntax.Pos{cd.P}
+		}
+		for _, p := range at {
+			c.errorf(p, "there's a cycle in the inheritance hierarchy for this type")
+		}
 		cls := cd.Sym
 		cls.Super, cls.Interfaces, cls.Supers = c.u.ext.class("java/lang/Object"), nil, []types.Type{}
 		cd.SuperCall = nil
@@ -889,6 +922,37 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	})
 }
 
+// markInheritedProtected marks the properties of the file's classes that
+// override a protected property without a visibility of their own, which
+// are protected too, before any code that reads them is checked.
+func (c *Checker) markInheritedProtected() {
+	for _, cd := range c.classes {
+		cls := cd.Sym
+		if cls == nil {
+			continue
+		}
+		mark := func(p *types.VarSym, override bool) {
+			if p == nil || !override || explicitVisibility(p) {
+				return
+			}
+			for _, o := range c.superProps(cls, p.Name) {
+				if o.protected {
+					p.InheritsProtected = true
+					return
+				}
+			}
+		}
+		for _, cp := range cd.CtorParams {
+			mark(cp.PropSym, cp.Override)
+		}
+		for _, m := range cd.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv == nil {
+				mark(pd.Sym, pd.Override)
+			}
+		}
+	}
+}
+
 // javaFinalAccessor returns the Java superclass of cls below o's owner
 // that declares a final method with the JVM signature of o's getter or
 // setter, which Kotlin sees as o, final: or nil.
@@ -1187,8 +1251,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	c.inheritedBridges(d)
 	reported := map[string]bool{}
+	mixed := c.checkMixedSuspendSupertypes(d)
 	if !d.Annotation {
-		reported = c.checkInheritedFuns(d)
+		reported = c.checkInheritedFuns(d, mixed)
 		c.checkInheritedProps(d, reported)
 	}
 	if d.Data && !d.Object {
@@ -1942,8 +2007,8 @@ func simpleName(cls *types.ClassSym) string {
 	return n[strings.LastIndexByte(n, '.')+1:]
 }
 
-// superHas reports whether the supertype cls has a function (call) or a
-// property named name.
+// superHas reports whether the supertype cls has a property or, for a
+// call, a function named name.
 func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 	if call {
 		for _, f := range c.accessible(nil, c.javaMethods(cls, name)) {
@@ -1952,7 +2017,10 @@ func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 				return true
 			}
 		}
-		return false
+		// A Kotlin property of the name counts too, even one that can't
+		// be invoked: super.fn() is ambiguous between a fun fn() and a
+		// val fn of another supertype. A Java getter doesn't.
+		return c.userProp(cls, name) != nil
 	}
 	if c.userProp(cls, name) != nil {
 		return true
@@ -1991,7 +2059,8 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 				return true
 			}
 		}
-		return false
+		p := c.userProp(cls, name)
+		return p != nil && !p.Abstract
 	}
 	if p := c.userProp(cls, name); p != nil {
 		return !p.Abstract
@@ -2492,4 +2561,30 @@ func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
 	if c.lookupAlias(st.Type.Name) != nil {
 		c.errorf(st.Type.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
 	}
+}
+
+// checkMixedSuspendSupertypes reports a class that has both a suspend and
+// a non-suspend function type among its supertypes, directly or through
+// other supertypes (MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES), at its
+// supertype list, as kotlinc does. It reports whether it did.
+func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
+	if len(d.Supers) == 0 || d.Sym == nil {
+		return false
+	}
+	var suspend, plain bool
+	d.Sym.Supertypes(func(s *types.ClassSym) bool {
+		if s != d.Sym && s.Func {
+			if s.Suspend {
+				suspend = true
+			} else {
+				plain = true
+			}
+		}
+		return !(suspend && plain)
+	})
+	if suspend && plain {
+		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
+		return true
+	}
+	return false
 }

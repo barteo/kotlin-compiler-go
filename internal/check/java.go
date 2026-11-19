@@ -25,6 +25,12 @@ type classTable struct {
 	// class path's classes of Java sources name. Checking sets it once
 	// the program's classes are declared.
 	sources atomic.Pointer[func(string) *types.ClassSym]
+	// shadow finds the program's classes by internal name, which take
+	// the place of the class path's of their names, as K2's symbol
+	// providers look in the program's sources first: the class path's
+	// signatures and supertypes that name such a class name the
+	// program's. Checking sets it on a table of its own (see private).
+	shadow atomic.Pointer[func(string) *types.ClassSym]
 
 	// parent is set on a check's table of its Java sources, whose class
 	// path is an overlay of parent's: see withSources. It has the
@@ -40,6 +46,9 @@ type classTable struct {
 type tableShared struct {
 	mu sync.Mutex
 	m  map[string]*types.ClassSym
+	// decoded holds the Kotlin metadata markValue decoded, by class name,
+	// until load takes it.
+	decoded sync.Map
 
 	// kotlin is set when the Kotlin standard library is on the class path:
 	// Kotlin declarations are then read from metadata (see kotlin.go).
@@ -83,6 +92,48 @@ func (t *classTable) withSources(cp *classpath.Path) *classTable {
 	return &classTable{tableShared: t.tableShared, cp: cp, parent: t, srcM: map[string]*types.ClassSym{}}
 }
 
+// private returns a new table of t's class path, with t's settings,
+// which shares nothing with t: a check whose program has classes of the
+// names of the class path's own reads the class path anew, so that
+// those classes take the place of the class path's in its signatures
+// (see shadow) without a library that checks share (see Libraries in
+// internal/driver, and analysis/ka) seeing them.
+func (t *classTable) private() *classTable {
+	root := t.root()
+	n := newClassTable(root.cp)
+	n.serialization, n.hidden, n.javaTypes = root.serialization, root.hidden, root.javaTypes
+	if t.parent != nil {
+		return n.withSources(t.cp)
+	}
+	return n
+}
+
+// shadowedBy reports whether a class of files has the name of a class
+// of t's class path that isn't one of the program's Java sources.
+func (t *classTable) shadowedBy(files []*syntax.File) bool {
+	root := t.root()
+	if root.cp == nil {
+		return false
+	}
+	for _, f := range files {
+		pkg := strings.ReplaceAll(f.Package, ".", "/")
+		if pkg != "" {
+			pkg += "/"
+		}
+		for _, d := range f.Decls {
+			cd, ok := d.(*syntax.ClassDecl)
+			if !ok {
+				continue
+			}
+			name := pkg + cd.Name
+			if root.cp.Has(name) && (t.cp == nil || !t.cp.IsSource(name)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // sourceClass returns the class of the Java sources with the given name.
 func (t *classTable) sourceClass(name string) *types.ClassSym {
 	t.srcMu.Lock()
@@ -99,10 +150,13 @@ func (t *classTable) sourceClass(name string) *types.ClassSym {
 // caches hold results that checking asks for again and again: supertypes
 // with their type arguments, and the methods of a class by name.
 type caches struct {
-	supers  sync.Map // superKey -> superResult
-	inters  sync.Map // interKey -> types.Type, see intersect
-	methods sync.Map // methodsKey -> []*types.FunSym
+	supers     sync.Map // superKey -> superResult
+	subclasses sync.Map // classPair -> bool, see isSubclass
+	inters     sync.Map // interKey -> types.Type, see intersect
+	methods    sync.Map // methodsKey -> []*types.FunSym
 }
+
+type classPair struct{ cls, target *types.ClassSym }
 
 // cache returns the caches for a result computed from ts: the library's
 // if they name only the class path's classes (or those every check
@@ -150,7 +204,6 @@ func newClassTable(cp *classpath.Path) *classTable {
 		t.funcs = types.KotlinFunctions
 		t.collections = map[string]*types.ClassSym{}
 		t.raw = map[string]*types.ClassSym{}
-		t.pkgs = map[string]*kpkg{}
 	}
 	return t
 }
@@ -179,6 +232,34 @@ func (t *classTable) class(name string) *types.ClassSym {
 		}
 		return nil
 	}
+	// Most names looked up are of no class: Outer$name for a member, or
+	// pkg/Name for a simple name in each star and default import. The
+	// filter of the class path's names rules most of them out cheaply.
+	if t.cp != nil && t.shadow.Load() == nil && t.sources.Load() == nil && !(t.kotlin && maybeSynthetic(name)) && !t.cp.MayHave(classpath.Hash(name)) {
+		if verifyFilter {
+			t.verifyAbsent(name, t.rootClass(name))
+		}
+		return nil
+	}
+	return t.rootClass(name)
+}
+
+// rootClass is class of the root table, without the filter.
+func (t *classTable) rootClass(name string) *types.ClassSym {
+	// A class looked up before, as most are, is in the map, which holds
+	// only classes of the class path that aren't Kotlin's synthetic ones
+	// below: only a shadowing class comes before it.
+	t.mu.Lock()
+	c, ok := t.m[name]
+	t.mu.Unlock()
+	if ok {
+		if sh := t.shadow.Load(); sh != nil {
+			if s := (*sh)(name); s != nil {
+				return s
+			}
+		}
+		return c
+	}
 	if t.kotlin {
 		if id, ok := mutableOf[name]; ok {
 			return t.kclass(id)
@@ -196,17 +277,16 @@ func (t *classTable) class(name string) *types.ClassSym {
 			return t.funcs.SuspendClass(n) // kotlin.coroutines.SuspendFunction1, suspend (P1) -> R
 		}
 	}
+	if sh := t.shadow.Load(); sh != nil {
+		if c := (*sh)(name); c != nil {
+			return c
+		}
+	}
 	if t.cp == nil || !t.cp.Has(name) {
 		if src := t.sources.Load(); src != nil {
 			return (*src)(name)
 		}
 		return nil
-	}
-	t.mu.Lock()
-	c, ok := t.m[name]
-	t.mu.Unlock()
-	if ok {
-		return c
 	}
 	// Whether it is a value class is known before anyone sees it: a
 	// type's descriptor depends on it, as a field's of Compose's Color,
@@ -307,7 +387,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 		return classfile.ReadMethodAnnotations(b, name, desc)
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
-		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+		kc, err := (*kmeta.Class)(nil), error(nil)
+		if v, ok := t.decoded.LoadAndDelete(cls.Name); ok {
+			kc = v.(*kmeta.Class) // decoded by markValue
+		} else {
+			kc, err = kmeta.ReadClass(info.Kotlin)
+		}
+		if err == nil {
 			cls.FromKotlin = true
 			t.loadKotlin(cls, info, kc)
 			return
@@ -345,6 +431,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	if info.Sig != "" || len(outer) > 0 {
 		t.classSignature(cls, info.Sig, outer)
+	}
+	pure := t.pureInterface(cls, info)
+	if pure != nil && t.kotlin {
+		addPureSuper(cls, pure)
 	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
@@ -485,8 +575,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Methods[m.Name] = append(cls.Methods[m.Name], f)
 		}
 	}
+	if t.kotlin {
+		inheritPure(cls, pure)
+	}
 	mapCollectionMembers(cls)
-	purelyImplement(cls)
+	purelyImplement(cls, pure)
 	kotlinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
@@ -739,6 +832,17 @@ func (c *Checker) resolveImports() {
 	c.userFuns = map[string][]*types.FunSym{}
 	c.userVars = map[string]*types.VarSym{}
 	c.userExtProps = map[string][]*types.FunSym{}
+	c.renamed = map[string]bool{}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && imp.Alias != "" && imp.Alias != imp.Path[strings.LastIndexByte(imp.Path, '.')+1:] {
+			c.renamed[imp.Path] = true
+		}
+	}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && (imp.Alias == "" || imp.Alias == imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]) {
+			delete(c.renamed, imp.Path) // imported under its own name too
+		}
+	}
 	ext := c.u.ext
 	// The file's package on the class path, as a library's Java classes
 	// in it, or its classes in the default package: searched before the
@@ -1014,7 +1118,7 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if isEnumEntry(cls, name) {
 		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
-	return c.u.ext.class(cls.Name + "$" + name)
+	return c.u.ext.nestedNamed(cls.Name, name)
 }
 
 // findClass resolves a simple class name in Kotlin's order: explicit
@@ -1098,13 +1202,17 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 		return true
 	}
-	if cls, ok := c.pkg.Classes[name]; ok && visible(classifier{cls: cls}) {
+	own := !c.renamedAway(c.pkg.Name, name)
+	if cls, ok := c.pkg.Classes[name]; ok && own && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
-	if a, ok := c.pkg.Aliases[name]; ok && visible(classifier{alias: a}) {
+	if a, ok := c.pkg.Aliases[name]; ok && own && visible(classifier{alias: a}) {
 		return classifier{alias: a}
 	}
 	for _, p := range c.userStars {
+		if c.renamedAway(p.Name, name) {
+			continue
+		}
 		if cls, ok := p.Classes[name]; ok && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
@@ -1133,13 +1241,13 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 	if kotlinTypes[name] || !ext.kotlin {
 		return nil
 	}
-	for _, pkg := range c.stars {
-		if a := ext.pkgAlias(strings.ReplaceAll(pkg, "/", "."), name); a != nil {
+	for _, r := range c.starPkgs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
-	for _, pkg := range defaultPackages {
-		if a := ext.pkgAlias(pkg, name); a != nil {
+	for _, r := range ext.defaultRefs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
@@ -1154,40 +1262,46 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 	ext := c.u.ext
 	// A built-in class, as kotlin.Array, comes before the star imports:
 	// import java.lang.reflect.* doesn't hide it.
-	if cls := types.ArrayByName(name); cls != nil {
+	if cls := types.ArrayByName(name); cls != nil && !c.renamedAway("kotlin", name) {
 		return cls
 	}
 	if builtinClasses[name] && ext.kotlin {
 		// But after the file's own package's: a Java interface Function
 		// in it hides kotlin.Function.
-		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) {
+		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) && !c.renamedAway(own, name) {
 			if cls := ext.pkgClass(c.file.Package, name); cls != nil {
 				return cls
 			}
 		}
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
 	}
-	for _, pkg := range c.stars {
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
+			continue
+		}
 		if ext.kotlin {
-			if cls := ext.pkgClass(strings.ReplaceAll(pkg, "/", "."), name); cls != nil {
+			if cls := ext.pkgClassIn(r, name); cls != nil {
 				return cls
 			}
-		} else if cls := ext.class(qualified(pkg, name)); cls != nil {
+		} else if cls := ext.classIn(r.path, r.hash, name); cls != nil {
 			return cls
 		}
 	}
 	if ext.kotlin {
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
 	}
-	return ext.class("java/lang/" + name)
+	if c.renamedAway("java.lang", name) {
+		return nil
+	}
+	return ext.classIn("java/lang", javaLangHash, name)
 }
 
 // kotlinFuns returns the Kotlin top-level functions a simple name can
@@ -1216,6 +1330,13 @@ func (c *Checker) kotlinFuns1(name string, ext bool) []*types.FunSym {
 // level of the imports that bring them, highest first: explicit imports,
 // star imports and the default imports.
 func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
+	return c.funLevels(name, ext, nil)
+}
+
+// funLevels is kotlinFunLevels. If fits isn't nil, the class path's
+// extensions are only those whose receiver type it takes, as
+// pkgFunsWhere has them.
+func (c *Checker) funLevels(name string, ext bool, fits func(types.Type) bool) [][]*types.FunSym {
 	keep := func(fs []*types.FunSym) []*types.FunSym {
 		var out []*types.FunSym
 		for _, f := range fs {
@@ -1230,17 +1351,26 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 	if !ext1.kotlin {
 		return levels
 	}
+	kind := nonExtFuns
+	if ext {
+		kind = extFuns
+	}
 	var stars, defaults []*types.FunSym
-	for _, pkg := range c.stars {
-		stars = append(stars, keep(ext1.pkgFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
+			continue
+		}
+		stars = append(stars, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
 		if c.file.SuppressInvisible {
 			// ktor's recoverStackTrace(e, cont) of kotlinx.coroutines.internal.*
 			// under @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE").
-			stars = append(stars, keep(ext1.pkgInternalFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+			stars = append(stars, ext1.pkgFunsWhereIn(r, name, true, kind, fits)...)
 		}
 	}
-	for _, pkg := range defaultPackages {
-		defaults = append(defaults, keep(ext1.pkgFuns(pkg, name))...)
+	for _, r := range ext1.defaultRefs() {
+		if !c.renamedAway(r.name, name) {
+			defaults = append(defaults, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
+		}
 	}
 	return append(levels, stars, defaults)
 }
@@ -1251,6 +1381,36 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 // scopes that has an extension for the receiver hides the others.
 func (c *Checker) extCallees(name string, rt types.Type) []callee {
 	return c.extCalleesFor(name, rt, nil)
+}
+
+// extLevels returns kotlinFunLevels(name, true) without the class path's
+// extensions whose receiver can't take a receiver of type rt, which are
+// never converted. They are cached for the receiver types that recvFits
+// tells apart by their kind, class, whether a function type has its type
+// arguments and whether a value may be null: all but type parameters and
+// variables, whose bounds it looks at.
+func (c *Checker) extLevels(name string, rt types.Type) [][]*types.FunSym {
+	fits := func(r types.Type) bool { return c.recvFits(rt, r) }
+	rn := rt.NonNull()
+	if rn.K == types.TypeParam || rn.K == types.TypeVar {
+		return c.funLevels(name, true, fits)
+	}
+	k := levelKey{name, rn.K, rn.C, rn.A != nil, types.MayBeNull(rt) && !rt.P}
+	levels, ok := c.levelCache[k]
+	if !ok {
+		levels = c.funLevels(name, true, fits)
+		c.levelCache[k] = levels
+	}
+	return levels
+}
+
+// levelKey keys Checker.levelCache: see extLevels.
+type levelKey struct {
+	name     string
+	k        types.Kind
+	c        *types.ClassSym
+	args     bool
+	nullable bool
 }
 
 // calleeFuns returns the functions of cs.
@@ -1389,9 +1549,9 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	}
 	var fs []*types.FunSym
 	for _, p := range c.userStars {
-		fs = append(fs, p.Funs[name]...)
+		fs = append(fs, c.funsOf(p, name)...)
 	}
-	if out := fits(c.pkg.Funs[name]); len(out) > 0 {
+	if out := fits(c.funsOf(c.pkg, name)); len(out) > 0 {
 		// They give way to the star-imported ones if only those take the
 		// arguments' types: kotlinx.coroutines.time's
 		// Flow<T>.debounce(Duration) to kotlinx.coroutines.flow's
@@ -1410,13 +1570,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 		return out
 	}
 	// The first level of imports with an extension for the receiver.
-	k := funKey{name, true}
-	levels, ok := c.levelCache[k]
-	if !ok {
-		levels = c.kotlinFunLevels(name, true)
-		c.levelCache[k] = levels
-	}
-	for _, fs := range levels {
+	for _, fs := range c.extLevels(name, rt) {
 		if out := fits(fs); len(out) > 0 {
 			return out
 		}
@@ -1462,8 +1616,7 @@ func (c *Checker) recvFits(rt, r types.Type) bool {
 	case types.Any:
 		return true
 	case types.Class:
-		_, ok := c.asSuper(rt, rn.C)
-		return ok
+		return c.isSubclass(rt, rn.C)
 	}
 	return rt.NonNull().K == rn.K
 }
@@ -1571,12 +1724,11 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 		}
 	}
 	if best == nil && c.u.ext.kotlin {
-		pkgs := make([]string, 0, len(c.stars)+len(defaultPackages))
-		for _, s := range c.stars {
-			pkgs = append(pkgs, strings.ReplaceAll(s, "/", "."))
+		for _, r := range c.starPkgs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
-		for _, pkg := range append(pkgs, defaultPackages...) {
-			fits(c.u.ext.pkgExtProps(pkg, x.Name))
+		for _, r := range c.u.ext.defaultRefs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
 	}
 	if best == nil {
@@ -1997,9 +2149,27 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
 	default:
+		c.checkModuleExport(cls, p)
 		return true
 	}
 	return false
+}
+
+// checkModuleExport reports a use of a JDK class whose module doesn't
+// export its package to all modules, as the program's unnamed module
+// needs: sun.awt.image's, of java.desktop. The class's type stays, as in
+// FIR.
+func (c *Checker) checkModuleExport(cls *types.ClassSym, p syntax.Pos) {
+	if c.u.ext == nil || c.u.ext.cp == nil || cls.Source {
+		return
+	}
+	if module, hidden := c.u.ext.cp.ModuleHidden(cls.Name); hidden {
+		pkg := ""
+		if i := strings.LastIndexByte(cls.Name, '/'); i >= 0 {
+			pkg = strings.ReplaceAll(cls.Name[:i], "/", ".")
+		}
+		c.errorf(p, "symbol is declared in module '%s' which does not export package '%s'", module, pkg)
+	}
 }
 
 // boundWith returns the first bound for which has holds of a type
@@ -2624,6 +2794,7 @@ func outerCompanion(cls *types.ClassSym) *types.ClassSym {
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	cls.Ensure()
+	c.platformConstruct(x, cls, p)
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
 	}
@@ -2855,7 +3026,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	if fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls) {
+	if (fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls)) && !c.javaClassNarrowed(fn.X) {
 		c.errorf(fn.P, "expression '%s' of type Int cannot be invoked as a function", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
@@ -3441,4 +3612,11 @@ func javaAnnotationElement(cls *types.ClassSym, name string) *types.FunSym {
 		}
 	}
 	return nil
+}
+
+// javaClassNarrowed tells whether x is a stable value smart cast by an is
+// check against a Java class written for a built-in type.
+func (c *Checker) javaClassNarrowed(x syntax.Expr) bool {
+	k, ok := c.narrowKeyOf(x)
+	return ok && c.scope.javaClassNarrowed(k.recv, k.sym)
 }

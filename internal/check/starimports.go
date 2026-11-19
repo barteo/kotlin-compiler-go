@@ -88,18 +88,17 @@ func (c *Checker) starClassifiers1(name string) []classifier {
 			add(classifier{cls: cls})
 		}
 	}
-	for _, pkg := range c.stars {
-		if pkg == own {
+	for i, r := range c.starPkgs() {
+		if c.stars[i] == own {
 			continue // the file's package, of the level above
 		}
 		if ext.kotlin {
-			dotted := strings.ReplaceAll(pkg, "/", ".")
-			if cls := ext.pkgClass(dotted, name); cls != nil {
+			if cls := ext.pkgClassIn(r, name); cls != nil {
 				add(classifier{cls: cls})
-			} else if a := ext.pkgAlias(dotted, name); a != nil {
+			} else if a := ext.pkgAliasIn(r, name); a != nil {
 				add(classifier{alias: a})
 			}
-		} else if cls := ext.class(qualified(pkg, name)); cls != nil {
+		} else if cls := ext.classIn(r.path, r.hash, name); cls != nil {
 			add(classifier{cls: cls})
 		}
 	}
@@ -157,13 +156,13 @@ func (c *Checker) starQualifierAmbiguity(id *syntax.Ident) bool {
 func (c *Checker) defaultClassifier(name string) bool {
 	ext := c.u.ext
 	if ext.kotlin {
-		for _, pkg := range defaultPackages {
-			if ext.pkgClass(pkg, name) != nil || ext.pkgAlias(pkg, name) != nil {
+		for _, r := range ext.defaultRefs() {
+			if ext.pkgClassIn(r, name) != nil || ext.pkgAliasIn(r, name) != nil {
 				return true
 			}
 		}
 	}
-	return ext.class("java/lang/"+name) != nil
+	return ext.classIn("java/lang", javaLangHash, name) != nil
 }
 
 // starVisible reports whether a star import gives classifier k: not one

@@ -32,6 +32,31 @@ func (c *Checker) localWarnings() {
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)
+			c.castNeverSucceeds(n)
+		case *syntax.Is:
+			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
+		case *syntax.When:
+			c.whenIsWarnings(n)
+		case *syntax.Block:
+			if c.u.extraWarnings {
+				c.unreachableWarnings(n)
+			}
+		case *syntax.StringLit:
+			if c.u.experimentalWarnings {
+				c.prefixWarnings(n)
+			}
+		}
+		return true
+	})
+}
+
+// prefixWarnings reports the redundant interpolation prefixes of the
+// string literals in x, an annotation argument or a literal itself, for
+// kotlinc's experimental REDUNDANT_INTERPOLATION_PREFIX.
+func (c *Checker) prefixWarnings(x syntax.Expr) {
+	syntax.Inspect(x, func(n any) bool {
+		if s, ok := n.(*syntax.StringLit); ok && s.RedundantPrefix() {
+			c.warnf(s.P, "REDUNDANT_INTERPOLATION_PREFIX", "redundant interpolation prefix")
 		}
 		return true
 	})

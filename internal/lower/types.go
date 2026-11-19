@@ -163,6 +163,7 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 				ft.Params = []*syntax.TypeRef{}
 				for _, p := range kids(c) {
 					if p.NumericKind() == psi.KindVALUE_PARAMETER {
+						l.functionTypeParamExtras(p)
 						if id := child(p, psi.KindIDENTIFIER); id.Valid() {
 							ft.Named = append(ft.Named, l.pos(id))
 						}
@@ -186,6 +187,29 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 	}
 	l.unexpected(n)
 	return nil
+}
+
+// functionTypeParamExtras reports what a function type's parameter p
+// can't have, which kotlinc's grammar accepts: modifiers, annotations,
+// val or var, and a default value, as (vararg x: Int = 0) -> Unit. kc's
+// parser rejects them; the type is lowered without them.
+func (l *lowerer) functionTypeParamExtras(p psi.NodeRef) {
+	// Walked without kids, which allocates, for every parameter of every
+	// function type.
+	for c := p.FirstChild(); c.Valid(); c = c.NextSibling() {
+		switch c.NumericKind() {
+		case psi.KindMODIFIER_LIST:
+			for _, m := range kids(c) {
+				l.errorLater(l.pos(m), "unsupported [modifier on parameter in function type]")
+			}
+		case psi.KindVAL_KEYWORD, psi.KindVAR_KEYWORD:
+			l.errorLater(l.pos(c), "unsupported ['%s' on parameter in function type]", c.Text())
+		case psi.KindEQ:
+			if x := next(c); x.Valid() {
+				l.errorLater(l.pos(x), "unsupported [default value of parameter in function type]")
+			}
+		}
+	}
 }
 
 // userType lowers a USER_TYPE: a.b.C<T>, or Outer<A>.Inner<B>, whose
@@ -483,8 +507,13 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 		case psi.KindFUN_KEYWORD:
 			// fun interface: the class sets Fun.
 		default: // a modifier keyword, or a companion object's detached name (see detachName)
-			if !c.IsLeaf() || !m.Set(c.Text(), l.pos(c)) {
+			if !c.IsLeaf() {
 				l.fail(c, "'%s' is not supported", c.Text())
+			}
+			if !m.Set(c.Text(), l.pos(c)) {
+				// in, out or reified, which only type parameters take, as
+				// kotlinc's WRONG_MODIFIER_TARGET.
+				l.fail(c, "modifier '%s' is not applicable here", c.Text())
 			}
 		}
 	}

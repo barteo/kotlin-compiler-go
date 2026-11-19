@@ -215,8 +215,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		// private one, as FIR gives it.
 		pc := b.snap.Node(md.Node).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).ID()
 		// Without one, a class that declares no constructor has an
-		// implicit, empty one, and a class that does has none.
-		if pc != 0 || !slices.ContainsFunc(d.Members, func(m syntax.Decl) bool {
+		// implicit, empty one, and a class that does, or an expect
+		// class, has none.
+		if pc != 0 || !d.Expect && !slices.ContainsFunc(d.Members, func(m syntax.Decl) bool {
 			_, ok := m.(*syntax.SecondaryCtor)
 			return ok
 		}) {
@@ -245,7 +246,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			}
 			mp := &Decl{Kind: KindProperty, Name: p.Name, Node: b.prov.Node(p),
 				Visibility: visibility(p.Visibility), Annotations: b.propAnnotations(p.Modifiers.Annotations, true),
-				Flags: propFlags(&p.Modifiers, p.Mutable) | FlagBackingField}
+				Flags: propFlags(&p.Modifiers, p.Mutable) | FlagBackingField | md.Flags&FlagExpect}
 			mp.Modality = memberModality(&p.Modifiers, d, false)
 			if p.PropSym != nil {
 				mp.Type = b.typ(p.PropSym.Type, p.Type)

@@ -353,6 +353,9 @@ internal class KcRound(
     fun packageSymbol(fq: FqName): KcPackageSymbol =
         packageSymbols[fq] ?: KcPackageSymbol(this, fq).let { packageSymbols.putIfAbsent(fq, it) ?: it }
 
+    /** Whether package [fq], or a package in it, has a source file. */
+    fun hasSources(fq: FqName) = fq in sourcePackages
+
     /** Whether package [fq], or a package in it, has a source file or a class-path class. */
     fun packageExists(fq: FqName) = fq in sourcePackages || libraryPackage(fq) != null
 

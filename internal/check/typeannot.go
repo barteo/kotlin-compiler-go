@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	typeSite      = annotSite{siteType, types.TargetType, "type usage", false}
-	typeBoundSite = annotSite{siteType, types.TargetType, "type usage", true}
-	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter", false}
+	typeSite      = annotSite{siteType, types.TargetType, "type usage", false, false}
+	typeBoundSite = annotSite{siteType, types.TargetType, "type usage", true, false}
+	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter", false, false}
 )
 
 // typeAnnot is an annotated type, with the class it's written in.

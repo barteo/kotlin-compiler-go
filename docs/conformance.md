@@ -102,15 +102,17 @@ like. `-serve=false` rules out such order effects.
 ## Box tests
 
 The harness compiles a test's modules (`// MODULE: main(lib)(friend)`,
-`// FILE: a.kt`) in order, each against the modules it names as
+`// FILE: a.kt`, where the code before a module's first `// FILE:` is
+that file's start) in order, each against the modules it names as
 dependencies and friends, as the test infrastructure does: only those,
 not theirs, so a library's own dependencies are missing from the class
 path unless the module names them too. Friends' output directories are
 also its `-friend-paths`. It compiles with `kc -features`, which names the unsupported feature behind an error.
 It then runs `box()` in a fresh class loader of a long-lived JVM
 (`bench/conformance/BoxRunner.java`), with a 10 s timeout. As the test
-infrastructure does, it puts the standard library and kotlin-test on the
-class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
+infrastructure does, it puts the JetBrains annotations
+(`org.jetbrains.annotations`), the standard library and kotlin-test on
+the class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
 a module's `JVM_DEFAULT_MODE` (or the test's, before its first
@@ -192,7 +194,9 @@ Four things differ from the test infrastructure:
   can't be smart cast, a `SMARTCAST_IMPOSSIBLE`), would resolve to
   the full library's `Any?` extension: the harness calls an extension of
   `Any` that it declares at the end of the file instead, which both
-  compilers then reject unless `x` is smart cast to non-null.
+  compilers then reject unless `x` is smart cast to non-null. It does
+  the same for a bound reference, `x::hashCode`, that the markup expects
+  to be an `UNSAFE_CALLABLE_REFERENCE`.
 - **The `CHECK_TYPE` helpers** declare names (`_`) that `kotlinc` reports
   outside the infrastructure. A test that adds them stops in the
   frontend even when valid, so only its marks count.
@@ -208,8 +212,19 @@ Four things differ from the test infrastructure:
   `kc` reports these errors in its checker, and the harness drops them
   (by their messages, which begin as the backend's do) from such tests.
 
+`kotlinc`'s extra and experimental checkers report only with `-Wextra`
+and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
+ones for tests with `WITH_EXTRA_CHECKERS` and those of
+`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
+`WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
+same tests.
+
 Tests with Java sources run: `kc` gets a module's `.java` files with its
-`.kt` files and reads their declarations, as `kotlinc` does. The Java
+`.kt` files and reads their declarations, as `kotlinc` does. Like
+`kotlinc`'s Java parser, `kc` reads past the syntax errors that IntelliJ's
+Java PSI recovers from, leaving out the member, as some tests' malformed
+Java (`public statis void function()`, a parameter of type `?`) needs;
+`javac` reports them in a build. The Java
 sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
@@ -221,11 +236,11 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `nullableTypes/nullableArgumentForIn`, whose `Int? in IntRange` the full
   library's `contains` extension resolves (see above). The same goes for
   `j+k/collectionOverrides/containsAll` and the library's `containsAll`
-  extension.
+  extension, and for `typealias/starProjection`, whose index of a
+  `Map<*, *>` the library's `get` extension resolves.
 - **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
-  (`dataClassInternalConstructorUsageWillBecomeInaccessible`),
-  `JVM_TARGET` (`wrongInlineTarget`) and JPMS module exports
-  (`nullSourceInJvmModuleChecker`).
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`) and
+  `JVM_TARGET` (`wrongInlineTarget`).
 - **The backend's analysis of inlined library bodies**:
   `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
   that reach `typeOf` through another reified function.
@@ -239,11 +254,6 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   is `kotlinc`'s view of a source root directory. Given the `.java`
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
-- **Malformed Java**: `j+k/deprecations/javaWithHiddenDeprecation`
-  declares `public statis void function()`, and
-  `scopes/specialFunctionInJava_1` a method without its `;`. `kotlinc`'s
-  Java parser reads past them. `kc` reports the syntax errors, as `javac`
-  would in a build.
 - **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
   `kjkimplicitTypesCrash` and
   `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
@@ -274,30 +284,29 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,332 | 50.8% |
-| accepts valid | 4,115 | 48.2% |
-| accepts invalid | 63 | 0.7% |
-| rejects valid | 7 | 0.1% |
-| parse/unsupported | 14 | 0.2% |
+| rejects invalid | 4,366 | 51.2% |
+| accepts valid | 4,127 | 48.4% |
+| accepts invalid | 38 | 0.4% |
+| rejects valid | 0 | |
+| parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-18,527 of the 21,548 expected errors (86%) on their lines, and 507 of
-the 3,634 expected warnings (14%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 24 of the 63
+20,205 of the 21,714 expected errors (93%) on their lines, and 1,490 of
+the 3,652 expected warnings (41%), with 8 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 13 of the 38
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 13), unresolved names
-  (`UNRESOLVED_REFERENCE` 13), and callable references whose types
-  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 3).
-- **Rejects valid**, by `kc`'s first error: unresolved names and
-  imports (4), type mismatches (2), and a property invoked as a
-  function (1). No box test is rejected.
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9), unresolved names
+  (`UNRESOLVED_REFERENCE` 6), and callable references whose types
+  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2). Some are out of
+  reach (see above).
+- **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 
@@ -316,8 +325,10 @@ by cause*), the first of these that applies:
 
 - *accepted*: `kc` compiled the test.
 - *syntax-error*: `kc`'s parser rejected the code. `kc` then checks
-  the declarations its parser recovers, but not one with a syntax
-  error, so the errors in such a declaration are missed.
+  it as `psi`, which has `kotlinc`'s grammar, parses it, leaving out
+  only the statements, or declarations outside function bodies, that
+  have a syntax error or that it can't lower, so the errors in those
+  are missed.
 - *module-not-compiled*: the error is in a module after one that
   failed, which the harness doesn't compile.
 - *nearby*: `kc` reported an error within three lines of it, on a line

@@ -73,14 +73,16 @@ func join(states ...*daState) *daState {
 // assignment checks the definite assignment of a function body or of a
 // class's constructor code.
 type assignment struct {
-	c        *Checker
-	cls      *types.ClassSym        // the class whose properties are tracked, if any
-	depth    map[*types.VarSym]int  // tracked variables, by the lambda depth they are declared at
-	lambdas  int                    // the lambdas and local functions the code is in
-	quiet    int                    // >0 while a loop's body is walked the first time
-	reported map[*types.VarSym]bool // variables reported as read before assignment
-	loops    []*daLoop              // the loops the code is in, innermost last
-	once     []*daOnce              // the lambdas called once that the code is in
+	c       *Checker
+	cls     *types.ClassSym       // the class whose properties are tracked, if any
+	depth   map[*types.VarSym]int // tracked variables, by the lambda depth they are declared at
+	lambdas int                   // the lambdas and local functions the code is in
+	quiet   int                   // >0 while a loop's body is walked the first time
+	// reported are the reads reported as before assignment: each is, as
+	// in kotlinc, but once, though the code may be walked again.
+	reported map[syntax.Pos]bool
+	loops    []*daLoop // the loops the code is in, innermost last
+	once     []*daOnce // the lambdas called once that the code is in
 	// inited are the tracked properties with an initializer or a
 	// delegate, which only reads are checked for.
 	inited map[*types.VarSym]bool
@@ -88,6 +90,15 @@ type assignment struct {
 	// class's interface delegation kotlinc doesn't report.
 	delegated map[*types.VarSym]bool
 	inSupers  bool // walking the class's superclass call and delegates
+	// consts are those of inited that are const, which only another
+	// const's initializer (constInit) can read before they are assigned.
+	consts    map[*types.VarSym]bool
+	constInit bool
+	// inPlaceLambdas are those of the lambdas the code is in that a
+	// contract says are called in place, though maybe not once.
+	inPlaceLambdas int
+	// lastLambda is the state at the end of the lambda last walked.
+	lastLambda *daState
 	// libOnce counts the lambdas called once by functions of the class
 	// path that the code is in: kotlinc doesn't report the properties
 	// they read, as it does for its own functions'.
@@ -112,6 +123,30 @@ type assignment struct {
 type daOnce struct {
 	l       *syntax.Lambda
 	returns []*daState
+}
+
+// atLeastOnce marks what the lambda that call x takes as its k-th
+// argument, just walked, surely assigns as assigned after the call, if
+// the callee's contract says it calls the lambda at least once.
+func (a *assignment) atLeastOnce(x *syntax.Call, k int, s *daState) {
+	ls := a.lastLambda
+	a.lastLambda = nil
+	f := x.Sym
+	if ls == nil || f == nil || f.AtLeastOnce == nil || ls.dead {
+		return
+	}
+	i := k
+	if x.ArgMap != nil {
+		i = x.ArgMap[k]
+	}
+	if i >= len(f.AtLeastOnce) || !f.AtLeastOnce[i] {
+		return
+	}
+	for v, def := range ls.def {
+		if def && a.depth[v] <= a.lambdas {
+			s.def[v] = true
+		}
+	}
 }
 
 // calledOnce reports whether call x calls the lambda it takes as its
@@ -153,7 +188,7 @@ type daLoop struct {
 }
 
 func (c *Checker) newAssignment(cls *types.ClassSym) *assignment {
-	return &assignment{c: c, cls: cls, depth: map[*types.VarSym]int{}, reported: map[*types.VarSym]bool{}}
+	return &assignment{c: c, cls: cls, depth: map[*types.VarSym]int{}, reported: map[syntax.Pos]bool{}}
 }
 
 // funAssignment checks a function's body.
@@ -232,7 +267,7 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 		}
 	}
 	for _, pd := range props {
-		if missing[pd] {
+		if missing[pd] && !c.mustInit[pd.Sym] && !pd.Expect {
 			c.errorf(pd.P, "property must be initialized or be abstract")
 		}
 	}
@@ -267,8 +302,17 @@ func (a *assignment) trackInits(decls []syntax.Decl) {
 		case pd.Init == nil || pd.Getter != nil || pd.Field != nil:
 			continue
 		}
-		if v == nil || v.Const || v.Deferred || pd.Const {
+		if v == nil || v.Deferred {
 			continue
+		}
+		if v.Const || pd.Const {
+			// A const, whose value is inlined where it is read: only a
+			// const's initializer can read it too early, const val A = B
+			// before const val B.
+			if a.consts == nil {
+				a.consts = map[*types.VarSym]bool{}
+			}
+			a.consts[v] = true
 		}
 		if a.inited == nil {
 			a.inited = map[*types.VarSym]bool{}
@@ -292,7 +336,9 @@ func (a *assignment) inits(decls []syntax.Decl, s *daState) {
 			if m.Init == nil || m.Getter != nil {
 				continue
 			}
+			a.constInit = m.Const
 			a.expr(m.Init, s)
+			a.constInit = false
 			v := m.Sym
 			if m.DelegateOf != nil {
 				v = m.DelegateOf.Sym
@@ -314,16 +360,16 @@ func (a *assignment) tracked(v *types.VarSym) bool {
 
 // read checks a read of v.
 func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
-	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[v] {
+	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] {
 		return
 	}
 	if (v.Kind == types.Prop || v.Kind == types.Global) && a.lambdas > 0 {
 		return // a lambda may run once the property is assigned
 	}
-	if a.inSupers && a.delegated[v] || a.libOnce > 0 && a.inited[v] {
+	if a.inSupers && a.delegated[v] || a.libOnce > 0 && a.inited[v] || a.consts[v] && !a.constInit {
 		return
 	}
-	a.reported[v] = true
+	a.reported[p] = true
 	a.c.errorf(p, "variable '%s' must be initialized", v.Name)
 }
 
@@ -614,13 +660,23 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 				a.inPlace(x, l, as)
 				continue
 			}
-			if _, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
+			if l, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
 				a.inlined++
+				if l.InPlace {
+					a.inPlaceLambdas++
+				}
 				a.expr(arg, as)
+				if l.InPlace {
+					a.inPlaceLambdas--
+				}
 				a.inlined--
+				a.atLeastOnce(x, k, as)
 				continue
 			}
 			a.expr(arg, as)
+			if _, ok := arg.(*syntax.Lambda); ok {
+				a.atLeastOnce(x, k, as)
+			}
 		}
 		if as != s {
 			s.mergeMaybe(as)
@@ -634,6 +690,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		a.block(x.Body, ls)
 		a.lambdas--
 		s.mergeMaybe(ls)
+		a.lastLambda = ls
 	case *syntax.ObjectExpr:
 		a.objectExpr(x.Decl, s)
 	case *syntax.NotNull:
@@ -821,7 +878,7 @@ func (a *assignment) entry(v *types.VarSym, p syntax.Pos) {
 // companion reports an access of the enum's companion object in its
 // constructor code.
 func (a *assignment) companion(p syntax.Pos) {
-	if a.quiet > 0 || a.lambdas > 0 || a.libOnce > 0 {
+	if a.quiet > 0 || a.lambdas > a.inPlaceLambdas || a.libOnce > 0 {
 		return
 	}
 	a.c.errorf(p, "companion object of enum class '%s' is uninitialized here", a.comp.Outer.Name)

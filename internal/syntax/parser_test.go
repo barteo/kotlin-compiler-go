@@ -141,9 +141,6 @@ func TestParseErrors(t *testing.T) {
 		{"import a.B as", "1:14", "expected identifier"},
 		{"fun ((@receiver:A Int) -> Unit).f() {}", "1:7", "this annotation is not applicable to target 'type usage' and use-site target '@receiver'"},
 		{"val s = \"abc", "1:9", "unterminated string literal"},
-		{"val c = ''", "1:9", "empty character literal"},
-		{"val c = '\\q'", "1:9", "illegal escape"},
-		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 		{"fun f() { try { } }", "1:11", "'try' must have at least one 'catch' or 'finally' block"},
 		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
@@ -184,6 +181,9 @@ func TestLaterErrors(t *testing.T) {
 		{"class C { constructor(val x: Int) }", "1:23", "'val' on secondary constructor parameter is not allowed"},
 		{"fun f(var x: Int) {}", "1:7", "'var' on function parameter is not allowed"},
 		{"val f: suspend (() -> Unit)? = null", "1:8", "modifier 'suspend' is not applicable to 'nullable type'"},
+		{"val c = ''", "1:9", "empty character literal"},
+		{"val c = '\\q'", "1:9", "illegal escape"},
+		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -229,7 +229,6 @@ func TestReservedAnnotationName(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"val (a, b) = p", "destructuring declaration"},
 		{"fun f() {\n  external fun g()\n}", "local external function"},
 	}
 	for _, tt := range tests {
@@ -313,6 +312,11 @@ func TestMultiDollarString(t *testing.T) {
 		if got := strings.Join(parts, "|"); got != tt.want || toks[1].Kind != EOF {
 			t.Errorf("%s: got %q then %s, want %q", tt.src, got, toks[1].Kind, tt.want)
 		}
+		// The token keeps its prefix and its source after it.
+		prefix := len(tt.src) - len(strings.TrimLeft(tt.src, "$"))
+		if tok := toks[0]; tok.Prefix != prefix || tok.Text != tt.src[prefix:] {
+			t.Errorf("%s: prefix %d, text %q; want %d, %q", tt.src, tok.Prefix, tok.Text, prefix, tt.src[prefix:])
+		}
 	}
 }
 
@@ -344,7 +348,7 @@ func TestImports(t *testing.T) {
 	}
 	for i, w := range want {
 		g := *f.Imports[i]
-		g.P = Pos{}
+		g.P, g.PathP = Pos{}, Pos{}
 		if g != w {
 			t.Errorf("import %d: got %+v, want %+v", i, g, w)
 		}
@@ -446,9 +450,9 @@ fun ok2() {
 	f, errs := ParseAll("t.kt", src)
 	var got []string
 	for _, e := range errs {
-		got = append(got, e.Pos.String()+" "+e.Feature)
+		got = append(got, e.Pos.String()+" "+e.Msg)
 	}
-	want := []string{"6:5 destructuring declaration"}
+	want := []string{"6:5 Destructuring declarations are only allowed for local variables/values"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, ", "), strings.Join(want, ", "))
 	}

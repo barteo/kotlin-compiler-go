@@ -17,6 +17,13 @@ type sigParser struct {
 	i     int
 	scope []*types.TypeParamSym // method type parameters, then the class's
 	ok    bool                  // false if a type kc doesn't support was seen
+	// foreign, if set, is the class of the program's Java sources whose
+	// signature this is, which may name a type variable of an enclosing
+	// class where it isn't in scope, as a static nested interface's
+	// method does T of its outer class's (javac rejects it, kotlinc keeps
+	// T): such names are parameters that nothing substitutes.
+	foreign  *types.ClassSym
+	foreigns map[string]*types.TypeParamSym
 }
 
 // declaredVariance overrides the variance of Java type parameters that
@@ -180,6 +187,17 @@ func (p *sigParser) refType() types.Type {
 				return types.ParamType(tp).Platform()
 			}
 		}
+		if p.foreign != nil {
+			tp := p.foreigns[name]
+			if tp == nil {
+				tp = &types.TypeParamSym{Name: name, Owner: p.foreign}
+				if p.foreigns == nil {
+					p.foreigns = map[string]*types.TypeParamSym{}
+				}
+				p.foreigns[name] = tp
+			}
+			return types.ParamType(tp).Platform()
+		}
 		p.ok = false // a type variable of an enclosing class
 		return types.InvalidType
 	case '[':
@@ -310,6 +328,9 @@ func (t *classTable) methodSignature(f *types.FunSym, cls *types.ClassSym, sig s
 	p := &sigParser{t: t, s: sig, ok: true, scope: cls.TypeParams}
 	if f.Static {
 		p.scope = nil
+	}
+	if cls.Source || t.cp != nil && t.cp.IsSource(cls.Name) {
+		p.foreign = cls
 	}
 	f.TypeParams = p.typeParams(f)
 	p.expect('(')

@@ -25,7 +25,8 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.InPlace, d.Implies = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.AtLeastOnce, d.Implies = c.dropContract(d.Body, imported, o)
+					c.misplacedContracts(d.Body, d.ExprBody, imported)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
 					if cls != nil {
@@ -33,11 +34,13 @@ func dropContracts(checkers []*Checker) {
 					}
 					if d.Getter != nil {
 						c.dropContract(d.Getter.Body, imported, o)
+						c.misplacedContracts(d.Getter.Body, d.Getter.ExprBody, imported)
 					}
 					if d.Setter != nil {
 						so := o
 						so.params = d.Setter.Params
 						c.dropContract(d.Setter.Body, imported, so)
+						c.misplacedContracts(d.Setter.Body, d.Setter.ExprBody, imported)
 					}
 				case *syntax.ClassDecl:
 					decls(d.Members, d)
@@ -46,6 +49,75 @@ func dropContracts(checkers []*Checker) {
 		}
 		decls(f.Decls, nil)
 	}
+}
+
+// misplacedContracts reports the contract { } calls left in a function's
+// body, or its expression body, once dropContract took the one that may
+// start it (CONTRACT_NOT_ALLOWED): one that isn't the body's first
+// statement, an expression body, and any in a local function or a member
+// of a local class or object.
+func (c *Checker) misplacedContracts(body *syntax.Block, exprBody syntax.Expr, imported bool) {
+	if call, ok := exprBody.(*syntax.Call); ok && c.contractCall(call, imported) {
+		c.errorf(call.Fun.Pos(), "contracts are only allowed in function body blocks")
+		exprBody = nil
+		for _, a := range call.Args {
+			c.contractsIn(a, imported, false)
+		}
+	}
+	c.contractsIn(body, imported, false)
+	c.contractsIn(exprBody, imported, false)
+}
+
+// contractsIn reports the contract { } calls in code n, in a local
+// declaration if local.
+func (c *Checker) contractsIn(n any, imported, local bool) {
+	members := func(d *syntax.ClassDecl) {
+		for _, m := range d.Members {
+			switch m := m.(type) {
+			case *syntax.FunDecl:
+				c.contractsIn(m.Body, imported, true)
+				c.contractsIn(m.ExprBody, imported, true)
+			case *syntax.PropDecl:
+				for _, acc := range []*syntax.FunDecl{m.Getter, m.Setter} {
+					if acc != nil {
+						c.contractsIn(acc.Body, imported, true)
+						c.contractsIn(acc.ExprBody, imported, true)
+					}
+				}
+			}
+		}
+	}
+	syntax.Inspect(n, func(x any) bool {
+		switch x := x.(type) {
+		case *syntax.LocalFun:
+			c.contractsIn(x.Decl.Body, imported, true)
+			c.contractsIn(x.Decl.ExprBody, imported, true)
+			return false
+		case *syntax.LocalClass:
+			members(x.Decl)
+			return false
+		case *syntax.ObjectExpr:
+			members(x.Decl)
+		case *syntax.Call:
+			if c.contractCall(x, imported) {
+				if local {
+					c.errorf(x.Fun.Pos(), "contracts are not allowed for local functions")
+				} else {
+					c.errorf(x.Fun.Pos(), "contract should be the first statement")
+				}
+			}
+		}
+		return true
+	})
+}
+
+// contractCall reports whether call is contract { }.
+func (c *Checker) contractCall(call *syntax.Call, imported bool) bool {
+	if len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
+		return false
+	}
+	l, ok := call.Args[0].(*syntax.Lambda)
+	return ok && !l.Anon
 }
 
 func importsContract(f *syntax.File) bool {
@@ -88,9 +160,9 @@ func qualifiedName(x syntax.Expr) string {
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
 // place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace map[string]bool, implies []syntax.Implies) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -101,12 +173,12 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	if c.file != nil && c.file.Annotated != nil {
@@ -118,6 +190,10 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		})
 	}
 	b.Stmts = b.Stmts[1:]
+	if c.contractAt == nil {
+		c.contractAt = map[*syntax.Block]syntax.Pos{}
+	}
+	c.contractAt[b] = call.Fun.Pos()
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)
 		if !ok {
@@ -147,10 +223,16 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 				}
 				once[p.Name] = true
 			}
+			if kind.Name == "AT_LEAST_ONCE" {
+				if atLeast == nil {
+					atLeast = map[string]bool{}
+				}
+				atLeast[p.Name] = true
+			}
 		}
 		return true
 	})
-	return once, inPlace, implies
+	return once, inPlace, atLeast, implies
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or

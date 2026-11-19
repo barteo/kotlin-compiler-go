@@ -61,11 +61,12 @@ type bailout struct{}
 // which is the first of the errors it returns; the others are those found
 // before it that parsing went on after (see File.Errors).
 func Parse(path, src string) (f *File, errs []*Error) {
-	toks, lexErrs := Tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src, getTokenBuf())
+	defer putTokenBuf(toks) // the tree has no tokens of its own
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
-	p := &parser{file: path, toks: toks}
+	p := &parser{file: path, toks: toks, later: glued}
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(bailout); !ok {
@@ -89,11 +90,12 @@ func Parse(path, src string) (f *File, errs []*Error) {
 // to the next one, so it returns the first error of each declaration that
 // fails. bench/survey uses it to see past unsupported constructs.
 func ParseAll(path, src string) (*File, []*Error) {
-	toks, lexErrs := Tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src, getTokenBuf())
+	defer putTokenBuf(toks)
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
-	p := &parser{file: path, toks: toks, recover: true}
+	p := &parser{file: path, toks: toks, recover: true, later: glued}
 	f := p.parseFile()
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
@@ -575,6 +577,7 @@ func (p *parser) anonFun(label string) *Lambda {
 		p.op()
 		x := p.parseExpr()
 		l.Body = &Block{P: x.Pos(), Stmts: []Stmt{&ExprStmt{X: x}}}
+		l.AnonExpr = true
 	default:
 		p.unexpected("the body of an anonymous function")
 	}
@@ -606,13 +609,16 @@ func (p *parser) anonFunAt(i int) bool {
 }
 
 // localClass parses a local class, after its modifiers. Kotlin has no
-// local interfaces, objects or enum classes.
+// local objects or enum classes, nor local interfaces, which the checker
+// reports.
 func (p *parser) localClass(m Modifiers) *LocalClass {
 	NoContexts(&m, "classes", p)
 	t := p.tok()
 	switch {
-	case t.Kind == INTERFACE:
-		p.failAt(t.Pos, "'interface' is not allowed here: local interfaces are not supported")
+	case t.Kind == FUN:
+		cd := p.funInterface(m)
+		cd.Local = true
+		return &LocalClass{Decl: cd}
 	case t.Kind == OBJECT:
 		p.failAt(t.Pos, "named object cannot be local: use an anonymous object instead")
 	case m.Enum:
@@ -659,10 +665,49 @@ func (p *parser) localFun(m Modifiers) *LocalFun {
 // modifier or a name, an annotation, or a declaration keyword.
 func declStart(k Kind) bool {
 	switch k {
-	case IDENT, AT, FUN, VAL, VAR, CLASS, INTERFACE, OBJECT, TYPEALIAS, NL:
+	case IDENT, AT, FUN, VAL, VAR, CLASS, INTERFACE, OBJECT, TYPEALIAS, PACKAGE, NL:
 		return true
 	}
 	return false
+}
+
+// modifiedPackage reports whether the tokens ahead are modifiers or
+// annotations before a package directive: public package p.
+func (p *parser) modifiedPackage() bool {
+	j := p.i
+	for {
+		switch t := p.toks[j]; t.Kind {
+		case PACKAGE:
+			return j > p.i
+		case NL:
+			j++
+		case IDENT:
+			if !isModifier(t.Text) {
+				return false
+			}
+			j++
+		case AT:
+			j++
+			for p.toks[j].Kind == IDENT || p.toks[j].Kind == DOT || p.toks[j].Kind == COLON {
+				j++
+			}
+			if p.toks[j].Kind == LPAREN {
+				depth := 0
+				for ; p.toks[j].Kind != EOF; j++ {
+					if p.toks[j].Kind == LPAREN {
+						depth++
+					} else if p.toks[j].Kind == RPAREN {
+						if depth--; depth == 0 {
+							j++
+							break
+						}
+					}
+				}
+			}
+		default:
+			return false
+		}
+	}
 }
 
 func (p *parser) parseFile() *File {
@@ -684,8 +729,19 @@ func (p *parser) parseFile() *File {
 		})
 		p.skipSemis()
 	}
-	if p.at(PACKAGE) {
+	if p.at(PACKAGE) || p.modifiedPackage() {
 		p.decl(func() {
+			if !p.at(PACKAGE) {
+				// kotlinc's grammar has modifiers before package, which
+				// it reports in later phases.
+				m := p.modifiers()
+				for _, a := range m.Annotations {
+					p.errorLater(a.P, "annotations are not applicable to a package directive")
+				}
+				for _, w := range m.Written {
+					p.errorLater(w.P, "modifier '%s' is not applicable to 'package directive'", w.Name)
+				}
+			}
 			p.next()
 			f.PackageP = p.tok().Pos
 			var name string
@@ -760,7 +816,7 @@ func (p *parser) parseFile() *File {
 			case TYPEALIAS:
 				add(p.parseTypeAlias(m))
 			case PACKAGE:
-				p.notSupported(t, t.Kind.String())
+				p.unexpected("declaration")
 			case IDENT:
 				if t.Text == "import" {
 					p.failAt(t.Pos, "imports must come before declarations")
@@ -778,7 +834,9 @@ func (p *parser) parseFile() *File {
 
 func (p *parser) parseImport() *Import {
 	imp := &Import{P: p.next().Pos}
-	parts := []string{p.ident().Text}
+	first := p.ident()
+	imp.PathP = first.Pos
+	parts := []string{first.Text}
 	for p.at(DOT) {
 		p.next()
 		if p.at(STAR) {
@@ -903,19 +961,7 @@ func (p *parser) parseType() *TypeRef {
 	if p.at(LT) {
 		ref.Args = p.parseTypeArgs()
 	}
-	// The type of an inner class of a generic class: Outer<A>.Inner<B>.
-	for ref.Args != nil && p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
-		p.next()
-		outer := ref
-		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + p.ident().Text, Outer: outer}
-		for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
-			p.next()
-			ref.Name += "." + p.ident().Text
-		}
-		if p.at(LT) {
-			ref.Args = p.parseTypeArgs()
-		}
-	}
+	ref = p.innerTypeChain(ref)
 	if p.quests() {
 		ref.Nullable = true
 	}
@@ -1101,6 +1147,24 @@ func (p *parser) parseTypeParams() []*TypeParam {
 	return ps
 }
 
+// innerTypeChain parses the rest of the type of an inner class of a
+// generic class after the outer one, ref: .Inner<B> of Outer<A>.Inner<B>.
+func (p *parser) innerTypeChain(ref *TypeRef) *TypeRef {
+	for ref.Args != nil && p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
+		p.next()
+		outer := ref
+		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + p.ident().Text, Outer: outer}
+		for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
+			p.next()
+			ref.Name += "." + p.ident().Text
+		}
+		if p.at(LT) {
+			ref.Args = p.parseTypeArgs()
+		}
+	}
+	return ref
+}
+
 // typeArgsAhead reports whether the tokens at p.i are type arguments of
 // a call, as in f<Int>(x): a balanced <...> of tokens that can appear in
 // types, followed by '('. Otherwise '<' is a comparison. Types can be
@@ -1147,19 +1211,79 @@ func (p *parser) typeArgsAhead() bool {
 }
 
 // classRefAhead reports whether type arguments and :: follow, as in
-// List<*>::class or Map.Entry<K, V>::key.
+// List<*>::class or Map.Entry<K, V>::key, or an inner class of a generic
+// class, Outer<A>.Inner<B>::foo.
 func (p *parser) classRefAhead() bool {
+	_, ok := p.classRefEnd(p.i)
+	return ok
+}
+
+// classRefEnd reports whether the tokens from j are type arguments, then
+// possibly inner classes' names and their type arguments, .Inner<B>, and
+// then ::, and returns the index of the ::.
+func (p *parser) classRefEnd(j int) (int, bool) {
 	depth := 0
-	for j := p.i; ; j++ {
-		switch p.toks[j].Kind {
+	for ; ; j++ {
+		k := p.toks[j].Kind
+		if depth == 0 {
+			// Between type argument lists: .Inner, then :: or more.
+			switch k {
+			case LT:
+				depth++
+			case COLON_COLON:
+				return j, true
+			case DOT:
+				if p.toks[j+1].Kind != IDENT {
+					return 0, false
+				}
+			case IDENT:
+			default:
+				return 0, false
+			}
+			continue
+		}
+		switch k {
 		case LT:
 			depth++
 		case GT:
 			depth--
-			if depth == 0 {
-				return p.toks[j+1].Kind == COLON_COLON
+			if depth == 0 && p.toks[j+1].Kind != COLON_COLON && (p.toks[j+1].Kind != DOT || p.toks[j+2].Kind != IDENT) {
+				return 0, false
 			}
 		case IDENT, DOT, COMMA, QUEST, STAR, IN, LPAREN, RPAREN, ARROW, AMP:
+		default:
+			return 0, false
+		}
+	}
+}
+
+// parenTypeRefAhead reports whether the tokens at p.i, a '(', are a
+// generic type in parentheses on the left of a callable reference:
+// (Outer<A>.Inner)::foo or (Outer<A>).Inner<B>::foo.
+func (p *parser) parenTypeRefAhead() bool {
+	depth, args := 0, false
+	for j := p.i + 1; ; j++ {
+		switch p.toks[j].Kind {
+		case LT:
+			depth++
+			args = true
+		case GT:
+			if depth--; depth < 0 {
+				return false
+			}
+		case RPAREN:
+			if depth != 0 || !args {
+				return false
+			}
+			switch p.toks[j+1].Kind {
+			case COLON_COLON:
+				return true
+			case DOT:
+				_, ok := p.classRefEnd(j + 1)
+				return ok
+			}
+			return false
+		case IDENT, DOT, COMMA, QUEST, STAR, IN:
 		default:
 			return false
 		}
@@ -1177,9 +1301,6 @@ func (p *parser) funInterface(m Modifiers) *ClassDecl {
 
 func (p *parser) parseFun() *FunDecl {
 	pos := p.expect(FUN).Pos
-	if t := p.tok(); t.Kind == INTERFACE {
-		p.failAt(t.Pos, "'interface' is not allowed here: local interfaces are not supported")
-	}
 	var tps []*TypeParam
 	p.skipNL()
 	if p.at(LT) {
@@ -1413,7 +1534,7 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 	case p.at(LT):
 		tps = p.parseTypeParams()
 	case p.at(LPAREN) && p.receiverDot(false) < 0: // not a receiver: val (Int.() -> T).x
-		p.unsupported(p.tok().Pos, "destructuring declaration", "destructuring declarations are not supported")
+		p.failAt(p.tok().Pos, "Destructuring declarations are only allowed for local variables/values")
 	}
 	recv, recvAs := p.receiver(false)
 	if tps != nil && recv == nil && m.Contexts == nil {
@@ -2368,6 +2489,8 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 	case FUN:
 		if k := p.toks[p.i+1].Kind; (k == IDENT || k == LT) && !p.anonFunAt(p.i) {
 			return p.localFun(Modifiers{})
+		} else if k == INTERFACE {
+			return p.localClass(Modifiers{})
 		}
 	case IDENT:
 		if t.Text == "context" && p.contextDecl() {
@@ -2381,6 +2504,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 		if j > p.i {
 			switch p.toks[j].Kind {
 			case FUN:
+				if p.toks[j+1].Kind == INTERFACE {
+					return p.localClass(p.modifiers())
+				}
 				return p.localFun(p.modifiers())
 			case CLASS, INTERFACE, OBJECT:
 				// data class, open class, ... in a block.
@@ -2541,8 +2667,9 @@ func (p *parser) parsePostfix() Expr {
 			switch x.(type) {
 			case *Ident, *Member:
 				if name, ok := dottedName(x); ok && p.classRefAhead() {
-					// List<*>::class: the type arguments of a class name.
-					ref := &TypeRef{P: x.Pos(), Name: name, Args: p.parseTypeArgs()}
+					// List<*>::class: the type arguments of a class name,
+					// and Outer<A>.Inner<B>::foo, an inner class's.
+					ref := p.innerTypeChain(&TypeRef{P: x.Pos(), Name: name, Args: p.parseTypeArgs()})
 					x = p.parseColonColon(x, ref)
 					continue
 				}
@@ -2584,7 +2711,7 @@ func (p *parser) parsePostfix() Expr {
 				continue
 			}
 			name := p.underscoreRef(p.ident())
-			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT}
+			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT, Written: true}
 			m.P = name.Pos
 			x = m
 		case LBRACK:
@@ -2757,6 +2884,30 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 
 // parseColonColon parses ::class after x, or after the generic class name
 // ref, with x its name.
+// parenTypeRef parses a callable reference whose left side is a generic
+// type in parentheses, (Outer<A>.Inner)::foo or (Outer<A>).Inner<B>::foo,
+// which kotlinc reads as the type Outer<A>.Inner<B>.
+func (p *parser) parenTypeRef() Expr {
+	p.next()
+	ref := p.parseType()
+	p.expect(RPAREN)
+	for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
+		p.next()
+		name := p.ident().Text
+		if ref.Args != nil {
+			ref = &TypeRef{P: ref.P, Name: ref.Name + "." + name, Outer: ref}
+		} else {
+			ref.Name += "." + name
+		}
+		if p.at(LT) {
+			ref.Args = p.parseTypeArgs()
+		}
+	}
+	id := &Ident{Name: ref.Name}
+	id.P = ref.P
+	return p.parseColonColon(id, ref)
+}
+
 func (p *parser) parseColonColon(x Expr, ref *TypeRef) Expr {
 	t := p.expect(COLON_COLON)
 	p.skipNL()
@@ -2896,6 +3047,9 @@ func (p *parser) parsePrimary() Expr {
 		id.P = t.Pos
 		return id
 	case LPAREN:
+		if p.parenTypeRefAhead() {
+			return p.parenTypeRef()
+		}
 		p.next()
 		x := p.parseExpr()
 		p.expect(RPAREN)
@@ -2926,7 +3080,8 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		r, msg := charValue(t.Text)
 		if msg != "" {
-			p.failAt(t.Pos, "%s", msg)
+			// As kotlinc, which reports it after parsing.
+			p.errorLater(t.Pos, "%s", msg)
 		}
 		c := &CharLit{Val: r}
 		c.P = t.Pos
@@ -3062,7 +3217,7 @@ func (p *parser) intLit(t Token) Expr {
 }
 
 func (p *parser) stringLit(t Token) Expr {
-	s := &StringLit{}
+	s := &StringLit{Prefix: t.Prefix, Src: t.Text}
 	s.P = t.Pos
 	for _, part := range t.Parts {
 		if !part.IsExpr {
@@ -3353,7 +3508,7 @@ func (p *parser) parseWhen() Expr {
 func Parenthesized(x Expr) {
 	switch x := x.(type) {
 	case *Member:
-		x.Paren = x.Safe
+		x.Paren, x.Written = x.Safe, false
 	case *Call:
 		x.Paren = true
 	case *Index:

@@ -19,6 +19,9 @@ import (
 func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if virtualMember(d.Modifiers, owner) {
 		c.errorf(d.P, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	} else if d.Override {
+		// A call through the overridden function isn't inlined.
+		c.warnf(d.P, "OVERRIDE_BY_INLINE", "override by an inline function")
 	}
 	if owner != nil && (owner.Interface || owner.Value || !isFinal(d.Modifiers, owner)) {
 		return // an ordinary method
@@ -32,6 +35,38 @@ func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		d.Inlinable[i] = onlyInvoked(d, p.Name, p.Crossinline)
 	}
 	c.inlineDecls = append(c.inlineDecls, d)
+}
+
+// nothingToInline warns of an inline function that has nothing for
+// inlining to gain (kotlinc's NOTHING_TO_INLINE, at the inline modifier):
+// no reified type parameter, and no parameter or context parameter of a
+// function type, not nullable or noinline, whose lambdas would be
+// inlined. A suspend, expect or @InlineOnly function is left alone, as
+// kotlinc leaves it.
+func (c *Checker) nothingToInline(d *syntax.FunDecl) {
+	if d.AccessorOf != nil || d.Suspend || d.Expect || d.Find("", "InlineOnly") != nil || d.Find("", "kotlin.internal.InlineOnly") != nil {
+		return // kotlinc checks named functions only
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Reified {
+			return
+		}
+	}
+	for _, p := range append(slices.Clip(d.Params), d.Contexts...) {
+		if p.Sym == nil {
+			return // not resolved: don't guess
+		}
+		if t := p.Sym.Type; !p.Noinline && !p.Vararg && !t.N && t.Flex().IsFunc() {
+			return
+		}
+	}
+	pos := d.P
+	for _, w := range d.Written {
+		if w.Name == "inline" {
+			pos = w.P
+		}
+	}
+	c.warnf(pos, "NOTHING_TO_INLINE", "expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types")
 }
 
 // forwardInlinable makes a crossinline parameter of the program's inline
@@ -473,7 +508,7 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	for k := cls; k != nil; k = k.Outer {
-		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal) {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal && cd.Find("", "PublishedApi") == nil) {
 			return
 		}
 	}
@@ -505,19 +540,26 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			}
 		case *syntax.Call:
 			if f := n.Sym; f != nil {
-				if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
+				if k := n.Ctor; k != nil {
+					// A class that isn't public API, internal or private,
+					// can't be constructed in other modules.
+					if _, ok := k.Decl.(*syntax.ClassDecl); ok && !localType(types.ClassType(k)) && !publicAPIClass(k) {
+						c.errorf(n.P, "public-API inline function cannot access non-public-API class '%s'", k.DisplayName())
+					}
+				} else if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
 					report(n.P, "function", f.Name, &fd.Modifiers)
+					if f.Owner == nil {
+						break
+					}
+					if _, ok := f.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(f.Owner) && !c.hasErrorAt(n.P, "public-API inline") {
+						c.errorf(n.P, "public-API inline function cannot access non-public-API function '%s'", f.Name)
+					}
 				}
 			}
 		}
 		return true
 	}
-	if d.Body != nil {
-		syntax.Inspect(d.Body, visit)
-	}
-	if d.ExprBody != nil {
-		syntax.Inspect(d.ExprBody, visit)
-	}
+	inspectInline(d, visit)
 }
 
 // varModifiers returns the modifiers of a property of the program, or nil.

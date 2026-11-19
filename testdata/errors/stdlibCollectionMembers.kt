@@ -1,6 +1,6 @@
 // The members of Java's collections that Kotlin's collections declare
 // take Kotlin's parameter types, as K2's mapped scope has them: an
-// ArrayList<String>'s contains takes a String!, so contains(1) falls back
+// ArrayList<String>'s contains takes a String, so contains(1) falls back
 // to the stdlib's contains, whose @OnlyInputTypes T can't be Any.
 
 fun members(al: java.util.ArrayList<String>, hm: java.util.HashMap<String, Int>) {

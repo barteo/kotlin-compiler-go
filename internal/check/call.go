@@ -33,6 +33,11 @@ type callee struct {
 	// names are the call's argument names, with amap: a named argument
 	// of a vararg parameter is its array.
 	names []string
+	// given are the arguments of some of tparams that the call is given,
+	// as by explicit type arguments, but not written: a secondary
+	// constructor's super(...) call's, the superclass's, are the
+	// supertype's (see superCtorCands).
+	given types.Subst
 }
 
 // param returns the parameter argument i is passed to.
@@ -53,6 +58,37 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 		return types.VarargElem(p.Type)
 	}
 	return p.Type
+}
+
+// ownParamArg reports whether argument i of call x is passed for a
+// parameter whose declared type is one of the callee's own type
+// parameters. As in kotlinc, a lambda isn't converted to the fun interface
+// that gives it, as for C.g<Runnable> { } with Java's static <R> void g(R
+// r), or listOf<Runnable>({ }), though it is to one a receiver's type or a
+// typealias gives: c.f { } with C<K>'s void f(K k) for a C<Runnable>, or
+// RBox { } for typealias RBox = Box<Runnable>. A class's type parameter
+// that a typealias gives its own, as TA<K> = Box<K> does, is the alias's.
+// A call that infers the type parameter, passed itself for a parameter of
+// a fun interface type, does convert it to that: consumeTicker(select({
+// num -> num.dec() }, null)), but not consumeTicker(id(select(...))).
+func (c *Checker) ownParamArg(cl *callee, x *syntax.Call, i int) bool {
+	t := cl.argType(i, x.Args)
+	if t.K != types.TypeParam || !slices.Contains(cl.tparams, t.Param()) {
+		return false
+	}
+	if c.samArg == x && len(x.TypeArgs) == 0 {
+		return false
+	}
+	a := c.aliasCtors[x]
+	if a == nil || x.Ctor == nil {
+		return true
+	}
+	j := slices.Index(x.Ctor.TypeParams, t.Param())
+	if j < 0 || a.Type.K != types.Class || a.Type.C != x.Ctor || j >= a.Type.A.Len() {
+		return false
+	}
+	at := a.Type.A.Get(j).T
+	return at.K == types.TypeParam && slices.Contains(a.TypeParams, at.Param())
 }
 
 // isCallArg reports whether argument x is a call, spread or not.
@@ -891,7 +927,22 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				cd.sub[p] = types.Arg{T: targs[j]}
 			}
 		default:
-			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
+			tps, base := cl.tparams, cl.recv
+			if cl.given != nil {
+				tps, base = nil, types.Subst{}
+				for p, a := range cl.recv {
+					base[p] = a
+				}
+				for p, a := range cl.given {
+					base[p] = a
+				}
+				for _, p := range cl.tparams {
+					if _, ok := cl.given[p]; !ok {
+						tps = append(tps, p)
+					}
+				}
+			}
+			cd.sub = cd.sys.fresh(tps, base, x.P)
 		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
@@ -1148,7 +1199,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i)})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
@@ -1977,7 +2028,7 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			// checked against the type the others infer.
 			continue
 		}
-		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok {
+		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok && !c.ownParamArg(&cd.callee, x, i) {
 			if cd.sams == nil {
 				cd.sams = map[int]*types.FunSym{}
 			}

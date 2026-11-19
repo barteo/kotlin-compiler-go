@@ -51,6 +51,7 @@ func main() {
 	stdlib := flag.String("stdlib", "", "kotlin-stdlib.jar")
 	reflectJar := flag.String("reflect", "", "kotlin-reflect.jar")
 	kotlinTest := flag.String("test", "", "kotlin-test.jar, which the box tests' kotlin.test functions are in")
+	annotations := flag.String("annotations", "", "annotations-13.0.jar, the JetBrains annotations (org.jetbrains.annotations), which the test infrastructure puts on every test's class path")
 	java := flag.String("java", "java", "the java command")
 	javac := flag.String("javac", "javac", "the javac command")
 	out := flag.String("o", "", "the Markdown report to write")
@@ -87,7 +88,8 @@ func main() {
 	if *kotlinTest != "" {
 		libs = append(libs, *kotlinTest)
 	}
-	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
+	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, annotations: *annotations, timeout: 2 * time.Minute,
+		checkerSets: *mode == "diagnostics"}
 	if *serve && *kotlinc == "" {
 		comp.servers = newKcPool(*kc, *jobs)
 		defer comp.servers.close()

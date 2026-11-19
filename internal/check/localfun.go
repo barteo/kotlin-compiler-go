@@ -85,6 +85,8 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 			c.errorf(od.P, "conflicting overloads: %s", d.Name)
 		}
 		c.errorf(d.P, "conflicting overloads: %s", d.Name)
+	} else {
+		c.localCtorConflicts(sym, d, saved.scope)
 	}
 
 	frame := &syntax.Lambda{}
@@ -130,7 +132,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 	case sym.Resolved:
-		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 	default:
 		sym.InProgress = true
 		rets := []exprRet{}
@@ -258,6 +260,46 @@ func (c *Checker) localExts(name string) []*types.FunSym {
 // declareLocalFun declares local function f in scope s, unless s has one
 // with the same signature, which it returns: the same parameters, and
 // the same receiver, as kotlinc tells local functions apart by it too.
+// conflictReported keys c.done with a declaration reported as conflicting.
+type conflictReported struct{ decl any }
+
+// localCtorConflicts reports local function sym, declared by d, and the
+// constructors of a local class of its name declared before it in scope
+// s that have its signature: a call couldn't tell them apart.
+func (c *Checker) localCtorConflicts(sym *types.FunSym, d *syntax.FunDecl, s *scope) {
+	if sym.Ext {
+		return
+	}
+	fo := funOverload(c, sym, d.P, d)
+	reported := false
+	for _, cls := range s.classes {
+		cd, ok := cls.Decl.(*syntax.ClassDecl)
+		if !ok || cd.Name != d.Name || !ctorScoped(cd) {
+			continue
+		}
+		own, _ := localOwnParams(cls)
+		for _, ctor := range userCtors(cls) {
+			pos := cd.P
+			if sc, ok := ctor.Decl.(*syntax.SecondaryCtor); ok {
+				pos = sc.P
+			}
+			co := funOverload(c, ctor, pos, ctor.Decl)
+			co.tparams = own
+			if !sameSignature(&fo, &co) {
+				continue
+			}
+			if k := (conflictReported{ctor.Decl}); !c.done[k] {
+				c.done[k] = true
+				c.errorf(pos, "conflicting overloads: %s", d.Name)
+			}
+			if !reported {
+				reported = true
+				c.errorf(d.P, "conflicting overloads: %s", d.Name)
+			}
+		}
+	}
+}
+
 func declareLocalFun(s *scope, f *types.FunSym) *types.FunSym {
 	k := localKey(f)
 	for _, g := range s.funs {

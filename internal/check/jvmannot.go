@@ -25,6 +25,9 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		if s, ok := a.Str("name"); ok && !validJvmName(s) {
 			c.errorf(a.P, "illegal JVM name")
 		}
+		if site == localFunSite {
+			c.errorf(a.P, inapplicableJvmName)
+		}
 	case "JvmPackageName":
 		if s, ok := a.Str("name"); ok && site == fileSite {
 			c.jvmPackageName(a, s)
@@ -91,6 +94,27 @@ func validPackageName(s string) bool {
 	return true
 }
 
+// inapplicableJvmName is the message of INAPPLICABLE_JVM_NAME.
+const inapplicableJvmName = "'@JvmName' annotation is not applicable to this declaration"
+
+// renamesVirtual reports whether @JvmName can't rename a function of
+// owner with modifiers m (INAPPLICABLE_JVM_NAME): an override, or one
+// that can be overridden, whose overrides would keep the JVM name it
+// overrides.
+func renamesVirtual(m syntax.Modifiers, owner *types.ClassSym) bool {
+	return owner != nil && m.Override || overridable(m, owner)
+}
+
+// overridable reports whether a member of owner with modifiers m can be
+// overridden, as a property's accessors, which kotlinc checks for
+// INAPPLICABLE_JVM_NAME, can be: they aren't overrides themselves.
+func overridable(m syntax.Modifiers, owner *types.ClassSym) bool {
+	if owner == nil || m.Visibility == syntax.Private || owner.Final && !owner.Interface {
+		return false
+	}
+	return owner.Interface || m.Open || m.Abstract || m.Override && !m.Final
+}
+
 // jvmMemberAnnotations checks the JVM annotations of declaration d, in
 // class owner (nil at top level), that depend on what owner is.
 func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
@@ -98,7 +122,25 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.FunDecl:
 		c.overloads(&d.Modifiers, owner)
 		c.synchronized(&d.Modifiers, owner, "")
+		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
+			c.errorf(a.P, inapplicableJvmName)
+		}
 	case *syntax.PropDecl:
+		if overridable(d.Modifiers, owner) {
+			for _, a := range []*syntax.Annotation{d.Find("get", "JvmName"), d.Find("set", "JvmName")} {
+				if a != nil {
+					c.errorf(a.P, inapplicableJvmName)
+				}
+			}
+			for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
+				if acc == nil {
+					continue
+				}
+				if a := acc.Find("", "JvmName"); a != nil {
+					c.errorf(a.P, inapplicableJvmName)
+				}
+			}
+		}
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
 				c.synchronized(&acc.Modifiers, owner, "")
@@ -106,6 +148,7 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.synchronized(&d.Modifiers, owner, "get")
 		c.synchronized(&d.Modifiers, owner, "set")
+		c.jvmFieldApplicable(d, owner)
 		if d.Field != nil {
 			if a := d.Find("delegate", "JvmSynthetic"); a != nil {
 				c.errorf(a.P, "'@JvmSynthetic' annotation cannot be used on delegated properties")
@@ -119,8 +162,79 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			if a := cp.Modifiers.Find("", "JvmStatic"); a != nil && cp.IsProp {
 				c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 			}
+			if a := cp.Modifiers.Find("", "JvmField"); a != nil && cp.IsProp && cp.PropSym != nil {
+				switch {
+				case cp.Visibility == syntax.Private:
+					c.errorf(a.P, "JvmField has no effect on a private property")
+				case cp.Open || cp.Override:
+					c.errorf(a.P, "JvmField cannot be applied to a property that overrides some other property or can be overridden")
+				case c.valueClassType(cp.PropSym.Type):
+					c.errorf(a.P, "JvmField cannot be applied to a property of an inline class type")
+				}
+			}
 		}
 	}
+}
+
+// jvmFieldApplicable checks where property d, in class owner (nil at top
+// level), is annotated @JvmField, which needs a field it can make public:
+// one of a final property with default accessors, not delegated, const or
+// lateinit, of a type that isn't a value class.
+func (c *Checker) jvmFieldApplicable(d *syntax.PropDecl, owner *types.ClassSym) {
+	a := d.Find("", "JvmField")
+	if a == nil {
+		if a = d.Find("delegate", "JvmField"); a == nil {
+			return
+		}
+	}
+	inapplicable := func(why string) { c.errorf(a.P, "JvmField %s", why) }
+	switch {
+	case d.Field != nil:
+		inapplicable("cannot be applied to a delegated property")
+	case d.Abstract || owner != nil && owner.Interface:
+		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+	case d.Sym != nil && !d.Sym.HasField():
+		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+	case d.Const:
+		inapplicable("cannot be applied to a const property")
+	case d.Lateinit:
+		inapplicable("cannot be applied to a lateinit property")
+	case d.Visibility == syntax.Private:
+		inapplicable("has no effect on a private property")
+	case d.Open || d.Override:
+		inapplicable("cannot be applied to a property that overrides some other property or can be overridden")
+	case d.Getter != nil || d.Setter != nil || d.AccessorP.Line != 0:
+		inapplicable("cannot be applied to a property with a custom accessor")
+	case owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Annotation:
+		inapplicable("cannot be applied to a property of a companion object of an annotation class")
+	case owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface && !c.interfaceCompanionFields(owner):
+		inapplicable("could be applied only if all interface companion properties are 'public final val' with '@JvmField' annotation")
+	case d.Sym != nil && c.valueClassType(d.Sym.Type):
+		inapplicable("cannot be applied to a property of an inline class type")
+	}
+}
+
+// interfaceCompanionFields reports whether every property of companion,
+// an interface's companion object, is a public final val with @JvmField,
+// as kotlinc requires of any of them to be a field.
+func (c *Checker) interfaceCompanionFields(companion *types.ClassSym) bool {
+	cd, ok := companion.Decl.(*syntax.ClassDecl)
+	if !ok {
+		return true
+	}
+	for _, m := range cd.Members {
+		if pd, ok := m.(*syntax.PropDecl); ok && (pd.Mutable || pd.Visibility != syntax.Public || pd.Open || pd.Find("", "JvmField") == nil) {
+			return false
+		}
+	}
+	return true
+}
+
+// valueClassType reports whether t is a value class's type, which a
+// @JvmField can't expose: its field holds the underlying value.
+func (c *Checker) valueClassType(t types.Type) bool {
+	t = t.Flex()
+	return t.K == types.Class && t.C != nil && !t.N && ensured(t.C).Value
 }
 
 // overloads checks the @JvmOverloads of a member function of owner with

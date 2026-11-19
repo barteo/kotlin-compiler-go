@@ -468,6 +468,31 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 	return lookup
 }
 
+// annotationThis returns the class whose instance is this in the
+// arguments of annotations on site in class owner, or nil: as with
+// kotlinc, those of a member, a parameter or a constructor see the
+// class's instance members, and those of an inner class its outer
+// class's, as do those of its supertypes. Those of other types are left
+// out: owner is only the class the type was first resolved in.
+func annotationThis(owner *types.ClassSym, site annotSite) *types.ClassSym {
+	if owner == nil {
+		return nil
+	}
+	switch site.kind {
+	case siteClass:
+		if owner.Inner {
+			return owner.Outer
+		}
+	case siteFun, siteProp, siteCtorProp, siteParam, siteCtor, siteEnumEntry, siteInit:
+		return owner
+	case siteType:
+		if site.outerThis {
+			return owner
+		}
+	}
+	return nil
+}
+
 // protectedVia reports whether the code may use a protected member of
 // owner on receiver x, by Kotlin's rule for protected members (Java's
 // too): on an explicit receiver, the member is visible in a subclass K
@@ -529,8 +554,35 @@ func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax
 	}
 }
 
+// strictProtectedVia reports whether the code may use a protected member
+// of owner on a receiver of class rc by Kotlin's rule alone (see
+// protectedVia), without the allowance of a member that overrides one
+// the code sees: in a subclass K of owner, or a class nested in one,
+// whose receiver is a K.
+func (c *Checker) strictProtectedVia(owner, rc *types.ClassSym) bool {
+	for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
+		if (k == owner || k.IsSubclassOf(owner)) && (rc == k || rc.IsSubclassOf(k)) {
+			return true
+		}
+	}
+	return false
+}
+
 // protectedFun reports whether f is a protected instance member, which
 // protectedVia checks the receiver of.
+// protectedGetter reports a read of a Java class's synthetic property x
+// whose getter is protected and isn't visible on x's receiver, as an
+// explicit call of the getter is: s.name, for a protected getName, in a
+// subclass of s's class, but not on its own instances. x isn't an
+// assignment's target, whose setter javaSetterVisible checks.
+func (c *Checker) protectedGetter(x *syntax.Member) {
+	g := x.Getter
+	if g == nil || c.assignTarget == x || g.Owner == nil || !g.Owner.External || !protectedFun(g) || c.protectedVia1(g.Owner, g, x.X) {
+		return
+	}
+	c.invisibleFun(x.P, g)
+}
+
 func protectedFun(f *types.FunSym) bool {
 	return !f.Static && !f.Ext && f.Owner != nil && memberVisibility(f) == syntax.Protected
 }

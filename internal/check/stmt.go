@@ -45,6 +45,7 @@ func braceless(b *syntax.Block) syntax.Stmt {
 func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.Type {
 	t := types.UnitType
 	nothing := false
+	jump := -1 // the statement that always jumps
 	for i, s := range b.Stmts {
 		last := i == len(b.Stmts)-1
 		c.site = varSite{b, i}
@@ -72,6 +73,9 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 			}
 		}
 		if st.K == types.Nothing || stmtJumps(s) {
+			if !nothing {
+				jump = i
+			}
 			nothing = true
 		}
 		if last {
@@ -81,6 +85,9 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	}
 	if nothing {
 		t = types.NothingType
+	}
+	if c.u.extraWarnings {
+		c.noteJump(b, jump)
 	}
 	b.T = t
 	return t
@@ -922,7 +929,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			return types.InvalidType, false
 		}
 		c.varTarget = x // see propBound
+		c.assignTarget = x
 		t := c.member(x)
+		c.assignTarget = nil
 		x.T = t
 		c.dslTarget(x)
 		if x.Getter != nil && x.Setter == nil {

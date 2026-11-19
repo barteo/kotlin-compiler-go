@@ -12,12 +12,30 @@ import (
 type jar struct{ r *zip.ReadCloser }
 
 func (j *jar) read(e *entry) ([]byte, error) {
-	rc, err := e.file.(*zip.File).Open()
+	f := e.file.(*zip.File)
+	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	return io.ReadAll(rc)
+	if f.UncompressedSize64 > 1<<30 {
+		return io.ReadAll(rc)
+	}
+	// The entry's size is known: read it into a buffer of that size, not
+	// one ReadAll grows and copies. The reader checks the CRC at its end,
+	// which the last read reaches.
+	data := make([]byte, f.UncompressedSize64)
+	if _, err := io.ReadFull(rc, data); err != nil {
+		return nil, err
+	}
+	var b [1]byte
+	if n, err := rc.Read(b[:]); n != 0 || err != io.EOF {
+		if err == nil || err == io.EOF {
+			err = zip.ErrFormat
+		}
+		return nil, err
+	}
+	return data, nil
 }
 
 func (j *jar) close() error { return j.r.Close() }

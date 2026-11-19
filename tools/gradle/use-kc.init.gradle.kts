@@ -28,6 +28,10 @@
 //              runs stock KSP in its place, and the build log says so. A daemon's builds must
 //              name one directory with one libkc.so: after an upgrade of kc, restart the daemon.
 //              Checked with the KSP Gradle plugin 2.3.12 and 2.3.13.
+//   KC_KSP_KEEP  1: KSP on kc keeps the processors' classes loaded between the tasks and builds
+//              of a daemon, for as long as the processors' jars stay the same. KSP's Gradle
+//              plugin loads them anew for every task, so every run starts on code the JVM has
+//              not compiled yet. A processor then keeps its static state between runs.
 //   KC_JDK_HOME  JDK to compile against, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:

@@ -179,7 +179,9 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	gs.TypeParams = c.declareTypeParams(d.TypeParams, gs, false)
 	c.tparams = funTypeParams(gs, gs.Owner)
 	defer func() { c.tparams = nil }()
+	c.overrideBounds = d.Override
 	c.resolveBounds(d.TypeParams)
+	c.overrideBounds = false
 	gs.Recv = c.resolveType(d.Recv).WithMarkers(c.annotationMarkers(d.RecvAnnotations))
 	g.RecvSym = &types.VarSym{Name: "$this$" + d.Name, Type: gs.Recv, Kind: types.Param, Decl: g}
 	sym.Getter = gs

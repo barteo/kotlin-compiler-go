@@ -672,6 +672,13 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 					info.JavaTargets = append(info.JavaTargets, arg)
 				}
 			}
+		case "PurelyImplements", "kotlin.jvm.PurelyImplements":
+			if n, _ := r.lookup("PurelyImplements"); a.Name == "PurelyImplements" && n != "kotlin/jvm/PurelyImplements" {
+				continue
+			}
+			if len(a.Strings) == 1 {
+				info.PurelyImplements = a.Strings[0]
+			}
 		case "SubclassOptInRequired", "kotlin.SubclassOptInRequired":
 			if n, _ := r.lookup("SubclassOptInRequired"); a.Name == "SubclassOptInRequired" && n != "kotlin/SubclassOptInRequired" {
 				continue

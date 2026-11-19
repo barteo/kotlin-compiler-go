@@ -39,6 +39,9 @@ func (c *Checker) nestedClass(name string) *types.ClassSym {
 // classes by its simple name.
 func (c *Checker) nestedClassifier(name string) classifier {
 	for k := c.scopeClass(); k != nil; k = c.nextEnclosing(k) {
+		if k == c.headerBounds {
+			continue
+		}
 		var found classifier
 		// A class sees its superclasses' nested classes too, but not its
 		// interfaces': a Widget.Mode doesn't hide an imported Mode in the

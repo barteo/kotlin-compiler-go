@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -18,6 +20,18 @@ import (
 // (INCONSISTENT_TYPE_PARAMETER_BOUNDS).
 func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 	for _, d := range decls {
+		if d.Sym != nil && slices.ContainsFunc(d.Sym.Bounds, types.Type.IsArray) {
+			// A subtype of an array type is the array type: the type
+			// parameter would be it.
+			c.errorf(d.P, "upper bound of a type parameter cannot be an array")
+		}
+		if d.Sym != nil && len(d.Bounds) == len(d.Sym.Bounds) && !c.overrideBounds && !overrideOwner(d.Sym.Owner) {
+			for i, b := range d.Sym.Bounds {
+				if b.K != types.Invalid && !c.hasSubtypesK1(b) {
+					c.warnf(d.Bounds[i].P, "FINAL_UPPER_BOUND", "type '%s' is final, so the value of the type parameter is predetermined", b)
+				}
+			}
+		}
 		if d.Sym == nil || len(d.Sym.Bounds) < 2 || len(d.Bounds) != len(d.Sym.Bounds) {
 			continue
 		}
@@ -43,6 +57,97 @@ func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 			}
 		}
 	}
+}
+
+// overrideOwner reports whether a type parameter's owner is an override,
+// whose bounds kotlinc doesn't warn about: those of the member it
+// overrides decide them.
+func overrideOwner(owner any) bool {
+	f, ok := owner.(*types.FunSym)
+	if !ok {
+		return false
+	}
+	d, ok := f.Decl.(*syntax.FunDecl)
+	if !ok {
+		return false
+	}
+	if d.Override {
+		return true
+	}
+	if d.AccessorOf != nil {
+		if p, ok := d.AccessorOf.Decl.(*syntax.PropDecl); ok {
+			return p.Override
+		}
+	}
+	return false
+}
+
+// hasSubtypesK1 reports whether type t has subtypes other than Nothing,
+// as kotlinc's canHaveSubtypesAccordingToK1 has it for FINAL_UPPER_BOUND:
+// a nullable type does, and a class that isn't final or is an enum
+// class; a final generic class does where one of its arguments may vary:
+// a star, an argument that has subtypes where the parameter or the
+// projection is out, or one below a bound of the parameter where it is
+// in, and either where it's invariant.
+func (c *Checker) hasSubtypesK1(t types.Type) bool {
+	if t.N || t.P {
+		return true
+	}
+	switch t.K {
+	case types.Unit, types.Nothing, types.String:
+		return false
+	case types.Class:
+	default:
+		return !types.IsPrimitiveKind(t.K)
+	}
+	cls := t.C
+	cls.Ensure()
+	if !cls.Final || cls.Interface || cls.Abstract || cls.Entries != nil || cls.Func || cls.Array || cls.Sealed {
+		return true
+	}
+	if t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		if i >= len(cls.TypeParams) {
+			break
+		}
+		p := cls.TypeParams[i]
+		var has bool
+		switch {
+		case a.V == types.Star:
+			has = true
+		case a.V == types.Out:
+			has = c.hasSubtypesK1(a.T)
+		case a.V == types.In:
+			has = c.belowBound(a.T, p)
+		case p.Var == types.Out:
+			has = c.hasSubtypesK1(a.T)
+		case p.Var == types.In:
+			has = c.belowBound(a.T, p)
+		default:
+			has = c.hasSubtypesK1(a.T) || c.belowBound(a.T, p)
+		}
+		if has {
+			return true
+		}
+	}
+	return false
+}
+
+// belowBound reports whether t is a subtype of one of p's bounds other
+// than the bound itself, as K1's lowerThanBound.
+func (c *Checker) belowBound(t types.Type, p *types.TypeParamSym) bool {
+	bounds := p.Bounds
+	if len(bounds) == 0 {
+		bounds = []types.Type{types.AnyType.Nullable()}
+	}
+	for _, b := range bounds {
+		if t != b && c.subtype(t, b) {
+			return true
+		}
+	}
+	return false
 }
 
 // boundKey is what makes two bounds the same bound: their classifier.
