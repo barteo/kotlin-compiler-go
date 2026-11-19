@@ -114,6 +114,9 @@ func (c *Checker) checkExpect(d syntax.Decl) {
 // expectMembers reports the expect modifier on the members of a class
 // that isn't expect.
 func (c *Checker) expectMembers(d *syntax.ClassDecl) {
+	if d.Expect {
+		return
+	}
 	for _, m := range d.Members {
 		switch m := m.(type) {
 		case *syntax.FunDecl:

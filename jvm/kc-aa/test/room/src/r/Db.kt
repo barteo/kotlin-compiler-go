@@ -1,6 +1,7 @@
 package r
 
 import androidx.room.ColumnInfo
+import androidx.room.ConstructedBy
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -14,6 +15,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.RoomDatabase
+import androidx.room.RoomDatabaseConstructor
 import androidx.room.Transaction
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
@@ -113,8 +115,15 @@ abstract class NoteDao {
 
 @Database(entities = [User::class, Note::class], version = 1, exportSchema = false)
 @TypeConverters(Converters::class)
+@ConstructedBy(AppDbConstructor::class)
 abstract class AppDb : RoomDatabase() {
     abstract fun users(): UserDao
 
     abstract fun notes(): NoteDao
+}
+
+// Room generates the actual object.
+@Suppress("NO_ACTUAL_FOR_EXPECT")
+expect object AppDbConstructor : RoomDatabaseConstructor<AppDb> {
+    override fun initialize(): AppDb
 }

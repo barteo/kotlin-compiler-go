@@ -1957,7 +1957,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		sym.External = c.external(d, owner, d.Abstract, d.P) && bodyless
 	case sym.Abstract && !bodyless:
 		c.errorf(d.P, "an abstract function cannot have a body")
-	case !sym.Abstract && bodyless:
+	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
 	}
 	seen := map[string]bool{}
@@ -2246,7 +2246,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			p = d.SetterVisP // at the modifier, as kotlinc
 		}
 		c.errorf(p, "private setters are not allowed for open properties")
-	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit:
+	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect:
 		switch {
 		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")

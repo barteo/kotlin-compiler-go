@@ -585,6 +585,7 @@ func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*low
 	parallel(len(snaps), jobs, func(i int) {
 		files[i], provs[i], errLists[i] = lower.File(snaps[i])
 	})
+	keepExpects(files)
 	broken := map[int]bool{}
 	for i, snap := range snaps {
 		errs := errLists[i]
