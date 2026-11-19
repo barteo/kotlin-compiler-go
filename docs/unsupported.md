@@ -62,6 +62,10 @@ own tests.
   `@Suppress` silences a warning by its name, or all of them with
   `"warnings"`.
 
+- Experimental syntax: name-based destructuring (`(val a, val b) = p`)
+  and positional destructuring with square brackets (`val [a, b] = p`)
+  are reported as unsupported, and companion blocks
+  (`companion { ... }` in a class body) are a syntax error.
 - Local `external` functions inside an interface's members when the
   interface's methods are JVM default methods (the default
   `-jvm-default`), which are reported as unsupported: kotlinc writes
@@ -123,6 +127,8 @@ Java classes directly for the rest. Also:
 - Ranges work only in `for` loops and `in` checks; they aren't values
   (`val r = 1..10` needs `IntRange`).
 - `X::class` isn't a `KClass`; `X::class.java` works.
+- `Unit?` isn't a type, and `println` and `print` can't print a `Unit`
+  value.
 - Suspend functions and coroutines aren't available.
 - Programs that use function types need the interfaces `kc` writes to
   `kc/jvm/functions/` in the output directory.
