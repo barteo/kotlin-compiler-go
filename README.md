@@ -219,8 +219,6 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
   tests run against `kc`
 - [PSI and analysis](docs/psi.md): the public parser and analysis API for
   linters and other tools
-- [detekt on kc](docs/detekt.md): detekt's type resolution answered by
-  `kc`'s analysis, about 3× faster than on the Kotlin compiler
 
 ## PSI API
 
