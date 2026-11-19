@@ -1872,7 +1872,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		for _, fd := range info.Fields {
 			if fd.Access&classfile.AccEnum != 0 {
 				cls.Entries = append(cls.Entries, fd.Name)
-				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true}
+				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true,
+					Annotations: fd.Annotations}
 			}
 		}
 		// Its static methods, as for the program's enums.
