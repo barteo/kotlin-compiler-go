@@ -153,7 +153,9 @@ against them (`expect.go`). `contract { }` calls are dropped
 
 ## Class files
 
-Class files are version 52 (Java 8). The assembler
+Class files are version 52 (Java 8), and those of a higher
+`-jvm-target` only say a higher version: the driver raises it as it
+writes them (`classfile.SetMajor`), as nothing in them needs it. The assembler
 (`internal/classfile/code.go`) computes `StackMapTable` frames in the
 same pass that emits code:
 

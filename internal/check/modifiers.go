@@ -321,7 +321,8 @@ func classTargets(cd *syntax.ClassDecl, local bool) tgt {
 	switch {
 	case cd.Anonymous:
 		return tObjectLiteral | tClass
-	case cd.Annotation || cd.Has("annotation"):
+	case (cd.Annotation || cd.Has("annotation")) && !(cd.Enum || cd.Has("enum")):
+		// Written enum too, it is an enum class (syntax.EnumAnnotation).
 		return tAnnotationClass | tClass
 	case cd.Object && (cd.Companion || cd.Has("companion")):
 		return tCompanionObject | tObject | tClass

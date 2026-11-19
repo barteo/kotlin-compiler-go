@@ -354,6 +354,17 @@ func (m *Modifiers) modifier(name string) (flag *bool, pos *Pos) {
 	return nil, nil
 }
 
+// PosOf returns the position of written modifier name, or p if it isn't
+// written.
+func (m *Modifiers) PosOf(name string, p Pos) Pos {
+	for _, w := range m.Written {
+		if w.Name == name {
+			return w.P
+		}
+	}
+	return p
+}
+
 // Has reports whether name is among the written modifiers.
 func (m *Modifiers) Has(name string) bool {
 	for _, w := range m.Written {

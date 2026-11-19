@@ -56,6 +56,8 @@ type Universe struct {
 	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
 	// has it, rather than being an error type as a whole.
 	partial bool
+	// jvmTarget is Options.JVMTarget, set to 52 if it was 0.
+	jvmTarget int
 	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
@@ -738,6 +740,11 @@ type Options struct {
 	// the diagnostics: Severity tells them apart. Without it, only the
 	// errors are returned.
 	Warnings bool
+	// JVMTarget is the class file major version the program is compiled
+	// for, 52 (Java 8) if 0: a call of an inline function of a class
+	// file of a higher version is an error, as kotlinc's
+	// INLINE_FROM_HIGHER_PLATFORM.
+	JVMTarget uint16
 	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
 	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
 	ExtraWarnings bool
@@ -878,7 +885,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
-		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings}
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
@@ -1659,7 +1666,15 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			sym.Entries = append(sym.Entries, e.Name)
 		}
 		if d.Interface || d.Object || d.Data || d.Sealed || d.Open || d.Abstract {
-			c.errorf(d.P, "modifier 'enum' is only allowed on final classes")
+			// At the first modifier that makes it not final, as kotlinc.
+			pos := d.P
+			for _, w := range d.Written {
+				if w.Name == "data" || w.Name == "sealed" || w.Name == "open" || w.Name == "abstract" {
+					pos = w.P
+					break
+				}
+			}
+			c.errorf(pos, "modifier 'enum' is only allowed on final classes")
 		}
 		for _, m := range d.Members {
 			// An enum may declare abstract members, which its entries
@@ -1941,7 +1956,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		if owner == nil {
 			what = "top level function"
 		}
-		c.errorf(d.P, "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(d.PosOf("annotation", d.P), "modifier 'annotation' is not applicable to '%s'", what)
 	}
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
 	c.tparams = funTypeParams(sym, owner)

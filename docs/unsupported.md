@@ -135,10 +135,10 @@ Java classes directly for the rest. Also:
   class, can't be inlined. A call of one with reified type parameters,
   or of an inline-only one, is reported; another is called as a
   function instead, and its lambdas can't return from the caller.
-- Inline functions that `kotlinc` compiled for JVM 9 and later, with
-  `StringConcatFactory` string templates, are copied into `kc`'s version
-  52 classes, which then need Java 9 to run. `kotlinc` refuses to inline
-  them into a lower JVM target.
+- An inline function of a class file built for a higher JVM target
+  than `-jvm-target` (default 1.8), such as one `kotlinc` compiled for
+  JVM 9 and later with `StringConcatFactory` string templates, is an
+  error, as with `kotlinc` (`INLINE_FROM_HIGHER_PLATFORM`).
 
 ## Coroutines
 
@@ -418,8 +418,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   interface companion's fields are instance fields, not static ones, and
   the lambdas and local functions of its initializers and `init` blocks
   are static methods of the interface.
-- No `PermittedSubclasses` attributes, which `kotlinc` writes for
-  `-jvm-target 17` and later, and `InnerClasses` entries only
+- Class files for a `-jvm-target` above 1.8 are those for 1.8 with a
+  higher version: no `PermittedSubclasses` attributes, which `kotlinc`
+  writes for `-jvm-target 17` and later, and string templates are built
+  with `StringBuilder`, not `kotlinc`'s `StringConcatFactory` of 9 and
+  later. `InnerClasses` entries are only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`
   boxes both values and calls `equals` rather than `equals-impl0`.

@@ -51,13 +51,13 @@ func (c *Checker) funModifiers(m syntax.Modifiers, p syntax.Pos, what string) {
 		c.errorf(m.ExternalP, "modifier 'external' is not applicable to '%s'", what)
 	}
 	if m.Operator {
-		c.errorf(p, "modifier 'operator' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("operator", p), "modifier 'operator' is not applicable to '%s'", what)
 	}
 	if m.Infix {
-		c.errorf(p, "modifier 'infix' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("infix", p), "modifier 'infix' is not applicable to '%s'", what)
 	}
 	if m.Annotation && what != "class" {
-		c.errorf(p, "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("annotation", p), "modifier 'annotation' is not applicable to '%s'", what)
 	}
 }
 

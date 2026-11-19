@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -1444,6 +1445,9 @@ func (w *optWalker) fun1(f *types.FunSym, p syntax.Pos, t types.Type) {
 
 // funNamed is fun1, with the name a deprecation error gives the function.
 func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types.Type) {
+	if f.Decl == nil && f.Declared != nil {
+		w.inlineTarget(p, f.Declared.Class)
+	}
 	var ms []*optMarker
 	var level depr
 	switch d := f.Decl.(type) {
@@ -1610,6 +1614,13 @@ func (w *optWalker) propReadDeprecation(p *types.VarSym, ref bool) depr {
 
 // variable checks a read or an assignment at p of variable v.
 func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
+	if v.Kind == types.Global && (write && v.InlineSetter || !write && v.InlineGetter) {
+		class := v.Part
+		if class == "" {
+			class = v.Facade
+		}
+		w.inlineTarget(p, class)
+	}
 	switch v.Kind {
 	case types.Global, types.Prop:
 		w.require(p, w.propMarkers(v, write))
@@ -1685,6 +1696,26 @@ func (w *optWalker) object(cls *types.ClassSym, p syntax.Pos) {
 		}
 	}
 	w.deprecatedUse(p, cls.DisplayName(), level)
+}
+
+// inlineTarget reports a use at p of an inline function or property
+// accessor of class, a class file of the class path, if its version is
+// higher than the program's JVM target, as kotlinc's
+// INLINE_FROM_HIGHER_PLATFORM: its body, which the JVM of the target may
+// not run, would be copied into the program's classes.
+func (w *optWalker) inlineTarget(p syntax.Pos, class string) {
+	target := w.c.u.jvmTarget
+	if class == "" || w.c.u.ext.cp == nil {
+		return
+	}
+	data, err := w.c.u.ext.cp.Bytes(class)
+	if err != nil {
+		return
+	}
+	if major := classfile.Major(data); major > target && !w.suppressed("INLINE_FROM_HIGHER_PLATFORM") {
+		w.errorf(p, "cannot inline bytecode built with JVM target %s into bytecode that is being built with JVM target %s: specify a proper '-jvm-target' option",
+			classfile.TargetName(major), classfile.TargetName(target))
+	}
 }
 
 // generated reports whether a compiler plugin of kc's declares d.

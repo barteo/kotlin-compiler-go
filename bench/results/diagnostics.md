@@ -6,16 +6,16 @@ Of 10827 test files, 2295 are skipped and 8532 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4366 | 51.2% |
+| rejects invalid | 4367 | 51.2% |
 | accepts valid | 4127 | 48.4% |
-| accepts invalid | 38 | 0.4% |
+| accepts invalid | 37 | 0.4% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4366 tests both reject, kc reports an error on the line of an expected one in 4284.
+Of the 4367 tests both reject, kc reports an error on the line of an expected one in 4285.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -64,7 +64,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `DELEGATE_SPECIAL_FUNCTION_MISSING` | 1 | 1 | `tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt` |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `ILLEGAL_SUSPEND_FUNCTION_CALL` | 1 | 1 | `tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt` |
-| `INLINE_FROM_HIGHER_PLATFORM` | 1 | 1 | `tests/jvm/inline/wrongInlineTarget.kt` |
 | `MEMBER_PROJECTED_OUT` | 1 | 1 | `tests/typealias/starProjection.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 1 | 0 | `tests/j+k/differentFilename.kt` |
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
@@ -85,7 +84,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20209 of 21714 expected errors (93.1%) on their lines.
+kc reports 20281 of 21714 expected errors (93.4%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -94,14 +93,12 @@ kc reports 20209 of 21714 expected errors (93.1%) on their lines.
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 167 | 83 |
 | `RETURN_TYPE_MISMATCH` | 418 | 362 | 56 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 633 | 582 | 51 |
-| `WRONG_MODIFIER_TARGET` | 375 | 330 | 45 |
 | `INVISIBLE_REFERENCE` | 523 | 484 | 39 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 89 | 25 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 228 | 23 |
 | `SMARTCAST_IMPOSSIBLE` | 183 | 160 | 23 |
 | `REDECLARATION` | 196 | 174 | 22 |
-| `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `OPT_IN_USAGE_ERROR` | 96 | 77 | 19 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 411 | 17 |
 | `DSL_SCOPE_VIOLATION` | 108 | 92 | 16 |
@@ -120,7 +117,6 @@ kc reports 20209 of 21714 expected errors (93.1%) on their lines.
 | `TOO_MANY_ARGUMENTS` | 118 | 108 | 10 |
 | `CONFLICTING_OVERLOADS` | 734 | 725 | 9 |
 | `INAPPLICABLE_FILE_TARGET` | 11 | 2 | 9 |
-| `INCOMPATIBLE_MODIFIERS` | 74 | 65 | 9 |
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
 | `NON_INLINE_MEMBER_VAL_INITIALIZATION` | 9 | 1 | 8 |
 | `NOT_A_MULTIPLATFORM_COMPILATION` | 16 | 8 | 8 |
@@ -149,6 +145,9 @@ kc reports 20209 of 21714 expected errors (93.1%) on their lines.
 | `ILLEGAL_JVM_NAME` | 14 | 9 | 5 |
 | `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_OPEN_ABSTRACT` | 5 | 0 | 5 |
 | `OVERRIDING_FINAL_MEMBER_BY_DELEGATION` | 8 | 3 | 5 |
+| `RECURSIVE_TYPEALIAS_EXPANSION` | 15 | 10 | 5 |
+| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
+| `TYPE_PARAMETERS_NOT_ALLOWED` | 13 | 8 | 5 |
 | *536 more* | | | |
 
 ### Missed errors by cause
@@ -157,11 +156,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 97 | 6.4% | `INLINE_FROM_HIGHER_PLATFORM` 21, `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6 |
-| syntax-error | 205 | 13.6% | `WRONG_MODIFIER_TARGET` 42, `UNRESOLVED_REFERENCE` 22, `INCOMPATIBLE_MODIFIERS` 9, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6 |
+| accepted | 76 | 5.3% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CANNOT_INFER_PARAMETER_TYPE` 5 |
+| syntax-error | 154 | 10.7% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 175 | 11.6% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 8 |
-| missing-check | 1028 | 68.3% | `UNRESOLVED_REFERENCE` 131, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 36 |
+| nearby | 175 | 12.2% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 8 |
+| missing-check | 1028 | 71.7% | `UNRESOLVED_REFERENCE` 131, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 36 |
 
 ## Errors kotlinc doesn't report
 
@@ -199,7 +198,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected n parameter of type _ but n were declared` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
-| *176 more* | |
+| *175 more* | |
 
 ## Unsupported features
 

@@ -249,6 +249,15 @@ func InlineClass(m *Modifiers, kw Pos) {
 	m.Value, m.JvmInline = true, true
 }
 
+// EnumAnnotation makes m, the modifiers of a class written both enum and
+// annotation, those of an enum class, as kotlinc's class kind is: the
+// modifier checks report annotation on it.
+func EnumAnnotation(m *Modifiers) {
+	if m.Enum && m.Annotation {
+		m.Annotation = false
+	}
+}
+
 // CallableRefLambda returns callable reference ref at pos as a lambda for
 // the checker to fill in.
 func CallableRefLambda(pos Pos, ref *CallableRef) *Lambda {
@@ -394,10 +403,20 @@ func (p *parser) Unsupported(pos Pos, feature, format string, args ...any) {
 }
 
 // ParamOnly reports modifiers that only parameters take on another
-// declaration.
+// declaration, which is kept, so that the rest of it is checked.
 func ParamOnly(m Modifiers, r Reporter) {
 	if m.Vararg {
-		r.Fail(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+		r.Later(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+	}
+}
+
+// NoInitModifiers reports the modifiers written on an init block, which
+// takes none, as kotlinc's WRONG_MODIFIER_TARGET.
+func NoInitModifiers(m Modifiers, r Reporter) {
+	for _, w := range m.Written {
+		if w.Name != "vararg" { // which ParamOnly reports
+			r.Later(w.P, "modifier '%s' is not applicable to 'initializer'", w.Name)
+		}
 	}
 }
 

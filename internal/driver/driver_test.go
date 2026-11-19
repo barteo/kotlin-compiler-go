@@ -270,6 +270,9 @@ func flagOptions(opts *Options, flags []string) {
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
+	if i := slices.Index(flags, "-jvm-target"); i >= 0 && i+1 < len(flags) {
+		opts.JVMTarget = flags[i+1]
+	}
 	for _, f := range flags {
 		if m, ok := strings.CutPrefix(f, "-opt-in="); ok {
 			opts.OptIns = append(opts.OptIns, m)
@@ -777,6 +780,98 @@ func TestSameModuleName(t *testing.T) {
 	}
 	if string(out) != "hello world\n" {
 		t.Errorf("output %q, want %q", out, "hello world\n")
+	}
+}
+
+// TestJVMTarget compiles a library for JVM 11: its class files have
+// version 55, and its inline function and inline property accessors are
+// errors in a program compiled for 1.8, as kotlinc's
+// INLINE_FROM_HIGHER_PLATFORM, and are inlined in one compiled for 11.
+func TestJVMTarget(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	write := func(name, src string) string {
+		path := filepath.Join(tmp, name)
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	libSrc := write("lib.kt", `package a
+
+inline fun twice(f: () -> String) = f() + f()
+
+@PublishedApi internal var stored = 0
+
+var count: Int
+    inline get() = stored + 1
+    set(v) { stored = v }
+
+class C {
+    inline val name: String get() = "c"
+}
+`)
+	libOut := filepath.Join(tmp, "lib")
+	if err := Compile([]string{libSrc}, Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, JVMTarget: "11"}); err != nil {
+		t.Fatalf("compile library: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(libOut, "a", "LibKt.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if major := classfile.Major(data); major != 55 {
+		t.Errorf("library class version %d, want 55", major)
+	}
+	app := write("main.kt", `import a.*
+
+fun main() {
+    count = 1 // the setter isn't inline
+    val x = twice { "x" }
+    val n = count
+    println(x + n + C().name)
+}
+`)
+	cp := []string{lib, libOut}
+	err = Compile([]string{app}, Options{OutDir: filepath.Join(tmp, "app8"), Jobs: 1, ClassPath: cp})
+	if err == nil {
+		t.Fatal("compiled for JVM 1.8, want errors")
+	}
+	var lines []string
+	for _, line := range strings.Split(err.Error(), "\n") {
+		// path:line:col: message
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) < 4 || !strings.Contains(parts[3], "cannot inline bytecode built with JVM target 11 into bytecode that is being built with JVM target 1.8") {
+			t.Errorf("unexpected error %s", line)
+			continue
+		}
+		lines = append(lines, parts[1])
+	}
+	if want := []string{"5", "6", "7"}; !slices.Equal(lines, want) {
+		t.Errorf("errors on lines %v, want %v (twice, count's getter and C.name)", lines, want)
+	}
+	appOut := filepath.Join(tmp, "app11")
+	if err := Compile([]string{app}, Options{OutDir: appOut, Jobs: 1, ClassPath: cp, JVMTarget: "11"}); err != nil {
+		t.Fatalf("compile program for JVM 11: %v", err)
+	}
+	out, err := exec.Command(java, "-cp", strings.Join(append([]string{appOut}, cp...), string(os.PathListSeparator)), "MainKt").Output()
+	if err != nil {
+		t.Fatalf("java: %v", err)
+	}
+	if string(out) != "xx2c\n" {
+		t.Errorf("output %q, want %q", out, "xx2c\n")
+	}
+	if data, err := os.ReadFile(filepath.Join(appOut, "MainKt.class")); err != nil || classfile.Major(data) != 55 {
+		t.Errorf("program class version %d (%v), want 55", classfile.Major(data), err)
+	}
+	if err := Compile([]string{app}, Options{OutDir: appOut, Jobs: 1, ClassPath: cp, JVMTarget: "8"}); err == nil {
+		t.Errorf("JVM target 8 accepted, want an error: kotlinc's is 1.8")
 	}
 }
 
@@ -1494,11 +1589,12 @@ func TestMetro(t *testing.T) {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
 	cp := []string{lib, rt, libOut}
-	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true}
+	// For JVM 17, as gen_expected.sh compiles all three.
+	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "mid")), opts); err != nil {
 		t.Fatalf("compile mid: %v", err)
 	}
-	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true}
+	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
 		t.Fatalf("compile app: %v", err)
 	}

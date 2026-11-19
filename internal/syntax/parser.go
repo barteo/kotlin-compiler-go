@@ -1806,6 +1806,9 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		// annotates @JvmInline.
 		InlineClass(&m, kw.Pos)
 	}
+	if kw.Kind == CLASS {
+		EnumAnnotation(&m)
+	}
 	cd := &ClassDecl{Modifiers: m, P: kw.Pos, Interface: kw.Kind == INTERFACE, Object: kw.Kind == OBJECT}
 	defer func() {
 		// A class without secondary constructors has a primary one, if
@@ -2097,6 +2100,7 @@ func (p *parser) member(cd *ClassDecl) {
 		if t.Text == "init" && p.peekAfterNL(p.i+1) == LBRACE {
 			// init is a soft keyword: elsewhere, it is a name.
 			NoContexts(&m, "initializers", p)
+			NoInitModifiers(m, p)
 			p.next()
 			p.skipNL()
 			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
