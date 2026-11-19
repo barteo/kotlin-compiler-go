@@ -291,21 +291,6 @@ func (lx *lexer) next() {
 		return
 	}
 
-	type op struct {
-		s string
-		k Kind
-	}
-	// Longest match first.
-	ops := [...]op{
-		{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
-		{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
-		{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
-		{"&&", AND}, {"||", OR}, {"&", AMP},
-		{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
-		{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
-		{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
-		{"@", AT},
-	}
 	// !in and !is are single tokens when not followed by an identifier
 	// character, so !isEmpty() is a negation.
 	for _, o := range [...]op{{"!in", NOT_IN}, {"!is", NOT_IS}} {
@@ -327,7 +312,7 @@ func (lx *lexer) next() {
 		lx.emit(QUEST, p, "?")
 		return
 	}
-	for _, o := range ops {
+	for _, o := range opsByByte[c] {
 		if strings.HasPrefix(lx.src[lx.off:], o.s) {
 			lx.advance(len(o.s))
 			lx.emit(o.k, p, o.s)
@@ -345,6 +330,32 @@ func (lx *lexer) next() {
 	lx.errorf(p, "unexpected character "+string(c))
 	lx.advance(1)
 }
+
+type op struct {
+	s string
+	k Kind
+}
+
+// ops are the operators and punctuation, longest match first.
+var ops = [...]op{
+	{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
+	{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
+	{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
+	{"&&", AND}, {"||", OR}, {"&", AMP},
+	{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
+	{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
+	{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
+	{"@", AT},
+}
+
+// opsByByte are ops by their first byte, in the same order, so the
+// first that matches is ops' first.
+var opsByByte = func() (t [256][]op) {
+	for _, o := range ops {
+		t[o.s[0]] = append(t[o.s[0]], o)
+	}
+	return t
+}()
 
 func (lx *lexer) number(p Pos) {
 	start := lx.off
