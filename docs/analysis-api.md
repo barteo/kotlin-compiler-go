@@ -90,9 +90,10 @@ Hilt's Android processors (`@AndroidEntryPoint`, `@HiltAndroidApp`, `@HiltViewMo
 - A library path or source root that doesn't exist is left out.
 - A class literal in a class file is read as its loader reads it. For a Java declaration's annotation and for any annotation parameter's default, `Void.class` is `java.lang.Void` (only `void.class` is `kotlin.Unit`), a collection is its mutable Kotlin class, an array's element is a platform type, and a generic class's type is a raw type: it prints with arguments and KSP lists none. For a Kotlin declaration's annotation, a collection is its read-only class and a generic class's type has no arguments.
 - Java PSI finds the module's Kotlin source classes, so a class literal in a Java source (`@ClassKey(Screen.class)`) names the Kotlin class, also one that an earlier round generated. The classes Java PSI finds have names and nested classes only.
+- Java PSI finds the classes of the Java sources a processor generated, and the packages that only generated sources are in, so a generated Java source's imports and class literals name the classes earlier rounds generated (Hilt's `@ComponentTreeDeps` lists the classes of `hilt_aggregated_deps`).
 - The check of Java sources that KSP runs after a processor's error has the IntelliJ extension point and registry key that Java's type inference reads.
 
-`build.sh test` and `stock` run Hilt's processors over `test/hilt-android/src` against hilt-android's class files and stand-ins for the Android classes (`test/hilt-android/stubs`), a two-round processor over `test/rounds/src`, and a failing processor over `test/errors/src` (on kc only: stock KSP 2.3.13 fails in that check).
+`build.sh test` and `stock` run Hilt's processors over `test/hilt-android/src` against hilt-android's class files and stand-ins for the Android classes (`test/hilt-android/stubs`), a three-round processor over `test/rounds/src`, and a failing processor over `test/errors/src` (on kc only: stock KSP 2.3.13 fails in that check).
 
 ## Gaps and open questions
 

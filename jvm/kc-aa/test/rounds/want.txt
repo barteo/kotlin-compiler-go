@@ -1,2 +1,4 @@
-round 1: value = [r.Kept, r.Kept.Part, error type, error type]
-round 2: value = [r.Kept, r.Kept.Part, r.Made, r.Made.Part]
+round 1: r.Uses value = [r.Kept, r.Kept.Part, error type, error type]
+round 2: r.Uses value = [r.Kept, r.Kept.Part, r.Made, r.Made.Part]
+round 3: r.Second value = [g.First, g.First.Part, g.First, h.Third, k.Other, r.Kept, r.Made]
+round 3: g.First has @Ref

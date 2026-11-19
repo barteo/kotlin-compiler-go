@@ -282,6 +282,9 @@ internal class KcRound(
     @Synchronized
     fun packageSymbol(fq: FqName): KcPackageSymbol = packageSymbols.getOrPut(fq) { KcPackageSymbol(this, fq) }
 
+    /** Whether package [fq], or a package in it, has a source file. */
+    fun hasSources(fq: FqName) = fq in sourcePackages
+
     /** Whether package [fq], or a package in it, has a source file or a class-path class. */
     fun packageExists(fq: FqName) = fq in sourcePackages || libraryPackage(fq) != null
 
