@@ -1,6 +1,6 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
+//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
 //	kc -serve
 //
 // kc -serve compiles again and again, as a tool that runs many small
@@ -54,6 +54,8 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	features := flags.Bool("features", false, "print diagnostics as path, line:col, severity (error or warning), the diagnostic's name if known, unsupported feature and message, separated by tabs")
 	werror := flags.Bool("Werror", false, "fail the compile if there are warnings, as kotlinc's -Werror")
 	nowarn := flags.Bool("nowarn", false, "don't report warnings, as kotlinc's -nowarn")
+	wextra := flags.Bool("Wextra", false, "also report the warnings of kotlinc's extra checkers, as kotlinc's -Wextra (UNREACHABLE_CODE)")
+	experimental := flags.Bool("Xuse-fir-experimental-checkers", false, "also report the warnings of kotlinc's experimental checkers, as kotlinc's -Xuse-fir-experimental-checkers (REDUNDANT_INTERPOLATION_PREFIX)")
 	var classPath string
 	flags.StringVar(&classPath, "cp", "", "class path: jars and directories separated by "+string(os.PathListSeparator))
 	flags.StringVar(&classPath, "classpath", "", "same as -cp")
@@ -85,7 +87,7 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	// change's.)
 	jvmDefault := flags.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-j N] [-time] files-or-dirs...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -123,6 +125,7 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	}
 	opts := driver.Options{OutDir: *outDir, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
 		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Metro: *metro, MetroOptions: metroOptions, Debug: *debug, OptIns: optIns,
+		ExtraWarnings: *wextra, ExperimentalWarnings: *experimental,
 		Libraries: libs, JavaTypes: true}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)

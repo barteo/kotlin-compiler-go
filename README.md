@@ -44,9 +44,9 @@ How each number is measured, and the full tables with CPU time, are in
   error, the errors that type checking finds, and only a few of those
   checkers' errors (opt-in and deprecation, for example), which is why it
   agrees with `kotlinc` on only 99% of the diagnostics tests. Of the
-  warnings, it reports ten kinds, such as deprecations, opt-ins, useless
-  casts and unnecessary safe calls: 14% of those the diagnostics tests
-  expect.
+  warnings, it reports about twenty kinds, such as deprecations, opt-ins,
+  useless casts, impossible type checks and unnecessary safe calls: 41%
+  of those the diagnostics tests expect.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**
@@ -133,6 +133,8 @@ Arguments can be files or directories. Flags:
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
 | `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
+| `-Wextra` | also report the warnings of `kotlinc`'s extra checkers (`UNREACHABLE_CODE`), as in `kotlinc` |
+| `-Xuse-fir-experimental-checkers` | also report the warnings of `kotlinc`'s experimental checkers (`REDUNDANT_INTERPOLATION_PREFIX`), as in `kotlinc` |
 | `-Werror` | fail if there are warnings, as in `kotlinc` |
 | `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
 
@@ -179,6 +181,8 @@ KC_KSP=$PWD/jvm/kc-aa/build/kc-ksp KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew as
 ```
 
 Such a task keeps its processors, options and output directories. Its KSP class path becomes the directory's loader and KSP API jars and, from its own, KSP's configuration classes, the Kotlin standard library and kotlinx.coroutines. Those are all a processor sees of KSP, as with stock KSP: the libraries kc's backend runs on, kotlin-compiler's bundled Guava among them, are in a class loader of their own, so a processor uses the Guava or kotlinx.serialization it brings. `KC_VARIANTS` and `KC_SKIP` choose KSP tasks as they choose compile tasks, so the KSP task of a variant that isn't listed stays stock KSP's and never loads kc. If the run on kc fails, stock KSP processes the module in the same task and the build log says so; with `KC_STRICT=1` the task fails. An error a processor reports fails the run on kc too, so stock KSP then reports it again. A build that changes which of the two runs a task runs the task again.
+
+KSP's Gradle plugin loads the processors' classes anew for every task of every build, so each run starts on code the JVM has not compiled yet. With `KC_KSP_KEEP=1`, KSP on kc keeps them loaded for as long as the processors' jars stay the same, and the tasks and builds of a daemon share them. A processor then keeps its static state from one run to the next.
 
 The daemon loads the directory's `libkc.so` once and keeps it, so every build in a daemon has to name the same directory and the same file: after building kc again, restart the daemon. It is checked with the KSP Gradle plugin 2.3.12 and 2.3.13 on Linux; `jvm/kc-aa/gradle.sh` runs Moshi's, Dagger's and Room's processors this way and compares their output with stock KSP's.
 
@@ -241,7 +245,7 @@ more:
 ```go
 r, err := analysis.AnalyzeArena(ctx, analysis.Config{ClassPath: cp}, snapshots)
 if err != nil { ... }
-if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
+if d := r.Diagnostics(); len(d) > 0 { ... } // errors; facts of what kc resolved, if any
 f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
 ```
 

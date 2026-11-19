@@ -58,10 +58,12 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	if err != nil {
 		return nil, err
 	}
+	unsupported := false
 	for _, e := range errs {
 		res.diags = append(res.diags, diagnostic(e.File, e))
+		unsupported = unsupported || e.Feature != ""
 	}
-	if len(res.diags) > 0 {
+	if unsupported {
 		return res, nil
 	}
 

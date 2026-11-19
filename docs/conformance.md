@@ -212,6 +212,13 @@ Four things differ from the test infrastructure:
   `kc` reports these errors in its checker, and the harness drops them
   (by their messages, which begin as the backend's do) from such tests.
 
+`kotlinc`'s extra and experimental checkers report only with `-Wextra`
+and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
+ones for tests with `WITH_EXTRA_CHECKERS` and those of
+`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
+`WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
+same tests.
+
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. Like
 `kotlinc`'s Java parser, `kc` reads past the syntax errors that IntelliJ's
@@ -286,8 +293,8 @@ Kotlin 2.4.21's tests on `kc`:
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,205 of the 21,714 expected errors (93%) on their lines, and 799 of
-the 3,652 expected warnings (22%), with 8 warnings on lines that expect
+20,205 of the 21,714 expected errors (93%) on their lines, and 1,490 of
+the 3,652 expected warnings (41%), with 8 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 13 of the 38
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:

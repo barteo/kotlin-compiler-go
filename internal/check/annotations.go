@@ -154,6 +154,11 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 				ok = false
 				continue
 			}
+			if c.u.experimentalWarnings {
+				for _, e := range elems {
+					c.prefixWarnings(e)
+				}
+			}
 			p := a.P
 			if len(arg.Toks) > 0 {
 				p = arg.Toks[0].Pos

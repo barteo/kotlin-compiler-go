@@ -21,9 +21,11 @@
 # loader for each project's KSP class path, and for project 2 a new one in
 # each build, all on the one libkc. Then, with a copy of the KC_KSP
 # directory that lacks kc-aa.jar: under KC_STRICT=1 the build fails, and
-# without it stock KSP takes over and the output is the reference's. Last,
+# without it stock KSP takes over and the output is the reference's. Then,
 # with KC_VARIANTS=debug, which names no variant of these modules, KSP
-# stays stock.
+# stays stock. Last, with KC_KSP_KEEP=1, two builds of each project: the
+# first loads the processors of its four class paths or finds those the
+# other project loaded, and the second finds all four kept.
 #
 # Environment:
 #	GRADLE  the gradle command (default gradle)
@@ -193,6 +195,23 @@ KC_KSP=$ksp KC_STRICT=1 KC_VARIANTS=debug g 1 -I "$init" || { cat "$log" >&2; ex
 on_kc 0
 same 1 "the build with KC_VARIANTS=debug"
 echo "variants: a module outside KC_VARIANTS keeps stock KSP"
+
+# kept LOADED KEPT: the build made LOADED class loaders of processors and found KEPT kept.
+kept() {
+	local loaded found
+	loaded=$(grep -c '^kc-jvm: processors loaded$' "$log" || true)
+	found=$(grep -c '^kc-jvm: processors kept$' "$log" || true)
+	[ "$loaded $found" = "$1 $2" ] || { echo "gradle.sh: $loaded class loaders of processors made and $found kept, not $1 and $2: $log" >&2; exit 1; }
+}
+for k in 1 2; do
+	for b in 1 2; do
+		KC_KSP=$ksp KC_STRICT=1 KC_KSP_KEEP=1 KC_TIMING=1 g "$k" -I "$init" || { cat "$log" >&2; exit 1; }
+		on_kc 4
+		[ "$b" = 1 ] || kept 0 4
+		same "$k" "build $b of project $k with kept processors"
+	done
+done
+echo "keep: the processors' classes stay loaded, same output"
 
 mine=$(comm -13 <(sort <<< "$before") <(daemons | sort))
 [ "$(wc -w <<< "$mine")" -le 1 ] || { echo "gradle.sh: the builds ran in daemons" $mine >&2; exit 1; }

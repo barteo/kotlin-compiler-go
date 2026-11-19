@@ -83,6 +83,10 @@ type Options struct {
 	// OptIns are the qualified names of the requirement markers the whole
 	// module opts in to, as kotlinc's -opt-in.
 	OptIns []string
+	// ExtraWarnings also reports the warnings kotlinc reports with
+	// -Wextra, and ExperimentalWarnings those it reports with
+	// -Xuse-fir-experimental-checkers: see check.Options.
+	ExtraWarnings, ExperimentalWarnings bool
 	// Libraries, if set, keeps the class path and library for later
 	// compiles of the same configuration, and gives this compile those
 	// of an earlier one: see Libraries.
@@ -390,7 +394,8 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		}
 		phase("metro")
 	}
-	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true})
+	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true,
+		ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings})
 	for _, e := range checked {
 		if e.IsWarning() {
 			*warnings = append(*warnings, e)

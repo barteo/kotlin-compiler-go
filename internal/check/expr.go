@@ -4410,18 +4410,22 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.push()
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
+		npending := len(pending)
 		bt := c.branch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, &pending)
 		funcBranch = firstFuncBranch(funcBranch, bt)
 		bts = append(bts, bt)
 		c.pop()
 		c.pop()
-		if bt.K != types.Nothing {
+		// A branch whose check is pending, as 2 of null -> 2, has type
+		// Nothing until then, but doesn't jump.
+		jumped := bt.K == types.Nothing && len(pending) == npending
+		if !jumped {
 			allJump = false
 		}
 		if x.Subject != nil && nullFirst && !br.Else {
 			if _, null := br.Conds[0].X.(*syntax.NullLit); single && null && br.Guard == nil {
 				nullFirst = false
-				if bt.K == types.Nothing {
+				if jumped {
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						afterNull = append(append(afterNull, n), c.impliedBy(n)...)
@@ -4475,6 +4479,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if c.u.rec != nil {
 		c.u.rec.When(x, covered, valueUsed)
 	}
+	if c.coveredWhens == nil {
+		c.coveredWhens = map[*syntax.When]bool{}
+	}
+	c.coveredWhens[x] = covered
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.

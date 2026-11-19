@@ -51,6 +51,10 @@ type compiler struct {
 	// annotations is the JetBrains annotations jar, which the test
 	// infrastructure puts on every module's class path, if set.
 	annotations string
+	// checkerSets is set to enable kotlinc's extra and experimental
+	// checkers as the diagnostics tests' infrastructure does: see
+	// checkerFlags.
+	checkerSets bool
 }
 
 // libraries says which of the libraries a test compiles against.
@@ -117,6 +121,9 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			args = append(args, "-no-stdlib", "-no-reflect", "-nowarn")
 		} else {
 			args = append(args, "-features", "-j", "1")
+			if c.checkerSets {
+				args = append(args, checkerFlags(t, m)...)
+			}
 		}
 		if len(friends) > 0 {
 			args = append(args, friendFlag+"="+strings.Join(friends, ","))
@@ -383,6 +390,29 @@ func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string)
 		}
 	}
 	return cp, friends
+}
+
+// checkerFlags returns kc's flags for the warnings of kotlinc's checkers
+// that its command line enables only on request, as the diagnostics
+// tests' infrastructure enables them for module m: the extra checkers
+// (-Wextra, as UNREACHABLE_CODE) for WITH_EXTRA_CHECKERS and the tests of
+// controlFlowAnalysis/deadCode, whose markup expects their warnings
+// without it, and the experimental ones (as
+// REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS.
+func checkerFlags(t *test, m *module) []string {
+	var flags []string
+	has := func(d string) bool {
+		_, inModule := m.directives[d]
+		_, inTest := t.global[d]
+		return inModule || inTest
+	}
+	if has("WITH_EXTRA_CHECKERS") || strings.HasPrefix(t.path, "tests/controlFlowAnalysis/deadCode/") {
+		flags = append(flags, "-Wextra")
+	}
+	if has("WITH_EXPERIMENTAL_CHECKERS") {
+		flags = append(flags, "-Xuse-fir-experimental-checkers")
+	}
+	return flags
 }
 
 // jvmDefaultMode returns the -jvm-default mode the JVM_DEFAULT_MODE

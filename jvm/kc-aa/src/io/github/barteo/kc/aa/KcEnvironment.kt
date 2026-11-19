@@ -203,7 +203,7 @@ internal object KcEnvironments {
     @Synchronized
     fun release(e: KcEnvironment) {
         e.provider.clear()
-        e.kotlinClasses.round = null
+        e.kotlinClasses.find(null)
         if (!enabled) {
             e.dispose()
             return
