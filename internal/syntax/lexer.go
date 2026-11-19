@@ -125,33 +125,51 @@ func (lx *lexer) skipSpace() bool {
 			sawNL = true
 			lx.advance(1)
 		case c == '/' && lx.peekByte(1) == '/':
-			for lx.off < len(lx.src) && lx.src[lx.off] != '\n' {
-				lx.advance(1)
+			n := strings.IndexByte(lx.src[lx.off:], '\n')
+			if n < 0 {
+				n = len(lx.src) - lx.off
 			}
+			lx.off += n
+			lx.col += n
 		case c == '/' && lx.peekByte(1) == '*':
-			start := lx.pos()
-			lx.advance(2)
-			depth := 1 // Kotlin block comments nest
-			for depth > 0 {
-				if lx.off >= len(lx.src) {
-					lx.errorf(start, "unterminated comment")
-					return sawNL
-				}
-				if lx.src[lx.off] == '/' && lx.peekByte(1) == '*' {
-					depth++
-					lx.advance(2)
-				} else if lx.src[lx.off] == '*' && lx.peekByte(1) == '/' {
-					depth--
-					lx.advance(2)
-				} else {
-					lx.advance(1)
-				}
+			if !lx.blockComment() {
+				return sawNL
 			}
 		default:
 			return sawNL
 		}
 	}
 	return sawNL
+}
+
+// blockComment skips a block comment, which Kotlin lets nest, and
+// reports whether it ends. It counts lines and columns as advance does.
+func (lx *lexer) blockComment() bool {
+	start := lx.pos()
+	src, i, line, col := lx.src, lx.off+2, lx.line, lx.col+2
+	for depth := 1; depth > 0; {
+		if i >= len(src) {
+			lx.off, lx.line, lx.col = i, line, col
+			lx.errorf(start, "unterminated comment")
+			return false
+		}
+		switch c := src[i]; {
+		case c == '\n':
+			line, col = line+1, 1
+			i++
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			depth++
+		case c == '*' && i+1 < len(src) && src[i+1] == '/':
+			depth--
+		default:
+			i, col = i+1, col+1
+			continue
+		}
+		i, col = i+2, col+2
+	}
+	lx.off, lx.line, lx.col = i, line, col
+	return true
 }
 
 func isLetter(c byte) bool { return c == '_' || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
