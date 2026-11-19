@@ -3529,7 +3529,7 @@ inline/crossinlineLambdaAllocation.kt	skip	IGNORE_BACKEND: JVM_IR
 inline/defaultArgs.kt	pass		
 inline/defaultArgsLateinitLowering.kt	pass		
 inline/defaultArgsLowering.kt	skip	LANGUAGE	
-inline/defaultArgsLoweringWithIntraModuleInliner.kt	skip	LANGUAGE	
+inline/defaultArgsLoweringWithIntraModuleInliner.kt	pass		
 inline/defaultArgsMultipleModules.kt	pass		
 inline/dontInlineFunctionCall.kt	pass		
 inline/expressionBodyWithLambdaCall.kt	pass		
