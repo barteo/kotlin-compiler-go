@@ -10,6 +10,9 @@
 #
 # Needs: go, java (JDK 21), kotlinc, hyperfine. Results go to bench/results/.
 # COOLDOWN: seconds to idle before each run, outside the measured time (default 0).
+# OUT: directory for the compilers' output (out-kc, out-kotlinc, out-warm),
+# default the work directory. A memory file system such as /dev/shm keeps
+# file creation out of the timings: see docs/benchmark.md.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 : "${TMPDIR:=/tmp}"
@@ -18,6 +21,7 @@ results="$root/bench/results"
 sizes=${SIZES:-200}
 runs=${RUNS:-2}
 cooldown=${COOLDOWN:-0}
+out=${OUT:-$work}
 warm_runs=${WARM_RUNS:-5}
 kotlin_home=${KOTLIN_HOME:-/opt/homebrew/opt/kotlin/libexec}
 # kotlinc always reads the Kotlin standard library; give kc the same jar.
@@ -32,6 +36,8 @@ export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/C
 export PATH="$JAVA_HOME/bin:$PATH"
 
 mkdir -p "$work" "$results"
+rm -rf "$out/out-kc" "$out/out-kotlinc" "$out/out-warm"
+mkdir -p "$out"
 (cd "$root" && go build -o "$work/kc" ./cmd/kc && go build -o "$work/gen" ./bench/gen)
 mkdir -p "$work/warm"
 javac -d "$work/warm" "$root/bench/warm/WarmKotlinc.java"
@@ -46,6 +52,7 @@ summary="$results/summary-$(echo $sizes | tr ' ' '-').md"
 	echo "- $(kotlinc -version 2>&1 | grep -v JAVA_TOOL | tail -1)"
 	echo "- kotlinc JVM options: $JAVA_OPTS"
 	echo "- Cooldown before each run (outside timing): $cooldown s"
+	echo "- Output directory: $out ($(df -PT "$out" | awk 'NR == 2 { print $2 }'))"
 	echo
 } >"$summary"
 
@@ -59,13 +66,13 @@ for n in $sizes; do
 	# kc takes at most a few seconds and varies little, so 5 runs are enough.
 	hyperfine --warmup 1 --runs 5 --style basic \
 		--export-json "$work/kc-$n.json" \
-		--prepare "rm -rf $work/out-kc && sleep $cooldown" \
-		-n "kc -j 1" "$work/kc -j 1 -cp $stdlib -d $work/out-kc $src" \
-		-n "kc -j $cpus" "$work/kc -j $cpus -cp $stdlib -d $work/out-kc $src"
+		--prepare "rm -rf $out/out-kc && sleep $cooldown" \
+		-n "kc -j 1" "$work/kc -j 1 -cp $stdlib -d $out/out-kc $src" \
+		-n "kc -j $cpus" "$work/kc -j $cpus -cp $stdlib -d $out/out-kc $src"
 	hyperfine --runs "$runs" --style basic \
 		--export-json "$work/kotlinc-$n.json" \
-		--prepare "rm -rf $work/out-kotlinc && sleep $cooldown" \
-		-n "kotlinc (cold JVM)" "kotlinc -nowarn -d $work/out-kotlinc $src"
+		--prepare "rm -rf $out/out-kotlinc && sleep $cooldown" \
+		-n "kotlinc (cold JVM)" "kotlinc -nowarn -d $out/out-kotlinc $src"
 	python3 -c 'import json, sys
 r = [x for f in sys.argv[2:] for x in json.load(open(f))["results"]]
 json.dump({"results": r}, open(sys.argv[1], "w"), indent=2)' \
@@ -73,12 +80,12 @@ json.dump({"results": r}, open(sys.argv[1], "w"), indent=2)' \
 
 	iters=$warm_runs
 	warm=$(java $JAVA_OPTS -Dcooldown="$cooldown" -cp "$work/warm:$kotlin_home/lib/*" WarmKotlinc "$iters" \
-		-nowarn -kotlin-home "$kotlin_home" -d "$work/out-warm" "$src" 2>/dev/null | tee "$results/warm-$n.txt" | tail -1)
+		-nowarn -kotlin-home "$kotlin_home" -d "$out/out-warm" "$src" 2>/dev/null | tee "$results/warm-$n.txt" | tail -1)
 	echo "kotlinc (warm JVM): $warm"
 
 	# Both compilers' output must print the same checksum.
-	sum_kc=$(java -cp "$work/out-kc:$stdlib" MainKt 2>/dev/null)
-	sum_kotlinc=$(kotlin -cp "$work/out-kotlinc" MainKt 2>/dev/null)
+	sum_kc=$(java -cp "$out/out-kc:$stdlib" MainKt 2>/dev/null)
+	sum_kotlinc=$(kotlin -cp "$out/out-kotlinc" MainKt 2>/dev/null)
 	same=yes
 	[ "$sum_kc" = "$sum_kotlinc" ] || same="NO ($sum_kc vs $sum_kotlinc)"
 
