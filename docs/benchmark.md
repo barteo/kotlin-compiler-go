@@ -49,32 +49,38 @@ does. Gradle itself, incremental compilation and tests are left out.
 ## Results
 
 A Linux x86_64 cloud machine (4 CPUs, 15 GB), JDK 21, hyperfine 2.0.0,
-with the commands above, on 18 November 2026, with `kc` at `3ad1498`.
+with the commands above, on 19 November 2026, with `kc` at `a009992`.
 
 Wall time:
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 6.87 s | 5.31 s | 104.5 s | 87.7 s | 12.8x |
-| kotlinpoet | 39 | 8.7k | 320 ms | 246 ms | 16.7 s | 3.28 s | 10.3x |
-| kotlinx-coroutines-core | 169 | 34k | 713 ms | 701 ms | 27.9 s | 6.33 s | 8.9x |
-| Ktor, 3 modules | 236 | 24k | 833 ms | 757 ms | 45.7 s | 6.51 s | 7.8x |
+| Generated | 500 | 202k | 5.96 s | 4.51 s | 102.5 s | 77.5 s | 13.0x |
+| kotlinpoet | 39 | 8.7k | 321 ms | 240 ms | 15.0 s | 3.15 s | 9.8x |
+| kotlinx-coroutines-core | 169 | 34k | 627 ms | 562 ms | 23.0 s | 5.59 s | 8.9x |
+| Ktor, 3 modules | 236 | 24k | 720 ms | 619 ms | 39.8 s | 5.74 s | 8.0x |
 
 Peak memory (resident set size):
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 811 MB | 953 MB | 3.28 GB | 4.0x |
-| kotlinpoet | 39 | 8.7k | 90 MB | 100 MB | 946 MB | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 134 MB | 147 MB | 1.04 GB | 7.7x |
-| Ktor, 3 modules | 236 | 24k | 92 MB | 96 MB | 950 MB | 10x |
+| Generated | 500 | 202k | 792 MB | 928 MB | 4.30 GB | 5.4x |
+| kotlinpoet | 39 | 8.7k | 90 MB | 101 MB | 965 MB | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 133 MB | 145 MB | 1.25 GB | 9.4x |
+| Ktor, 3 modules | 236 | 24k | 91 MB | 98 MB | 966 MB | 11x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
 - Warm `kotlinc` doesn't settle at 500 files on this machine: its four
-  runs took 81–113 s. An hour earlier, on the same machine, its median
-  was 57.6 s, which makes the generated project's ratio 8.4x. The
+  runs took 73–102 s, and a day earlier, on the same machine, its median
+  was 57.6 s, which would make the generated project's ratio 9.7x. The
   generated row is the least certain.
+- Warm `kotlinc` is faster on all the libraries than a day earlier (by
+  4–12%), so their ratios move less than `kc`'s times: `kc -j 1` took
+  12% less time on coroutines and 14% less on Ktor than at `3ad1498`,
+  with the lexer reusing its token slices and the class path's top-level
+  extensions converted only for receivers they can take. Coroutines and
+  Ktor are still below 10x.
 - Times vary by 10–20% between sessions, for both compilers, and more
   on a busy cloud machine. To measure a change to `kc`, time both builds
   in one session.
