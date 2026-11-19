@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync/atomic"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -57,31 +58,50 @@ type poolKey struct {
 
 // Pool is a constant pool with deduplication. It also holds the class's
 // bootstrap methods, which InvokeDynamic constants refer to by index.
+//
+// Most constants are found by the indexes of the constants they hold, as
+// a Methodref by its Class and NameAndType, so only Utf8 constants are
+// found by a string.
 type Pool struct {
-	buf       []byte
-	count     uint16 // next free index
-	index     map[poolKey]uint16
-	utf8      map[string]uint16 // most entries need only a string key
-	bootstrap [][]uint16        // each a method handle and its arguments
-	bsmIndex  map[string]uint16
+	buf   []byte
+	count uint16            // next free index
+	utf8  map[string]uint16 // most entries need only a string key
+	// The Class and String constants of each Utf8 constant, by its index,
+	// or 0.
+	classOf, stringOf []uint16
+	nat               map[uint32]uint16  // NameAndType: name<<16 | desc
+	refs              map[uint64]uint16  // Fieldref, Methodref, InterfaceMethodref: tag<<32 | class<<16 | nat
+	index             map[poolKey]uint16 // the other constants
+	bootstrap         [][]uint16         // each a method handle and its arguments
+	bsmIndex          map[string]uint16
+}
+
+// poolHint is the number of Utf8 constants of the last class written, the
+// size its successor's maps start at, so that they rarely grow.
+var poolHint atomic.Int32
+
+// reserve makes room for a constant of slots slots and returns its index.
+func (p *Pool) reserve(slots uint16) uint16 {
+	if p.count == 0 {
+		p.count = 1
+	}
+	if int(p.count)+int(slots) > math.MaxUint16 {
+		panic("constant pool overflow")
+	}
+	i := p.count
+	p.count += slots
+	return i
 }
 
 func (p *Pool) add(k poolKey, entry []byte, slots uint16) uint16 {
 	if p.index == nil {
 		p.index = map[poolKey]uint16{}
 	}
-	if p.count == 0 {
-		p.count = 1
-	}
 	if i, ok := p.index[k]; ok {
 		return i
 	}
-	if int(p.count)+int(slots) > math.MaxUint16 {
-		panic("constant pool overflow")
-	}
-	i := p.count
+	i := p.reserve(slots)
 	p.buf = append(p.buf, entry...)
-	p.count += slots
 	p.index[k] = i
 	return i
 }
@@ -196,7 +216,7 @@ func (p *Pool) Utf8(s string) uint16 {
 		panic("constant pool overflow")
 	}
 	if p.utf8 == nil {
-		p.utf8 = map[string]uint16{}
+		p.utf8 = make(map[string]uint16, max(16, poolHint.Load()))
 	}
 	i := p.count
 	p.count++
@@ -205,22 +225,42 @@ func (p *Pool) Utf8(s string) uint16 {
 	return i
 }
 
+// of returns the constant that of holds for Utf8 constant u, or 0.
+func of(of []uint16, u uint16) uint16 {
+	if int(u) < len(of) {
+		return of[u]
+	}
+	return 0
+}
+
+// setOf records i as the constant of Utf8 constant u in *of.
+func setOf(of *[]uint16, u, i uint16) {
+	if int(u) >= len(*of) {
+		*of = append(*of, make([]uint16, int(u)+1-len(*of)+len(*of)/2)...)
+	}
+	(*of)[u] = i
+}
+
 func (p *Pool) Class(name string) uint16 {
-	k := poolKey{tag: tagClass, a: name}
-	if i, ok := p.index[k]; ok {
+	n := p.Utf8(name)
+	if i := of(p.classOf, n); i != 0 {
 		return i
 	}
-	n := p.Utf8(name)
-	return p.add(k, u2([]byte{tagClass}, n), 1)
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagClass, byte(n>>8), byte(n))
+	setOf(&p.classOf, n, i)
+	return i
 }
 
 func (p *Pool) String(s string) uint16 {
-	k := poolKey{tag: tagString, a: s}
-	if i, ok := p.index[k]; ok {
+	n := p.Utf8(s)
+	if i := of(p.stringOf, n); i != 0 {
 		return i
 	}
-	n := p.Utf8(s)
-	return p.add(k, u2([]byte{tagString}, n), 1)
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagString, byte(n>>8), byte(n))
+	setOf(&p.stringOf, n, i)
+	return i
 }
 
 func (p *Pool) Int(v int32) uint16 {
@@ -244,39 +284,47 @@ func (p *Pool) Double(v float64) uint16 {
 }
 
 func (p *Pool) NameAndType(name, desc string) uint16 {
-	k := poolKey{tag: tagNameAndType, a: name, b: desc}
-	if i, ok := p.index[k]; ok {
+	n, d := p.Utf8(name), p.Utf8(desc)
+	k := uint32(n)<<16 | uint32(d)
+	if i, ok := p.nat[k]; ok {
 		return i
 	}
-	n, d := p.Utf8(name), p.Utf8(desc)
-	return p.add(k, u2(u2([]byte{tagNameAndType}, n), d), 1)
+	if p.nat == nil {
+		p.nat = make(map[uint32]uint16, max(8, poolHint.Load()/4))
+	}
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagNameAndType, byte(n>>8), byte(n), byte(d>>8), byte(d))
+	p.nat[k] = i
+	return i
+}
+
+// ref returns the Fieldref, Methodref or InterfaceMethodref constant of
+// tag for a member.
+func (p *Pool) ref(tag byte, owner, name, desc string) uint16 {
+	c, nt := p.Class(owner), p.NameAndType(name, desc)
+	k := uint64(tag)<<32 | uint64(c)<<16 | uint64(nt)
+	if i, ok := p.refs[k]; ok {
+		return i
+	}
+	if p.refs == nil {
+		p.refs = make(map[uint64]uint16, max(8, poolHint.Load()/4))
+	}
+	i := p.reserve(1)
+	p.buf = append(p.buf, tag, byte(c>>8), byte(c), byte(nt>>8), byte(nt))
+	p.refs[k] = i
+	return i
 }
 
 func (p *Pool) Field(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagFieldref, a: owner, b: name + ":" + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagFieldref}, c), nt), 1)
+	return p.ref(tagFieldref, owner, name, desc)
 }
 
 func (p *Pool) Method(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagMethodref, a: owner, b: name + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagMethodref}, c), nt), 1)
+	return p.ref(tagMethodref, owner, name, desc)
 }
 
 func (p *Pool) InterfaceMethod(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagInterfaceMethodref, a: owner, b: name + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagInterfaceMethodref}, c), nt), 1)
+	return p.ref(tagInterfaceMethodref, owner, name, desc)
 }
 
 // MethodHandle returns a method handle constant of the given kind for a
@@ -570,6 +618,7 @@ func (c *Class) memberAttrs(attrs []attr, m *member) []attr {
 
 // Bytes serializes the class.
 func (c *Class) Bytes() []byte {
+	defer func() { poolHint.Store(int32(len(c.utf8))) }()
 	this, super := c.Class(c.Name), c.Class(c.Super)
 	ifaces := make([]uint16, len(c.Interfaces))
 	for i, name := range c.Interfaces {
