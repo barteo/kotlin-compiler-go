@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -26,16 +27,45 @@ type lexer struct {
 
 // Tokenize lexes a whole file.
 func Tokenize(file, src string) ([]Token, []*Error) {
-	toks, errs, _ := tokenize(file, src)
+	toks, errs, _ := tokenize(file, src, nil)
 	return toks, errs
 }
 
-// tokenize lexes a whole file, and also returns the errors of literals
-// glued to their neighbors (see lexer.glued).
-func tokenize(file, src string) ([]Token, []*Error, []*Error) {
-	lx := &lexer{src: src, line: 1, col: 1, file: file}
+// tokenize lexes a whole file into buf, and also returns the errors of
+// literals glued to their neighbors (see lexer.glued).
+func tokenize(file, src string, buf []Token) ([]Token, []*Error, []*Error) {
+	lx := &lexer{src: src, line: 1, col: 1, file: file, toks: buf[:0]}
 	lx.run()
 	return lx.toks, lx.errs, lx.glued
+}
+
+// tokenBufs are token slices to lex into, which Parse returns when it is
+// done with them: growing a file's slice from nothing is a fifth of
+// lexing's time.
+var tokenBufs struct {
+	sync.Mutex
+	free [][]Token
+}
+
+func getTokenBuf() []Token {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	n := len(tokenBufs.free)
+	if n == 0 {
+		return nil
+	}
+	b := tokenBufs.free[n-1]
+	tokenBufs.free = tokenBufs.free[:n-1]
+	return b
+}
+
+// putTokenBuf keeps b for another file. Nothing may refer to its tokens.
+func putTokenBuf(b []Token) {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	if len(tokenBufs.free) < 16 {
+		tokenBufs.free = append(tokenBufs.free, b)
+	}
 }
 
 func tokenizeAt(file, src string, pos Pos) ([]Token, []*Error) {

@@ -61,7 +61,8 @@ type bailout struct{}
 // which is the first of the errors it returns; the others are those found
 // before it that parsing went on after (see File.Errors).
 func Parse(path, src string) (f *File, errs []*Error) {
-	toks, lexErrs, glued := tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src, getTokenBuf())
+	defer putTokenBuf(toks) // the tree has no tokens of its own
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
@@ -89,7 +90,8 @@ func Parse(path, src string) (f *File, errs []*Error) {
 // to the next one, so it returns the first error of each declaration that
 // fails. bench/survey uses it to see past unsupported constructs.
 func ParseAll(path, src string) (*File, []*Error) {
-	toks, lexErrs, glued := tokenize(path, src)
+	toks, lexErrs, glued := tokenize(path, src, getTokenBuf())
+	defer putTokenBuf(toks)
 	if len(lexErrs) > 0 {
 		return nil, lexErrs
 	}
