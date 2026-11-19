@@ -134,6 +134,9 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if mode := jvmDefaultMode(t, m); mode != "" {
 			args = append(args, "-jvm-default="+mode)
 		}
+		if target := moduleDirective(t, m, "JVM_TARGET"); target != "" {
+			args = append(args, "-jvm-target", target)
+		}
 		args = append(args, paths...)
 		// The Java sources of a module the next ones depend on are
 		// compiled with javac, after the Kotlin ones, as the test
@@ -420,8 +423,15 @@ func checkerFlags(t *test, m *module) []string {
 // directive asks for in module m: its own, or the test's before its
 // first module, or "" for the default.
 func jvmDefaultMode(t *test, m *module) string {
+	return moduleDirective(t, m, "JVM_DEFAULT_MODE")
+}
+
+// moduleDirective returns the value of directive name in module m: its
+// own, or the test's before its first module, or "" if neither has it.
+// JVM_TARGET, the -jvm-target a module is compiled for, is one.
+func moduleDirective(t *test, m *module, name string) string {
 	for _, ds := range []map[string][]string{m.directives, t.global} {
-		if vs := ds["JVM_DEFAULT_MODE"]; len(vs) > 0 {
+		if vs := ds[name]; len(vs) > 0 {
 			return strings.TrimSpace(vs[len(vs)-1])
 		}
 	}

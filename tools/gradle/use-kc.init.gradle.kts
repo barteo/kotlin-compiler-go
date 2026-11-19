@@ -135,6 +135,9 @@ if (gradle.parent == null) {
           .firstNotNullOfOrNull { (it as? String)?.removePrefix("-jvm-default=")?.takeIf { v -> v != it } }
         ?: "enable"
       args += listOf("-jvm-default", jvmDefault)
+      // The JVM version the class files are for, the module's jvmTarget, as kotlinc's -jvm-target:
+      // a library's inline functions built for a higher one are errors, as with kotlinc.
+      option("getJvmTarget")?.let { call(it, "getTarget") as String }?.let { args += listOf("-jvm-target", it) }
       if (libraries.isNotEmpty()) args += listOf("-cp", libraries.joinToString(File.pathSeparator))
       if (friends.isNotEmpty()) args += listOf("-friend-paths", friends.joinToString(File.pathSeparator))
       for (jar in plugins) {

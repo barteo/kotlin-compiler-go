@@ -1327,6 +1327,7 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	abstract := p.Flags.Modality() == kmeta.Abstract
 	kp := &types.KProp{Getter: &types.FunSym{Name: g.Name, Owner: owner, Ret: pt, Desc: g.Desc, Resolved: true, Abstract: abstract,
 		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
+	kp.Getter.Declared = inlineAccessor(p.GetterFlags)
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
 	if friend && !p.IsVar() && p.Flags.Modality() == kmeta.Final && p.GetterFlags&kmeta.AccessorNotDefault == 0 && p.Flags&kmeta.PropDelegated == 0 {
@@ -1334,7 +1335,8 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	}
 	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0)) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
-			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx,
+			Declared: inlineAccessor(p.SetterFlags)}
 		matchJVM(kp.Setter)
 	}
 	return kp
@@ -1363,6 +1365,25 @@ func (t *classTable) friend(class string) bool {
 		(strings.HasPrefix(class, "kotlinx/serialization/internal/") || class == "kotlinx/serialization/UnknownFieldException"))
 }
 
+// inlineAccessor returns the Declared of a property accessor of the class
+// path with flags: set if it is inline. inlineIn sets its Class.
+func inlineAccessor(flags kmeta.Flags) *types.InlineFlags {
+	if flags>>8&1 == 0 {
+		return nil
+	}
+	return &types.InlineFlags{}
+}
+
+// inlineIn sets the Declared.Class of the inline functions and accessors
+// among fs, which the metadata of class file class declares.
+func inlineIn(class string, fs ...*types.FunSym) {
+	for _, f := range fs {
+		if f != nil && f.Declared != nil {
+			f.Declared.Class = class
+		}
+	}
+}
+
 // memberExtProp returns the getter of an extension property declared in
 // a class of the class path, as Duration.Companion's Int.milliseconds,
 // or nil. It is a method of the class that takes the extension receiver.
@@ -1377,7 +1398,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 		return nil
 	}
 	sym := &types.FunSym{Name: g.Name, Owner: owner, Desc: g.Desc, Ext: true, Resolved: true,
-		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected}
+		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected, Declared: inlineAccessor(p.GetterFlags)}
 	if inlineOnly {
 		sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
 	}
@@ -1398,7 +1419,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasSetter(p, methods) {
 		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
-			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx, Declared: inlineAccessor(p.SetterFlags)}
 		if inlineOnlySetter(p, methods) {
 			set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
 		}
@@ -1930,6 +1951,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			sym = t.kfun(f, cls, scope, nil)
 			sym.Hidden = true
 		}
+		inlineIn(cls.Name, sym)
 		if cls.Value && f.Flags.MemberKind() != 3 /* synthesized: equals, hashCode */ {
 			// A value class's member is a static method of the class,
 			// which takes the value first; an inline one is copied, as
@@ -1997,6 +2019,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				inlineIn(cls.Name, g, g.ExtSetter)
 				annotateProp(p, annots, g, g.ExtSetter)
 				g.Static = statics[g.JVM()+g.Desc]
 				if g.ExtSetter != nil {
@@ -2010,6 +2033,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			continue
 		}
 		if kp := t.kprop(p, cls, scope, methods, metaGetter, metaSetter); kp != nil {
+			inlineIn(cls.Name, kp.Getter, kp.Setter)
 			annotateProp(p, annots, kp.Getter, kp.Setter)
 			if cls.Value {
 				kp.Getter.Impl, kp.Getter.Facade = true, cls.Name
@@ -2544,6 +2568,7 @@ func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
 	f, part := e.f, e.part
 	sym := t.kfun(f, nil, nil, part.methods)
 	sym.Facade = part.facade
+	inlineIn(part.class, sym)
 	sym.LowPriority = part.low[e.key]
 	annotate(sym, part.annots[e.key])
 	if sym.Why != "" && typesOK(sym) {
@@ -2645,7 +2670,7 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
-			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true}
+			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true, Declared: inlineAccessor(pr.GetterFlags)}
 			if inlineOnly {
 				sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 			}
@@ -2664,13 +2689,15 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			// A var's setter: (receiver, value) on the same facade.
 			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasSetter(pr, part.methods) {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
-					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx,
+					Declared: inlineAccessor(pr.SetterFlags)}
 				if inlineOnlySetter(pr, part.methods) {
 					set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 				}
 				matchJVM(set)
 				sym.ExtSetter = set
 			}
+			inlineIn(part.class, sym, sym.ExtSetter)
 			annotateProp(pr, part.annots, sym, sym.ExtSetter)
 			gs = append(gs, sym)
 		}
@@ -2716,7 +2743,8 @@ func (t *classTable) pkgVarIn(r *pkgRef, name string) *types.VarSym {
 			}
 			prev := v
 			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
-				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
+				Resolved: true, Const: pr.IsConst(), Contexts: ctx,
+				InlineGetter: pr.GetterFlags>>8&1 != 0, InlineSetter: pr.IsVar() && pr.SetterFlags>>8&1 != 0}
 			if prev != nil && !sameContexts(prev.Contexts, ctx) {
 				// One with other context parameters.
 				addAlt(prev, v)

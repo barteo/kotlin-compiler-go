@@ -251,6 +251,9 @@ type VarSym struct {
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	// InlineGetter and InlineSetter are set on a Global of the class path
+	// whose accessors are declared inline.
+	InlineGetter, InlineSetter bool
 	// Annotations are the descriptors of the annotations of a top-level
 	// property of the class path, and Deprecated its deprecation: what
 	// the opt-in and deprecation checks know of it.
@@ -675,7 +678,8 @@ type FunSym struct {
 	// kc can copy into its callers.
 	Inline *InlineInfo
 	// Declared is set on every inline function of the class path, one
-	// kc calls as an intrinsic too, with its parameters' flags.
+	// kc calls as an intrinsic too, with its parameters' flags, and on
+	// every inline property accessor of the class path.
 	Declared *InlineFlags
 	// Platform is set on a member of a Kotlin collection type that only
 	// its Java interface declares, such as forEach(Consumer). As in
@@ -1569,6 +1573,10 @@ type Deprecation struct {
 // parameter of an inline function.
 type InlineFlags struct {
 	Crossinline, Noinline []bool
+	// Class is the class file whose metadata declares the inline function
+	// or accessor, and which holds its body: the class, or the file
+	// facade's part. It is empty for a member of a built-in type.
+	Class string
 }
 
 // JavaHidden are the members of a Java source class that Kotlin can't use:

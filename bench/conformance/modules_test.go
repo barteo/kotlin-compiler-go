@@ -83,3 +83,23 @@ fun box() = "OK"
 		t.Errorf("a test with JVM_DEFAULT_MODE skips for %q", s)
 	}
 }
+
+// JVM_TARGET applies to its module, as wrongInlineTarget's library is
+// compiled for JVM 11 and its main module for 1.8.
+func TestJVMTarget(t *testing.T) {
+	test := readTestString(t, `// MODULE: library
+// JVM_TARGET: 11
+// FILE: a.kt
+inline fun f() {}
+// MODULE: main(library)
+// JVM_TARGET: 1.8
+// FILE: source.kt
+fun g() = f()
+`)
+	if got := moduleDirective(test, test.modules[0], "JVM_TARGET"); got != "11" {
+		t.Errorf("library: %q, want 11", got)
+	}
+	if got := moduleDirective(test, test.modules[1], "JVM_TARGET"); got != "1.8" {
+		t.Errorf("main: %q, want 1.8", got)
+	}
+}

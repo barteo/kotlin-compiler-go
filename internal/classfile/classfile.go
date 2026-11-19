@@ -1,11 +1,13 @@
 // Package classfile writes JVM class files (version 52, Java 8, with
-// StackMapTable frames) and reads the parts of them the compiler needs.
+// StackMapTable frames, which SetMajor raises for a higher JVM target)
+// and reads the parts of them the compiler needs.
 package classfile
 
 import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strconv"
 	"sync/atomic"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -28,6 +30,50 @@ const (
 
 	majorVersion = 52 // Java 8
 )
+
+// TargetMajor returns the class file major version of JVM target, as
+// kotlinc's -jvm-target names it: 1.8 or 9 and later. "" is 1.8.
+func TargetMajor(target string) (uint16, bool) {
+	if target == "" || target == "1.8" {
+		return majorVersion, true
+	}
+	n, err := strconv.Atoi(target)
+	if err != nil || n < 9 || n > 25 || strconv.Itoa(n) != target {
+		return 0, false
+	}
+	return uint16(44 + n), true
+}
+
+// TargetName returns the JVM target of class file major version major,
+// as kotlinc's -jvm-target names it.
+func TargetName(major int) string {
+	if major <= majorVersion {
+		return "1." + strconv.Itoa(major-44)
+	}
+	return strconv.Itoa(major - 44)
+}
+
+// Major returns the major version of class file data, or 0 if data isn't
+// one.
+func Major(data []byte) int {
+	if len(data) < 8 || binary.BigEndian.Uint32(data) != 0xCAFEBABE {
+		return 0
+	}
+	return int(binary.BigEndian.Uint16(data[6:8]))
+}
+
+// SetMajor returns class file data with major version major if this
+// package wrote it, as version 52: a copy, data is left as it is. Other
+// class files, such as a library's that the compiler copies, keep their
+// version.
+func SetMajor(data []byte, major uint16) []byte {
+	if major == majorVersion || Major(data) != majorVersion {
+		return data
+	}
+	out := append([]byte(nil), data...)
+	binary.BigEndian.PutUint16(out[6:8], major)
+	return out
+}
 
 const (
 	tagUtf8               = 1

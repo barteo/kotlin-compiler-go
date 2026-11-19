@@ -35,6 +35,7 @@ func init() {
 		"CONST_VAL_WITH_GETTER":                       `^const 'val' should not have a getter`,
 		"INAPPLICABLE_JVM_FIELD":                      `^JvmField `,
 		"INAPPLICABLE_OPERATOR_MODIFIER":              `^'operator' modifier is inapplicable on this function`,
+		"INLINE_FROM_HIGHER_PLATFORM":                 `^cannot inline bytecode built with JVM target `,
 		"NON_PUBLIC_CALL_FROM_PUBLIC_INLINE":          `^public-API inline function cannot access non-public-API `,
 		"PRIVATE_SETTER_FOR_ABSTRACT_PROPERTY":        `^private setters are not allowed for abstract properties`,
 		"SUBCLASS_OPT_IN_INAPPLICABLE":                `^'@SubclassOptInRequired' is not applicable to `,

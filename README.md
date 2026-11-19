@@ -129,6 +129,7 @@ Arguments can be files or directories. Flags:
 | `-parcelize`, `-serialization`, `-compose`, `-metro` | apply the parcelize, kotlinx.serialization, Compose and Metro plugins |
 | `-P` | a Metro option, as `kotlinc`'s `-P plugin:dev.zacsweers.metro.compiler:key=value`; may be repeated |
 | `-jvm-default` | how interface bodies compile, as in `kotlinc` (default `no-compatibility`) |
+| `-jvm-target` | the JVM version the class files are for, as in `kotlinc`: `1.8` (the default), or `9` to `25`; a library's inline functions built for a higher one are errors |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
@@ -147,7 +148,7 @@ is most of a small compile's work. The conformance tests use it
 
 ### Use it in a Gradle build
 
-There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. A module compiles against its class path and then the JDK of its Java toolchain, so an Android module's `android.jar` stands in for the JDK's classes. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode, JVM target and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. A module compiles against its class path and then the JDK of its Java toolchain, so an Android module's `android.jar` stands in for the JDK's classes. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
 
 ```sh
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts

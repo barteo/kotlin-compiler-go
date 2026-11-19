@@ -121,8 +121,8 @@ infrastructure does, it puts the JetBrains annotations
 the class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
-a module's `JVM_DEFAULT_MODE` (or the test's, before its first
-module) into `-jvm-default`, removes
+a module's `JVM_DEFAULT_MODE` and `JVM_TARGET` (or the test's, before
+its first module) into `-jvm-default` and `-jvm-target`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
@@ -244,9 +244,8 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `j+k/collectionOverrides/containsAll` and the library's `containsAll`
   extension, and for `typealias/starProjection`, whose index of a
   `Map<*, *>` the library's `get` extension resolves.
-- **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
-  (`dataClassInternalConstructorUsageWillBecomeInaccessible`) and
-  `JVM_TARGET` (`wrongInlineTarget`).
+- **A directive `kc` doesn't model**: `PROGRESSIVE_MODE`
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`).
 - **The backend's analysis of inlined library bodies**:
   `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
   that reach `typeOf` through another reified function.
@@ -290,18 +289,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,366 | 51.2% |
+| rejects invalid | 4,367 | 51.2% |
 | accepts valid | 4,127 | 48.4% |
-| accepts invalid | 38 | 0.4% |
+| accepts invalid | 37 | 0.4% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,205 of the 21,714 expected errors (93%) on their lines, and 1,490 of
+20,271 of the 21,714 expected errors (93%) on their lines, and 1,490 of
 the 3,652 expected warnings (41%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 13 of the 38
+none. Tests with Java sources are 1,221 of the run, and 13 of the 37
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
