@@ -875,12 +875,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			lv := lvalue{t: t, prepare: prepare, recv: size(f.Recv), reread: true,
 				load: func() {
-					g.invokeFun(nil, f, nil)
+					g.invokeFun(accessorCall(x, f), f, nil)
 					g.coerce(types.JVMRet(f), t)
 				},
 				store: func() {
 					g.coerce(t, s.Params[0].Type)
-					g.invokeFun(nil, s, nil)
+					g.invokeFun(accessorCall(x, s), s, nil)
 				}}
 			if gd := syntax.SourceInline(f); gd != nil {
 				// Accessors with reified type parameters: copies of their
@@ -888,7 +888,28 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				// the setter's argument, from a local.
 				get := &syntax.Call{Fun: x, Sym: f, Reified: x.Reified}
 				get.P, get.T = x.P, t
+				push := func() {}
+				if f.Owner != nil {
+					// A member's: the copies take the extension receiver
+					// under the dispatch receiver, which prepare keeps in
+					// locals, for both.
+					var recv, disp int
+					dt := selfType(f.Owner)
+					lv.prepare, lv.recv = func() {
+						prepare()
+						recv = g.code.AllocLocal(desc(f.Recv))
+						g.code.Local(storeOp(f.Recv), recv)
+						g.dispatch(x, f.Owner)
+						disp = g.code.AllocLocal(desc(dt))
+						g.code.Local(storeOp(dt), disp)
+					}, 0
+					push = func() {
+						g.code.Local(loadOp(f.Recv), recv)
+						g.code.Local(loadOp(dt), disp)
+					}
+				}
 				lv.load = func() {
+					push()
 					g.inlineBody(get, gd)
 					g.coerce(f.Ret, t)
 				}
@@ -902,9 +923,11 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					arg.P, arg.T = x.P, pt
 					set := &syntax.Call{Fun: x, Sym: s, Args: []syntax.Expr{arg}, Reified: x.Reified}
 					set.P, set.T = x.P, types.UnitType
+					push()
 					g.inlineBody(set, syntax.SourceInline(s))
 					g.pop(s.Ret)
 				}
+				return lv
 			}
 			if f.Owner != nil {
 				lv.prepare, lv.recv = func() {
@@ -920,11 +943,19 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					lv.wide = f.Recv
 				}
 				lv.load = func() {
-					g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
+					if b := inlineBody(f, nil); b != nil {
+						g.inline(b, accessorCall(x, f)) // inline-only, of the class path
+					} else {
+						g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
+					}
 					g.coerce(types.JVMRet(f), t)
 				}
 				lv.store = func() {
 					g.coerce(t, s.Params[0].Type)
+					if b := inlineBody(s, nil); b != nil {
+						g.inline(b, accessorCall(x, s))
+						return
+					}
 					g.callMethod(s, s.Owner, s.JVM(), funDesc(s))
 				}
 			}
@@ -1028,16 +1059,18 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 				g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 			}}
 	}
-	set := types.SetterJVM(p)
+	set, owner := types.SetterJVM(p), p.Facade
 	if p.Private || p.SetterPrivate {
+		// The private accessor is in the class of the field: a multi-file
+		// class's part.
 		g.shared.access[p] |= 2
-		set = privateSetter(p)
+		set, owner = privateSetter(p), p.FieldClass()
 	}
 	return lvalue{t: p.Type, prepare: func() {}, reread: true,
 		load: func() { g.global(p) },
 		store: func() {
 			g.toField(p, ft)
-			g.code.Invoke(cf.INVOKESTATIC, p.Facade, set, "("+d+")V")
+			g.code.Invoke(cf.INVOKESTATIC, owner, set, "("+d+")V")
 		}}
 }
 

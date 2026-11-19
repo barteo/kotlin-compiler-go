@@ -62,11 +62,10 @@ own tests.
   `@Suppress` silences a warning by its name, or all of them with
   `"warnings"`.
 
-- Reified type parameters of members of interfaces and value classes
-  (those of final members and member extensions of classes work).
-- `lateinit` properties of a `@file:JvmMultifileClass` class that
-  aren't `private`.
-- Local `external` functions, which are reported as unsupported.
+- Local `external` functions inside an interface's members when the
+  interface's methods are JVM default methods (the default
+  `-jvm-default`), which are reported as unsupported: kotlinc writes
+  them as native interface methods, which the JVM refuses to load.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` are checked, the class path's read from its class files
   and metadata. Markers and deprecations with level `WARNING` (Java's

@@ -348,8 +348,8 @@ func (in *inliner) inlineLambdas() {
 	if x.Sym.Ext {
 		first = 1 // the receiver comes first on the JVM
 	}
-	if in.b.This {
-		first++ // after the dispatch receiver
+	if in.b.This || x.Sym.Impl {
+		first++ // after the dispatch receiver, or a value class's value
 	}
 	for k, a := range x.Args {
 		l, ok := a.(*syntax.Lambda)

@@ -359,7 +359,7 @@ func (g *gen) privateAccessors() {
 	}
 	owner := func(p *types.VarSym) string {
 		if p.Kind == types.Global {
-			return p.Facade
+			return p.FieldClass()
 		}
 		return p.Owner.Name
 	}
@@ -3320,12 +3320,12 @@ func (g *gen) backingField(p *types.VarSym, load bool) {
 		// uses, as kotlinc does.
 		if load {
 			g.shared.access[p] |= 1
-			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+			g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateGetter(p), "()"+d)
 			break
 		}
 		g.shared.access[p] |= 2
 		g.toField(p, ft)
-		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateSetter(p), "("+d+")V")
+		g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateSetter(p), "("+d+")V")
 		return
 	case p.Kind == types.Global && load:
 		g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)

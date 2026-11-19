@@ -1561,11 +1561,8 @@ func (c *Checker) declare() {
 				// The facade's accessors call the part's, which use
 				// its field.
 				sym.Facade, sym.Part = c.file.Facade, c.file.Part
-				switch {
-				case sym.JvmField:
+				if sym.JvmField {
 					c.errorf(d.Find("", "JvmField").P, "JvmField cannot be applied to top level property of a file annotated with JvmMultifileClass")
-				case d.Lateinit:
-					c.unsupported(d.P, "multifile class property", "lateinit properties of multi-file classes (@file:JvmMultifileClass) are only supported if private")
 				}
 			}
 			sym.Private = d.Visibility == syntax.Private && d.Getter == nil && d.Setter == nil && d.Field == nil &&
@@ -2049,9 +2046,9 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
 			// overridden function couldn't pass the type.
 			c.errorf(tp.P, "override by a function with reified type parameter")
-		case owner != nil && (owner.Interface || owner.Value):
-			c.unsupported(tp.P, "reified member type parameter", "reified type parameters of members of interfaces and value classes are not supported")
-		case owner != nil && !isFinal(d.Modifiers, owner):
+		case virtualMember(d.Modifiers, owner):
+			// Reported as a virtual inline member.
+		case owner != nil && !copiedMember(d.Modifiers, owner):
 			c.errorf(tp.P, "only type parameters of inline functions can be reified") // an open member isn't inlined
 		}
 	}
@@ -2148,6 +2145,17 @@ func (c *Checker) externalAccessors(d *syntax.PropDecl, owner *types.ClassSym) {
 		reported = true
 		a.Sym.External = ok && !d.Abstract && !hasBody(a)
 	}
+}
+
+// copiedMember reports whether calls of an inline member with these
+// modifiers copy its body, as it can't be overridden: a final member of a
+// class or object, or a private one of an interface (whose other members
+// are open).
+func copiedMember(m syntax.Modifiers, owner *types.ClassSym) bool {
+	if owner.Interface {
+		return m.Visibility == syntax.Private
+	}
+	return isFinal(m, owner)
 }
 
 // isFinal reports whether a member with these modifiers can't be

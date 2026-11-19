@@ -14,5 +14,10 @@ lazy14
 9
 14
 14
+false
+lateinit property late has not been initialized
+true
+later
+owner
 X!
 [digits, getCounter, getDoubled, getLazyName, getProcessors, getSettable, half, pad, pad, pad, scale, scaledSum, setCounter, setSettable, shout, twice]

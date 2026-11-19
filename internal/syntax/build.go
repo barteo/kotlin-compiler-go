@@ -413,10 +413,7 @@ func NoContexts(m *Modifiers, what string, r Reporter) {
 // CheckLocalFun reports what local function fd, with its modifiers, can't
 // be.
 func CheckLocalFun(fd *FunDecl, r Reporter) {
-	if fd.External {
-		r.Unsupported(fd.ExternalP, "local external function", "local external functions are not supported")
-	}
-	if fd.Body == nil && fd.ExprBody == nil {
+	if fd.Body == nil && fd.ExprBody == nil && !fd.External {
 		r.Fail(fd.P, "a local function must have a body")
 	}
 }

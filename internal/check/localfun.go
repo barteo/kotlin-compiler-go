@@ -46,6 +46,18 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
 		c.unsupported(d.P, "compose", "local composable functions are not supported")
 	}
+	if d.External {
+		// A native method of the enclosing class, as kotlinc writes it:
+		// without a body, it captures nothing. An interface can't have
+		// native methods, though kotlinc writes one there, which the JVM
+		// refuses to load.
+		bodyless := d.Body == nil && d.ExprBody == nil
+		if c.cls != nil && c.cls.Interface && c.cls.JVMDefault {
+			c.unsupported(d.ExternalP, "local external function in interface", "local external functions in interfaces are not supported")
+		} else {
+			sym.External = c.external(d, nil, false, d.P) && bodyless
+		}
+	}
 	if c.localCalls == nil {
 		c.localCalls = new([]localCall)
 	}
@@ -126,6 +138,8 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.scope.declare(p.Sym)
 	}
 	switch {
+	case d.Body == nil && d.ExprBody == nil:
+		// external
 	case d.Body != nil:
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {

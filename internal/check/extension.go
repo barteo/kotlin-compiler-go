@@ -160,19 +160,27 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	}
 	gs := g.Sym
 	c.externalAccessors(d, gs.Owner)
+	virtual := c.virtualInlineProp(d, gs.Owner)
 	for _, tp := range d.TypeParams {
 		switch {
-		case !tp.Reified:
-		case !d.Inline && !d.InlineGetter || d.Setter != nil && !d.Inline && !d.InlineSetter:
+		case !tp.Reified, virtual:
+		case !d.Inline && !d.InlineGetter || d.Setter != nil && !d.Inline && !d.InlineSetter,
+			gs.Owner != nil && !copiedMember(d.Modifiers, gs.Owner): // an open member isn't inlined
 			c.errorf(tp.P, "only type parameters of inline functions can be reified")
-		case gs.Owner != nil:
-			c.unsupported(tp.P, "reified member property type parameter", "reified type parameters of member extension properties are not supported")
 		default:
 			// Reads copy the getter and writes the setter, as calls of
 			// an inline function do.
 			g.Inline = true
 			if d.Setter != nil {
 				d.Setter.Inline = true
+			}
+			if gs.Owner != nil && gs.Owner.Interface {
+				// Private, as the property is, which lets calls copy
+				// them.
+				g.Visibility = syntax.Private
+				if d.Setter != nil {
+					d.Setter.Visibility = syntax.Private
+				}
 			}
 		}
 	}

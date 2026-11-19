@@ -289,7 +289,7 @@ func (g *gen) expr(x syntax.Expr) {
 		}
 		g.loadThis()
 		if x.Cast {
-			g.smartCast(g.owner.This(), x.T)
+			g.smartCast(g.thisClass().This(), x.T)
 		}
 	case *syntax.Is:
 		g.expr(x.X)
@@ -472,7 +472,7 @@ func (g *gen) ident(x *syntax.Ident) {
 			break
 		}
 		g.loadThis()
-		if sym.Owner.Value && types.Unboxed(g.owner.This()) && g.owner == sym.Owner {
+		if t := g.thisClass(); sym.Owner.Value && t == sym.Owner && types.Unboxed(t.This()) {
 			g.valueGet(sym)
 		} else if g.directGet(sym) {
 			g.code.FieldInsn(cf.GETFIELD, sym.Owner.Name, sym.Name, desc(types.FieldType(sym)))
@@ -816,7 +816,7 @@ func (g *gen) global(p *types.VarSym) {
 		g.lateinit(p)
 	case p.Private:
 		g.shared.access[p] |= 1
-		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+		g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateGetter(p), "()"+d)
 		g.lateinit(p)
 	case p.Composable && p.Facade == composablesKt && p.Name == "currentComposer":
 		// An intrinsic: its getter only throws.
@@ -1257,6 +1257,18 @@ func (g *gen) invokeJava(f *types.FunSym, rt types.Type) {
 	g.code.Invoke(cf.INVOKEVIRTUAL, owner, f.JVM(), d)
 }
 
+// accessorCall returns the call of accessor f of extension property x
+// that a copy of its body, if f is an inline accessor of the class path,
+// takes its reified type arguments from, or nil if f has none.
+func accessorCall(x *syntax.Member, f *types.FunSym) *syntax.Call {
+	if x.Reified == nil {
+		return nil
+	}
+	c := &syntax.Call{Fun: x, Sym: f, Reified: x.Reified}
+	c.P, c.T = x.P, f.Ret
+	return c
+}
+
 func (g *gen) member(x *syntax.Member) {
 	if x.Call != nil {
 		g.call(x.Call) // a property with context parameters: x.getP()
@@ -1335,7 +1347,7 @@ func (g *gen) member(x *syntax.Member) {
 			}
 			g.coerceRecv(rt, f.Recv)
 			if b := inlineBody(f, nil); b != nil {
-				g.inline(b, nil) // inline-only, of the class path
+				g.inline(b, accessorCall(x, f)) // inline-only, of the class path
 				return
 			}
 			g.composeGetterArgs(x, f)
@@ -1355,7 +1367,7 @@ func (g *gen) member(x *syntax.Member) {
 			if inlineBody(f, nil) == nil {
 				g.composeGetterArgs(x, f)
 			}
-			g.invokeFun(nil, f, nil) // copied if inline-only
+			g.invokeFun(accessorCall(x, f), f, nil) // copied if inline-only
 		})
 		return
 	case x.Getter != nil && x.Getter.Builtin == types.ArraySize:
@@ -1400,7 +1412,7 @@ func (g *gen) member(x *syntax.Member) {
 		switch {
 		case p.Kind == types.Global && p.Private && g.cls.Name != p.FieldClass():
 			g.shared.access[p] |= 1
-			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+			g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateGetter(p), "()"+d)
 		case p.Kind == types.Global:
 			g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)
 		case p.Private:
@@ -1521,7 +1533,7 @@ func (g *gen) superThis(s *syntax.Super) {
 // value, as in the class's static methods: its supertypes' members take
 // the box.
 func (g *gen) boxThis() {
-	if o := g.owner; o != nil && o.Value && types.Unboxed(o.This()) {
+	if o := g.thisClass(); o != nil && o.Value && types.Unboxed(o.This()) {
 		if top := g.code.StackTop(); top.Tag() != cf.VObject || top.Class() != o.Name {
 			g.boxValue(o.This())
 		}

@@ -556,13 +556,17 @@ type FunDecl struct {
 }
 
 // SourceInline returns the declaration of f if a call of f copies its
-// body: a top-level or extension inline function of the program.
+// body: an inline function of the program, top-level or a member that
+// can't be overridden: final, or private to an interface.
 func SourceInline(f *types.FunSym) *FunDecl {
-	if f == nil || f.Owner != nil && (!f.Final || f.Owner.Interface || f.Owner.Value) {
+	if f == nil {
 		return nil
 	}
 	d, ok := f.Decl.(*FunDecl)
 	if !ok || !d.Inline || d.Body == nil && d.ExprBody == nil || d.Inlinable == nil {
+		return nil
+	}
+	if f.Owner != nil && !f.Final && !(f.Owner.Interface && d.Visibility == Private) {
 		return nil
 	}
 	return d

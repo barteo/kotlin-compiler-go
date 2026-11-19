@@ -201,7 +201,10 @@ func (g *gen) loadStorage(v *types.VarSym) {
 func (g *gen) loadThis() {
 	switch n := len(g.srcInl); {
 	case n > 0 && g.srcInl[n-1].self >= 0:
-		g.code.Local(cf.ALOAD, g.srcInl[n-1].self) // the receiver of a copy of an inline member
+		// The receiver of a copy of an inline member: a value class's
+		// underlying value.
+		inl := g.srcInl[n-1]
+		g.code.Local(loadOp(selfType(inl.d.Sym.Owner)), inl.self)
 	case g.lam != nil:
 		g.code.Local(cf.ALOAD, g.lam.this)
 		if g.owner != nil && g.owner.Value {

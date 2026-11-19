@@ -1395,10 +1395,13 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	}
 	matchJVM(sym)
 	composeShape(sym, true)
-	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) {
+	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasSetter(p, methods) {
 		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
 			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+		if inlineOnlySetter(p, methods) {
+			set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
+		}
 		if owner.Value {
 			set.Impl, set.Facade = true, owner.Name
 		}
@@ -1658,6 +1661,23 @@ func hasMethod(methods map[string]bool, sig string, inline bool) bool {
 	return v || ok && !inline
 }
 
+// hasSetter reports whether a call can set var extension property p,
+// whose methods are these: through its setter's method, or a copy of its
+// body, an inline setter's whose method is synthetic or private, as one
+// with reified type parameters.
+func hasSetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	return hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) || inlineOnlySetter(p, methods)
+}
+
+// inlineOnlySetter reports whether a set of p copies its inline setter's
+// body, as its method can't be called.
+func inlineOnlySetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	inline := p.SetterFlags>>8&1 != 0
+	return inline && !hasMethod(methods, s.Name+s.Desc, inline)
+}
+
 const markerSuffix = "Lkotlin/jvm/internal/DefaultConstructorMarker;)V"
 
 // markerCtor reports whether the class has a public or protected
@@ -1912,8 +1932,13 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if cls.Value && f.Flags.MemberKind() != 3 /* synthesized: equals, hashCode */ {
 			// A value class's member is a static method of the class,
-			// which takes the value first; an inline-only one is copied.
+			// which takes the value first; an inline one is copied, as
+			// with kotlinc, so that a lambda passed to it can return from
+			// the caller.
 			sym.Impl, sym.Facade = true, cls.Name
+			if sym.Inline == nil && f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin {
+				sym.Inline = inlineInfo(f, false)
+			}
 			if sym.Inline != nil {
 				sym.Inline.Load = t.loadInline(cls.Name)
 				sym.Unsupported, sym.Why = false, ""
@@ -2637,9 +2662,12 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			matchJVM(sym)
 			composeShape(sym, false) // WindowInsets.isImeVisible
 			// A var's setter: (receiver, value) on the same facade.
-			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasMethod(part.methods, s.Name+s.Desc, pr.SetterFlags>>8&1 != 0) {
+			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasSetter(pr, part.methods) {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
 					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+				if inlineOnlySetter(pr, part.methods) {
+					set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
+				}
 				matchJVM(set)
 				sym.ExtSetter = set
 			}

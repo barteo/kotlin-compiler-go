@@ -1,0 +1,12 @@
+false
+lateinit property name has not been initialized
+true kc
+kc!
+false
+named: true
+true me!
+other=[1, 2] secret=s
+kc!
+[]
+[claim, describe, getName, getOther, getOwner, getSecret, named, owned, setName, setOther, setSecret]
+[private static owner, public static name, public static secret]
