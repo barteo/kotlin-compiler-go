@@ -1068,8 +1068,16 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// as equals' argument: ::top == Int::intExt.
 			yWant = noWant
 		}
+		if signedIntLit(x.Y) {
+			// An integer literal compared is an Int, as on the left: x ==
+			// 3 for a Long x is an error, as 3 == x is.
+			yWant = noWant
+		}
 		yt := c.value(x.Y, yWant)
 		x.OpType = c.castEquality(x, xt, yt)
+		if x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.NOT_EQ_EQ {
+			c.noteIdentTypes(x, xt, yt)
+		}
 		return types.BoolType
 	}
 
@@ -2186,6 +2194,18 @@ func intLitExpr(x syntax.Expr) bool {
 		return !x.Long && !x.Unsigned
 	case *syntax.Unary:
 		return x.Op == syntax.MINUS && intLitExpr(x.X)
+	}
+	return false
+}
+
+// signedIntLit reports whether x is an integer literal, with a sign or
+// not, which only an expected type makes another type than Int or Long.
+func signedIntLit(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.IntLit:
+		return !x.Unsigned
+	case *syntax.Unary:
+		return (x.Op == syntax.MINUS || x.Op == syntax.PLUS) && signedIntLit(x.X)
 	}
 	return false
 }

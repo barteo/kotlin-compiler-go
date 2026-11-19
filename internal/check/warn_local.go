@@ -29,6 +29,9 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Binary:
 			c.binaryWarnings(n)
+			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
+				c.identityWarnings(n)
+			}
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)

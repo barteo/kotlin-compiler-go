@@ -306,6 +306,12 @@ func TestWarningsCasts(t *testing.T) {
 	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
 }
 
+// TestWarningsIdentity checks the warnings of identity comparisons of
+// primitives against those kotlinc reports of testdata/identity.kt.
+func TestWarningsIdentity(t *testing.T) {
+	checkReference(t, "testdata/identity.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnreachable checks the warnings of unreachable code against
 // those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
 // there are none without it.
