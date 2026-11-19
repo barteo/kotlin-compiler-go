@@ -17,6 +17,7 @@ libraries. Earlier runs are in this file's git history.
 bench/run.sh                                                  # 200 files, about 1 minute
 COOLDOWN=0 SIZES=500 RUNS=1 WARM_RUNS=4 bench/run.sh          # 500 files, about 9 minutes
 COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/kotlinpoet-time.sh       # also coroutines-time.sh, ktor-time.sh
+OUT=/dev/shm/kc-bench-out bench/run.sh                        # output on tmpfs, as for the results below
 ITERS=10 BACKEND_THREADS=1 bench/profile.sh 500               # about 12 minutes
 ```
 
@@ -30,9 +31,10 @@ Each script times four commands with hyperfine:
 
 The settings are `SIZES` (files per generated project), `RUNS` (cold
 `kotlinc` runs), `WARM_RUNS` (runs in the warm JVM), `HEAP` (`kotlinc`'s
-heap, 8 GB by default; 4 GB is too small at 1,000 files) and `COOLDOWN`
+heap, 8 GB by default; 4 GB is too small at 1,000 files), `COOLDOWN`
 (seconds idle before every compilation, outside the measured time, for
-laptops that throttle).
+laptops that throttle) and `OUT` (the directory both compilers write
+their class files to, the work directory by default).
 
 `bench/gen` writes N files of about 400 lines in 10 packages, using most
 of the supported language: cross-file and JDK calls, lambdas, the
@@ -49,38 +51,52 @@ does. Gradle itself, incremental compilation and tests are left out.
 ## Results
 
 A Linux x86_64 cloud machine (4 CPUs, 15 GB), JDK 21, hyperfine 2.0.0,
-with the commands above, on 19 November 2026, with `kc` at `a009992`.
+with the commands above and `OUT=/dev/shm/kc-bench-out`, on 19 November
+2026, with `kc` at `8b95061`. Both compilers write their class files to
+a memory file system (tmpfs): see the notes below for why.
 
 Wall time:
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 5.96 s | 4.51 s | 102.5 s | 77.5 s | 13.0x |
-| kotlinpoet | 39 | 8.7k | 321 ms | 240 ms | 15.0 s | 3.15 s | 9.8x |
-| kotlinx-coroutines-core | 169 | 34k | 627 ms | 562 ms | 23.0 s | 5.59 s | 8.9x |
-| Ktor, 3 modules | 236 | 24k | 720 ms | 619 ms | 39.8 s | 5.74 s | 8.0x |
+| Generated | 500 | 202k | 5.04 s | 3.05 s | 105.0 s | 80.6 s | 16.0x |
+| kotlinpoet | 39 | 8.7k | 292 ms | 207 ms | 16.1 s | 2.99 s | 10.2x |
+| kotlinx-coroutines-core | 169 | 34k | 563 ms | 361 ms | 24.1 s | 5.92 s | 10.5x |
+| Ktor, 3 modules | 236 | 24k | 683 ms | 458 ms | 41.8 s | 6.25 s | 9.1x |
 
 Peak memory (resident set size):
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 500 | 202k | 792 MB | 928 MB | 4.30 GB | 5.4x |
-| kotlinpoet | 39 | 8.7k | 90 MB | 101 MB | 965 MB | 11x |
-| kotlinx-coroutines-core | 169 | 34k | 133 MB | 145 MB | 1.25 GB | 9.4x |
-| Ktor, 3 modules | 236 | 24k | 91 MB | 98 MB | 966 MB | 11x |
+| Generated | 500 | 202k | 758 MB | 959 MB | 3.19 GB | 4.2x |
+| kotlinpoet | 39 | 8.7k | 89 MB | 99 MB | 974 MB | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 130 MB | 139 MB | 1.21 GB | 9.3x |
+| Ktor, 3 modules | 236 | 24k | 90 MB | 98 MB | 990 MB | 11x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
-- Warm `kotlinc` doesn't settle at 500 files on this machine: its four
-  runs took 73–102 s, and a day earlier, on the same machine, its median
-  was 57.6 s, which would make the generated project's ratio 9.7x. The
-  generated row is the least certain.
-- Warm `kotlinc` is faster on all the libraries than a day earlier (by
-  4–12%), so their ratios move less than `kc`'s times: `kc -j 1` took
-  12% less time on coroutines and 14% less on Ktor than at `3ad1498`,
-  with the lexer reusing its token slices and the class path's top-level
-  extensions converted only for receivers they can take. Coroutines and
-  Ktor are still below 10x.
+- Both compilers write to tmpfs because this machine's disk made
+  writing the output a benchmark artifact. Its ext4 file system has no
+  journal, and creating a file soon after files were deleted, as every
+  run's fresh output directory does, cost 300–800 µs of kernel time
+  instead of 10–20 µs. With output on ext4, in one session, `kc -j 1`
+  took 0.64–0.71 s on coroutines (0.58 s on tmpfs), 0.71 s on Ktor
+  (0.65 s) and 5.9 s on the generated project (5.4 s); kotlinpoet was
+  the same. Warm `kotlinc`'s median on coroutines was 6.35–6.88 s on
+  ext4 and 6.10 s on tmpfs, within its noise.
+- Since `a009992`, `kc -j 1` took 15% less time on the generated
+  project, 9% less on kotlinpoet, 10% less on coroutines and 5% less on
+  Ktor, part of it from tmpfs. The rest is from two changes, each timed
+  against its parent in one session: a filter of the class path's names
+  rules out absent classes without building their names (5–8%, 2% on
+  Ktor), and the constant pool finds entries by the indexes they hold
+  rather than by concatenated strings (2–4%).
+- Warm `kotlinc` was 6–9% slower on coroutines and Ktor than in the run
+  before (5.59 and 5.74 s), which flatters their ratios. At those times
+  coroutines would be 9.9x and Ktor 8.4x: coroutines is at about 10x,
+  and Ktor is still below it. Warm `kotlinc` doesn't settle at 500
+  files: its four runs took 76–102 s, so the generated row is the least
+  certain.
 - Times vary by 10–20% between sessions, for both compilers, and more
   on a busy cloud machine. To measure a change to `kc`, time both builds
   in one session.
@@ -96,7 +112,7 @@ Peak memory (resident set size):
 A profile (`bench/profile.sh`, in
 [phases-500.md](../bench/results/phases-500.md)): 500 generated
 files of 202k lines, warm, on the 4-CPU machine above, both compilers
-on one thread.
+on one thread, with `kc` at `a009992` and output on ext4.
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
