@@ -158,16 +158,26 @@ func (c *Checker) binaryWarnings(x *syntax.Binary) {
 	}
 }
 
-// castWarnings reports a cast x as T of a value that is already of type T.
+// castWarnings reports a cast x as T of a value that is already of type
+// T, or x as? T of one of type T or, if x may be null, T?: as kotlinc, a
+// safe cast of a nullable value to its type's non-null form only checks
+// that it's not null.
 func (c *Checker) castWarnings(x *syntax.As) {
-	if x.Safe || x.X == nil {
+	if x.X == nil {
 		return
 	}
-	switch x.X.(type) {
-	case *syntax.Lambda, *syntax.NullLit, *syntax.IntLit, *syntax.DoubleLit, *syntax.FloatLit:
-		// A cast that gives a lambda, a reference or a literal its
-		// type changes what it is.
+	switch e := x.X.(type) {
+	case *syntax.Lambda, *syntax.NullLit:
+		// A cast that gives a lambda or a reference its type changes
+		// what it is.
 		return
+	case *syntax.IntLit:
+		// An integer literal takes the type it's cast to, 1 as Long,
+		// unless written as a Long (1L), which kotlinc reports as
+		// useless. 1 as Int is INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL.
+		if !e.Long || e.Unsigned || e.Val != int64(int32(e.Val)) {
+			return
+		}
 	case *syntax.Call:
 		// A generic call without type arguments may take them from the
 		// type the cast expects: foo() as String.
@@ -179,6 +189,9 @@ func (c *Checker) castWarnings(x *syntax.As) {
 	t, target := x.X.Type(), x.Target
 	if t.K == types.Invalid || target.K == types.Invalid || t.P || t.IsParam() || target.IsParam() {
 		return
+	}
+	if x.Safe && t.N {
+		target = target.Nullable()
 	}
 	if t.N != target.N || t != target && !c.sameType(t, target) {
 		return

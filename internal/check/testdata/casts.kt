@@ -366,3 +366,23 @@ fun w33(x: Any) {
     x as String
     x is CharSequence // USELESS_IS_CHECK
 }
+fun w34(x: Int?) {
+    val a1 = x as? Int // USELESS_CAST
+    val a2 = x as? Int? // USELESS_CAST
+    val a3 = x as? Number
+    val a6: Number? = x as? Int // USELESS_CAST
+    val a7: Number? = 1 as? Number
+    if (x is Int) {
+        val b = x as? Int // USELESS_CAST
+    }
+}
+fun w35(s: String) {
+    s as? String // USELESS_CAST
+    s as? String?
+}
+fun w36() {
+    1.0 as Double // USELESS_CAST
+    1f as? Float // USELESS_CAST
+    1L as Long // USELESS_CAST
+    1.0 as Double?
+}
