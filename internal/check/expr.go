@@ -1298,10 +1298,13 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 // only if one class is final or both are classes, not interfaces. Where
 // both types can have subtypes, as K1 had it, K2 only warns: A == B for
 // an interface A and a class B is allowed, and so is a === b for an open
-// class and an abstract one.
+// class and an abstract one, and a == b for two nullable enums.
 func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
 	if op == syntax.EQ || op == syntax.NE {
+		if c.mayBeNullEnums(xt, yt) {
+			return false // only a warning: see enumComparisonWarning
+		}
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
 			return false
 		}
@@ -1411,6 +1414,11 @@ func canHaveSubtypesK1(t types.Type) bool {
 func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	dx, cx := declaredOf(x.X)
 	dy, cy := declaredOf(x.Y)
+	if (x.Op == syntax.EQ || x.Op == syntax.NE) && c.mayBeNullEnums(originalType(x.X, xt), originalType(x.Y, yt)) {
+		// Two nullable enums, as declared, even if smart cast not to be
+		// null: kotlinc only warns (see enumComparisonWarning).
+		return types.AnyType.Nullable()
+	}
 	if !cx && !cy || xt.K == types.Invalid || yt.K == types.Invalid {
 		return c.equality(x.P, x.Op, xt, yt)
 	}
@@ -1448,6 +1456,21 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	}
 	c.errs = c.errs[:m]
 	return types.InvalidType
+}
+
+// originalType returns the type of x, of type t, before smart casts: a
+// variable's declared type.
+func originalType(x syntax.Expr, t types.Type) types.Type {
+	if id, ok := x.(*syntax.Ident); ok && id.Sym != nil && id.Sym.Kind != types.Static && id.Sym.Type.K != types.Invalid {
+		return id.Sym.Type
+	}
+	return t
+}
+
+// mayBeNullEnums reports whether values of types xt and yt are both of
+// enums, or null.
+func (c *Checker) mayBeNullEnums(xt, yt types.Type) bool {
+	return types.MayBeNull(xt) && types.MayBeNull(yt) && c.enumType(xt.Flex().NonNull()) && c.enumType(yt.Flex().NonNull())
 }
 
 // declaredOf returns the declared type of x if x is a variable that a

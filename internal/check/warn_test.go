@@ -345,6 +345,12 @@ func TestWarningsRedundantElse(t *testing.T) {
 	checkReference(t, "testdata/when.kt", Options{Warnings: true})
 }
 
+// TestWarningsEnumComparison checks the warnings of comparisons of
+// nullable enums against kotlinc's of testdata/enums.kt.
+func TestWarningsEnumComparison(t *testing.T) {
+	checkReference(t, "testdata/enums.kt", Options{Warnings: true})
+}
+
 func TestWarningsShadow(t *testing.T) {
 	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
 }

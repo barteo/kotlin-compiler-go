@@ -39,6 +39,7 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Binary:
 			c.binaryWarnings(n)
+			c.enumComparisonWarning(n)
 			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
 				c.identityWarnings(n)
 			}
@@ -51,6 +52,7 @@ func (c *Checker) localWarnings() {
 		case *syntax.When:
 			c.whenIsWarnings(n)
 			c.redundantElseWarning(n)
+			c.whenEnumWarnings(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)
