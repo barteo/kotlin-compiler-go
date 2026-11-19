@@ -210,7 +210,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2222 of the 3652 warnings the tests expect (60.8%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2244 of the 3652 warnings the tests expect (61.4%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -240,6 +240,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 8 | 0 |
+| `OVERRIDE_DEPRECATION` | 30 | 22 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 1 | 0 |
@@ -263,7 +264,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
-| `OVERRIDE_DEPRECATION` | 30 |
 | `INLINE_CLASS_DEPRECATED` | 26 |
 | `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
@@ -290,5 +290,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
-| *64 more* | |
+| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
+| *63 more* | |
 

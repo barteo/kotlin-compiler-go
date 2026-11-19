@@ -886,6 +886,7 @@ type superProp struct {
 	// overrides, and inheritsSetter if its setter has none either.
 	vis, setterVis           syntax.Visibility
 	inherits, inheritsSetter bool
+	depr                     depr // its deprecation, or its getter's or setter's
 }
 
 // implementingProp returns the property of cls, declared or inherited,
@@ -1014,7 +1015,7 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 					}
 					inherits := inheritsVisibility(p.Decl)
 					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts, vis, setterVis,
-						inherits, inherits && setterVis == vis})
+						inherits, inherits && setterVis == vis, propDeclDepr(p)})
 				}
 			}
 			return true
@@ -1032,13 +1033,13 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 				if kp.Setter != nil && kp.Setter.Protected {
 					setterVis = syntax.Protected
 				}
-				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts, vis, setterVis, false, false})
+				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts, vis, setterVis, false, false, kpropDepr(kp)})
 			}
 			return true
 		}
 		if s.Name == charSequence && name == "length" {
 			// CharSequence's length, java.lang.CharSequence.length().
-			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil, syntax.Public, syntax.Public, false, false})
+			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil, syntax.Public, syntax.Public, false, false, depr{}})
 			return true
 		}
 		if s.KotlinName != "" || !builtinJava[s.Name] {
@@ -1054,7 +1055,7 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 				if g.Protected {
 					vis = syntax.Protected
 				}
-				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil, vis, vis, false, false})
+				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil, vis, vis, false, false, deprecationLevel(g.Deprecated)})
 			}
 		}
 		return true
@@ -1094,6 +1095,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 		if !fd.Override {
 			continue
+		}
+		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && !slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) {
+			c.overrideDeprecation(fd.P)
 		}
 		if f.Suspend && rawSuspendRet(f.Ret) {
 			for _, o := range over {
@@ -1192,6 +1196,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 		if !op.override {
 			continue
+		}
+		if !deprecated(propDeclDepr(p)) && len(over) > 0 && !slices.ContainsFunc(over, func(o superProp) bool { return !deprecated(o.depr) }) {
+			c.overrideDeprecation(op.pos)
 		}
 		own := types.GetterJVM(p) + "()" + descOf(types.GetterType(p))
 		var ownSetter string

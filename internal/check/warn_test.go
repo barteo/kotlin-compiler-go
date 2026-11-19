@@ -325,6 +325,12 @@ func TestWarningsTailrec(t *testing.T) {
 	checkReference(t, "testdata/tailrec.kt", Options{Warnings: true})
 }
 
+// TestWarningsOverrideDeprecation checks the warnings of overrides of
+// deprecated members against those of testdata/overridedepr.kt.
+func TestWarningsOverrideDeprecation(t *testing.T) {
+	checkReference(t, "testdata/overridedepr.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {
