@@ -16,8 +16,12 @@ import (
 // build with -Werror.
 func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
+	c.shadowWarnings()
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
+		if lf, ok := n.(*syntax.LocalFun); ok {
+			c.extShadowed(lf.Decl)
+		}
 		switch n := n.(type) {
 		case *syntax.NotNull:
 			if t := n.X.Type(); definitelyNonNull(t) && !c.maybeNull[n] && !lambdaLike(n.X) {

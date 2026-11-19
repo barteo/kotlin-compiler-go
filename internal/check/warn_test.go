@@ -318,6 +318,12 @@ func TestWarningsUnused(t *testing.T) {
 	checkReference(t, "testdata/unused.kt", Options{Warnings: true})
 }
 
+// TestWarningsShadow checks the warnings of extensions that members
+// shadow against kotlinc's, which testdata/shadow.kt records.
+func TestWarningsShadow(t *testing.T) {
+	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnreachable checks the warnings of unreachable code against
 // those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
 // there are none without it.
