@@ -1,9 +1,10 @@
 # detekt on kc
 
 detekt 2.0 resolves types through the Kotlin Analysis API (AA) in standalone
-mode. [`jvm/detekt`](../jvm/detekt) builds detekt-cli from detekt's sources,
-with a few patches, on [kc's Analysis API](analysis-api.md) (`jvm/kc-aa`, the
-same implementation the KSP backend uses) instead of FIR. kc answers detekt's
+mode. [`jvm/detekt`](../jvm/detekt) builds detekt-cli from the sources of
+[detekt's fork](https://github.com/barteo/detekt/commits/kc-analysis-api), with a few
+changes, on [kc's Analysis API](analysis-api.md) (`jvm/kc-aa`, the same
+implementation the KSP backend uses) instead of FIR. kc answers detekt's
 questions from its [analysis facts](psi.md).
 
 ## Results
@@ -45,7 +46,7 @@ kc reports its errors when it analyzes the sources.
 ## How it works
 
 ```
-detekt-cli (patched)          jvm/kc-aa                              Go: libkc.so
+detekt-cli (kc's fork)        jvm/kc-aa                              Go: libkc.so
   EnvironmentAware ──► KcStandalone.open: PSI, project
   rules: analyze(e){} ──► KcSessionProvider ─► KaSession proxy   JNI   internal/kaops
                           KcAnalysis + KcLint: symbols,       ◄──►      └─ analysis/ka
@@ -54,8 +55,9 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
 ```
 
 **Build.**
-- `jvm/detekt/build.sh` fetches detekt at tag `v2.0.0-alpha.6` and applies
-  `jvm/detekt/patches` with `git am`.
+- `jvm/detekt/build.sh` fetches detekt's fork, branch
+  [`kc-analysis-api`](https://github.com/barteo/detekt/commits/kc-analysis-api)
+  of `barteo/detekt`, at the commit it pins: tag `v2.0.0-alpha.6` and one commit per change.
 - It compiles the modules detekt-cli runs with kotlinc 2.4.21, one at a time,
   against `jvm/aa-api`'s AA 2.4.21 jar and `kc-aa.jar`. The modules are the
   API, core, parser, psi utilities, metrics, tooling, utils, the rule sets,
@@ -66,7 +68,9 @@ detekt-cli (patched)          jvm/kc-aa                              Go: libkc.s
 - Kotlin 2.4.21 puts two compiler APIs detekt uses behind opt-ins, so the
   build passes those `-opt-in`s.
 
-**The patches.** Each patch's message says why it's needed.
+**The changes.** They are the fork's commits on top of the tag, numbered
+`0001`–`0008` here in their order. Each commit's message says why it's
+needed.
 - `0001` replaces detekt's `buildStandaloneAnalysisAPISession` with
   `KcStandalone.open`. It passes the module's source roots, class path,
   friend paths, JDK home, JVM target, `-opt-in`s and language settings, and
@@ -147,7 +151,7 @@ jvm/detekt/build.sh test
   pauses. `KC_JAVA_OPTS` naming a collector replaces it. An archive under
   8 MB, written by a run that stopped early, is deleted.
 - kc's check starts as soon as detekt-cli has parsed its arguments
-  (patch `0005`), while detekt reads its configuration and the session
+  (change `0005`), while detekt reads its configuration and the session
   builds its IntelliJ environment.
 - [Making detekt on kc faster](detekt-performance.md) measures these and
   the other speedups.
@@ -158,10 +162,12 @@ jvm/detekt/build.sh test
   is also what stock detekt finds there. CI runs it.
 
 **Changing detekt.**
-1. Edit the checkout in `jvm/detekt/build/detekt`.
-2. Commit there: amend the patch's commit, or add a new one.
-3. Run `jvm/detekt/build.sh patches`, which rewrites `patches/`.
-4. Run `jvm/detekt/build.sh`.
+1. In a clone of `barteo/detekt`, check out `kc-analysis-api`, and edit and
+   commit there: amend the change's commit, or add a new one.
+2. Run `DETEKT_SRC=<the clone> jvm/detekt/build.sh test`, which builds the
+   clone as it is.
+3. Push the branch, and set `DETEKT_COMMIT` in `jvm/detekt/build.sh` to its
+   head.
 
 ## Differences
 

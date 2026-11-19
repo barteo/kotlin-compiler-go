@@ -281,8 +281,8 @@ every file's facts on 4 goroutines instead of one already measures
 ## On kc-aa
 
 detekt on kc-aa is detekt-cli built from its sources with
-[three patches](../jvm/detekt/patches), on `KcStandalone`'s session. The
-five changes are ported:
+[kc's changes](https://github.com/barteo/detekt/commits/kc-analysis-api), on
+`KcStandalone`'s session. The five changes are ported:
 
 | # | On kc-detekt | On kc-aa |
 |:---|:---|:---|

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# build.sh builds detekt on kc: detekt-cli from detekt's sources at
-# $DETEKT_COMMIT (tag $DETEKT_TAG), with the patches in patches/ applied,
-# compiled with kotlinc against kc's Analysis API (jvm/kc-aa) and the
-# Analysis API 2.4.21 jar jvm/aa-api builds. kc answers the Analysis API
-# session detekt's rules analyze in (docs/detekt.md).
+# build.sh builds detekt on kc: detekt-cli from the sources of detekt's
+# fork, branch $DETEKT_BRANCH of $DETEKT_REPO at $DETEKT_COMMIT (detekt's
+# tag $DETEKT_TAG and kc's changes to it, one commit each), compiled with
+# kotlinc against kc's Analysis API (jvm/kc-aa) and the Analysis API
+# 2.4.21 jar jvm/aa-api builds. kc answers the Analysis API session
+# detekt's rules analyze in (docs/detekt.md).
 #
-#	jvm/detekt/build.sh [test|patches]
+#	jvm/detekt/build.sh [test]
 #
 # It writes build/detekt.jar, build/classpath.txt (the class path run.sh
 # runs it with) and, through jvm/kc-aa/build.sh, kc-aa.jar and libkc.so.
-# The checkout of detekt is build/detekt: the pinned commit and one commit
-# per patch, applied with git am.
-#
-# "patches" writes patches/ from the commits on top of $DETEKT_COMMIT in
-# build/detekt. Changing detekt is: edit build/detekt, commit (amend the
-# patch's commit or add one), run "build.sh patches", then build.sh.
+# The checkout of detekt is build/detekt, a shallow one of $DETEKT_COMMIT,
+# made again when it is at another commit. DETEKT_SRC=DIR builds the
+# detekt sources in DIR instead, as they are: changing detekt is editing a
+# clone of the fork and building it with DETEKT_SRC, then pushing to
+# $DETEKT_BRANCH and setting DETEKT_COMMIT here to its head.
 #
 # "test" then runs detekt with --all-rules and type resolution over
 # test/src and compares its findings, one "file:line:column rule" per line,
@@ -28,52 +28,28 @@
 # BuildConfig.
 set -euo pipefail
 
-DETEKT_REPO=https://github.com/detekt/detekt.git
+DETEKT_REPO=https://github.com/barteo/detekt.git
+DETEKT_BRANCH=kc-analysis-api
 DETEKT_TAG=v2.0.0-alpha.6
-DETEKT_COMMIT=401c64bf232db0dcb054a7cfd0ca5fed3a095bc6
+DETEKT_COMMIT=ed862469bccbefd85bc3abc38141eaa435d5433a
 MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out=$here/build
-src=$out/detekt
+src=${DETEKT_SRC:-$out/detekt}
 mkdir -p "$out/m2"
 export JAVA_TOOL_OPTIONS=${KC_JAVA_TOOL_OPTIONS:-}
 java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")}
 mode=${1:-}
 
-# The patches, in order, and a stamp of them: the checkout is made again
-# when they change.
-patches=$(find "$here/patches" -name '*.patch' | sort)
-stamp=$(cat $patches /dev/null | sha256sum | cut -d' ' -f1)
-
-# git with a fixed committer, so that applying the patches again makes the
-# same commits.
-g() { GIT_COMMITTER_NAME=kc GIT_COMMITTER_EMAIL=kc@localhost GIT_COMMITTER_DATE="2000-01-01T00:00:00Z" git -C "$src" "$@"; }
-
-if [ "$mode" = patches ]; then
-	[ -d "$src/.git" ] || { echo "build.sh: no checkout in $src: run build.sh first" >&2; exit 1; }
-	rm -f "$here"/patches/*.patch
-	g format-patch -q --zero-commit --no-signature --no-numbered -o "$here/patches" "$DETEKT_COMMIT"
-	patches=$(find "$here/patches" -name '*.patch' | sort)
-	cat $patches /dev/null | sha256sum | cut -d' ' -f1 > "$out/patches.stamp"
-	ls "$here/patches"
-	exit 0
-fi
-
-# The checkout: $DETEKT_COMMIT, shallow, and the patches.
-if [ "$(cat "$out/patches.stamp" 2>/dev/null)" != "$stamp" ] || [ ! -d "$src/.git" ]; then
-	if [ "$(git -C "$src" rev-parse -q --verify "$DETEKT_COMMIT^{commit}" 2>/dev/null)" != "$DETEKT_COMMIT" ]; then
-		rm -rf "$src"
-		git init -q "$src"
-		git -C "$src" remote add origin "$DETEKT_REPO"
-		git -C "$src" fetch -q --depth 1 origin "$DETEKT_COMMIT"
-	fi
-	g am --abort >/dev/null 2>&1 || true
-	g checkout -q -f --detach "$DETEKT_COMMIT"
-	g clean -q -fdx
-	[ -z "$patches" ] || g am -q --keep-cr $patches
-	echo "$stamp" > "$out/patches.stamp"
+# The checkout: $DETEKT_COMMIT, shallow.
+if [ -z "${DETEKT_SRC:-}" ] && [ "$(git -C "$src" rev-parse -q --verify HEAD 2>/dev/null)" != "$DETEKT_COMMIT" ]; then
+	rm -rf "$src"
+	git init -q "$src"
+	git -C "$src" remote add origin "$DETEKT_REPO"
+	git -C "$src" fetch -q --depth 1 origin "$DETEKT_COMMIT"
+	git -C "$src" checkout -q --detach "$DETEKT_COMMIT"
 fi
 
 # kc's Analysis API: kc-aa.jar and libkc.so, built again if their sources
