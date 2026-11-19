@@ -847,7 +847,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
-		c.exposeBoxedPrivate(c.file.Decls, false)
+		c.exposeBoxed(c.file.Decls, nil, false)
 		for _, d := range c.aliases {
 			c.aliasArrayNothing(d)
 		}

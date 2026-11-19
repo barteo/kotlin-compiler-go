@@ -306,6 +306,14 @@ func constString(x syntax.Expr, depth int) (string, bool) {
 			b.WriteString(p.Lit)
 		}
 		return b.String(), true
+	case *syntax.Binary:
+		if x.Op == syntax.PLUS {
+			l, ok1 := constString(x.X, depth+1)
+			r, ok2 := constString(x.Y, depth+1)
+			if ok1 && ok2 {
+				return l + r, true
+			}
+		}
 	case *syntax.Ident:
 		if v := x.Sym; v != nil {
 			if s, ok := v.Constant.(string); ok {
