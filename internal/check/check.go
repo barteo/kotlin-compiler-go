@@ -259,8 +259,8 @@ type Checker struct {
 	// redundantElses are the whens whose else branch is redundant: see
 	// noteRedundantElse.
 	redundantElses map[*syntax.When]bool
-	// blockJumps are, with -Wextra, the blocks with a statement that
-	// always jumps, and its index: what follows it is unreachable.
+	// blockJumps are the blocks with a statement that always jumps, and
+	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
 	// deadBlocks are the blocks in code reported as unreachable.
 	deadBlocks map[*syntax.Block]bool

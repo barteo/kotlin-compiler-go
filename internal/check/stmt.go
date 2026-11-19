@@ -86,9 +86,8 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	if nothing {
 		t = types.NothingType
 	}
-	if c.u.extraWarnings {
-		c.noteJump(b, jump)
-	}
+	// UNREACHABLE_CODE (with -Wextra) and tailrec's warnings read them.
+	c.noteJump(b, jump)
 	b.T = t
 	return t
 }

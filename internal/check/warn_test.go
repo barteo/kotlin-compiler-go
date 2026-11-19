@@ -162,7 +162,7 @@ class K { tailrec fun Int.t6(): Int = (this - 1).t6() }
 @Suppress("x")
 tailrec
 fun t7(n: Int) {}
-`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NO_TAIL_CALLS_FOUND", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
+`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NON_TAIL_RECURSIVE_CALL", "4:NO_TAIL_CALLS_FOUND", "5:NON_TAIL_RECURSIVE_CALL", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {
@@ -317,6 +317,12 @@ func TestWarningsIdentity(t *testing.T) {
 // testdata/atomic.kt.
 func TestWarningsAtomic(t *testing.T) {
 	checkReference(t, "testdata/atomic.kt", Options{Warnings: true})
+}
+
+// TestWarningsTailrec checks the warnings of tailrec functions' calls of
+// themselves against those of testdata/tailrec.kt.
+func TestWarningsTailrec(t *testing.T) {
+	checkReference(t, "testdata/tailrec.kt", Options{Warnings: true})
 }
 
 // TestWarningsUnused checks the warnings of unused expressions against
