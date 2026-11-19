@@ -85,7 +85,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20205 of 21714 expected errors (93.1%) on their lines.
+kc reports 20209 of 21714 expected errors (93.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -134,9 +134,7 @@ kc reports 20205 of 21714 expected errors (93.1%) on their lines.
 | `NOT_YET_SUPPORTED_IN_INLINE` | 23 | 16 | 7 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `EQUALITY_NOT_APPLICABLE` | 27 | 21 | 6 |
 | `EXTENSION_IN_CLASS_REFERENCE_NOT_ALLOWED` | 12 | 6 | 6 |
-| `FORBIDDEN_IDENTITY_EQUALS` | 45 | 39 | 6 |
 | `INAPPLICABLE_TARGET_ON_PROPERTY` | 18 | 12 | 6 |
 | `INVISIBLE_SETTER` | 45 | 39 | 6 |
 | `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 90 | 6 |
@@ -149,6 +147,8 @@ kc reports 20205 of 21714 expected errors (93.1%) on their lines.
 | `CYCLIC_CONSTRUCTOR_DELEGATION_CALL` | 28 | 23 | 5 |
 | `FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES` | 6 | 1 | 5 |
 | `ILLEGAL_JVM_NAME` | 14 | 9 | 5 |
+| `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_OPEN_ABSTRACT` | 5 | 0 | 5 |
+| `OVERRIDING_FINAL_MEMBER_BY_DELEGATION` | 8 | 3 | 5 |
 | *536 more* | | | |
 
 ### Missed errors by cause
@@ -160,8 +160,8 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | accepted | 97 | 6.4% | `INLINE_FROM_HIGHER_PLATFORM` 21, `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6 |
 | syntax-error | 205 | 13.6% | `WRONG_MODIFIER_TARGET` 42, `UNRESOLVED_REFERENCE` 22, `INCOMPATIBLE_MODIFIERS` 9, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 177 | 11.7% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 8 |
-| missing-check | 1030 | 68.3% | `UNRESOLVED_REFERENCE` 131, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 36 |
+| nearby | 175 | 11.6% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 8 |
+| missing-check | 1028 | 68.3% | `UNRESOLVED_REFERENCE` 131, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 36 |
 
 ## Errors kotlinc doesn't report
 
@@ -211,15 +211,17 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 1490 of the 3652 warnings the tests expect (40.8%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2052 of the 3652 warnings the tests expect (56.2%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 287 | 0 |
 | `DEPRECATION` | 199 | 115 | 3 |
 | `UNREACHABLE_CODE` | 158 | 101 | 0 |
+| `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
+| `UNUSED_EXPRESSION` | 136 | 122 | 0 |
 | `USELESS_IS_CHECK` | 127 | 112 | 0 |
-| `ERROR_SUPPRESSION` | 102 | 7 | 0 |
+| `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 95 | 94 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 93 | 85 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
@@ -229,14 +231,25 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNCHECKED_CAST` | 87 | 39 | 1 |
 | `OPT_IN_USAGE` | 83 | 62 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
+| `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
 | `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 42 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
 | `USELESS_ELVIS` | 44 | 27 | 0 |
+| `UNUSED_VARIABLE` | 35 | 35 | 3 |
+| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 8 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 24 | 0 |
+| `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
+| `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 1 | 0 |
 | `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
+| `REDUNDANT_ELSE_IN_WHEN` | 26 | 19 | 0 |
+| `DIVISION_BY_ZERO` | 25 | 22 | 0 |
+| `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
+| `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
+| `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
+| `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
 | `UNSAFE_CAST_RELYING_ON_NULL` | 1 | 1 | 0 |
 
@@ -244,23 +257,14 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 
 | Warning | Count |
 |:---|---:|
-| `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 |
-| `UNUSED_EXPRESSION` | 136 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
-| `EXTENSION_SHADOWED_BY_MEMBER` | 67 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
-| `UNUSED_VARIABLE` | 35 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |
-| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
 | `OVERRIDE_DEPRECATION` | 30 |
-| `DEPRECATED_IDENTITY_EQUALS` | 26 |
-| `INCOMPATIBLE_ENUM_COMPARISON` | 26 |
 | `INLINE_CLASS_DEPRECATED` | 26 |
 | `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 |
-| `REDUNDANT_ELSE_IN_WHEN` | 26 |
-| `DIVISION_BY_ZERO` | 25 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
 | `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 |
@@ -274,5 +278,14 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
-| *81 more* | |
+| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
+| `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 |
+| `USELESS_ELVIS_LEFT_IS_NULL` | 15 |
+| `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 |
+| `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 |
+| `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
+| `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
+| `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 |
+| `WRONG_INVOCATION_KIND` | 12 |
+| *68 more* | |
 
