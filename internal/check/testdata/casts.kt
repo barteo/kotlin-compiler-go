@@ -281,8 +281,8 @@ fun w5(x: S) = when (x) {
     is S -> 2
 }
 fun w6(x: String) { when (x) {
-    "a" -> 0
-    !is CharSequence -> 1 // USELESS_IS_CHECK
+    "a" -> 0 // UNUSED_EXPRESSION
+    !is CharSequence -> 1 // USELESS_IS_CHECK UNUSED_EXPRESSION
 } }
 fun w7(x: Int) = when {
     x is Int -> 1 // USELESS_IS_CHECK
@@ -305,7 +305,7 @@ fun w13(x: Any) {
     if (x is A && x is I) x is B
 }
 fun w14(x: Any) {
-    if (x is String) when (x) { is Int -> 1; else -> 2 } // IMPOSSIBLE_IS_CHECK_WARNING
+    if (x is String) when (x) { is Int -> 1; else -> 2 } // IMPOSSIBLE_IS_CHECK_WARNING UNUSED_EXPRESSION
 }
 fun w15(x: Any) {
     if (x is A) x is F
@@ -353,7 +353,7 @@ fun w29(x: Any?) {
     if (x is String) x is String? // USELESS_IS_CHECK
 }
 fun w30(x: Any) {
-    if (x is B) when (x) { is A -> 1; else -> 2 } // IMPOSSIBLE_IS_CHECK_WARNING
+    if (x is B) when (x) { is A -> 1; else -> 2 } // IMPOSSIBLE_IS_CHECK_WARNING UNUSED_EXPRESSION
 }
 fun w31(x: Any) {
     if (x is A) { if (x is I) x is B }

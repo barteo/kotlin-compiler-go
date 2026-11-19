@@ -312,6 +312,12 @@ func TestWarningsIdentity(t *testing.T) {
 	checkReference(t, "testdata/identity.kt", Options{Warnings: true})
 }
 
+// TestWarningsUnused checks the warnings of unused expressions against
+// those kotlinc reports of testdata/unused.kt.
+func TestWarningsUnused(t *testing.T) {
+	checkReference(t, "testdata/unused.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnreachable checks the warnings of unreachable code against
 // those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
 // there are none without it.

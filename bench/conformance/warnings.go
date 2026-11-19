@@ -37,13 +37,31 @@ func kcWarnings(out string, byPath map[string]string) []diag {
 	return ws
 }
 
-// switchedOff returns the names of the diagnostics that test t's
-// DIAGNOSTICS directive switches off: -NAME.
-func switchedOff(t *test) map[string]bool {
+// uncheckedWarnings are the warnings kotlinc reports by default that the
+// diagnostics tests' markup leaves out unless a test asks for them: with
+// WITH_EXTRA_CHECKERS, a DIAGNOSTICS directive's +NAME, or a mark of the
+// warning. The markup of the tests that ask for none never expects them,
+// though kotlinc reports them there.
+var uncheckedWarnings = []string{"UNUSED_EXPRESSION", "UNUSED_LAMBDA_EXPRESSION"}
+
+// switchedOff returns the names of the diagnostics that test t, with
+// marks ms, switches off: those its DIAGNOSTICS directive does, -NAME,
+// and the uncheckedWarnings it doesn't ask for.
+func switchedOff(t *test, ms []mark) map[string]bool {
 	off := map[string]bool{}
+	on := map[string]bool{}
 	for _, v := range t.values("DIAGNOSTICS") {
 		for _, f := range strings.Fields(v) {
 			if n, ok := strings.CutPrefix(f, "-"); ok {
+				off[n] = true
+			} else if n, ok := strings.CutPrefix(f, "+"); ok {
+				on[n] = true
+			}
+		}
+	}
+	if _, ok := t.directives["WITH_EXTRA_CHECKERS"]; !ok {
+		for _, n := range uncheckedWarnings {
+			if !on[n] && !slices.ContainsFunc(ms, func(m mark) bool { return m.name == n }) {
 				off[n] = true
 			}
 		}

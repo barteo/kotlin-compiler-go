@@ -15,7 +15,9 @@ import (
 // checker didn't find are never not null here. A wrong warning breaks a
 // build with -Werror.
 func (c *Checker) localWarnings() {
+	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	walkCode(c.file.Decls, func(n any) bool {
+		c.unusedNode(u, n)
 		switch n := n.(type) {
 		case *syntax.NotNull:
 			if t := n.X.Type(); definitelyNonNull(t) && !c.maybeNull[n] && !lambdaLike(n.X) {
