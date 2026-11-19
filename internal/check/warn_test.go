@@ -312,6 +312,13 @@ func TestWarningsIdentity(t *testing.T) {
 	checkReference(t, "testdata/identity.kt", Options{Warnings: true})
 }
 
+// TestWarningsAtomic checks the warnings of compare-and-set calls on
+// atomic references of primitives and value classes against those of
+// testdata/atomic.kt.
+func TestWarningsAtomic(t *testing.T) {
+	checkReference(t, "testdata/atomic.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {

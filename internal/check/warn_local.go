@@ -43,6 +43,8 @@ func (c *Checker) localWarnings() {
 			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
 				c.identityWarnings(n)
 			}
+		case *syntax.Call:
+			c.atomicWarnings(n)
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)

@@ -210,7 +210,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2052 of the 3652 warnings the tests expect (56.2%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2155 of the 3652 warnings the tests expect (59.0%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -229,6 +229,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNNECESSARY_SAFE_CALL` | 90 | 78 | 1 |
 | `UNCHECKED_CAST` | 87 | 39 | 1 |
 | `OPT_IN_USAGE` | 83 | 62 | 0 |
+| `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
@@ -237,6 +238,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
 | `USELESS_ELVIS` | 44 | 27 | 0 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
+| `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 8 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 24 | 0 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
@@ -257,9 +259,7 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | Warning | Count |
 |:---|---:|
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
-| `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
-| `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
 | `OVERRIDE_DEPRECATION` | 30 |
 | `INLINE_CLASS_DEPRECATED` | 26 |
@@ -286,5 +286,7 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
-| *68 more* | |
+| `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 |
+| *66 more* | |
 
