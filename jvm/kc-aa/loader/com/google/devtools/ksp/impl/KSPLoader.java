@@ -14,8 +14,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -43,6 +45,13 @@ import java.util.stream.Stream;
  * locals behind, which keep the class loaders of a finished build for as long as the thread
  * lives, and the caller's thread is the build tool's to keep.
  *
+ * <p>The plugin makes the processors' class loader anew for every task of every build, so each
+ * run loads the processors' classes and runs them before the JVM has compiled them. With the
+ * environment variable {@code KC_KSP_KEEP} set, the processors of a run come from a class
+ * loader this class keeps for their class path, for as long as the jars stay the same, and
+ * every task and build with that class path shares it. A processor then keeps its static
+ * state from one run to the next, which is why the variable has to ask for it.
+ *
  * <p>The system property {@code kc.ksp.stock:CLASSPATH}, where CLASSPATH is this class
  * loader's class path, gives the class path of stock KSP for this one. When it is set and
  * the run on kc fails, stock KSP runs in its place, over new class loaders for itself and for
@@ -57,6 +66,11 @@ public final class KSPLoader {
 
   private static ClassLoader backend;
 
+  /** A kept class loader of processors, with the sizes and times of its jars when it was made. */
+  private record Kept(String jars, URLClassLoader loader) {}
+
+  private static final Map<List<URL>, Kept> KEPT = new HashMap<>();
+
   private KSPLoader() {}
 
   public static int loadAndRunKSP(byte[] config, List<?> providers, int logLevel) throws Throwable {
@@ -64,9 +78,14 @@ public final class KSPLoader {
     long start = System.nanoTime();
     Object failure;
     try {
-      FutureTask<Integer> run = new FutureTask<>(() -> run(backend(), config, providers, logLevel));
+      ClassLoader context = Thread.currentThread().getContextClassLoader();
+      List<?> own = System.getenv("KC_KSP_KEEP") == null ? providers : kept(providers);
+      if (own != providers && context == providers.get(0).getClass().getClassLoader()) {
+        context = own.get(0).getClass().getClassLoader();
+      }
+      FutureTask<Integer> run = new FutureTask<>(() -> run(backend(), config, own, logLevel));
       Thread thread = new Thread(run, "kc-ksp " + module);
-      thread.setContextClassLoader(Thread.currentThread().getContextClassLoader());
+      thread.setContextClassLoader(context);
       thread.start();
       int code;
       try {
@@ -98,6 +117,45 @@ public final class KSPLoader {
     System.out.println("kc: KSP on " + module + " failed, so stock KSP processes it: "
         + (failure instanceof Throwable ? failure : "exit code " + failure));
     return onStock(stock, (URLClassLoader) processors, config, providers, logLevel);
+  }
+
+  /**
+   * The providers of the classes of {@code providers}, from the class loader kept for their class
+   * path, or {@code providers} when their class loader isn't the plugin's.
+   */
+  private static synchronized List<?> kept(List<?> providers) throws Exception {
+    ClassLoader given = providers.isEmpty() ? null : providers.get(0).getClass().getClassLoader();
+    if (!(given instanceof URLClassLoader) || given.getParent() != KSPLoader.class.getClassLoader()) {
+      return providers;
+    }
+    List<URL> urls = List.of(((URLClassLoader) given).getURLs());
+    StringBuilder jars = new StringBuilder();
+    for (URL url : urls) {
+      File f = new File(url.toURI());
+      jars.append(f.length()).append(' ').append(f.lastModified()).append(' ');
+    }
+    Kept kept = KEPT.get(urls);
+    boolean made = kept == null || !kept.jars.equals(jars.toString());
+    if (made) {
+      kept = new Kept(jars.toString(), new URLClassLoader(urls.toArray(new URL[0]), given.getParent()));
+      KEPT.put(urls, kept);
+    }
+    Map<String, Object> byName = new HashMap<>();
+    for (Object p : ServiceLoader.load(kept.loader.loadClass(PROVIDER), kept.loader)) {
+      byName.put(p.getClass().getName(), p);
+    }
+    List<Object> own = new ArrayList<>();
+    for (Object p : providers) {
+      Object q = byName.get(p.getClass().getName());
+      if (q == null) {
+        return providers;
+      }
+      own.add(q);
+    }
+    if (System.getenv("KC_TIMING") != null) {
+      System.err.println("kc-jvm: processors " + (made ? "loaded" : "kept"));
+    }
+    return own;
   }
 
   /** Runs stock KSP as the plugin does, after removing what the failed run wrote. */
