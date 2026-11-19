@@ -1317,6 +1317,13 @@ func (c *Checker) kotlinFuns1(name string, ext bool) []*types.FunSym {
 // level of the imports that bring them, highest first: explicit imports,
 // star imports and the default imports.
 func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
+	return c.funLevels(name, ext, nil)
+}
+
+// funLevels is kotlinFunLevels. If fits isn't nil, the class path's
+// extensions are only those whose receiver type it takes, as
+// pkgFunsWhere has them.
+func (c *Checker) funLevels(name string, ext bool, fits func(types.Type) bool) [][]*types.FunSym {
 	keep := func(fs []*types.FunSym) []*types.FunSym {
 		var out []*types.FunSym
 		for _, f := range fs {
@@ -1331,21 +1338,25 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 	if !ext1.kotlin {
 		return levels
 	}
+	kind := nonExtFuns
+	if ext {
+		kind = extFuns
+	}
 	var stars, defaults []*types.FunSym
 	for _, pkg := range c.stars {
 		if c.renamedAway(pkg, name) {
 			continue
 		}
-		stars = append(stars, keep(ext1.pkgFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+		stars = append(stars, ext1.pkgFunsWhere(strings.ReplaceAll(pkg, "/", "."), name, false, kind, fits)...)
 		if c.file.SuppressInvisible {
 			// ktor's recoverStackTrace(e, cont) of kotlinx.coroutines.internal.*
 			// under @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE").
-			stars = append(stars, keep(ext1.pkgInternalFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+			stars = append(stars, ext1.pkgFunsWhere(strings.ReplaceAll(pkg, "/", "."), name, true, kind, fits)...)
 		}
 	}
 	for _, pkg := range defaultPackages {
 		if !c.renamedAway(pkg, name) {
-			defaults = append(defaults, keep(ext1.pkgFuns(pkg, name))...)
+			defaults = append(defaults, ext1.pkgFunsWhere(pkg, name, false, kind, fits)...)
 		}
 	}
 	return append(levels, stars, defaults)
@@ -1357,6 +1368,36 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 // scopes that has an extension for the receiver hides the others.
 func (c *Checker) extCallees(name string, rt types.Type) []callee {
 	return c.extCalleesFor(name, rt, nil)
+}
+
+// extLevels returns kotlinFunLevels(name, true) without the class path's
+// extensions whose receiver can't take a receiver of type rt, which are
+// never converted. They are cached for the receiver types that recvFits
+// tells apart by their kind, class, whether a function type has its type
+// arguments and whether a value may be null: all but type parameters and
+// variables, whose bounds it looks at.
+func (c *Checker) extLevels(name string, rt types.Type) [][]*types.FunSym {
+	fits := func(r types.Type) bool { return c.recvFits(rt, r) }
+	rn := rt.NonNull()
+	if rn.K == types.TypeParam || rn.K == types.TypeVar {
+		return c.funLevels(name, true, fits)
+	}
+	k := levelKey{name, rn.K, rn.C, rn.A != nil, types.MayBeNull(rt) && !rt.P}
+	levels, ok := c.levelCache[k]
+	if !ok {
+		levels = c.funLevels(name, true, fits)
+		c.levelCache[k] = levels
+	}
+	return levels
+}
+
+// levelKey keys Checker.levelCache: see extLevels.
+type levelKey struct {
+	name     string
+	k        types.Kind
+	c        *types.ClassSym
+	args     bool
+	nullable bool
 }
 
 // calleeFuns returns the functions of cs.
@@ -1516,13 +1557,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 		return out
 	}
 	// The first level of imports with an extension for the receiver.
-	k := funKey{name, true}
-	levels, ok := c.levelCache[k]
-	if !ok {
-		levels = c.kotlinFunLevels(name, true)
-		c.levelCache[k] = levels
-	}
-	for _, fs := range levels {
+	for _, fs := range c.extLevels(name, rt) {
 		if out := fits(fs); len(out) > 0 {
 			return out
 		}

@@ -191,6 +191,10 @@ type kpkg struct {
 
 	mu   sync.Mutex
 	funs map[string][]*types.FunSym
+	// entries are the functions by name, converted as lookups need
+	// them, and kinds the functions of a kind: see pkgFunsWhere.
+	entries map[kindKey][]*kfunEntry
+	kinds   map[kindKey][]*types.FunSym
 	// internalFuns are the internal functions, by pkgInternalFuns.
 	internalFuns map[string][]*types.FunSym
 	props        map[string][]*types.FunSym // getters of extension properties
@@ -2201,6 +2205,48 @@ func (t *classTable) pkgInternalFuns(pkg, name string) []*types.FunSym {
 }
 
 func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym {
+	return t.pkgFunsWhere(pkg, name, internal, allFuns, nil)
+}
+
+// funKind selects a package's functions by whether they are extensions.
+type funKind uint8
+
+const (
+	allFuns funKind = iota
+	extFuns
+	nonExtFuns
+)
+
+// kindKey keys kpkg.kinds.
+type kindKey struct {
+	name     string
+	internal bool
+	kind     funKind
+}
+
+// kfunEntry is a top-level function of a package, read from its metadata
+// and converted to a symbol only when a lookup can use it: a lookup of
+// extensions for a receiver needs only those whose receiver takes it, of
+// the dozens a name like map or forEach has.
+type kfunEntry struct {
+	f    *kmeta.Function
+	part *kpart
+	key  string // the method's name and descriptor
+	// recv is an extension's receiver type without its type arguments,
+	// which is enough for recvFits; recvOK is unset if it isn't had
+	// that cheaply, for a type parameter or a suspend function type.
+	recv           types.Type
+	recvOK, recvIn bool
+	sym            *types.FunSym // once converted
+}
+
+// pkgFunsWhere returns the top-level functions of a package with a name,
+// as pkgFunsOf, of a kind. If fits isn't nil, it leaves out the
+// extensions whose receiver type, without its type arguments, it rejects;
+// it must reject only receivers that can't take the call's, as recvFits
+// does, so the result is the others' in the same order, without the
+// duplicates pkgFunsOf leaves out.
+func (t *classTable) pkgFunsWhere(pkg, name string, internal bool, kind funKind, fits func(types.Type) bool) []*types.FunSym {
 	t = t.root()
 	p := t.pkg(pkg)
 	if p == nil || !p.names[name] {
@@ -2208,18 +2254,69 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	cache := p.funs
-	if internal {
+	var cache map[string][]*types.FunSym
+	var kk kindKey
+	switch {
+	case fits != nil:
+	case kind == allFuns && internal:
 		if p.internalFuns == nil {
 			p.internalFuns = map[string][]*types.FunSym{}
 		}
 		cache = p.internalFuns
+	case kind == allFuns:
+		cache = p.funs
+	default:
+		kk = kindKey{name, internal, kind}
+		if fs, ok := p.kinds[kk]; ok {
+			return fs
+		}
 	}
 	if fs, ok := cache[name]; ok {
 		return fs
 	}
-	start := time.Now()
 	var fs []*types.FunSym
+	for _, e := range t.pkgEntries(p, name, internal) {
+		if kind == extFuns && e.f.Recv == nil || kind == nonExtFuns && e.f.Recv != nil {
+			continue
+		}
+		if fits != nil && e.f.Recv != nil {
+			if !e.recvIn {
+				e.recv, e.recvOK = t.shallowType(e.f.Recv)
+				e.recvIn = true
+			}
+			if e.recvOK && !fits(e.recv) {
+				continue
+			}
+		}
+		sym := t.pkgFun(pkg, name, e)
+		// As in K2, one function of two modules on the class path, by
+		// its package, name and signature, is one candidate.
+		if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+			continue
+		}
+		fs = append(fs, sym)
+	}
+	switch {
+	case fits != nil:
+	case cache != nil:
+		cache[name] = fs
+	default:
+		if p.kinds == nil {
+			p.kinds = map[kindKey][]*types.FunSym{}
+		}
+		p.kinds[kk] = fs
+	}
+	return fs
+}
+
+// pkgEntries returns the entries of the functions of a package with a
+// name, public or internal ones, reading them on first use. p.mu is held.
+func (t *classTable) pkgEntries(p *kpkg, name string, internal bool) []*kfunEntry {
+	k := kindKey{name: name, internal: internal}
+	if es, ok := p.entries[k]; ok {
+		return es
+	}
+	var es []*kfunEntry
 	for _, part := range p.parts {
 		decls, err := part.meta.Functions(name)
 		if err != nil {
@@ -2229,56 +2326,96 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 			if internal != (f.Flags.Visibility() == kmeta.Internal && !part.friend) {
 				continue
 			}
-			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[f.JVM.Name+f.JVM.Desc] {
+			key := f.JVM.Name + f.JVM.Desc
+			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[key] {
 				continue
 			}
-			sym := t.kfun(f, nil, nil, part.methods)
-			sym.Facade = part.facade
-			sym.LowPriority = part.low[f.JVM.Name+f.JVM.Desc]
-			annotate(sym, part.annots[f.JVM.Name+f.JVM.Desc])
-			if sym.Why != "" && typesOK(sym) {
-				intrinsic(sym, part.facade, f.JVM)
-			}
-			switch {
-			case sym.Inline != nil && sym.Unsupported:
-				// An inline-only function is called by copying its body.
-				sym.Unsupported, sym.Why = false, ""
-			case sym.Inline != nil:
-				sym.Inline = nil // an intrinsic
-			case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
-				// A public inline function too, if its body can be copied.
-				// One with reified type parameters must be: its method
-				// doesn't know them.
-				sym.Inline = inlineInfo(f, hasReified(sym))
-			}
-			if in := sym.Inline; in != nil {
-				in.Class, in.Load = part.class, t.loadInline(part.class)
-			}
-			if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
-				// An intrinsic, as in kotlinc: its body only throws.
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.TypeOf
-			}
-			if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.SuspendIntrinsic
-			}
-			if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
-				// An intrinsic of Compose's plugin: its body doesn't
-				// start the movable group.
-				sym.Inline, sym.Builtin = nil, types.ComposeKey
-			}
-			// As in K2, one function of two modules on the class path, by
-			// its package, name and signature, is one candidate.
-			if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
-				continue
-			}
-			fs = append(fs, sym)
+			es = append(es, &kfunEntry{f: f, part: part, key: key})
 		}
 	}
-	cache[name] = fs
-	t.timed(start, len(fs))
-	return fs
+	if p.entries == nil {
+		p.entries = map[kindKey][]*kfunEntry{}
+	}
+	p.entries[k] = es
+	return es
+}
+
+// pkgFun converts entry e of a package's functions with a name to its
+// symbol, on first use. The package's lock is held.
+func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
+	if e.sym != nil {
+		return e.sym
+	}
+	start := time.Now()
+	f, part := e.f, e.part
+	sym := t.kfun(f, nil, nil, part.methods)
+	sym.Facade = part.facade
+	sym.LowPriority = part.low[e.key]
+	annotate(sym, part.annots[e.key])
+	if sym.Why != "" && typesOK(sym) {
+		intrinsic(sym, part.facade, f.JVM)
+	}
+	switch {
+	case sym.Inline != nil && sym.Unsupported:
+		// An inline-only function is called by copying its body.
+		sym.Unsupported, sym.Why = false, ""
+	case sym.Inline != nil:
+		sym.Inline = nil // an intrinsic
+	case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
+		// A public inline function too, if its body can be copied.
+		// One with reified type parameters must be: its method
+		// doesn't know them.
+		sym.Inline = inlineInfo(f, hasReified(sym))
+	}
+	if in := sym.Inline; in != nil {
+		in.Class, in.Load = part.class, t.loadInline(part.class)
+	}
+	if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
+		// An intrinsic, as in kotlinc: its body only throws.
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.TypeOf
+	}
+	if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.SuspendIntrinsic
+	}
+	if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
+		// An intrinsic of Compose's plugin: its body doesn't
+		// start the movable group.
+		sym.Inline, sym.Builtin = nil, types.ComposeKey
+	}
+	e.sym = sym
+	t.timed(start, 1)
+	return sym
+}
+
+// shallowType is a type of metadata without its type arguments, as ktype
+// would have it but for those, or false if it is a type parameter, a
+// suspend or @Composable function type, or a class that isn't there.
+func (t *classTable) shallowType(kt *kmeta.Type) (types.Type, bool) {
+	switch {
+	case kt.Class == "" || kt.Flags&kmeta.TypeSuspend != 0 || kt.Composable:
+		return types.InvalidType, false
+	case len(kt.Args) == 0 && kt.Outer == nil:
+		return t.ktype(kt, nil)
+	}
+	switch kt.Class {
+	case "kotlin/Int", "kotlin/Long", "kotlin/Double", "kotlin/Boolean", "kotlin/Char", "kotlin/Float", "kotlin/Byte", "kotlin/Short",
+		"kotlin/String", "kotlin/Any", "kotlin/Unit", "kotlin/Nothing":
+		return types.InvalidType, false // as ktype has them, which takes no arguments
+	}
+	cls := t.kclass(kt.Class)
+	if cls == nil {
+		return types.InvalidType, false
+	}
+	r := types.ClassType(cls)
+	switch {
+	case kt.Upper != nil:
+		r = r.Platform()
+	case kt.Nullable:
+		r = r.Nullable()
+	}
+	return r, true
 }
 
 // pkgExtProps returns the getters of a package's public extension
