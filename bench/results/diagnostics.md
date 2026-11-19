@@ -210,13 +210,13 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2244 of the 3652 warnings the tests expect (61.4%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2274 of the 3652 warnings the tests expect (62.3%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 287 | 0 |
 | `DEPRECATION` | 199 | 115 | 3 |
-| `UNREACHABLE_CODE` | 158 | 101 | 0 |
+| `UNREACHABLE_CODE` | 158 | 131 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 122 | 0 |
 | `USELESS_IS_CHECK` | 127 | 112 | 0 |

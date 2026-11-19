@@ -331,6 +331,22 @@ func TestWarningsOverrideDeprecation(t *testing.T) {
 	checkReference(t, "testdata/overridedepr.kt", Options{Warnings: true})
 }
 
+// TestWarningsDeadClass checks the warnings of the code of classes that
+// their initialization can't run against those kotlinc reports with
+// -Wextra of testdata/deadclass.kt, and that there are none without it.
+func TestWarningsDeadClass(t *testing.T) {
+	checkReference(t, "testdata/deadclass.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/deadclass.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":UNREACHABLE_CODE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {

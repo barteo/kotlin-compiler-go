@@ -17,8 +17,15 @@ import (
 func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	c.shadowWarnings()
+	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
+		// Before the walk, so that unreachableWarnings skips the blocks
+		// reported here.
+		deadClasses = map[*syntax.ClassDecl]bool{}
+		for _, d := range c.classes {
+			c.classDeadCode(d, deadClasses)
+		}
 	}
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
@@ -45,6 +52,14 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Call:
 			c.atomicWarnings(n)
+		case *syntax.ObjectExpr:
+			if deadClasses != nil {
+				c.classDeadCode(n.Decl, deadClasses)
+			}
+		case *syntax.LocalClass:
+			if deadClasses != nil {
+				c.classDeadCode(n.Decl, deadClasses)
+			}
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)
