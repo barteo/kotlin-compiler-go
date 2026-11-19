@@ -1,6 +1,10 @@
 package syntax
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"regexp"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // File is a parsed source file.
 type File struct {
@@ -1246,6 +1250,34 @@ type TmplPart struct {
 type StringLit struct {
 	exprBase
 	Parts []TmplPart
+	// Prefix is the number of $ of its interpolation prefix ($$"..."), 0
+	// if it has none, and Src its source after the prefix, quotes
+	// included, which escapes ("\$") make differ from Parts.
+	Prefix int
+	Src    string
+}
+
+// redundantPrefix matches what looks like an interpolation in a string
+// literal's source: kotlinc's RedundantInterpolationPrefixCheckerLiteral.
+var redundantPrefix = regexp.MustCompile("(\\$+)(\\w|\\{|`[^`])")
+
+// RedundantPrefix reports whether the literal's interpolation prefix is
+// redundant, as kotlinc's experimental REDUNDANT_INTERPOLATION_PREFIX
+// warning says: a single $, or a longer prefix of a literal without
+// template entries none of whose text looks like one.
+func (s *StringLit) RedundantPrefix() bool {
+	switch {
+	case s.Prefix == 1:
+		return true
+	case s.Prefix == 0:
+		return false
+	}
+	for _, p := range s.Parts {
+		if p.X != nil {
+			return false
+		}
+	}
+	return !redundantPrefix.MatchString(s.Src)
 }
 
 type Unary struct {

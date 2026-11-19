@@ -88,7 +88,8 @@ func main() {
 	if *kotlinTest != "" {
 		libs = append(libs, *kotlinTest)
 	}
-	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, annotations: *annotations, timeout: 2 * time.Minute}
+	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, annotations: *annotations, timeout: 2 * time.Minute,
+		checkerSets: *mode == "diagnostics"}
 	if *serve && *kotlinc == "" {
 		comp.servers = newKcPool(*kc, *jobs)
 		defer comp.servers.close()

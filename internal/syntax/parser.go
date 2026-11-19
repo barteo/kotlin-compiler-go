@@ -3215,7 +3215,7 @@ func (p *parser) intLit(t Token) Expr {
 }
 
 func (p *parser) stringLit(t Token) Expr {
-	s := &StringLit{}
+	s := &StringLit{Prefix: t.Prefix, Src: t.Text}
 	s.P = t.Pos
 	for _, part := range t.Parts {
 		if !part.IsExpr {

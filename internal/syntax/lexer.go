@@ -559,8 +559,10 @@ func (lx *lexer) templateName(off int) int {
 // prefix of n dollars ($$"..."; none is n = 1): a template entry is then n
 // dollars followed by a name or {, and dollars before those are text.
 func (lx *lexer) str(p Pos) {
-	prefix := max(1, lx.dollars(lx.off))
-	lx.advance(lx.dollars(lx.off))
+	written := lx.dollars(lx.off)
+	prefix := max(1, written)
+	lx.advance(written)
+	start := lx.off
 	raw := strings.HasPrefix(lx.src[lx.off:], `"""`)
 	if raw {
 		lx.advance(3)
@@ -665,7 +667,7 @@ func (lx *lexer) str(p Pos) {
 		lx.col++
 	}
 	flush()
-	lx.toks = append(lx.toks, Token{Kind: STRING, Pos: p, Parts: parts})
+	lx.toks = append(lx.toks, Token{Kind: STRING, Pos: p, Parts: parts, Prefix: written, Text: lx.src[start:lx.off]})
 }
 
 // skipTemplate advances to the '}' that ends a ${...} template expression

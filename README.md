@@ -44,9 +44,9 @@ How each number is measured, and the full tables with CPU time, are in
   error, the errors that type checking finds, and only a few of those
   checkers' errors (opt-in and deprecation, for example), which is why it
   agrees with `kotlinc` on only 99% of the diagnostics tests. Of the
-  warnings, it reports ten kinds, such as deprecations, opt-ins, useless
-  casts and unnecessary safe calls: 14% of those the diagnostics tests
-  expect.
+  warnings, it reports about twenty kinds, such as deprecations, opt-ins,
+  useless casts, impossible type checks and unnecessary safe calls: 41%
+  of those the diagnostics tests expect.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**
@@ -133,6 +133,8 @@ Arguments can be files or directories. Flags:
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
 | `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
+| `-Wextra` | also report the warnings of `kotlinc`'s extra checkers (`UNREACHABLE_CODE`), as in `kotlinc` |
+| `-Xuse-fir-experimental-checkers` | also report the warnings of `kotlinc`'s experimental checkers (`REDUNDANT_INTERPOLATION_PREFIX`), as in `kotlinc` |
 | `-Werror` | fail if there are warnings, as in `kotlinc` |
 | `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
 

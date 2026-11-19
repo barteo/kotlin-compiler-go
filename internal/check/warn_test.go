@@ -3,6 +3,8 @@ package check
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -15,6 +17,12 @@ import (
 // diagnostics, one "line:NAME" per warning and "line:error" per error,
 // sorted.
 func checkWarnings(t *testing.T, src string) []string {
+	t.Helper()
+	return checkWarningsWith(t, src, Options{Warnings: true})
+}
+
+// checkWarningsWith is checkWarnings with the options opts.
+func checkWarningsWith(t *testing.T, src string, opts Options) []string {
 	t.Helper()
 	lib, err := classpath.FindStdlib()
 	if err != nil {
@@ -32,7 +40,7 @@ func checkWarnings(t *testing.T, src string) []string {
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
-	ds, err := CheckOptions(context.Background(), []*syntax.File{f}, NewLibrary(cp), 1, nil, Options{Warnings: true})
+	ds, err := CheckOptions(context.Background(), []*syntax.File{f}, NewLibrary(cp), 1, nil, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,5 +268,80 @@ fun f(s: String) = s?.length
 `)
 	if len(got) != 0 {
 		t.Errorf("got %v, want none", got)
+	}
+}
+
+// TestWarningsExperimental checks the warnings of kotlinc's experimental
+// checkers, which are reported only on request.
+func TestWarningsExperimental(t *testing.T) {
+	src := `
+fun f(x: Int) {
+    println($$"plain")
+    println($"x")
+    println($"x$x")
+    println($$"$$x")
+    println($$"a$b")
+    println($$"a${'$'}")
+    println($$"a$` + "`b`" + `")
+    println($$"$%")
+    println("$%")
+    println($$"""
+        raw
+    """)
+}`
+	if got := checkWarnings(t, src); len(got) != 0 {
+		t.Errorf("without the option: %v, want none", got)
+	}
+	got := checkWarningsWith(t, src, Options{Warnings: true, ExperimentalWarnings: true})
+	want := []string{"10:REDUNDANT_INTERPOLATION_PREFIX", "12:REDUNDANT_INTERPOLATION_PREFIX", "3:REDUNDANT_INTERPOLATION_PREFIX", "4:REDUNDANT_INTERPOLATION_PREFIX", "5:REDUNDANT_INTERPOLATION_PREFIX"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestWarningsCasts checks the warnings of type checks and casts whose
+// outcome the types decide against those kotlinc reports of
+// testdata/casts.kt.
+func TestWarningsCasts(t *testing.T) {
+	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnreachable checks the warnings of unreachable code against
+// those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
+// there are none without it.
+func TestWarningsUnreachable(t *testing.T) {
+	checkReference(t, "testdata/unreachable.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/unreachable.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":UNREACHABLE_CODE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
+// checkReference checks the warnings of file, with options opts, against
+// those named by the comment that ends each of its lines: each name once,
+// however many times kotlinc reports it on the line.
+func checkReference(t *testing.T, file string, opts Options) {
+	t.Helper()
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for i, line := range strings.Split(string(b), "\n") {
+		if _, names, ok := strings.Cut(line, " // "); ok && !strings.HasPrefix(line, "//") {
+			for _, n := range strings.Fields(names) {
+				want = append(want, fmt.Sprintf("%d:%s", i+1, n))
+			}
+		}
+	}
+	sort.Strings(want)
+	// A line may have a warning more than once, at several columns.
+	if got := slices.Compact(checkWarningsWith(t, string(b), opts)); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
 }

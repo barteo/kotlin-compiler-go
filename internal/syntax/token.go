@@ -198,6 +198,7 @@ type Token struct {
 	Kind   Kind
 	Quoted bool // a `backticked` identifier
 	Pos    Pos
-	Text   string    // identifier name or literal text
+	Text   string    // identifier name or literal text; a STRING's source after its Prefix
 	Parts  []StrPart // STRING only
+	Prefix int       // STRING only: the number of $ of its interpolation prefix ($$"..."), 0 if none
 }
