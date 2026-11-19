@@ -6,7 +6,7 @@ Cold kotlinc starts one JVM per module; warm kotlinc runs all three in one JVM.
 These are compiler timings, excluding Gradle, tests and AtomicFU bytecode transformation.
 
 - Machine: Linux x86_64, 4 CPUs
-- Revision: a009992
+- Revision: c81677a
 - go version go1.27.2 linux/amd64
 - Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock
 - info: kotlinc-jvm 2.4.21 (JRE 21.0.13.0.3+1-1-24.04.1-Ubuntu)
@@ -18,9 +18,9 @@ These are compiler timings, excluding Gradle, tests and AtomicFU bytecode transf
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 720 ± 27 ms | — | 1,393 ms | 91 MB |
-| `kc -j 4` | 619 ± 20 ms | 1.2x faster | 1,729 ms | 98 MB |
-| `kotlinc (cold JVM)` | 39,848 ± 222 ms | 55.4x slower | 117,983 ms | 966 MB |
+| `kc -j 1` | 709 ± 19 ms | — | 1,429 ms | 91 MB |
+| `kc -j 4` | 598 ± 26 ms | 1.2x faster | 1,616 ms | 96 MB |
+| `kotlinc (cold JVM)` | 39,532 ± 1,076 ms | 55.8x slower | 117,378 ms | 971 MB |
 
-- kotlinc in a warm JVM (median of the last 5 of 10 complete builds): 5736 ms
+- kotlinc in a warm JVM (median of the last 5 of 10 complete builds): 5783 ms
 - Class files: kc 671, kotlinc 668
