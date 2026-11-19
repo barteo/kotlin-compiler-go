@@ -376,6 +376,11 @@ type Checker struct {
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
+	// stubRejected are the constraints on builders' variables that
+	// stubRun.add rejected.
+	stubRejected [][2]types.Type
+	// stubRuns counts stubInference's runs.
+	stubRuns int
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
