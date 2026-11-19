@@ -11,9 +11,6 @@
 # the median of the second half is reported. COOLDOWN: seconds idle before
 # each complete build, outside timing (default 0). No Gradle tasks, tests
 # or AtomicFU bytecode transformation are included in these compile times.
-# OUT: directory for the compilers' output (out-kc, out-kotlinc, out-warm),
-# default the work directory. A memory file system such as /dev/shm keeps
-# file creation out of the timings: see docs/benchmark.md.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 : "${TMPDIR:=/tmp}"
@@ -24,7 +21,6 @@ work="$TMPDIR/kc-ktor-time"
 results="$root/bench/results"
 runs=${RUNS:-3}
 cooldown=${COOLDOWN:-0}
-out=${OUT:-$work}
 warm_runs=${WARM_RUNS:-10}
 kotlin_home=${KOTLIN_HOME:-/opt/homebrew/opt/kotlin/libexec}
 cpus=$(getconf _NPROCESSORS_ONLN)
@@ -47,14 +43,12 @@ for jar in org/jetbrains/kotlinx/atomicfu-jvm/0.33.0/atomicfu-jvm-0.33.0.jar \
 done
 rm -rf "$work"
 mkdir -p "$work/warm" "$results"
-rm -rf "$out/out-kc" "$out/out-kotlinc" "$out/out-warm"
-mkdir -p "$out"
 (cd "$root" && go build -o "$work/kc" ./cmd/kc)
 javac -d "$work/warm" "$root/bench/warm/WarmKotlinc.java"
 
 # Argument files preserve the fragment/source mapping and keep commands
 # short. Each compiler uses its own outputs for downstream dependencies.
-python3 - "$src" "$work" "$cp" "$kotlin_home" "$out" <<'PY'
+python3 - "$src" "$work" "$cp" "$kotlin_home" <<'PY'
 import json
 from pathlib import Path
 import shlex
@@ -62,7 +56,6 @@ import sys
 
 src, work = map(Path, sys.argv[1:3])
 cp, kotlin_home = sys.argv[3:5]
-out = Path(sys.argv[5])
 modules = ['ktor-io', 'ktor-utils', 'ktor-http']
 files = []
 commands = {kind: [] for kind in ['kc', 'kotlinc']}
@@ -72,7 +65,7 @@ for kind in ['kc', 'kotlinc', 'warm']:
         sets = ['common', 'jvmAndPosix', 'jvm'] if module == 'ktor-io' else ['common', 'jvm']
         sources = {s: sorted((src / module / s / 'src').rglob('*.kt')) for s in sets}
         all_sources = [str(p) for paths in sources.values() for p in paths]
-        dest = out / ('out-' + kind) / module
+        dest = work / ('out-' + kind) / module
         opts = ['-module-name', module, '-jvm-default=enable', '-cp', classpath, '-d', str(dest)]
         if kind == 'kc':
             dirs = [str(src / module / s / 'src') for s in sets]
@@ -105,11 +98,11 @@ PY
 
 # shellcheck disable=SC2086 # the Java heap options are words
 hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \
-	--prepare "rm -rf '$out/out-kc' && sleep $cooldown" \
+	--prepare "rm -rf '$work/out-kc' && sleep $cooldown" \
 	-n "kc -j 1" "'$work/run-kc.sh' 1" \
 	-n "kc -j $cpus" "'$work/run-kc.sh' $cpus"
 hyperfine --runs "$runs" --style basic --export-json "$work/kotlinc.json" \
-	--prepare "rm -rf '$out/out-kotlinc' && sleep $cooldown" \
+	--prepare "rm -rf '$work/out-kotlinc' && sleep $cooldown" \
 	-n "kotlinc (cold JVM)" "'$work/run-kotlinc.sh'"
 python3 -c 'import json, sys
 r = [x for f in sys.argv[2:] for x in json.load(open(f))["results"]]
@@ -128,8 +121,8 @@ fi
 cat "$results/warm-ktor.txt"
 warm=$(tail -1 "$results/warm-ktor.txt")
 read -r files lines < "$work/sources.txt"
-classes_kc=$(find "$out/out-kc" -name '*.class' | wc -l | tr -d ' ')
-classes_kotlinc=$(find "$out/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
+classes_kc=$(find "$work/out-kc" -name '*.class' | wc -l | tr -d ' ')
+classes_kotlinc=$(find "$work/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
 
 {
 	echo "# kc vs kotlinc on Ktor"
@@ -147,7 +140,6 @@ classes_kotlinc=$(find "$out/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
 	echo "- kotlinc JVM options: $JAVA_OPTS"
 	echo "- Runs: 10 kc builds (plus one warm-up per command), $runs cold kotlinc builds, $warm_runs builds in one JVM"
 	echo "- Cooldown before each complete build (outside timing): $cooldown s"
-	echo "- Output directory: $out ($(df -PT "$out" | awk 'NR == 2 { print $2 }'))"
 	echo "- Options: -jvm-default=enable, kotlinx.serialization; kotlinc language 2.3, API 2.2, explicit API mode, JVM target 1.8 and multiplatform fragments"
 	echo "- Dependencies: atomicfu 0.33.0, coroutines 1.11.0, kotlinx-io 0.9.1, serialization 1.11.0, SLF4J 2.0.19"
 	echo

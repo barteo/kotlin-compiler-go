@@ -16,9 +16,6 @@
 # makes, and for the first run network access to Maven Central, for the
 # library's dependencies.
 # COOLDOWN: seconds to idle before each run, outside the measured time (default 0).
-# OUT: directory for the compilers' output (out-kc, out-kotlinc, out-warm),
-# default the work directory. A memory file system such as /dev/shm keeps
-# file creation out of the timings: see docs/benchmark.md.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 : "${TMPDIR:=/tmp}"
@@ -29,7 +26,6 @@ work="$TMPDIR/kc-coroutines-time"
 results="$root/bench/results"
 runs=${RUNS:-3}
 cooldown=${COOLDOWN:-0}
-out=${OUT:-$work}
 warm_runs=${WARM_RUNS:-10}
 kotlin_home=${KOTLIN_HOME:-/opt/homebrew/opt/kotlin/libexec}
 stdlib="$kotlin_home/lib/kotlin-stdlib.jar"
@@ -50,8 +46,6 @@ for jar in org/jetbrains/kotlinx/atomicfu-jvm/0.32.1/atomicfu-jvm-0.32.1.jar \
 done
 rm -rf "$work"
 mkdir -p "$work/warm" "$results"
-rm -rf "$out/out-kc" "$out/out-kotlinc" "$out/out-warm"
-mkdir -p "$out"
 (cd "$root" && go build -o "$work/kc" ./cmd/kc)
 javac -d "$work/warm" "$root/bench/warm/WarmKotlinc.java"
 
@@ -73,13 +67,13 @@ kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=commo
 
 # shellcheck disable=SC2086 # the arguments are words
 hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \
-	--prepare "rm -rf $out/out-kc && sleep $cooldown" \
-	-n "kc -j 1" "$work/kc -j 1 $opts -cp $cp -d $out/out-kc $(echo $dirs)" \
-	-n "kc -j $cpus" "$work/kc -j $cpus $opts -cp $cp -d $out/out-kc $(echo $dirs)"
+	--prepare "rm -rf $work/out-kc && sleep $cooldown" \
+	-n "kc -j 1" "$work/kc -j 1 $opts -cp $cp -d $work/out-kc $(echo $dirs)" \
+	-n "kc -j $cpus" "$work/kc -j $cpus $opts -cp $cp -d $work/out-kc $(echo $dirs)"
 # shellcheck disable=SC2086
 hyperfine --runs "$runs" --style basic --export-json "$work/kotlinc.json" \
-	--prepare "rm -rf $out/out-kotlinc && sleep $cooldown" \
-	-n "kotlinc (cold JVM)" "kotlinc $(echo $kotlinc_args) -d $out/out-kotlinc $(echo $all)"
+	--prepare "rm -rf $work/out-kotlinc && sleep $cooldown" \
+	-n "kotlinc (cold JVM)" "kotlinc $(echo $kotlinc_args) -d $work/out-kotlinc $(echo $all)"
 python3 -c 'import json, sys
 r = [x for f in sys.argv[2:] for x in json.load(open(f))["results"]]
 json.dump({"results": r}, open(sys.argv[1], "w"), indent=2)' \
@@ -87,11 +81,11 @@ json.dump({"results": r}, open(sys.argv[1], "w"), indent=2)' \
 
 # shellcheck disable=SC2086
 warm=$(java $JAVA_OPTS -Dcooldown="$cooldown" -cp "$work/warm:$kotlin_home/lib/*" WarmKotlinc "$warm_runs" \
-	$kotlinc_args -kotlin-home "$kotlin_home" -d "$out/out-warm" $all 2>/dev/null |
+	$kotlinc_args -kotlin-home "$kotlin_home" -d "$work/out-warm" $all 2>/dev/null |
 	tee "$results/warm-coroutines.txt" | tail -1)
 echo "kotlinc (warm JVM): $warm"
-classes_kc=$(find "$out/out-kc" -name '*.class' | wc -l | tr -d ' ')
-classes_kotlinc=$(find "$out/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
+classes_kc=$(find "$work/out-kc" -name '*.class' | wc -l | tr -d ' ')
+classes_kotlinc=$(find "$work/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
 
 {
 	echo "# kc vs kotlinc on kotlinx-coroutines-core"
@@ -104,7 +98,6 @@ classes_kotlinc=$(find "$out/out-kotlinc" -name '*.class' | wc -l | tr -d ' ')
 	echo "- $(kotlinc -version 2>&1 | grep -v JAVA_TOOL | tail -1)"
 	echo "- kotlinc JVM options: $JAVA_OPTS"
 	echo "- Cooldown before each run (outside timing): $cooldown s"
-	echo "- Output directory: $out ($(df -PT "$out" | awk 'NR == 2 { print $2 }'))"
 	echo
 	python3 "$root/bench/summarize.py" "$results/hyperfine-coroutines.json" "kc -j 1" "kc -j $cpus" "kotlinc (cold JVM)"
 	echo
