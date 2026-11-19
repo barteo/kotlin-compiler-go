@@ -11,9 +11,9 @@ square/kotlinpoet 2.4.0's JVM library: 39 files, 8696 lines (commonMain and jvmM
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 320 ± 19 ms | — | 525 ms | 90 MB |
-| `kc -j 4` | 246 ± 20 ms | 1.3x faster | 625 ms | 100 MB |
-| `kotlinc (cold JVM)` | 16,659 ± 705 ms | 52.1x slower | 51,228 ms | 946 MB |
+| `kc -j 1` | 321 ± 7 ms | — | 566 ms | 90 MB |
+| `kc -j 4` | 240 ± 9 ms | 1.3x faster | 614 ms | 101 MB |
+| `kotlinc (cold JVM)` | 15,049 ± 370 ms | 46.9x slower | 45,439 ms | 965 MB |
 
-- kotlinc in a warm JVM (median of the last 5 of 10 runs in one JVM): 3282 ms
+- kotlinc in a warm JVM (median of the last 5 of 10 runs in one JVM): 3149 ms
 - Class files: kc 108, kotlinc 120
