@@ -887,16 +887,6 @@ tests/library/Collections.kt	Collections.kt:81	ARGUMENT_TYPE_MISMATCH	missing-ch
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:10	WRONG_NUMBER_OF_TYPE_ARGUMENTS	missing-check
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:15	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:16	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:122	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:124	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:125	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:126	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:127	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:128	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:129	INCOMPATIBLE_MODIFIERS	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:130	INCOMPATIBLE_MODIFIERS	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:131	WRONG_MODIFIER_TARGET	syntax-error
-tests/modifiers/IllegalModifiers.kt	IllegalModifiers.kt:132	WRONG_MODIFIER_TARGET	syntax-error
 tests/modifiers/const/applicability.kt	applicability.kt:35	CONST_VAL_WITHOUT_INITIALIZER	missing-check
 tests/modifiers/const/applicability.kt	applicability.kt:79	CONST_VAL_WITH_NON_CONST_INITIALIZER	missing-check
 tests/modifiers/const/applicability.kt	applicability.kt:80	CONST_VAL_WITH_NON_CONST_INITIALIZER	missing-check

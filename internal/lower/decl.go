@@ -421,9 +421,21 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		}
 	}
 	kpos := l.pos(kw)
+	if enumWithoutKeyword(n) {
+		// enum Color { RED }: FIR keeps it as an enum class, with the
+		// missing keyword's syntax error, which recoverable lets through.
+		kpos = l.pos(child(n, psi.KindIDENTIFIER))
+		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
+			pos, msg := l.syntaxMessage(e)
+			l.errorLater(pos, "%s", msg)
+		}
+	}
 	isObject := kw.NumericKind() == psi.KindOBJECT_KEYWORD
 	if m.Inline && kw.NumericKind() == psi.KindCLASS_KEYWORD {
 		syntax.InlineClass(&m, kpos)
+	}
+	if kw.NumericKind() == psi.KindCLASS_KEYWORD || !kw.Valid() {
+		syntax.EnumAnnotation(&m)
 	}
 	cd := record(l, &syntax.ClassDecl{Modifiers: m, P: kpos, Interface: kw.NumericKind() == psi.KindINTERFACE_KEYWORD, Object: isObject}, n)
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() && has(mods, psi.KindFUN_KEYWORD) {

@@ -1666,7 +1666,15 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			sym.Entries = append(sym.Entries, e.Name)
 		}
 		if d.Interface || d.Object || d.Data || d.Sealed || d.Open || d.Abstract {
-			c.errorf(d.P, "modifier 'enum' is only allowed on final classes")
+			// At the first modifier that makes it not final, as kotlinc.
+			pos := d.P
+			for _, w := range d.Written {
+				if w.Name == "data" || w.Name == "sealed" || w.Name == "open" || w.Name == "abstract" {
+					pos = w.P
+					break
+				}
+			}
+			c.errorf(pos, "modifier 'enum' is only allowed on final classes")
 		}
 		for _, m := range d.Members {
 			// An enum may declare abstract members, which its entries

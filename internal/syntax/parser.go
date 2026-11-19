@@ -1806,6 +1806,9 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		// annotates @JvmInline.
 		InlineClass(&m, kw.Pos)
 	}
+	if kw.Kind == CLASS {
+		EnumAnnotation(&m)
+	}
 	cd := &ClassDecl{Modifiers: m, P: kw.Pos, Interface: kw.Kind == INTERFACE, Object: kw.Kind == OBJECT}
 	defer func() {
 		// A class without secondary constructors has a primary one, if

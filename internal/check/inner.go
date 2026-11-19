@@ -29,7 +29,7 @@ func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) 
 		c.errorf(d.P, "modifier 'inner' is not applicable inside an object or an interface")
 		return
 	case d.Interface || d.Object || d.Enum || d.Annotation:
-		c.errorf(d.P, "modifier 'inner' is only applicable to classes")
+		c.errorf(d.PosOf("inner", d.P), "modifier 'inner' is only applicable to classes")
 		return
 	}
 	sym.Inner = true

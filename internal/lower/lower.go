@@ -306,9 +306,11 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 // recoverable reports whether the psi error element e leaves its
 // declaration whole: a value parameter written without its type, which
 // paramType gives an invalid type and reports, an object declaration
-// without its name, which class names as FIR does and reports, or a
-// property type's unclosed type argument list, which prop keeps as far as
-// it parsed, as FIR does, and reports.
+// without its name, which class names as FIR does and reports, an enum
+// class written without its class keyword (enum Color { RED }), which
+// class keeps as FIR does and reports, or a property type's unclosed type
+// argument list, which prop keeps as far as it parsed, as FIR does, and
+// reports.
 func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	p := e.Parent()
 	if unclosedPropType(e) {
@@ -317,11 +319,21 @@ func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	if p.NumericKind() == psi.KindOBJECT_DECLARATION && !first(e).Valid() && !has(p, psi.KindIDENTIFIER) {
 		return true
 	}
+	if enumWithoutKeyword(p) && !first(e).Valid() {
+		return true
+	}
 	return p.NumericKind() == psi.KindVALUE_PARAMETER && !has(p, psi.KindTYPE_REFERENCE) &&
 		has(p, psi.KindIDENTIFIER) && p.Parent().NumericKind() == psi.KindVALUE_PARAMETER_LIST &&
 		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||
 			p.Parent().Parent().NumericKind() == psi.KindFUN ||
 			p.Parent().Parent().NumericKind() == psi.KindSECONDARY_CONSTRUCTOR)
+}
+
+// enumWithoutKeyword reports whether n is a CLASS psi parses from enum and
+// a name, without the class keyword it reports missing.
+func enumWithoutKeyword(n psi.NodeRef) bool {
+	return n.NumericKind() == psi.KindCLASS && !has(n, psi.KindCLASS_KEYWORD) && !has(n, psi.KindINTERFACE_KEYWORD) &&
+		has(n, psi.KindIDENTIFIER) && has(child(n, psi.KindMODIFIER_LIST), psi.KindENUM_KEYWORD)
 }
 
 // unclosedPropType reports whether the psi error element e is a property

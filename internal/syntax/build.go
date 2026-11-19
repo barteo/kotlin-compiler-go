@@ -249,6 +249,15 @@ func InlineClass(m *Modifiers, kw Pos) {
 	m.Value, m.JvmInline = true, true
 }
 
+// EnumAnnotation makes m, the modifiers of a class written both enum and
+// annotation, those of an enum class, as kotlinc's class kind is: the
+// modifier checks report annotation on it.
+func EnumAnnotation(m *Modifiers) {
+	if m.Enum && m.Annotation {
+		m.Annotation = false
+	}
+}
+
 // CallableRefLambda returns callable reference ref at pos as a lambda for
 // the checker to fill in.
 func CallableRefLambda(pos Pos, ref *CallableRef) *Lambda {

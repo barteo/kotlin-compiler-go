@@ -1,6 +1,7 @@
 // Modifiers that only type parameters or parameters take, and modifiers on
 // init blocks and catch parameters, are errors that keep their
-// declaration, so that the rest of it is checked, as kotlinc does.
+// declaration, so that the rest of it is checked, as kotlinc does. So is
+// an enum class written without its class keyword.
 
 fun broken(x: Int { // ERROR Expecting comma or ')'
     return x
@@ -28,3 +29,16 @@ class B {
         val s: String = 3 // ERROR type mismatch: inferred type is Int but String was expected
     }
 }
+
+class D {
+    inner // ERROR modifier 'inner' is only applicable to classes
+    enum
+    open // ERROR 'class' keyword is expected after 'enum'
+    constructor() {}
+
+    fun f(): String = 4 // ERROR type mismatch: inferred type is Int but String was expected
+}
+
+enum Color { RED } // ERROR 'class' keyword is expected after 'enum'
+val c: Color = Color.RED
+val d: String = Color.RED // ERROR type mismatch: inferred type is Color but String was expected
