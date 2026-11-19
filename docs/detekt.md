@@ -28,7 +28,6 @@ detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
   under less load, stock took 15.5 s and 24.2 s, and the second round's
   kc 3.3 s and 5.7 s (4.7× and 4.2×). Earlier measurements, on another machine, had stock at 18.5 s
   and 29.5 s with `--parallel`, and 26.0 s and 37.2 s serially.
-- [Making detekt on kc faster](detekt-performance.md) has the details.
 
 A finding matches when its file, line, column and rule are the same.
 
@@ -153,8 +152,6 @@ jvm/detekt/build.sh test
 - kc's check starts as soon as detekt-cli has parsed its arguments
   (change `0005`), while detekt reads its configuration and the session
   builds its IntelliJ environment.
-- [Making detekt on kc faster](detekt-performance.md) measures these and
-  the other speedups.
 - Go's runtime runs in the JVM's process, so `run.sh` preloads the JDK's
   `libjsig.so`. That chains Go's signal handlers with the JVM's.
 - `build.sh test` runs detekt with `--all-rules` on the fixture in

@@ -18,7 +18,7 @@ cp=$(cat "$here/build/classpath.txt")
 # A class-data sharing archive of the classes detekt on kc loads: the JVM
 # writes it at the end of the first run and maps it on later ones, instead
 # of reading, parsing and verifying the thousands of classes it loads from
-# jars (docs/detekt-performance.md). JDK 19 and later. The JVM rejects an
+# jars. JDK 19 and later. The JVM rejects an
 # archive once a jar on the class path changes, as kc-aa.jar does with
 # every build, but doesn't write it again, so the archive is named by the
 # jars' paths, sizes and times, and older ones are deleted.
@@ -38,8 +38,8 @@ if [ "${java_version:-0}" -ge 19 ]; then
 	cds="-XX:SharedArchiveFile=$archive -XX:+AutoCreateSharedArchive"
 fi
 # The run is CPU-bound on all cores, and the parallel collector costs the
-# rules' threads less than G1's barriers and concurrent work
-# (docs/detekt-performance.md). KC_JAVA_OPTS may choose another.
+# rules' threads less than G1's barriers and concurrent work.
+# KC_JAVA_OPTS may choose another.
 gc=-XX:+UseParallelGC
 case ${KC_JAVA_OPTS:-} in *GC*) gc= ;; esac
 # detekt runs its rules on all cores: kc's session is thread-safe, and its
