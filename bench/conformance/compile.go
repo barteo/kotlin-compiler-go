@@ -396,8 +396,8 @@ func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string)
 // that its command line enables only on request, as the diagnostics
 // tests' infrastructure enables them for module m: the extra checkers
 // (-Wextra, as UNREACHABLE_CODE) for WITH_EXTRA_CHECKERS and the tests of
-// controlFlowAnalysis/deadCode, whose markup expects their warnings
-// without it, and the experimental ones (as
+// controlFlowAnalysis/deadCode and extraCheckers, whose markup expects
+// their warnings without it, and the experimental ones (as
 // REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS.
 func checkerFlags(t *test, m *module) []string {
 	var flags []string
@@ -406,7 +406,8 @@ func checkerFlags(t *test, m *module) []string {
 		_, inTest := t.global[d]
 		return inModule || inTest
 	}
-	if has("WITH_EXTRA_CHECKERS") || strings.HasPrefix(t.path, "tests/controlFlowAnalysis/deadCode/") {
+	if has("WITH_EXTRA_CHECKERS") || strings.HasPrefix(t.path, "tests/controlFlowAnalysis/deadCode/") ||
+		strings.HasPrefix(t.path, "tests/extraCheckers/") {
 		flags = append(flags, "-Wextra")
 	}
 	if has("WITH_EXPERIMENTAL_CHECKERS") {

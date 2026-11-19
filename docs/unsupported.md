@@ -20,24 +20,47 @@ own tests.
   `USELESS_IS_CHECK`, `IMPOSSIBLE_IS_CHECK_WARNING`,
   `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`, `CAST_NEVER_SUCCEEDS`,
   `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL`,
-  `SAFE_CAST_RELYING_ON_NULL` and `UNSAFE_CAST_RELYING_ON_NULL`, and
-  those only where the types make them certain, so
-  that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
-  never of a platform type, a type parameter or a type it couldn't
-  resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
-  isn't reified, or to a generic type from `Any` or a star-projected
-  supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is reported where the
-  Java class is named, not through a typealias or an inferred type, and
-  `NO_TAIL_CALLS_FOUND` not where a recursive call in tail position may
-  be a tail call to `kotlinc`, as one on another receiver. Type checks
-  and casts are judged as `kotlinc` judges them, by the declared type and
-  then by its smart casts, but never where a platform type or a type `kc`
-  couldn't resolve is involved. With `-Wextra`, as `kotlinc`, it also
-  reports `UNREACHABLE_CODE`, after a statement that always jumps (not
-  the dead code of a class's initialization order), and with
+  `SAFE_CAST_RELYING_ON_NULL`, `UNSAFE_CAST_RELYING_ON_NULL`,
+  `DEPRECATED_IDENTITY_EQUALS`, `IMPLICIT_BOXING_IN_IDENTITY_EQUALS`,
+  `UNUSED_EXPRESSION`, `UNUSED_LAMBDA_EXPRESSION`,
+  `EXTENSION_SHADOWED_BY_MEMBER`,
+  `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE`,
+  `DIVISION_BY_ZERO`, `REDUNDANT_ELSE_IN_WHEN` and
+  `INCOMPATIBLE_ENUM_COMPARISON`, and those only where the types make
+  them certain, so that `-Werror` doesn't reject what `kotlinc`
+  compiles: the null checks never of a platform type, a type parameter
+  or a type it couldn't resolve, and `UNCHECKED_CAST` only of a cast to
+  a type parameter that isn't reified, or to a generic type from `Any`
+  or a star-projected supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is
+  reported where the Java class is named, not through a typealias or an
+  inferred type, and `NO_TAIL_CALLS_FOUND` not where a recursive call in
+  tail position may be a tail call to `kotlinc`, as one on another
+  receiver. Type checks and casts are judged as `kotlinc` judges them,
+  by the declared type and then by its smart casts, but never where a
+  platform type or a type `kc` couldn't resolve is involved. Unused
+  expressions are judged as `kotlinc` does, but never property reads,
+  calls or operators. Shadowed extensions are judged by the members of
+  the program's classes and of the class path's Kotlin classes, not of
+  Java classes or built-in types such as `List` and `Int`.
+  `DIVISION_BY_ZERO` isn't reported in annotation arguments, and
+  `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum or
+  a sealed class, not of one exhaustive through an `is` check of the
+  subject's own type, or over a type parameter's value.
+  `INCOMPATIBLE_ENUM_COMPARISON` is reported of two nullable enums, not
+  of an enum and a type parameter's value or a value smart cast to
+  another enum. `ERROR_SUPPRESSION` is reported, as `kotlinc` 2.4.21
+  does, for every error name in a `@Suppress`, but not in one on a type
+  or a supertype. With `-Wextra`, as `kotlinc`, it also reports
+  `UNREACHABLE_CODE`, after a statement that always jumps (not the dead
+  code of a class's initialization order), `UNUSED_VARIABLE`,
+  `VARIABLE_NEVER_READ`, `ASSIGNED_VALUE_IS_NEVER_READ` and
+  `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
+  statement that may read the value comes before it is overwritten or
+  out of scope, through `if` and `when` but not loops or `try`, and
+  never for a variable a lambda or a local function uses; and with
   `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
-  `@Suppress`
-  silences a warning by its name, or all of them with `"warnings"`.
+  `@Suppress` silences a warning by its name, or all of them with
+  `"warnings"`.
 
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).

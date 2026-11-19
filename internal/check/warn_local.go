@@ -15,7 +15,17 @@ import (
 // checker didn't find are never not null here. A wrong warning breaks a
 // build with -Werror.
 func (c *Checker) localWarnings() {
+	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
+	c.shadowWarnings()
+	if c.u.extraWarnings {
+		c.unusedVarWarnings()
+	}
 	walkCode(c.file.Decls, func(n any) bool {
+		c.unusedNode(u, n)
+		c.divisionWarning(n)
+		if lf, ok := n.(*syntax.LocalFun); ok {
+			c.extShadowed(lf.Decl)
+		}
 		switch n := n.(type) {
 		case *syntax.NotNull:
 			if t := n.X.Type(); definitelyNonNull(t) && !c.maybeNull[n] && !lambdaLike(n.X) {
@@ -29,6 +39,10 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Binary:
 			c.binaryWarnings(n)
+			c.enumComparisonWarning(n)
+			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
+				c.identityWarnings(n)
+			}
 		case *syntax.As:
 			c.castWarnings(n)
 			c.uncheckedCast(n)
@@ -37,6 +51,8 @@ func (c *Checker) localWarnings() {
 			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
 		case *syntax.When:
 			c.whenIsWarnings(n)
+			c.redundantElseWarning(n)
+			c.whenEnumWarnings(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)

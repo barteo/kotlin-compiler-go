@@ -247,9 +247,16 @@ type Checker struct {
 	// typeFacts are, for each x is T, x as T and is condition of a when,
 	// what its check knew of x (see noteTypeFacts).
 	typeFacts map[any]typeFacts
+	// identTypes are, for each a === b and a !== b, the types of a and b
+	// before smart casts and then after them, for the warnings about
+	// them (see identityWarnings).
+	identTypes map[*syntax.Binary][4]types.Type
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool
+	// redundantElses are the whens whose else branch is redundant: see
+	// noteRedundantElse.
+	redundantElses map[*syntax.When]bool
 	// blockJumps are, with -Wextra, the blocks with a statement that
 	// always jumps, and its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int

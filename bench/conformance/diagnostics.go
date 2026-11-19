@@ -488,7 +488,7 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		r.category, r.key, r.detail = catKc, "harness error", err.Error()
 		return r, nil
 	}
-	dt.kcWarns, dt.off = cr.warns, switchedOff(t)
+	dt.kcWarns, dt.off = cr.warns, switchedOff(t, dt.marks)
 	dt.parseErrs, dt.tried = len(parseErrs) > 0, cr.tried
 	rejected := false
 	switch {

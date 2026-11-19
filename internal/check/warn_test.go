@@ -306,6 +306,55 @@ func TestWarningsCasts(t *testing.T) {
 	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
 }
 
+// TestWarningsIdentity checks the warnings of identity comparisons of
+// primitives against those kotlinc reports of testdata/identity.kt.
+func TestWarningsIdentity(t *testing.T) {
+	checkReference(t, "testdata/identity.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnused checks the warnings of unused expressions against
+// those kotlinc reports of testdata/unused.kt.
+func TestWarningsUnused(t *testing.T) {
+	checkReference(t, "testdata/unused.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnusedVar checks the warnings of unused local variables
+// and assignments against those kotlinc reports with -Wextra of
+// testdata/unusedvar.kt.
+func TestWarningsUnusedVar(t *testing.T) {
+	checkReference(t, "testdata/unusedvar.kt", Options{Warnings: true, ExtraWarnings: true})
+}
+
+// TestWarningsShadow checks the warnings of extensions that members
+// shadow against kotlinc's, which testdata/shadow.kt records.
+// TestWarningsErrorSuppression checks the warnings of the error names in
+// the @Suppress annotations of testdata/suppress.kt against kotlinc's.
+func TestWarningsErrorSuppression(t *testing.T) {
+	checkReference(t, "testdata/suppress.kt", Options{Warnings: true})
+}
+
+// TestWarningsDivision checks the warnings of division by zero against
+// kotlinc's of testdata/divide.kt.
+func TestWarningsDivision(t *testing.T) {
+	checkReference(t, "testdata/divide.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantElse checks the warnings of redundant else
+// branches against kotlinc's of testdata/when.kt.
+func TestWarningsRedundantElse(t *testing.T) {
+	checkReference(t, "testdata/when.kt", Options{Warnings: true})
+}
+
+// TestWarningsEnumComparison checks the warnings of comparisons of
+// nullable enums against kotlinc's of testdata/enums.kt.
+func TestWarningsEnumComparison(t *testing.T) {
+	checkReference(t, "testdata/enums.kt", Options{Warnings: true})
+}
+
+func TestWarningsShadow(t *testing.T) {
+	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnreachable checks the warnings of unreachable code against
 // those kotlinc reports with -Wextra of testdata/unreachable.kt, and that
 // there are none without it.

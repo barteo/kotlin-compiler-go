@@ -38,7 +38,13 @@ key and detail. Flags after the mode go to the harness:
 - `-warnings FILE` (diagnostics) writes `kc`'s warnings on lines where
   the markup doesn't expect them, other than those a test's `DIAGNOSTICS`
   directive switches off, to a TSV file: the test, its category, the
-  file and line, the warning and its message.
+  file and line, the warning and its message. Warnings in the shared
+  helper files, which the markup doesn't cover, aren't counted, nor
+  `ERROR_SUPPRESSION` in a test with `DONT_WARN_ON_ERROR_SUPPRESSION`.
+  `UNUSED_EXPRESSION` and `UNUSED_LAMBDA_EXPRESSION` count as switched
+  off unless the test asks for them, with `WITH_EXTRA_CHECKERS`,
+  `DIAGNOSTICS: +NAME` or a mark of the warning: kotlinc reports them by
+  default, but the markup of the other tests never expects them.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -215,7 +221,7 @@ Four things differ from the test infrastructure:
 `kotlinc`'s extra and experimental checkers report only with `-Wextra`
 and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
 ones for tests with `WITH_EXTRA_CHECKERS` and those of
-`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
+`controlFlowAnalysis/deadCode/` and `extraCheckers/`, and the experimental ones for tests with
 `WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
 same tests.
 
