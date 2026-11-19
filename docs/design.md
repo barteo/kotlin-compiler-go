@@ -4,7 +4,7 @@
 .kt files   ─(parallel)─▶ lex + parse ─▶ declare names ─▶ resolve imports
             ─▶ resolve supertypes ─▶ resolve signatures
             ─▶ infer omitted types (sequential) ─(parallel)─▶ check bodies
-            ─(parallel)─▶ generate + write .class files
+            ─(parallel)─▶ generate .class files ─▶ write them (2-4 writers)
 .java files ─▶ read declarations (bodies skipped)
 JDK, -cp    ─(concurrently with parsing)─▶ index class names
             ─(concurrently with parsing)─▶ read the default imports' metadata
@@ -27,6 +27,8 @@ JDK, -cp    ─(concurrently with parsing)─▶ index class names
 | `psi` | Public lossless parser with the Kotlin compiler's PSI shape (see [PSI and analysis](psi.md)) |
 | `internal/lower` | Lowers a psi tree to the AST `internal/syntax` builds, with provenance |
 | `analysis` | Public API: checks psi snapshots and reports facts keyed by psi node |
+| `analysis/ka`, `internal/kaops`, `internal/kcabi`, `cmd/libkc` | The Kotlin Analysis API answered by `kc`, built as a shared library a JVM loads for KSP (see [Analysis API](analysis-api.md)) |
+| `internal/intbits` | Narrows and reinterprets integers as the JVM does, without unchecked Go conversions |
 
 The front end is `internal/syntax`'s parser by default. With
 `Options.Frontend` (or `KC_FRONTEND`) set to `psi`, files are parsed by
@@ -42,12 +44,33 @@ differ is listed in [Unsupported Kotlin](unsupported.md#differences-from-kotlinc
 
 ## Inputs
 
-**Class path.** `internal/classpath` indexes class names at startup: the
-JDK's `lib/modules` image (about 28,000 classes), then each `-cp` entry,
-earlier entries winning. Indexing reads only the image's tables and the
-jars' central directories, takes about 5 ms, and runs while the sources
-are parsed. A class file is parsed when the checker first needs the
-class, and then only its supertypes and member signatures.
+**Class path.** `internal/classpath` indexes class names at startup:
+each `-cp` entry, earlier entries winning, then the JDK's `lib/modules`
+image (about 28,000 classes). As with `kotlinc`, the entries win over the
+JDK, so a jar of a platform's own `java` classes stands in for the JDK's.
+Indexing reads only the image's tables and the jars' central
+directories, takes about 5 ms, and runs while the sources are parsed. A
+class file is parsed when the checker first needs the class, and then
+only its supertypes and member signatures.
+
+Most lookups are for classes that don't exist: `Outer$name` for each
+member called on a library class, `pkg/Name` for a simple name in each
+star and default import. A Bloom filter of the class path's internal
+names (`classpath/filter.go`, built on first use) rules these out
+without building the name or taking the table's lock: its hash is
+incremental, so a probe continues the package's or outer class's hash.
+A set bit falls through to the exact lookup. The filter is skipped while
+the program's own classes can take a name's place. Building with
+`-tags kcverify` runs the full lookup for every name the filter rules
+out and panics if it finds a class.
+
+A class that the class path's Kotlin declarations name but the class
+path lacks (a dependency's dependency left off `-cp`) is still a type,
+known only by its name, as in K2: code that uses a declaration whose
+signature names one, or a class with one among its supertypes, is
+`MISSING_DEPENDENCY_CLASS` or `MISSING_DEPENDENCY_SUPERCLASS`
+(`check/missingdep.go`). The internal declarations of `-friend-paths`
+entries are visible, as with `kotlinc`'s `-Xfriend-paths`.
 
 **Java** declarations are seen as Kotlin sees them: primitives and boxes
 map to `Int` and `Int?`, reference types are platform types (`String!`),
@@ -71,8 +94,13 @@ is first used. The default imports (`defaultPackages`: `kotlin`,
 `kotlin.collections`, `kotlin.text` and six more) are read ahead by a
 goroutine once the class path is indexed, while sources are still
 parsed; checking waits only for a package not read yet (`prefetch` in
-`-time`). Lookups are cached per file, class members in a shared table,
-and type argument lists are interned.
+`-time`). Star and default imports are resolved to package handles once
+per file (the defaults once per process). A package's functions are
+entries read from its metadata, each converted to a symbol on first
+use; an extension's receiver class says whether it can take a receiver,
+so a call converts only the extensions that can. Lookups are cached per
+file, class members in a shared table, and type argument lists are
+interned.
 
 ## Checking
 
@@ -151,9 +179,58 @@ declarations are ordinary ones, and expect declarations are only checked
 against them (`expect.go`). `contract { }` calls are dropped
 (`contracts.go`).
 
+**Files with syntax errors.** As `kotlinc` does, `kc` reports every
+syntax error of a file and then checks what parsed, for the errors the
+checker finds besides. `internal/syntax`'s parser stops at the first
+error, so a file it rejects is parsed again by `psi`, whose recovering
+parser has `kotlinc`'s grammar and reports its errors
+(`driver/syntaxerrors.go`). `lowerRecovering` then lowers the tree
+leaving out each declaration or statement with an error, and
+`checkRecovered` checks the files without generating code. It reports
+the checker's errors only on lines without a syntax error, and no
+warnings, since many are about what isn't used, which the code left out
+may use. Where `kc`'s parser is stricter than `kotlinc`'s, its errors are
+reported only on lines the checker reports nothing on: `kotlinc` reports
+most such code in later phases, and there the checker's error is the one
+`kotlinc` gives.
+
+## Warnings
+
+Each diagnostic has a `Severity` (`syntax.SevError` or `SevWarning`).
+Warnings are `kotlinc`'s, by name and message, and only where `kc` can
+be sure `kotlinc` reports them, so that `-Werror` never rejects what
+`kotlinc` compiles. `-nowarn` drops them. `-Wextra` adds the warnings of
+`kotlinc`'s extra checkers (`UNREACHABLE_CODE`, unused variables and
+assignments), and `-Xuse-fir-experimental-checkers` those of its
+experimental ones (`REDUNDANT_INTERPOLATION_PREFIX`). Which warnings are
+reported, and where `kc` stays silent, is listed in
+[Unsupported Kotlin](unsupported.md).
+
+A file's warnings (`Checker.warns`) are kept apart from its errors, so
+that speculative checks, which roll back their errors, roll back
+warnings too, and `warnf` reports each warning once. Most warnings are
+found after the bodies are checked, by passes over the checked code
+(`localWarnings` in `warn_local.go`, walking with `walkCode`, which also
+enters local classes and object expressions and skips generated
+declarations). These passes need what checking knew but the AST doesn't
+keep, which the checker records as it goes: for each `is` and `as`, the
+declared type of its value and its smart casts (`typeFacts`), for each
+`===` the operands' types before and after smart casts (`identTypes`),
+the `when`s whose branches cover their subject (`coveredWhens`), and the
+`!!`s and `?:`s a check found may be null (`maybeNull`).
+
+`@Suppress` is applied last (`suppress.go`): a name drops the warnings,
+and the suppressible errors, of that name in the declaration, statement,
+expression or file it annotates, and `"warnings"` drops all warnings.
+As `kotlinc` 2.4.21 does, each `@Suppress` string that names one
+of its non-suppressible errors (the 931 names in `suppressnames.go`) is
+warned of with `ERROR_SUPPRESSION`.
+
 ## Class files
 
-Class files are version 52 (Java 8). The assembler
+Class files are version 52 (Java 8). The code generation workers hand
+finished classes through a queue to 2-4 writer goroutines, independent
+of `-j`, so generation doesn't wait for files to be created. The assembler
 (`internal/classfile/code.go`) computes `StackMapTable` frames in the
 same pass that emits code:
 
