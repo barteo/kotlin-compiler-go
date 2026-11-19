@@ -7,9 +7,9 @@ Of 10827 test files, 2234 are skipped and 8593 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4402 | 51.2% |
-| accepts valid | 4144 | 48.2% |
+| accepts valid | 4146 | 48.2% |
 | accepts invalid | 44 | 0.5% |
-| rejects valid | 2 | 0.0% |
+| rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
@@ -86,11 +86,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 ## Rejects valid
 
 Tests kotlinc compiles that kc's checker rejects, by kc's first error, with names replaced by _.
-
-| First error | Tests | Examples |
-|:---|---:|:---|
-| `type argument is not within its bounds in the expansion of typealias Alias: type parameter '_' must be subtype of '_', but actual: _` | 1 | `testsWithStdLib/typealias/upperBoundViolated3.kt` |
-| `type mismatch: inferred type is _ but _ was expected` | 1 | `tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt` |
 
 ## Errors by diagnostic
 
@@ -181,7 +176,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 209 |
-| `type mismatch: inferred type is _ but _ was expected` | 190 |
+| `type mismatch: inferred type is _ but _ was expected` | 186 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 181 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 58 |
@@ -210,7 +205,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
-| *179 more* | |
+| *177 more* | |
 
 ## Unsupported features
 

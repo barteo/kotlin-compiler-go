@@ -1,7 +1,9 @@
 // Annotation arguments are resolved where the annotated declaration is:
-// those of a member, a parameter or a constructor see the class's
-// instance members, and those of an inner class and its supertypes, or of
-// a local class's members, the outer class's. A nested class's don't.
+// those of a member or its parameters see the class's instance members,
+// and those of an inner class and its supertypes, or of a local class's
+// members, the outer class's. A nested class's don't, nor do those of a
+// constructor and its parameters, which see the constructor's parameters
+// (see ctorHeaderAnnotations.kt).
 @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.TYPE, AnnotationTarget.PROPERTY)
 annotation class Anno(val value: Int)
 

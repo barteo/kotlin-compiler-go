@@ -470,12 +470,19 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 
 // annotationThis returns the class whose instance is this in the
 // arguments of annotations on site in class owner, or nil: as with
-// kotlinc, those of a member, a parameter or a constructor see the
-// class's instance members, and those of an inner class its outer
-// class's, as do those of its supertypes. Those of other types are left
-// out: owner is only the class the type was first resolved in.
+// kotlinc, those of a member or its parameters see the class's instance
+// members, and those of an inner class its outer class's, as do those of
+// its supertypes and its constructors' header (the constructor and its
+// parameters), which don't see the class's own. Those of other types are
+// left out: owner is only the class the type was first resolved in.
 func annotationThis(owner *types.ClassSym, site annotSite) *types.ClassSym {
 	if owner == nil {
+		return nil
+	}
+	if site.header {
+		if owner.Inner {
+			return owner.Outer
+		}
 		return nil
 	}
 	switch site.kind {

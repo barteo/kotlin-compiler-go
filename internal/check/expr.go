@@ -2869,7 +2869,14 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if name == "kc$coerce" && c.state.plugin {
 			return c.coerceCall(x)
 		}
+		alias := c.findClassifier(name).alias
 		cls := c.findClass(name)
+		if k := c.packageClassifierPastBounds(name, x); k != (classifier{}) {
+			alias, cls = k.alias, k.cls
+			if alias != nil {
+				cls = c.aliasClass(alias)
+			}
+		}
 		if alt := c.packageClassTaking(name, cls, x); alt != nil {
 			cls = alt
 		}
@@ -2888,7 +2895,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				fs = gs
 			}
 		}
-		if a := c.findClassifier(name).alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
+		if a := alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
 			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
 		}
@@ -3379,6 +3386,77 @@ func (c *Checker) packageClassTaking(name string, cls *types.ClassSym, x *syntax
 		}
 	}
 	return alt
+}
+
+// packageClassifierPastBounds returns the class or typealias named name of
+// the code's package when name is an explicitly imported typealias whose
+// expansion, with call x's type arguments, gives its class a type argument
+// out of its bounds. As in Kotlin 2.4
+// (ProperlyCheckUpperBoundsViolationsWhenCreatingFreshVariables), that
+// constructor isn't a candidate, and the call goes to the next level of
+// scope: Alias<Any>() is b.Alias's with import a.Alias, typealias Alias<T>
+// = Base<List<T>> for class Base<K : List<CharSequence>>, in package b
+// with typealias Alias<K> = Box<K>.
+func (c *Checker) packageClassifierPastBounds(name string, x *syntax.Call) classifier {
+	a, ok := c.aliasImports[name]
+	if !ok || len(x.TypeArgs) == 0 || len(x.TypeArgs) != len(a.TypeParams) || hasUnderscore(x.TypeArgs) || c.findClassifier(name).alias != a {
+		return classifier{}
+	}
+	if c.renamedAway(c.pkg.Name, name) {
+		return classifier{}
+	}
+	var alt classifier
+	if cls, ok := c.pkg.Classes[name]; ok {
+		alt = classifier{cls: cls}
+	} else if al, ok := c.pkg.Aliases[name]; ok && al != a {
+		alt = classifier{alias: al}
+	}
+	if alt == (classifier{}) || c.privateElsewhere(alt) || !c.expansionOutOfBounds(a, x.TypeArgs) {
+		return classifier{}
+	}
+	return alt
+}
+
+// expansionOutOfBounds reports whether the expansion of typealias a with
+// the type arguments args gives its class a type argument that isn't a
+// subtype of the bound of the class's type parameter. It reports no
+// errors.
+func (c *Checker) expansionOutOfBounds(a *types.AliasSym, args []*syntax.TypeArg) bool {
+	c.resolveAlias(a)
+	if a.Type.K != types.Class {
+		return false
+	}
+	n := len(c.errs)
+	defer func() { c.errs = c.errs[:n] }()
+	targs := make([]types.Arg, len(args))
+	for i, r := range args {
+		targs[i] = types.Arg{V: r.Variance}
+		if r.Variance == types.Star {
+			continue
+		}
+		if r.Type == nil {
+			return false
+		}
+		if targs[i].T = c.resolveType(r.Type); targs[i].T.K == types.Invalid {
+			return false
+		}
+	}
+	t := a.Expand(targs)
+	if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+		return false
+	}
+	s := classSubst(t)
+	for i, arg := range t.A.List {
+		if arg.V == types.Star || arg.T.K == types.Invalid || arg.T.Has(func(u types.Type) bool { return u.K == types.TypeVar }) {
+			continue
+		}
+		for _, b := range t.C.TypeParams[i].Bounds {
+			if !c.subtype(arg.T, s.Apply(b)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // memberImportTakes reports whether a member of an object that the file

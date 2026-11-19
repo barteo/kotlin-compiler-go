@@ -223,7 +223,7 @@ tests/annotations/annotatedWhenExpression.kt	rejects invalid	on an expected line
 tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid		
 tests/annotations/annotationArgumentScopeForConstructorHeader.kt	skip	LANGUAGE	
-tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	annotationArgumentScopeForConstructorHeaderAfter.kt:16: type mismatch: inferred type is String but Int was expected
+tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt	accepts valid		
 tests/annotations/annotationArgumentScopeForNestedClass.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	rejects invalid	on an expected line	
 tests/annotations/annotationInheritance.kt	rejects invalid	on an expected line	
@@ -10803,7 +10803,7 @@ testsWithStdLib/typealias/typeAliasSamAdapterConstructors.kt	accepts valid
 testsWithStdLib/typealias/typeAliasSamAdapterConstructors2.kt	accepts valid		
 testsWithStdLib/typealias/upperBoundViolated.kt	rejects invalid	on an expected line	
 testsWithStdLib/typealias/upperBoundViolated2.kt	rejects invalid	on an expected line	
-testsWithStdLib/typealias/upperBoundViolated3.kt	rejects valid	type argument is not within its bounds in the expansion of typealias Alias: type parameter '_' must be subtype of '_', but actual: _	B.kt:8: type argument is not within its bounds in the expansion of typealias Alias: type parameter 'K' must be subtype of 'List<CharSequence>', but actual: 'List<Any>'
+testsWithStdLib/typealias/upperBoundViolated3.kt	accepts valid		
 testsWithStdLib/unaryOperators.kt	rejects invalid	on an expected line	
 testsWithStdLib/varargs/kt3213.kt	accepts valid		
 testsWithStdLib/varargs/kt4172j.kt	accepts valid		

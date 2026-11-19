@@ -183,6 +183,11 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		saved, savedLookup := c.state, c.lookupCls
 		c.state = state{scope: &scope{}, staticCls: owner}
+		if site.header && site.kind != siteCtor {
+			for _, p := range c.headerParams {
+				c.scope.declare(p)
+			}
+		}
 		if this := annotationThis(owner, site); this != nil {
 			c.cls, c.this, c.staticCls = this, newThis(this), nil
 			c.inAnon(this) // an inner or local class's outer receivers
@@ -441,8 +446,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
-		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false, false})
-		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false})
+		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false, false, false})
+		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false, false})
 	case *syntax.TypeAliasDecl:
 		c.annotations(d.Annotations, owner, typealiasSite)
 		c.typeParamAnnotations(d.TypeParams, owner)
@@ -471,6 +476,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		for _, cp := range d.CtorParams {
 			c.signatureTypeAnnotations(cls, cp.Type)
 		}
+		c.headerParams = cls.CtorParams
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
 			if cp.IsProp {
@@ -481,6 +487,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.setOnImmutable(cp.Modifiers.Annotations)
 			}
 		}
+		c.headerParams = nil
 		for _, e := range d.Entries {
 			c.annotations(e.Annotations, cls, enumEntrySite)
 		}
@@ -494,10 +501,14 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.noReceiver(m.Annotations)
 				c.publishedApi(&m.Modifiers)
 				c.annotations(m.Annotations, cls, ctorSite)
+				if m.Sym != nil {
+					c.headerParams = m.Sym.Params
+				}
 				for _, p := range m.Params {
 					c.noReceiver(p.Annotations)
-					c.annotations(p.Annotations, cls, paramSite)
+					c.annotations(p.Annotations, cls, inHeader(paramSite))
 				}
+				c.headerParams = nil
 			}
 		}
 	}

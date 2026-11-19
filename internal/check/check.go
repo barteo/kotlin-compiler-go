@@ -345,6 +345,9 @@ type Checker struct {
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// headerParams are the parameters of the constructor whose
+	// parameters' annotations are checked: their arguments see them.
+	headerParams []*types.VarSym
 	// localClasses are the file's local classes' capture frames.
 	localClasses map[*types.ClassSym]localClassFrame
 	// tailBlock is a branch whose last statement, a call, is checked with
