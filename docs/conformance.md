@@ -219,7 +219,7 @@ Four things differ from the test infrastructure:
 `kotlinc`'s extra and experimental checkers report only with `-Wextra`
 and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
 ones for tests with `WITH_EXTRA_CHECKERS` and those of
-`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
+`controlFlowAnalysis/deadCode/` and `extraCheckers/`, and the experimental ones for tests with
 `WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
 same tests.
 

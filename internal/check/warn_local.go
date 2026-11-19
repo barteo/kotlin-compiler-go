@@ -17,6 +17,9 @@ import (
 func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	c.shadowWarnings()
+	if c.u.extraWarnings {
+		c.unusedVarWarnings()
+	}
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
 		if lf, ok := n.(*syntax.LocalFun); ok {

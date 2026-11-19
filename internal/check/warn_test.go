@@ -318,6 +318,13 @@ func TestWarningsUnused(t *testing.T) {
 	checkReference(t, "testdata/unused.kt", Options{Warnings: true})
 }
 
+// TestWarningsUnusedVar checks the warnings of unused local variables
+// and assignments against those kotlinc reports with -Wextra of
+// testdata/unusedvar.kt.
+func TestWarningsUnusedVar(t *testing.T) {
+	checkReference(t, "testdata/unusedvar.kt", Options{Warnings: true, ExtraWarnings: true})
+}
+
 // TestWarningsShadow checks the warnings of extensions that members
 // shadow against kotlinc's, which testdata/shadow.kt records.
 func TestWarningsShadow(t *testing.T) {
