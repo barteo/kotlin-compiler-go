@@ -339,6 +339,12 @@ func TestWarningsDivision(t *testing.T) {
 	checkReference(t, "testdata/divide.kt", Options{Warnings: true})
 }
 
+// TestWarningsRedundantElse checks the warnings of redundant else
+// branches against kotlinc's of testdata/when.kt.
+func TestWarningsRedundantElse(t *testing.T) {
+	checkReference(t, "testdata/when.kt", Options{Warnings: true})
+}
+
 func TestWarningsShadow(t *testing.T) {
 	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
 }

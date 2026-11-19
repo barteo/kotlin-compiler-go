@@ -253,6 +253,9 @@ type Checker struct {
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool
+	// redundantElses are the whens whose else branch is redundant: see
+	// noteRedundantElse.
+	redundantElses map[*syntax.When]bool
 	// blockJumps are, with -Wextra, the blocks with a statement that
 	// always jumps, and its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
