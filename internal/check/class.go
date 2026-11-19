@@ -246,9 +246,43 @@ func (c *Checker) checkSupers() {
 				s.Subclasses = append(s.Subclasses, cd.Sym)
 			}
 		}
+		c.annotationSupers(cd)
 	}
 	c.tparams, c.lookupCls = nil, nil
 	c.checkAliasBounds()
+}
+
+// annotationSupers reports a class that inherits from an annotation
+// class, as kotlinc's EXTENDING_AN_ANNOTATION_CLASS_ERROR: on each
+// supertype that is one, or, if one is further up, on the class.
+func (c *Checker) annotationSupers(cd *syntax.ClassDecl) {
+	direct := false
+	for _, st := range cd.Supers {
+		if st.T.K == types.Class && isAnnotationClass(st.T.C) {
+			c.errorf(st.Type.P, "inheriting an annotation class is prohibited")
+			direct = true
+		}
+	}
+	if direct {
+		return
+	}
+	found := false
+	cd.Sym.Supertypes(func(k *types.ClassSym) bool {
+		found = k != cd.Sym && isAnnotationClass(k)
+		return !found
+	})
+	if found {
+		c.errorf(cd.P, "inheriting an annotation class is prohibited")
+	}
+}
+
+// isAnnotationClass reports whether k is an annotation class, Kotlin's or
+// Java's.
+func isAnnotationClass(k *types.ClassSym) bool {
+	if k.KotlinAnnotation() {
+		return true
+	}
+	return k.External && k.Retention != types.NoRetention
 }
 
 // checkConsistentSupers reports a class whose supertypes reach a generic

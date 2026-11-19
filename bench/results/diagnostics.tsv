@@ -1074,7 +1074,7 @@ tests/cfg/flowFromTwoInplaceLambdas.kt	rejects invalid	on an expected line
 tests/cfg/initBlock.kt	accepts valid		
 tests/cfg/initBlockAndInPlaceLambda.kt	accepts valid		
 tests/cfg/initializationInAnonymous.kt	skip	LANGUAGE	
-tests/cfg/initializationInAnonymousForbidden.kt	accepts invalid	INITIALIZATION_BEFORE_DECLARATION	initializationInAnonymousForbidden.kt:12: INITIALIZATION_BEFORE_DECLARATION
+tests/cfg/initializationInAnonymousForbidden.kt	rejects invalid	on an expected line	
 tests/cfg/inlineLambdasAreInplace.kt	rejects invalid	on an expected line	
 tests/cfg/innerClassInAnonymousObject.kt	rejects invalid	on an expected line	
 tests/cfg/inplaceLambdaInControlFlowExpressions.kt	accepts valid		
@@ -4939,7 +4939,7 @@ tests/initializerTypeMismatchWithLambdaAndOuterTvInPCLA.kt	rejects invalid	on an
 tests/inline/accessingLessVisibleInAnnotation.kt	accepts valid		
 tests/inline/accessingLessVisibleStaticDeclarations.kt	skip	LANGUAGE	
 tests/inline/accessingPublicFunctionOfPackagePrivateSuperType.kt	accepts valid		
-tests/inline/accessingPublicValThroughAnonymousObject.kt	accepts invalid	LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR	accessingPublicValThroughAnonymousObject.kt:56: LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR
+tests/inline/accessingPublicValThroughAnonymousObject.kt	rejects invalid	on an expected line	
 tests/inline/anonymousObjects.kt	rejects invalid	elsewhere	
 tests/inline/approximateReturnedAnonymousObjects.kt	rejects invalid	on an expected line	
 tests/inline/assignment.kt	rejects invalid	on an expected line	
@@ -5025,7 +5025,7 @@ tests/inline/nonPublicMember/inNonPublicInnerClass.kt	accepts valid
 tests/inline/nonPublicMember/inPackage.kt	rejects invalid	on an expected line	
 tests/inline/nonPublicMember/inPublicClass.kt	rejects invalid	on an expected line	
 tests/inline/nonPublicMember/kt14887.kt	rejects invalid	on an expected line	
-tests/inline/nonPublicMember/kt55179.kt	accepts invalid	LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR; PRIVATE_CLASS_MEMBER_FROM_INLINE; LESS_VISIBLE_TYPE_ACCESS_IN_INLINE_ERROR	kt55179.kt:17: LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR
+tests/inline/nonPublicMember/kt55179.kt	rejects invalid	on an expected line	
 tests/inline/nonPublicMember/localClass.kt	accepts valid		
 tests/inline/nonPublicMember/localClass2.kt	rejects invalid	on an expected line	
 tests/inline/nonPublicMember/localFun.kt	rejects invalid	on an expected line	
@@ -6068,12 +6068,12 @@ tests/multimodule/hiddenClass/deprecatedHiddenImportPriority.kt	rejects invalid	
 tests/multimodule/hiddenClass/deprecatedHiddenMultipleClasses.kt	rejects invalid	on an expected line	
 tests/multimodule/hiddenClass/sinceKotlinImportPriority.kt	skip	API_VERSION	
 tests/multimodule/hiddenClass/sinceKotlinMultipleClasses.kt	skip	API_VERSION	
-tests/multimodule/inaccessibleAnnotationInInferredReturnType.kt	accepts invalid	MISSING_DEPENDENCY_IN_INFERRED_TYPE_ANNOTATION_ERROR	c.kt:1: MISSING_DEPENDENCY_IN_INFERRED_TYPE_ANNOTATION_ERROR
+tests/multimodule/inaccessibleAnnotationInInferredReturnType.kt	rejects invalid	on an expected line	
 tests/multimodule/inaccessibleSuperTypeWithRepeatedContext.kt	rejects invalid	on an expected line	
 tests/multimodule/inaccessibleSupertypeVariousExperimental.kt	skip	LANGUAGE	
 tests/multimodule/inaccessibleSupertypeVariousExperimentalEnabled.kt	skip	LANGUAGE	
 tests/multimodule/inaccessibleTypeAliasNoForbidTypeAliasWithMissingDependencyType.kt	skip	LANGUAGE	
-tests/multimodule/inaccessibleTypeAliasWithForbidTypeAliasWithMissingDependencyType.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	main.kt:3: MISSING_DEPENDENCY_CLASS
+tests/multimodule/inaccessibleTypeAliasWithForbidTypeAliasWithMissingDependencyType.kt	rejects invalid	on an expected line	
 tests/multimodule/internal.kt	rejects invalid	on an expected line	
 tests/multimodule/kt14249.kt	accepts valid		
 tests/multimodule/packagePrivate.kt	rejects invalid	on an expected line	
@@ -7263,7 +7263,7 @@ tests/problems/transform.kt	accepts valid
 tests/problems/typeArgumentsOnThis.kt	rejects invalid	on an expected line	
 tests/problems2.kt	accepts valid		
 tests/prohibitInheritingAnnotaitonsDirectly.kt	rejects invalid	on an expected line	
-tests/prohibitInheritingAnnotaitonsIndirectly.kt	accepts invalid	EXTENDING_AN_ANNOTATION_CLASS_ERROR	KotlinAnnoClasses.kt:1: EXTENDING_AN_ANNOTATION_CLASS_ERROR
+tests/prohibitInheritingAnnotaitonsIndirectly.kt	rejects invalid	on an expected line	
 tests/prohibitInheritingAnnotaitonsIndirectly_Off.kt	skip	LANGUAGE	
 tests/projectionProblemInIsExpression.kt	rejects invalid	on an expected line	
 tests/projectionProblemInIsMultiTypealiasArgument.kt	rejects invalid	on an expected line	
@@ -10213,7 +10213,7 @@ testsWithStdLib/experimental/delegatedConstructorCalls.kt	rejects invalid	on an 
 testsWithStdLib/experimental/diffrentModules.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/enumCompanion.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/enumConstructor.kt	skip	LANGUAGE	
-testsWithStdLib/experimental/enumConstructorStrictCheck.kt	accepts invalid	OPT_IN_USAGE_ERROR	enumConstructorStrictCheck.kt:7: OPT_IN_USAGE_ERROR
+testsWithStdLib/experimental/enumConstructorStrictCheck.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/enumEntries.kt	skip	API_VERSION	
 testsWithStdLib/experimental/errors.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/experimentalAfterRelease.kt	accepts valid		

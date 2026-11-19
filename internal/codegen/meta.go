@@ -487,6 +487,16 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		Ret:        s.typ(sym.Ret),
 		JVM:        kmeta.JVMSig{Name: sym.JVM(), Desc: funDesc(sym)},
 	}
+	if fd.Ret != nil {
+		f.Ret.Annotations = typeAnnotationsMeta(fd.Ret.Annotations)
+	}
+	for i, p := range fd.Params {
+		if i < len(f.Params) && p.Type != nil {
+			if kt := f.Params[i].Type; kt != nil && f.Params[i].Vararg == nil {
+				kt.Annotations = typeAnnotationsMeta(p.Type.Annotations)
+			}
+		}
+	}
 	if sym.Ext {
 		f.Recv = s.typ(sym.Recv)
 	}
@@ -775,6 +785,24 @@ func (g *gen) packageMeta() *kmeta.PackageData {
 		case *syntax.TypeAliasDecl:
 			out.Aliases = append(out.Aliases, aliasMeta(nil, d))
 		}
+	}
+	return out
+}
+
+// typeAnnotationsMeta converts the annotations written on a type, @A T,
+// that class files keep, as kotlinc keeps them in the type's metadata.
+func typeAnnotationsMeta(as []syntax.Annotation) []*kmeta.Annotation {
+	var out []*kmeta.Annotation
+	for i := range as {
+		an := &as[i]
+		if an.Class == nil || an.Target != "" || an.Class.Retention == types.RetentionSource {
+			continue
+		}
+		switch an.Class.Name {
+		case "kotlin/ExtensionFunctionType", "androidx/compose/runtime/Composable", "kotlin/ContextFunctionTypeParams", "kotlin/internal/NoInfer":
+			continue // which the type's own flags say
+		}
+		out = append(out, annotationMeta(annotationOf(an)))
 	}
 	return out
 }

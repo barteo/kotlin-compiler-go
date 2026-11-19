@@ -942,6 +942,12 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	ret, rok := t.ktype(f.Ret, scope)
 	sym.Ret = ret
 	sym.NoInferRet = f.Ret != nil && f.Ret.NoInfer
+	sym.MissingAnno = t.missingTypeAnno(f.Ret)
+	for _, p := range f.Params {
+		if a := t.missingTypeAnno(p.Type); a != "" && sym.ParamMissingAnno == "" {
+			sym.ParamMissingAnno = a
+		}
+	}
 	if f.Recv != nil {
 		sym.Ext = true
 		recv, recvOK := t.ktype(f.Recv, scope)
@@ -3011,4 +3017,18 @@ func (t *classTable) verifyAbsent(name string, cls *types.ClassSym) {
 	if cls != nil {
 		panic("check: the class path filter ruled out " + name)
 	}
+}
+
+// missingTypeAnno returns the name of the class of an annotation of type
+// kt, not of its type arguments, that the class path doesn't have, or "".
+func (t *classTable) missingTypeAnno(kt *kmeta.Type) string {
+	if kt == nil {
+		return ""
+	}
+	for _, an := range kt.Annotations {
+		if c := t.missingClass(an.Class, 0); c != nil {
+			return missingName(c)
+		}
+	}
+	return ""
 }

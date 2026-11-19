@@ -16,6 +16,7 @@ import (
 func (c *Checker) inlineBodyChecks(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.inlineUsage(d)
 	c.publicInline(d, cls)
+	c.lessVisibleInline(d, cls)
 	if publicAPIInline(d, cls) {
 		c.inlineAccess(d, protectedAPI(d, cls))
 	}
@@ -202,6 +203,7 @@ func (c *Checker) inlineAccessorChecks(d *syntax.PropDecl, cls *types.ClassSym) 
 		}
 		f := &syntax.FunDecl{Modifiers: d.Modifiers, Name: a.Name, P: a.P, Body: a.Body, ExprBody: a.ExprBody, Params: a.Params}
 		c.publicInline(f, cls)
+		c.lessVisibleInline(f, cls)
 		if publicAPIInline(f, cls) {
 			c.inlineAccess(f, protectedAPI(f, cls))
 		}

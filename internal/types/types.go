@@ -526,6 +526,12 @@ type FunSym struct {
 	Operator bool   // can be called by an operator, as get by x[i]: Java methods and Kotlin operator funs
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
+	// MissingAnno is set on a function of the class path whose result
+	// type has a type annotation of a class the class path doesn't have,
+	// and ParamMissingAnno on one with such a parameter type: the
+	// annotation class's name, for kotlinc's
+	// MISSING_DEPENDENCY_IN_INFERRED_TYPE_ANNOTATION_ERROR.
+	MissingAnno, ParamMissingAnno string
 	// NoInferRet is set when the result type is annotated
 	// @kotlin.internal.NoInfer: the expected type doesn't constrain the
 	// call's variables.

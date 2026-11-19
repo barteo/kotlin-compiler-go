@@ -1121,6 +1121,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		if !c.noBoundChecks {
 			c.arrayNothingRef(ref, t)
 		}
+		if t.K == types.Class && isMissingDep(t.C) {
+			// As K2's ForbidTypeAliasWithMissingDependencyType.
+			name := missingName(t.C)
+			if s := t.String(); strings.IndexAny(s, "<?") >= 0 {
+				name += s[strings.IndexAny(s, "<?"):] // its arguments and ?
+			}
+			c.errorf(ref.P, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", name)
+		}
 		return t
 	}
 	var t types.Type
@@ -3264,6 +3272,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 			}
 		}
 		c.classAssignment(d)
+		c.initBeforeDecl(d)
 	}
 }
 

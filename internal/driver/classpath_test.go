@@ -25,7 +25,7 @@ func TestMissingDependencies(t *testing.T) {
 		out := filepath.Join(dir, name)
 		return out, Compile([]string{path}, Options{OutDir: out, Jobs: 1, ClassPath: append([]string{std}, cp...), ModuleName: name})
 	}
-	root, err := compile("root", "package r\n\ninterface Missed { fun foo() = 1 }\nclass Some\n")
+	root, err := compile("root", "package r\n\ninterface Missed { fun foo() = 1 }\nclass Some\n@Target(AnnotationTarget.TYPE) annotation class Anno\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +41,9 @@ open class Base {
     fun plain() = 1
 }
 fun same() = 1
+typealias ToSome = Some
+fun annotated(): @Anno String = ""
+fun interface Sam { fun foo(x: @Anno String) }
 `, root)
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +55,14 @@ fun same() = 1
 		{"fun f() = l.Impl()", ""}, // only a warning in Kotlin 2.4
 		{"fun f(i: l.Impl) = i.own()", "cannot access 'r.Missed' which is a supertype of 'l.Impl'"},
 		{"class C : l.Mid", "cannot access 'r.Missed' which is a supertype of 'a.C'"},
+		// ForbidTypeAliasWithMissingDependencyType: the alias's expansion.
+		{"fun f(): l.ToSome? = null", "cannot access class 'r.Some?'"},
+		// ForbidImplicitTypeAnnotationWithMissingDependency.
+		{"fun f(): String = l.annotated()", ""},
+		{"fun f() { val x = l.annotated() }", ""},
+		{"fun f() = l.annotated()", "type annotation class 'Anno' of the inferred type is inaccessible"},
+		{"val v = l.annotated()", "type annotation class 'Anno' of the inferred type is inaccessible"},
+		{"fun f() { val s = l.Sam {} }", "type annotation class 'Anno' of the inferred type is inaccessible"},
 	}
 	for i, tt := range tests {
 		_, err := compile("app", "package a\n\n"+tt.src+"\n", lib)
