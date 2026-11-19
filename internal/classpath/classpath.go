@@ -75,6 +75,10 @@ type Path struct {
 	pkgOnce    sync.Once
 	pkgClasses map[string][]string // see Package
 
+	// names filters lookups of classes that aren't there: see MayHave.
+	filterOnce sync.Once
+	names      *nameFilter
+
 	IndexTime time.Duration
 	loaded    atomic.Int64
 	loadNanos atomic.Int64
@@ -168,6 +172,9 @@ func (p *Path) add(name string, e entry) {
 // shared.
 func (p *Path) AddSource(name string, info func() (*classfile.Info, error)) {
 	p.classes[name] = entry{info: info}
+	if p.names != nil {
+		p.names.add(Hash(name))
+	}
 	p.bytes.Delete(name)
 	p.infos.Delete(name)
 	p.methods.Delete(name)

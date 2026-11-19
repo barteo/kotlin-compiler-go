@@ -3,6 +3,7 @@
 package types
 
 import (
+	"slices"
 	"strings"
 	"sync"
 
@@ -1049,15 +1050,26 @@ func (c *ClassSym) ObjectField() (owner, name string) {
 // Supertypes calls fn on c and then on each of its supertypes, superclasses
 // before interfaces, until fn returns false.
 func (c *ClassSym) Supertypes(fn func(*ClassSym) bool) {
-	seen := map[*ClassSym]bool{}
-	queue := []*ClassSym{c}
-	for len(queue) > 0 {
-		s := queue[0]
-		queue = queue[1:]
-		if seen[s] {
+	// Most classes have a few supertypes: the queue doubles as the
+	// set of those seen, searched linearly, until a map pays off.
+	var buf [16]*ClassSym
+	queue := append(buf[:0], c)
+	var seen map[*ClassSym]bool
+	for i := 0; i < len(queue); i++ {
+		s := queue[i]
+		if seen != nil {
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+		} else if slices.Contains(queue[:i], s) {
 			continue
+		} else if i >= 32 {
+			seen = make(map[*ClassSym]bool, 2*len(queue))
+			for _, q := range queue[:i+1] {
+				seen[q] = true
+			}
 		}
-		seen[s] = true
 		s.Ensure()
 		if !fn(s) {
 			return

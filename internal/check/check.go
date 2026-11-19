@@ -176,7 +176,8 @@ type Checker struct {
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport
-	stars        []string // star-imported packages of the class path (internal names)
+	stars        []string  // star-imported packages of the class path (internal names)
+	starRefs     []*pkgRef // stars, resolved: see starPkgs
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
@@ -232,8 +233,8 @@ type Checker struct {
 	// classifiers of isn't ambiguous: see classLitType.
 	starFallback bool
 	funCache     map[funKey][]*types.FunSym
-	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
-	looked       lookups                      // the lookups recorded (see lookups.go)
+	levelCache   map[levelKey][][]*types.FunSym // see extLevels
+	looked       lookups                        // the lookups recorded (see lookups.go)
 	errs         []*syntax.Error
 	// warns are the file's warnings, apart from errs, which speculative
 	// checks roll back and count. Warnings are found by passes over the
@@ -878,7 +879,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 			jumps:    map[*syntax.Lambda]inlineJumps{},
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, frameAssigns: map[varFrame][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, starCache: map[string][]classifier{}, funCache: map[funKey][]*types.FunSym{},
-			levelCache: map[funKey][][]*types.FunSym{}}
+			levelCache: map[levelKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
 	dropContracts(checkers)
@@ -1880,19 +1881,19 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 	if c.u.ext.kotlin {
 		// A Kotlin library's, by a star import, then the standard
 		// library's default imports: DEFAULT_BUFFER_SIZE.
-		for _, pkg := range c.stars {
-			if c.renamedAway(pkg, name) {
+		for _, r := range c.starPkgs() {
+			if c.renamedAway(r.name, name) {
 				continue
 			}
-			if v := c.u.ext.pkgVar(strings.ReplaceAll(pkg, "/", "."), name); v != nil {
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}
-		for _, pkg := range defaultPackages {
-			if c.renamedAway(pkg, name) {
+		for _, r := range c.u.ext.defaultRefs() {
+			if c.renamedAway(r.name, name) {
 				continue
 			}
-			if v := c.u.ext.pkgVar(pkg, name); v != nil {
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}

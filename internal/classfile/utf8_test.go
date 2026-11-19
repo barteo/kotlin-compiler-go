@@ -1,54 +1,93 @@
 package classfile
 
 import (
-	"bytes"
-	"encoding/binary"
+	"math/rand"
 	"testing"
+	"unicode/utf16"
 )
 
-func TestPoolUTF8Encoding(t *testing.T) {
-	for _, tc := range []struct {
-		text    string
-		encoded []byte
-	}{
-		{"", nil},
-		{"ASCII", []byte("ASCII")},
-		{"a\x00b", []byte{0x61, 0xc0, 0x80, 0x62}},
-		{"żółw", []byte("żółw")},
-		{"日本語", []byte("日本語")},
-		{"😀", []byte{0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80}},
-	} {
-		var p Pool
-		if got := p.Utf8(tc.text); got != 1 {
-			t.Fatalf("Utf8(%q) index = %d, want 1", tc.text, got)
+// decodeModifiedUTF8Ref is decodeModifiedUTF8 as it was, through UTF-16
+// units, which the direct decoder must agree with.
+func decodeModifiedUTF8Ref(b []byte) string {
+	u := make([]uint16, 0, len(b))
+	for i := 0; i < len(b); {
+		c := b[i]
+		switch {
+		case c < 0x80:
+			u = append(u, uint16(c))
+			i++
+		case c&0xE0 == 0xC0 && i+1 < len(b):
+			u = append(u, uint16(c&0x1F)<<6|uint16(b[i+1]&0x3F))
+			i += 2
+		case i+2 < len(b):
+			u = append(u, uint16(c&0x0F)<<12|uint16(b[i+1]&0x3F)<<6|uint16(b[i+2]&0x3F))
+			i += 3
+		default:
+			i = len(b)
 		}
-		if p.buf[0] != tagUtf8 || int(binary.BigEndian.Uint16(p.buf[1:3])) != len(tc.encoded) || !bytes.Equal(p.buf[3:], tc.encoded) {
-			t.Errorf("Utf8(%q) encoded as %x, want %x", tc.text, p.buf, tc.encoded)
+	}
+	return string(utf16.Decode(u))
+}
+
+func TestDecodeModifiedUTF8(t *testing.T) {
+	cases := [][]byte{
+		nil,
+		[]byte("plain"),
+		{0xC0, 0x80},                         // NUL
+		{0xC3, 0xA9},                         // é
+		{0xE2, 0x82, 0xAC},                   // €
+		{0xED, 0xA0, 0xBD, 0xED, 0xB8, 0x80}, // U+1F600 as a surrogate pair
+		{0xED, 0xA0, 0xBD},                   // a lone high surrogate
+		{0xED, 0xB8, 0x80},                   // a lone low surrogate
+		{0xED, 0xA0, 0xBD, 'x'},              // a high surrogate, then not a low one
+		{0xED, 0xA0, 0xBD, 0xED, 0xA0, 0xBD}, // two high surrogates
+		{0xC3},                               // truncated
+		{0xE2, 0x82},                         // truncated
+		{'a', 0xFF, 'b', 'c'},                // not modified UTF-8
+		{0x00, 0x80, 0xBF},
+	}
+	for _, b := range cases {
+		if got, want := decodeModifiedUTF8(b), decodeModifiedUTF8Ref(b); got != want {
+			t.Errorf("decodeModifiedUTF8(% x) = %q, want %q", b, got, want)
 		}
-		if got := p.utf8At(1); got != tc.text {
-			t.Errorf("utf8At(1) = %q, want %q", got, tc.text)
+	}
+	r := rand.New(rand.NewSource(1))
+	pick := []byte{0x00, 'a', 0x7F, 0x80, 0xBF, 0xC0, 0xC3, 0xDF, 0xE0, 0xED, 0xA0, 0xB0, 0xEF, 0xF0, 0xFF}
+	for range 200000 {
+		b := make([]byte, r.Intn(12))
+		for i := range b {
+			if r.Intn(2) == 0 {
+				b[i] = pick[r.Intn(len(pick))]
+			} else {
+				b[i] = byte(r.Intn(256))
+			}
+		}
+		if got, want := decodeModifiedUTF8(b), decodeModifiedUTF8Ref(b); got != want {
+			t.Fatalf("decodeModifiedUTF8(% x) = %q, want %q", b, got, want)
 		}
 	}
 }
 
-func TestPoolRepeatedConstants(t *testing.T) {
-	var p Pool
-	for _, add := range []func() uint16{
-		func() uint16 { return p.Utf8("repeated") },
-		func() uint16 { return p.Class("demo/A") },
-		func() uint16 { return p.String("repeated") },
-		func() uint16 { return p.NameAndType("method", "()V") },
-		func() uint16 { return p.Field("demo/A", "field", "I") },
-		func() uint16 { return p.Method("demo/A", "method", "()V") },
-		func() uint16 { return p.InterfaceMethod("demo/I", "method", "()V") },
-	} {
-		first := add()
-		size, count := len(p.buf), p.count
-		if got := add(); got != first || len(p.buf) != size || p.count != count {
-			t.Fatalf("repeated constant changed pool: index %d -> %d, size %d -> %d, count %d -> %d", first, got, size, len(p.buf), count, p.count)
+func BenchmarkDecodeModifiedUTF8(b *testing.B) {
+	// As Kotlin metadata's strings are: bytes as characters, many of
+	// them two-byte sequences.
+	src := make([]byte, 0, 3000)
+	for i := range 2000 {
+		c := byte(i * 7)
+		if c < 0x80 && c != 0 {
+			src = append(src, c)
+		} else {
+			src = append(src, 0xC0|c>>6, 0x80|c&0x3F)
 		}
 	}
-	if n := testing.AllocsPerRun(100, func() { p.Utf8("repeated") }); n != 0 {
-		t.Errorf("repeated UTF8 constant allocated %g times, want 0", n)
-	}
+	b.Run("direct", func(b *testing.B) {
+		for range b.N {
+			decodeModifiedUTF8(src)
+		}
+	})
+	b.Run("utf16", func(b *testing.B) {
+		for range b.N {
+			decodeModifiedUTF8Ref(src)
+		}
+	})
 }

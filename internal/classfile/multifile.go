@@ -88,8 +88,11 @@ func (p *Pool) copyConst(from *Pool, i uint16) uint16 {
 			return p.Long(int64(k.n))
 		case tagDouble:
 			return p.Double(math.Float64frombits(k.n))
-		case tagString:
-			return p.String(k.a)
+		}
+	}
+	for u, j := range from.stringOf {
+		if j == i {
+			return p.String(from.utf8At(uint16(u)))
 		}
 	}
 	panic("classfile: no constant to copy")

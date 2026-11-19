@@ -316,6 +316,75 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 	return types.InvalidType, false
 }
 
+// isSubclass reports whether t is a subtype of class target judging only
+// by classes: whether asSuper(t, target) succeeds, without building the
+// substituted supertype. recvFits asks it for each candidate extension
+// of a call, which made asSuper's substitutions a fifth of checking.
+func (c *Checker) isSubclass(t types.Type, target *types.ClassSym) bool {
+	return c.isSubclass1(t.NonNull(), target, 0)
+}
+
+func (c *Checker) isSubclass1(t types.Type, target *types.ClassSym, depth int) bool {
+	if depth > 50 {
+		return false
+	}
+	switch t.K {
+	case types.Class:
+		if t.C == target {
+			return true
+		}
+		if t.C.Func && t.A != nil && target.Name == "kotlin/Function" && !t.C.Suspend && !t.C.Composable {
+			return true // as asSuper1
+		}
+		return c.classIsSubclass(t.C, target, depth)
+	case types.TypeParam, types.TypeVar:
+		for _, b := range t.Param().Bounds {
+			if c.isSubclass1(b.NonNull(), target, depth+1) {
+				return true
+			}
+		}
+	case types.Int, types.Long, types.Double, types.Bool, types.Char, types.Float, types.Byte, types.Short, types.String:
+		if jc := c.jvmClass(t); jc != nil {
+			return c.isSubclass1(types.ClassType(jc), target, depth+1)
+		}
+	}
+	return false
+}
+
+// classIsSubclass is isSubclass1 for class cls, whatever its type
+// arguments, which asSuper1's walk up its supertypes doesn't depend on.
+// The answer is cached per pair of classes, where asSuper caches its
+// results.
+func (c *Checker) classIsSubclass(cls, target *types.ClassSym, depth int) bool {
+	k := classPair{cls, target}
+	cache := c.u.cache(types.ClassType(cls), types.ClassType(target))
+	if r, ok := cache.subclasses.Load(k); ok {
+		return r.(bool)
+	}
+	cls.Ensure()
+	ok := false
+	if cls.Supers != nil {
+		for _, s := range cls.Supers {
+			if ok = c.isSubclass1(s, target, depth+1); ok {
+				break
+			}
+		}
+	} else {
+		// directSupers' raw supertypes, which have no type arguments.
+		if cls.Super != nil {
+			ok = c.isSubclass1(rawType(cls.Super), target, depth+1)
+		}
+		for _, i := range cls.Interfaces {
+			if ok {
+				break
+			}
+			ok = c.isSubclass1(rawType(i), target, depth+1)
+		}
+	}
+	cache.subclasses.Store(k, ok)
+	return ok
+}
+
 // directSupers returns the direct supertypes of a Java class type, with
 // its type arguments substituted. A class read without a signature has
 // raw supertypes, seen as star-projected.

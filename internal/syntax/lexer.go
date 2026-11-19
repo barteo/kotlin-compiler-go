@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -26,16 +27,45 @@ type lexer struct {
 
 // Tokenize lexes a whole file.
 func Tokenize(file, src string) ([]Token, []*Error) {
-	toks, errs, _ := tokenize(file, src)
+	toks, errs, _ := tokenize(file, src, nil)
 	return toks, errs
 }
 
-// tokenize lexes a whole file, and also returns the errors of literals
-// glued to their neighbors (see lexer.glued).
-func tokenize(file, src string) ([]Token, []*Error, []*Error) {
-	lx := &lexer{src: src, line: 1, col: 1, file: file}
+// tokenize lexes a whole file into buf, and also returns the errors of
+// literals glued to their neighbors (see lexer.glued).
+func tokenize(file, src string, buf []Token) ([]Token, []*Error, []*Error) {
+	lx := &lexer{src: src, line: 1, col: 1, file: file, toks: buf[:0]}
 	lx.run()
 	return lx.toks, lx.errs, lx.glued
+}
+
+// tokenBufs are token slices to lex into, which Parse returns when it is
+// done with them: growing a file's slice from nothing is a fifth of
+// lexing's time.
+var tokenBufs struct {
+	sync.Mutex
+	free [][]Token
+}
+
+func getTokenBuf() []Token {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	n := len(tokenBufs.free)
+	if n == 0 {
+		return nil
+	}
+	b := tokenBufs.free[n-1]
+	tokenBufs.free = tokenBufs.free[:n-1]
+	return b
+}
+
+// putTokenBuf keeps b for another file. Nothing may refer to its tokens.
+func putTokenBuf(b []Token) {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	if len(tokenBufs.free) < 16 {
+		tokenBufs.free = append(tokenBufs.free, b)
+	}
 }
 
 func tokenizeAt(file, src string, pos Pos) ([]Token, []*Error) {
@@ -95,33 +125,51 @@ func (lx *lexer) skipSpace() bool {
 			sawNL = true
 			lx.advance(1)
 		case c == '/' && lx.peekByte(1) == '/':
-			for lx.off < len(lx.src) && lx.src[lx.off] != '\n' {
-				lx.advance(1)
+			n := strings.IndexByte(lx.src[lx.off:], '\n')
+			if n < 0 {
+				n = len(lx.src) - lx.off
 			}
+			lx.off += n
+			lx.col += n
 		case c == '/' && lx.peekByte(1) == '*':
-			start := lx.pos()
-			lx.advance(2)
-			depth := 1 // Kotlin block comments nest
-			for depth > 0 {
-				if lx.off >= len(lx.src) {
-					lx.errorf(start, "unterminated comment")
-					return sawNL
-				}
-				if lx.src[lx.off] == '/' && lx.peekByte(1) == '*' {
-					depth++
-					lx.advance(2)
-				} else if lx.src[lx.off] == '*' && lx.peekByte(1) == '/' {
-					depth--
-					lx.advance(2)
-				} else {
-					lx.advance(1)
-				}
+			if !lx.blockComment() {
+				return sawNL
 			}
 		default:
 			return sawNL
 		}
 	}
 	return sawNL
+}
+
+// blockComment skips a block comment, which Kotlin lets nest, and
+// reports whether it ends. It counts lines and columns as advance does.
+func (lx *lexer) blockComment() bool {
+	start := lx.pos()
+	src, i, line, col := lx.src, lx.off+2, lx.line, lx.col+2
+	for depth := 1; depth > 0; {
+		if i >= len(src) {
+			lx.off, lx.line, lx.col = i, line, col
+			lx.errorf(start, "unterminated comment")
+			return false
+		}
+		switch c := src[i]; {
+		case c == '\n':
+			line, col = line+1, 1
+			i++
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			depth++
+		case c == '*' && i+1 < len(src) && src[i+1] == '/':
+			depth--
+		default:
+			i, col = i+1, col+1
+			continue
+		}
+		i, col = i+2, col+2
+	}
+	lx.off, lx.line, lx.col = i, line, col
+	return true
 }
 
 func isLetter(c byte) bool { return c == '_' || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
@@ -291,21 +339,6 @@ func (lx *lexer) next() {
 		return
 	}
 
-	type op struct {
-		s string
-		k Kind
-	}
-	// Longest match first.
-	ops := [...]op{
-		{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
-		{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
-		{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
-		{"&&", AND}, {"||", OR}, {"&", AMP},
-		{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
-		{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
-		{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
-		{"@", AT},
-	}
 	// !in and !is are single tokens when not followed by an identifier
 	// character, so !isEmpty() is a negation.
 	for _, o := range [...]op{{"!in", NOT_IN}, {"!is", NOT_IS}} {
@@ -327,7 +360,7 @@ func (lx *lexer) next() {
 		lx.emit(QUEST, p, "?")
 		return
 	}
-	for _, o := range ops {
+	for _, o := range opsByByte[c] {
 		if strings.HasPrefix(lx.src[lx.off:], o.s) {
 			lx.advance(len(o.s))
 			lx.emit(o.k, p, o.s)
@@ -345,6 +378,32 @@ func (lx *lexer) next() {
 	lx.errorf(p, "unexpected character "+string(c))
 	lx.advance(1)
 }
+
+type op struct {
+	s string
+	k Kind
+}
+
+// ops are the operators and punctuation, longest match first.
+var ops = [...]op{
+	{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
+	{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
+	{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
+	{"&&", AND}, {"||", OR}, {"&", AMP},
+	{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
+	{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
+	{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
+	{"@", AT},
+}
+
+// opsByByte are ops by their first byte, in the same order, so the
+// first that matches is ops' first.
+var opsByByte = func() (t [256][]op) {
+	for _, o := range ops {
+		t[o.s[0]] = append(t[o.s[0]], o)
+	}
+	return t
+}()
 
 func (lx *lexer) number(p Pos) {
 	start := lx.off

@@ -55,6 +55,12 @@ class Api @PublishedApi constructor() { // ERROR @PublishedApi annotation is onl
     @PublishedApi internal val q = 1
 }
 class ApiParams(@PublishedApi val a: Int, @PublishedApi internal val b: Int) // ERROR @PublishedApi annotation is only applicable for internal declaration
+abstract class ApiBase {
+    internal abstract fun f(): Int
+}
+class ApiOverride : ApiBase() {
+    @PublishedApi override fun f() = 1 // internal, as the function it overrides
+}
 
 val <T> Int.unused: Int get() = 1 // ERROR type parameter of a property must be used in its receiver type
 val <T : K, K> K.boundOnly: Int get() = 1 // ERROR type parameter of a property must be used in its receiver type

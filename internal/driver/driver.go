@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -111,6 +112,60 @@ func parallel(n, jobs int, fn func(i int)) {
 	}
 	close(next)
 	wg.Wait()
+}
+
+// classWriter writes class files on goroutines of its own, so that code
+// generation, also with -j 1, doesn't wait for the file system: creating
+// thousands of files took a fifth of a large project's code generation.
+type classWriter struct {
+	jobs  chan classFile
+	wg    sync.WaitGroup
+	mkdir func(dir string) error
+	mu    sync.Mutex
+	errs  []error
+	nanos atomic.Int64 // spent writing, summed over the writers
+	count atomic.Int64
+}
+
+type classFile struct {
+	path string
+	data []byte
+}
+
+// newClassWriter starts the writers. mkdir creates a file's directory.
+func newClassWriter(mkdir func(dir string) error) *classWriter {
+	w := &classWriter{jobs: make(chan classFile, 256), mkdir: mkdir}
+	for range max(2, min(4, runtime.NumCPU())) {
+		w.wg.Go(func() {
+			for f := range w.jobs {
+				start := time.Now()
+				err := w.mkdir(filepath.Dir(f.path))
+				if err == nil {
+					err = os.WriteFile(f.path, f.data, 0o644)
+				}
+				w.nanos.Add(int64(time.Since(start)))
+				w.count.Add(1)
+				if err != nil {
+					w.mu.Lock()
+					w.errs = append(w.errs, err)
+					w.mu.Unlock()
+				}
+			}
+		})
+	}
+	return w
+}
+
+// write queues data to be written to path. It blocks only if the
+// writers are far behind.
+func (w *classWriter) write(path string, data []byte) { w.jobs <- classFile{path, data} }
+
+// wait waits for the queued files to be written and returns the errors
+// writing them. No more files may be queued after it.
+func (w *classWriter) wait() error {
+	close(w.jobs)
+	w.wg.Wait()
+	return errors.Join(w.errs...)
 }
 
 // OpenLibrary opens the class path opts names (the JDK, unless NoJDK, and
@@ -407,8 +462,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		}
 		return err
 	}
-	var writing atomic.Int64 // nanoseconds spent writing class files, over all workers
-	var written atomic.Int64
+	w := newClassWriter(mkdir)
 	genOpts := codegen.Options{Stdlib: cp.HasKotlin(), Module: opts.ModuleName,
 		Spilling: cp.Has("kotlin/coroutines/jvm/internal/SpillingKt") && !opts.Debug, Compose: opts.Compose,
 		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}}
@@ -426,26 +480,12 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 			if c.Part != nil {
 				parts[i] = c.Part
 			}
-		}
-		start := time.Now()
-		defer func() {
-			writing.Add(int64(time.Since(start)))
-			written.Add(int64(len(classes)))
-		}()
-		for _, c := range classes {
 			hasFacade[i] = hasFacade[i] || c.Name == files[i].Class()
-			path := filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class")
-			if err := mkdir(filepath.Dir(path)); err != nil {
-				genErrs[i] = err
-				return
-			}
-			if err := os.WriteFile(path, c.Bytes, 0o644); err != nil {
-				genErrs[i] = err
-				return
-			}
+			w.write(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes)
 		}
 	})
 	if err := errors.Join(genErrs...); err != nil {
+		w.wait()
 		return err
 	}
 	// The facades of multi-file classes, from all their parts.
@@ -458,19 +498,18 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	for name, ps := range byFacade {
 		c, err := codegen.MultifileFacade(name, ps)
 		if err != nil {
+			w.wait()
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes, 0o644); err != nil {
-			return err
-		}
+		w.write(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes)
 	}
-	if err := writeModule(opts, files, hasFacade); err != nil {
+	if err := errors.Join(w.wait(), writeModule(opts, files, hasFacade)); err != nil {
 		return err
 	}
 	phase("codegen")
 	if opts.Timing != nil {
-		fmt.Fprintf(opts.Timing, "%-8s %v (%d class files, part of codegen, summed over workers)\n", "write",
-			time.Duration(writing.Load()).Round(time.Microsecond), written.Load())
+		fmt.Fprintf(opts.Timing, "%-8s %v (%d class files, part of codegen, summed over writers)\n", "write",
+			time.Duration(w.nanos.Load()).Round(time.Microsecond), w.count.Load())
 		fmt.Fprintf(opts.Timing, "%-8s %v (Kotlin metadata, part of codegen, summed over workers)\n", "meta",
 			time.Duration(codegen.MetaTime.Swap(0)).Round(time.Microsecond))
 	}

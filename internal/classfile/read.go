@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Access flags read from class files, in addition to those used for writing.
@@ -915,22 +916,45 @@ func decodeModifiedUTF8(b []byte) string {
 	if ascii {
 		return string(b)
 	}
-	u := make([]uint16, 0, len(b))
+	// Straight to UTF-8, without the UTF-16 units in between: Kotlin
+	// metadata is mostly such strings, and the copies were a tenth of
+	// reading it. Lone surrogates become U+FFFD, as utf16.Decode makes them.
+	out := make([]byte, 0, len(b)+len(b)/2)
 	for i := 0; i < len(b); {
-		c := b[i]
-		switch {
-		case c < 0x80:
-			u = append(u, uint16(c))
-			i++
-		case c&0xE0 == 0xC0 && i+1 < len(b):
-			u = append(u, uint16(c&0x1F)<<6|uint16(b[i+1]&0x3F))
-			i += 2
-		case i+2 < len(b):
-			u = append(u, uint16(c&0x0F)<<12|uint16(b[i+1]&0x3F)<<6|uint16(b[i+2]&0x3F))
-			i += 3
-		default:
-			i = len(b)
+		u, n := modifiedUnit(b, i)
+		if n == 0 {
+			break
 		}
+		i += n
+		r := rune(u)
+		if utf16.IsSurrogate(r) {
+			r = utf8.RuneError
+			if u < 0xDC00 { // a high surrogate: is a low one next?
+				if u2, n2 := modifiedUnit(b, i); n2 > 0 && u2 >= 0xDC00 && u2 < 0xE000 {
+					r = utf16.DecodeRune(rune(u), rune(u2))
+					i += n2
+				}
+			}
+		}
+		out = utf8.AppendRune(out, r)
 	}
-	return string(utf16.Decode(u))
+	return string(out)
+}
+
+// modifiedUnit decodes the UTF-16 unit of modified UTF-8 at b[i:], and
+// returns it and its length in bytes, or 0 at a truncated end.
+func modifiedUnit(b []byte, i int) (uint16, int) {
+	if i >= len(b) {
+		return 0, 0
+	}
+	c := b[i]
+	switch {
+	case c < 0x80:
+		return uint16(c), 1
+	case c&0xE0 == 0xC0 && i+1 < len(b):
+		return uint16(c&0x1F)<<6 | uint16(b[i+1]&0x3F), 2
+	case i+2 < len(b):
+		return uint16(c&0x0F)<<12 | uint16(b[i+1]&0x3F)<<6 | uint16(b[i+2]&0x3F), 3
+	}
+	return 0, 0
 }
