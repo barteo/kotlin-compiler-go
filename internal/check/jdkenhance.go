@@ -102,6 +102,12 @@ var jdkEnhancements = map[string]map[string]map[int]jdkMember{
 	"java/lang/ref/Reference": {
 		"get": {0: {ret: qN}},
 	},
+	// Not an enhancement: Throwable is kotlin.Throwable, whose message
+	// and cause are String? and Throwable?, not platform types.
+	"java/lang/Throwable": {
+		"getMessage": {0: {ret: qN}},
+		"getCause":   {0: {ret: qN}},
+	},
 	"java/util/function/Predicate":   {"test": {1: {params: [][]jdkQual{qNP}}}},
 	"java/util/function/BiPredicate": {"test": {2: {params: [][]jdkQual{qNP, qNP}}}},
 	"java/util/function/Consumer":    {"accept": {1: {params: [][]jdkQual{qNP}}}},

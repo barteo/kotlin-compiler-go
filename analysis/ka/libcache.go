@@ -66,7 +66,7 @@ func acquire(cfg Config) (*shared, error) {
 	// opening the same library at once share the first one listed.
 	cp, lib, err := driver.OpenLibrary(driver.Options{
 		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths, KeepHidden: true, JavaTypes: true,
-		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1), OptIns: cfg.OptIns,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ka: %w", err)
@@ -160,7 +160,7 @@ func libraryKey(cfg Config) string {
 		jdk, _ = classpath.FindJDK()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "module=%q nojdk=%t friends=%q\n", cfg.ModuleName, cfg.NoJDK, cfg.FriendPaths)
+	fmt.Fprintf(&b, "module=%q nojdk=%t friends=%q optins=%q\n", cfg.ModuleName, cfg.NoJDK, cfg.FriendPaths, cfg.OptIns)
 	stamp := func(path string) bool {
 		fi, err := os.Stat(path)
 		if err != nil || fi.IsDir() {

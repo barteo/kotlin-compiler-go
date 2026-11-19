@@ -3,7 +3,8 @@ name: Analysis API checks
 # The JVM half of kc's Analysis API (jvm/, docs/analysis-api.md): the JNI
 # bridge's stress test, and the kc KSP backend run over the slice, Moshi,
 # Dagger, Room and Hilt projects, its output compared with the recorded
-# output and with stock KSP's. The Go half's tests run in PR checks.
+# output and with stock KSP's, and detekt on kc (jvm/detekt, docs/detekt.md)
+# over its fixture. The Go half's tests run in PR checks.
 
 on:
   pull_request:
@@ -30,7 +31,7 @@ jobs:
   kc-aa:
     name: kc KSP backend
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -67,3 +68,35 @@ jobs:
 
       - name: KSP's own test suite on the kc backend
         run: jvm/kc-aa/build.sh ksp
+
+  # A job of its own, to run alongside the KSP backend's: build.sh builds
+  # kc-aa.jar and libkc.so, which kc-aa/build.sh rebuilds every run.
+  detekt:
+    name: detekt on kc
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache the Analysis API jar and the KSP fork
+        uses: actions/cache@v6
+        with:
+          path: jvm/ksp/build
+          key: kc-ksp-${{ hashFiles('jvm/aa-api/build.sh', 'jvm/ksp/build.sh') }}
+      - name: Cache detekt's dependencies
+        uses: actions/cache@v6
+        with:
+          path: jvm/detekt/build/m2
+          key: kc-detekt-m2-${{ hashFiles('jvm/detekt/build.sh') }}
+          restore-keys: kc-detekt-m2-
+
+      - name: detekt on kc over its fixture
+        run: jvm/detekt/build.sh test

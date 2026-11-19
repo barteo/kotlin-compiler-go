@@ -47,6 +47,9 @@ type Config struct {
 	// Jobs is how many goroutines lower and check the sources; less than
 	// 1 means 1.
 	Jobs int
+	// OptIns are the qualified names of the requirement markers the
+	// whole module opts in to, as kotlinc's -opt-in.
+	OptIns []string
 	// ExplicitAPIMode is kotlinc's -Xexplicit-api: "", "disable",
 	// "warning" or "strict". It is validated; kc's checker doesn't
 	// enforce it.
@@ -82,6 +85,10 @@ type Type struct {
 	// it maps, kotlin.Any for java.lang.Object. A type parameter has its
 	// own name.
 	Name string `json:"name"`
+	// ClassID is the classifier's Kotlin class id: its package,
+	// slash-separated, a slash, and its relative name, dotted, as
+	// kotlin/collections/Map.Entry; "" for a type parameter.
+	ClassID string `json:"classId,omitempty"`
 	// Nullable is set on a type that holds null: T?, or a type parameter
 	// whose bound is nullable. MarkedNullable is set when it is written
 	// with ?.
@@ -90,13 +97,17 @@ type Type struct {
 	// Platform is set on a Java type of unknown nullability, T!.
 	Platform bool `json:"platform,omitempty"`
 	// Parameter is set on a type parameter, declared at ParameterOwner
-	// if that is in the sources.
+	// if that is in the sources. On the type of an object expression,
+	// ParameterOwner is the expression's object declaration.
 	Parameter      bool       `json:"parameter,omitempty"`
 	ParameterOwner *ElementID `json:"parameterOwner,omitempty"`
 	// SAM is set on a fun interface or a Java interface with a single
 	// abstract method, Suspend on a suspend function type.
 	SAM     bool `json:"sam,omitempty"`
 	Suspend bool `json:"suspend,omitempty"`
+	// Receiver is set on a function type with a receiver, A.(B) -> R,
+	// whose first argument is the receiver's type.
+	Receiver bool `json:"receiver,omitempty"`
 	// Projection is a type argument's projection: "", "in", "out" or
 	// "*".
 	Projection string `json:"projection,omitempty"`
@@ -149,6 +160,9 @@ type Call struct {
 	// Name is the callee's fully qualified name: pkg.f, pkg.C.m, or
 	// pkg.C.<init> for a constructor.
 	Name string `json:"name"`
+	// OwnerClassID is the class id, as Type.ClassID, of a member's or a
+	// constructor's class; "" for a top-level function.
+	OwnerClassID string `json:"ownerClassId,omitempty"`
 	// Declaration is the callee's declaration, if it is in the sources.
 	Declaration *ElementID `json:"declaration,omitempty"`
 	// Extension is set on a call of an extension function, whose
@@ -274,6 +288,10 @@ type Fact struct {
 	// DelegatedCalls the getValue and setValue calls the property makes.
 	DelegateType   *Type  `json:"delegateType,omitempty"`
 	DelegatedCalls []Call `json:"delegatedCalls,omitempty"`
+	// OperatorCalls are the calls a for loop over a collection makes
+	// without writing them: its iterator(), the iterator's hasNext() and
+	// next(), as kotlinc's for loop reference resolves to.
+	OperatorCalls []Call `json:"operatorCalls,omitempty"`
 
 	// Accessors are set on a reference to a property through a receiver,
 	// a.p: its getter, and its setter if it has one, as kotlinc's
@@ -382,6 +400,22 @@ func (r *Result) Data() Data {
 		d.Symbols = append(d.Symbols, copySymbol(s))
 	}
 	return d
+}
+
+// SharedData returns the facts, in order, and the symbols, as Data does
+// but without copying them: they are the Result's own, which the caller
+// must not change. It is for callers that only read them once, such as
+// libkc's lint operations, for which Data's copies cost as much as a
+// third of the analysis.
+func (r *Result) SharedData() (facts []*Fact, symbols []Symbol) {
+	if r == nil {
+		return nil, nil
+	}
+	facts = make([]*Fact, len(r.order))
+	for i, id := range r.order {
+		facts[i] = r.facts[id]
+	}
+	return facts, r.symbols
 }
 
 // Capabilities returns the fact families this package computes.
@@ -519,6 +553,7 @@ func copyFact(f Fact) Fact {
 	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)
 	f.DelegatedCalls = copyCalls(f.DelegatedCalls)
+	f.OperatorCalls = copyCalls(f.OperatorCalls)
 	f.Accessors = copyCalls(f.Accessors)
 	if f.Deprecated != nil {
 		s := *f.Deprecated

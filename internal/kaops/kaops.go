@@ -6,6 +6,13 @@
 //
 //	config  = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
 //	          n:Uint classPath:String*n m:Uint friendPath:String*m
+//	          facts:Bool k:Uint optIn:String*k
+//
+// With facts, the session is ka.OpenFacts's: its updates check the
+// sources' bodies too and their models have facts (OpKaFacts, facts.go).
+// optIn are the module's -opt-in markers. facts and optIn were appended
+// to the layout, so a config that ends after the friend paths is read as
+// without facts and without -opt-ins.
 //
 // OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k → model
 //
@@ -88,7 +95,9 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi/wire"
 )
 
-// The operations. The numbers are part of the ABI: append only.
+// The operations. The numbers are part of the ABI: append only. 20 to 22
+// were the linter operations of package lintops, which OpKaFacts
+// replaced; they aren't used again.
 const (
 	OpKaOpen    kcabi.Op = 10
 	OpKaUpdate  kcabi.Op = 11
@@ -96,6 +105,7 @@ const (
 	OpKaClass   kcabi.Op = 13
 	OpKaPackage kcabi.Op = 14
 	OpKaHandles kcabi.Op = 15
+	OpKaFacts   kcabi.Op = 16
 )
 
 // handles are the sessions and models the JVM holds.
@@ -112,6 +122,7 @@ func init() {
 		w.Uint(uint64(handles.Len()))
 		return w.Message(), nil
 	})
+	kcabi.Register(OpKaFacts, factsOp)
 }
 
 func pkg(req []byte) ([]byte, error) {
@@ -172,11 +183,22 @@ func open(req []byte) ([]byte, error) {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		cfg.FriendPaths = append(cfg.FriendPaths, r.String())
 	}
+	var withFacts bool
+	if r.Err() == nil && r.Len() > 0 {
+		withFacts = r.Bool()
+		for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+			cfg.OptIns = append(cfg.OptIns, r.String())
+		}
+	}
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
+	s := ka.Open(cfg)
+	if withFacts {
+		s = ka.OpenFacts(cfg)
+	}
 	var w wire.Writer
-	w.Int(int64(handles.Put(ka.Open(cfg))))
+	w.Int(int64(handles.Put(s)))
 	return w.Message(), nil
 }
 
@@ -213,12 +235,18 @@ func update(req []byte) ([]byte, error) {
 	if same {
 		return w.Message(), nil
 	}
+	writeFiles(&w, m)
+	return w.Message(), nil
+}
+
+// writeFiles writes model m's files and diagnostics.
+func writeFiles(w *wire.Writer, m *ka.Model) {
 	w.Uint(uint64(len(m.Files)))
 	for _, f := range m.Files {
 		w.String(f.Path)
 		w.String(f.Package)
-		writeAnnotations(&w, f.Annotations)
-		writeDecls(&w, f.Decls)
+		writeAnnotations(w, f.Annotations)
+		writeDecls(w, f.Decls)
 		w.Uint(uint64(len(f.Lookups)))
 		for _, l := range f.Lookups {
 			w.String(l.Scope)
@@ -236,7 +264,6 @@ func update(req []byte) ([]byte, error) {
 		w.String(d.Message)
 		w.String(d.Feature)
 	}
-	return w.Message(), nil
 }
 
 func writeDecls(w *wire.Writer, ds []*ka.Decl) {
@@ -380,6 +407,9 @@ func closeHandle(req []byte) ([]byte, error) {
 		return nil, err
 	}
 	handles.Delete(h)
+	if m, ok := x.(*ka.Model); ok {
+		dropFacts(m)
+	}
 	if c, ok := x.(io.Closer); ok {
 		return nil, c.Close()
 	}

@@ -554,8 +554,8 @@ internal class KcFakeFunctionSymbol(
     override val location get() = KaSymbolLocation.CLASS
     /** A delegated member implements the interface's: it is open. */
     override val modality get() = if (origin == KaSymbolOrigin.DELEGATED) KaSymbolModality.OPEN else original.modality
-    override val returnType: KaType by lazy { sub.substitute(original.returnType) }
-    override val receiverParameter: KaReceiverParameterSymbol? by lazy {
+    override val returnType: KaType by lazy(LazyThreadSafetyMode.PUBLICATION) { sub.substitute(original.returnType) }
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         original.receiverParameter?.let { KcFakeReceiverParameterSymbol(this, it, sub.substitute(it.returnType), "$key/rcv") }
     }
     override val isSuspend get() = original.isSuspend
@@ -574,7 +574,7 @@ internal class KcFakeFunctionSymbol(
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()
     override val typeParameters get() = original.typeParameters
-    override val valueParameters: List<KaValueParameterSymbol> by lazy {
+    override val valueParameters: List<KaValueParameterSymbol> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         original.valueParameters.mapIndexed { i, p -> KcFakeValueParameterSymbol(this, p, sub.substitute(p.returnType), "$key/($i") }
     }
     override fun createPointer(): KaSymbolPointer<KaNamedFunctionSymbol> = KcPointer(key)
@@ -612,8 +612,8 @@ internal class KcFakePropertySymbol(
     override val hasBackingField get() = false
     override val isExtension get() = original.isExtension
     override val isStatic get() = false
-    override val returnType: KaType by lazy { sub.substitute(original.returnType) }
-    override val receiverParameter: KaReceiverParameterSymbol? by lazy {
+    override val returnType: KaType by lazy(LazyThreadSafetyMode.PUBLICATION) { sub.substitute(original.returnType) }
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         original.receiverParameter?.let { KcFakeReceiverParameterSymbol(this, it, sub.substitute(it.returnType), "$key/rcv") }
     }
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
@@ -622,8 +622,8 @@ internal class KcFakePropertySymbol(
     override val hasGetter get() = original.hasGetter
     override val hasSetter get() = original.hasSetter
     override val backingFieldSymbol: KaBackingFieldSymbol? get() = null
-    override val getter: KaPropertyGetterSymbol? by lazy { original.getter?.let { KcFakeGetterSymbol(this, it, "$key/get") } }
-    override val setter: KaPropertySetterSymbol? by lazy { original.setter?.let { KcFakeSetterSymbol(this, it, "$key/set") } }
+    override val getter: KaPropertyGetterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) { original.getter?.let { KcFakeGetterSymbol(this, it, "$key/get") } }
+    override val setter: KaPropertySetterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) { original.setter?.let { KcFakeSetterSymbol(this, it, "$key/set") } }
     override fun createPointer(): KaSymbolPointer<KaKotlinPropertySymbol> = KcPointer(key)
     override fun toString() = "$origin ${owner.classId}.$name"
 }
@@ -674,7 +674,7 @@ internal class KcFakeSetterSymbol(
     override val isExternal get() = original.isExternal
     override val isOverride get() = true
     override val receiverParameter get() = property.receiverParameter
-    override val parameter: KaValueParameterSymbol by lazy {
+    override val parameter: KaValueParameterSymbol by lazy(LazyThreadSafetyMode.PUBLICATION) {
         KcFakeValueParameterSymbol(this, original.parameter, property.returnType, "$key/value")
     }
     override fun createPointer(): KaSymbolPointer<KaPropertySetterSymbol> = KcPointer(key)
@@ -747,9 +747,9 @@ internal open class KcSyntheticPropertySymbol(
     override val hasSetter get() = javaSetterSymbol != null
     override val receiverParameter: KaReceiverParameterSymbol? get() = null
     override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
-    override val returnType: KaType by lazy { subst.substitute(javaGetterSymbol.returnType) }
-    override val getter: KaPropertyGetterSymbol by lazy { KcSyntheticGetterSymbol(this, "$key/get") }
-    override val setter: KaPropertySetterSymbol? by lazy { javaSetterSymbol?.let { KcSyntheticSetterSymbol(this, it, "$key/set") } }
+    override val returnType: KaType by lazy(LazyThreadSafetyMode.PUBLICATION) { subst.substitute(javaGetterSymbol.returnType) }
+    override val getter: KaPropertyGetterSymbol by lazy(LazyThreadSafetyMode.PUBLICATION) { KcSyntheticGetterSymbol(this, "$key/get") }
+    override val setter: KaPropertySetterSymbol? by lazy(LazyThreadSafetyMode.PUBLICATION) { javaSetterSymbol?.let { KcSyntheticSetterSymbol(this, it, "$key/set") } }
     override fun createPointer(): KaSymbolPointer<KaSyntheticJavaPropertySymbol> = KcPointer(key)
     override fun toString() = "$origin ${owner.classId}.$name"
 }
