@@ -333,6 +333,12 @@ func TestWarningsErrorSuppression(t *testing.T) {
 	checkReference(t, "testdata/suppress.kt", Options{Warnings: true})
 }
 
+// TestWarningsDivision checks the warnings of division by zero against
+// kotlinc's of testdata/divide.kt.
+func TestWarningsDivision(t *testing.T) {
+	checkReference(t, "testdata/divide.kt", Options{Warnings: true})
+}
+
 func TestWarningsShadow(t *testing.T) {
 	checkReference(t, "testdata/shadow.kt", Options{Warnings: true})
 }

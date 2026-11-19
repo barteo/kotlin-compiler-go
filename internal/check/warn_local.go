@@ -22,6 +22,7 @@ func (c *Checker) localWarnings() {
 	}
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
+		c.divisionWarning(n)
 		if lf, ok := n.(*syntax.LocalFun); ok {
 			c.extShadowed(lf.Decl)
 		}
