@@ -1941,7 +1941,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		if owner == nil {
 			what = "top level function"
 		}
-		c.errorf(d.P, "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(d.PosOf("annotation", d.P), "modifier 'annotation' is not applicable to '%s'", what)
 	}
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
 	c.tparams = funTypeParams(sym, owner)

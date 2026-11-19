@@ -1023,7 +1023,12 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 					case psi.KindANNOTATION:
 						ct.Annotations = append(ct.Annotations, l.bracketAnnotations(a)...)
 					default:
-						l.unexpected(a)
+						if !a.IsLeaf() {
+							l.unexpected(a)
+						}
+						// A catch parameter takes no modifiers, as kotlinc's
+						// WRONG_MODIFIER_TARGET; the try is kept.
+						l.errorLater(l.pos(a), "modifier '%s' is not applicable to 'value parameter'", a.Text())
 					}
 				}
 			}

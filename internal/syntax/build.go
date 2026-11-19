@@ -394,10 +394,20 @@ func (p *parser) Unsupported(pos Pos, feature, format string, args ...any) {
 }
 
 // ParamOnly reports modifiers that only parameters take on another
-// declaration.
+// declaration, which is kept, so that the rest of it is checked.
 func ParamOnly(m Modifiers, r Reporter) {
 	if m.Vararg {
-		r.Fail(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+		r.Later(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+	}
+}
+
+// NoInitModifiers reports the modifiers written on an init block, which
+// takes none, as kotlinc's WRONG_MODIFIER_TARGET.
+func NoInitModifiers(m Modifiers, r Reporter) {
+	for _, w := range m.Written {
+		if w.Name != "vararg" { // which ParamOnly reports
+			r.Later(w.P, "modifier '%s' is not applicable to 'initializer'", w.Name)
+		}
 	}
 }
 

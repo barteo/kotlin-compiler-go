@@ -689,6 +689,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		cd.Members = append(cd.Members, l.secondaryCtor(n, m))
 	case psi.KindCLASS_INITIALIZER:
 		syntax.NoContexts(&m, "initializers", l)
+		syntax.NoInitModifiers(m, l)
 		b := child(n, psi.KindBLOCK)
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")

@@ -512,8 +512,9 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			}
 			if !m.Set(c.Text(), l.pos(c)) {
 				// in, out or reified, which only type parameters take, as
-				// kotlinc's WRONG_MODIFIER_TARGET.
-				l.fail(c, "modifier '%s' is not applicable here", c.Text())
+				// kotlinc's WRONG_MODIFIER_TARGET. The declaration is kept,
+				// so that its other modifiers and its body are checked.
+				l.errorLater(l.pos(c), "modifier '%s' is not applicable here", c.Text())
 			}
 		}
 	}

@@ -2097,6 +2097,7 @@ func (p *parser) member(cd *ClassDecl) {
 		if t.Text == "init" && p.peekAfterNL(p.i+1) == LBRACE {
 			// init is a soft keyword: elsewhere, it is a name.
 			NoContexts(&m, "initializers", p)
+			NoInitModifiers(m, p)
 			p.next()
 			p.skipNL()
 			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
