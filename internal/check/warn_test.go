@@ -394,3 +394,65 @@ func checkReference(t *testing.T, file string, opts Options) {
 		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
 }
+
+// TestWarningsAliasConstructorDeprecation checks that a constructor call
+// is warned of as a deprecated typealias's only if it resolves through
+// the typealias, as kotlinc does: not where another file declares one of
+// the name for the same class, which the call's file doesn't import, as
+// ktor-io's deprecated typealias Buffer = kotlinx.io.Buffer is for
+// Buffer() in its files that import kotlinx.io.Buffer.
+func TestWarningsAliasConstructorDeprecation(t *testing.T) {
+	lib, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skip(err)
+	}
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, []string{lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcs := map[string]string{
+		"alias.kt": `package a.core
+
+@Deprecated("use java.lang.StringBuilder")
+typealias StringBuilder = java.lang.StringBuilder
+`,
+		"imported.kt": `package a
+
+import java.lang.StringBuilder
+
+fun f() = StringBuilder().toString()
+`,
+		"aliased.kt": `package b
+
+import a.core.StringBuilder
+
+fun g() = StringBuilder().toString()
+fun h() = a.core.StringBuilder().toString()
+`,
+	}
+	var files []*syntax.File
+	for _, name := range []string{"alias.kt", "imported.kt", "aliased.kt"} {
+		f, errs := syntax.Parse(name, srcs[name])
+		if len(errs) > 0 {
+			t.Fatal(errs[0])
+		}
+		files = append(files, f)
+	}
+	ds, err := CheckOptions(context.Background(), files, NewLibrary(cp), 1, nil, Options{Warnings: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, d := range ds {
+		got = append(got, fmt.Sprintf("%s:%d:%s", d.File, d.Pos.Line, d.Name))
+	}
+	sort.Strings(got)
+	want := []string{"aliased.kt:5:DEPRECATION", "aliased.kt:6:DEPRECATION"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

@@ -44,7 +44,7 @@ func optInErrors(checkers []*Checker) {
 	if len(checkers) == 0 {
 		return
 	}
-	o := &optPass{u: checkers[0].u, annClasses: map[string][]*types.ClassSym{}, aliases: map[string][]*types.AliasSym{},
+	o := &optPass{u: checkers[0].u, annClasses: map[string][]*types.ClassSym{},
 		markers: map[*types.ClassSym]*optMarker{}, descs: map[string]*optMarker{}, extClasses: map[*types.ClassSym][]*optMarker{},
 		seen: map[optErrKey]bool{}}
 	for _, c := range checkers {
@@ -63,10 +63,8 @@ func optInErrors(checkers []*Checker) {
 // optPass holds what the checks of all files share.
 type optPass struct {
 	u *Universe
-	// annClasses are the program's annotation classes, and aliases its
-	// typealiases, by simple name.
+	// annClasses are the program's annotation classes, by simple name.
 	annClasses map[string][]*types.ClassSym
-	aliases    map[string][]*types.AliasSym
 	markers    map[*types.ClassSym]*optMarker
 	// descs are the markers that annotation descriptors of the class path
 	// name, nil for those that aren't, and extClasses the error-level
@@ -98,10 +96,6 @@ func (o *optPass) collect(decls []syntax.Decl) {
 				o.annClasses[d.Name] = append(o.annClasses[d.Name], d.Sym)
 			}
 			o.collect(d.Members)
-		case *syntax.TypeAliasDecl:
-			if d.Sym != nil {
-				o.aliases[d.Name] = append(o.aliases[d.Name], d.Sym)
-			}
 		}
 	}
 }
@@ -1323,15 +1317,15 @@ func (w *optWalker) call(n *syntax.Call) {
 		level := classDepr(n.Ctor)
 		var alias *types.AliasSym
 		var aliasLevel depr
-		if id, ok := n.Fun.(*syntax.Ident); ok {
-			for _, a := range w.o.aliases[id.Name] {
-				if a.Class() == n.Ctor {
-					alias = a
-					w.require(p, w.o.aliasMarkers(a, 0))
-					if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
-						aliasLevel = aliasLevel.or(deprecation(d.Annotations))
-					}
-				}
+		// The typealias of the program the call was resolved through, if
+		// any: not one that only has the name and expands to the class,
+		// as a deprecated typealias Buffer = kotlinx.io.Buffer of another
+		// package is for Buffer() where kotlinx.io.Buffer is imported.
+		if a := w.c.aliasCtors[n]; a != nil && a.Class() == n.Ctor {
+			if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
+				alias = a
+				w.require(p, w.o.aliasMarkers(a, 0))
+				aliasLevel = deprecation(d.Annotations)
 			}
 		}
 		if n.Sym != nil {
