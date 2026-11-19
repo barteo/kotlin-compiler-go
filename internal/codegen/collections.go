@@ -44,18 +44,26 @@ var renamedProps = map[string]bool{"size": true, "keys": true, "values": true, "
 var renamedOrder = []string{"values", "size", "keys", "entries"}
 
 // typeSafe are the members of Kotlin's collection types that Java declares
-// with Object parameters, by Kotlin type and name: the indices of those
-// parameters, and what the bridge returns for an argument of another
-// type.
-var typeSafe = map[string]map[string]safeBridge{
-	"kotlin/collections/Collection": {"contains": {[]int{0}, falseResult}},
-	"kotlin/collections/List":       {"indexOf": {[]int{0}, minusOne}, "lastIndexOf": {[]int{0}, minusOne}},
-	"kotlin/collections/Map": {
-		"containsKey": {[]int{0}, falseResult}, "containsValue": {[]int{0}, falseResult},
-		"get": {[]int{0}, nullResult}, "getOrDefault": {[]int{0}, defaultArg},
+// with Object parameters, by Kotlin type: the indices of those parameters,
+// and what the bridge returns for an argument of another type. They are
+// in the order Kotlin declares them, which kotlinc writes the bridges in.
+var typeSafe = map[string][]namedSafeBridge{
+	"kotlin/collections/Collection": {{"contains", safeBridge{[]int{0}, falseResult}}},
+	"kotlin/collections/List": {
+		{"indexOf", safeBridge{[]int{0}, minusOne}}, {"lastIndexOf", safeBridge{[]int{0}, minusOne}},
 	},
-	"kotlin/collections/MutableCollection": {"remove": {[]int{0}, falseResult}},
-	"kotlin/collections/MutableMap":        {"remove": {[]int{0}, nullResult}},
+	"kotlin/collections/Map": {
+		{"containsKey", safeBridge{[]int{0}, falseResult}}, {"containsValue", safeBridge{[]int{0}, falseResult}},
+		{"get", safeBridge{[]int{0}, nullResult}}, {"getOrDefault", safeBridge{[]int{0}, defaultArg}},
+	},
+	"kotlin/collections/MutableCollection": {{"remove", safeBridge{[]int{0}, falseResult}}},
+	"kotlin/collections/MutableMap":        {{"remove", safeBridge{[]int{0}, nullResult}}},
+}
+
+// namedSafeBridge is a type-safe bridge of a member by its name.
+type namedSafeBridge struct {
+	name string
+	safeBridge
 }
 
 // safeBridge describes a type-safe bridge: the parameters it checks and
@@ -417,7 +425,8 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 			continue
 		}
 		s := argSubst(st)
-		for name, sb := range safe {
+		for _, nb := range safe {
+			name, sb := nb.name, nb.safeBridge
 			if name == "getOrDefault" && !bySuper[st.C] {
 				continue // a default method of Java's Map: only a superclass implements it
 			}
