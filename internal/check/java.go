@@ -204,7 +204,6 @@ func newClassTable(cp *classpath.Path) *classTable {
 		t.funcs = types.KotlinFunctions
 		t.collections = map[string]*types.ClassSym{}
 		t.raw = map[string]*types.ClassSym{}
-		t.pkgs = map[string]*kpkg{}
 	}
 	return t
 }
@@ -233,6 +232,20 @@ func (t *classTable) class(name string) *types.ClassSym {
 		}
 		return nil
 	}
+	// Most names looked up are of no class: Outer$name for a member, or
+	// pkg/Name for a simple name in each star and default import. The
+	// filter of the class path's names rules most of them out cheaply.
+	if t.cp != nil && t.shadow.Load() == nil && t.sources.Load() == nil && !(t.kotlin && maybeSynthetic(name)) && !t.cp.MayHave(classpath.Hash(name)) {
+		if verifyFilter {
+			t.verifyAbsent(name, t.rootClass(name))
+		}
+		return nil
+	}
+	return t.rootClass(name)
+}
+
+// rootClass is class of the root table, without the filter.
+func (t *classTable) rootClass(name string) *types.ClassSym {
 	// A class looked up before, as most are, is in the map, which holds
 	// only classes of the class path that aren't Kotlin's synthetic ones
 	// below: only a shadowing class comes before it.
@@ -1105,7 +1118,7 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if isEnumEntry(cls, name) {
 		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
-	return c.u.ext.class(cls.Name + "$" + name)
+	return c.u.ext.nestedNamed(cls.Name, name)
 }
 
 // findClass resolves a simple class name in Kotlin's order: explicit
@@ -1228,13 +1241,13 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 	if kotlinTypes[name] || !ext.kotlin {
 		return nil
 	}
-	for _, pkg := range c.stars {
-		if a := ext.pkgAlias(strings.ReplaceAll(pkg, "/", "."), name); a != nil && !c.renamedAway(pkg, name) {
+	for _, r := range c.starPkgs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
-	for _, pkg := range defaultPackages {
-		if a := ext.pkgAlias(pkg, name); a != nil && !c.renamedAway(pkg, name) {
+	for _, r := range ext.defaultRefs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
@@ -1260,27 +1273,27 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 				return cls
 			}
 		}
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil && !c.renamedAway(pkg, name) {
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
 	}
-	for _, pkg := range c.stars {
-		if c.renamedAway(pkg, name) {
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
 			continue
 		}
 		if ext.kotlin {
-			if cls := ext.pkgClass(strings.ReplaceAll(pkg, "/", "."), name); cls != nil {
+			if cls := ext.pkgClassIn(r, name); cls != nil {
 				return cls
 			}
-		} else if cls := ext.class(qualified(pkg, name)); cls != nil {
+		} else if cls := ext.classIn(r.path, r.hash, name); cls != nil {
 			return cls
 		}
 	}
 	if ext.kotlin {
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil && !c.renamedAway(pkg, name) {
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
@@ -1288,7 +1301,7 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 	if c.renamedAway("java.lang", name) {
 		return nil
 	}
-	return ext.class("java/lang/" + name)
+	return ext.classIn("java/lang", javaLangHash, name)
 }
 
 // kotlinFuns returns the Kotlin top-level functions a simple name can
@@ -1343,20 +1356,20 @@ func (c *Checker) funLevels(name string, ext bool, fits func(types.Type) bool) [
 		kind = extFuns
 	}
 	var stars, defaults []*types.FunSym
-	for _, pkg := range c.stars {
-		if c.renamedAway(pkg, name) {
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
 			continue
 		}
-		stars = append(stars, ext1.pkgFunsWhere(strings.ReplaceAll(pkg, "/", "."), name, false, kind, fits)...)
+		stars = append(stars, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
 		if c.file.SuppressInvisible {
 			// ktor's recoverStackTrace(e, cont) of kotlinx.coroutines.internal.*
 			// under @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE").
-			stars = append(stars, ext1.pkgFunsWhere(strings.ReplaceAll(pkg, "/", "."), name, true, kind, fits)...)
+			stars = append(stars, ext1.pkgFunsWhereIn(r, name, true, kind, fits)...)
 		}
 	}
-	for _, pkg := range defaultPackages {
-		if !c.renamedAway(pkg, name) {
-			defaults = append(defaults, ext1.pkgFunsWhere(pkg, name, false, kind, fits)...)
+	for _, r := range ext1.defaultRefs() {
+		if !c.renamedAway(r.name, name) {
+			defaults = append(defaults, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
 		}
 	}
 	return append(levels, stars, defaults)
@@ -1711,12 +1724,11 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 		}
 	}
 	if best == nil && c.u.ext.kotlin {
-		pkgs := make([]string, 0, len(c.stars)+len(defaultPackages))
-		for _, s := range c.stars {
-			pkgs = append(pkgs, strings.ReplaceAll(s, "/", "."))
+		for _, r := range c.starPkgs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
-		for _, pkg := range append(pkgs, defaultPackages...) {
-			fits(c.u.ext.pkgExtProps(pkg, x.Name))
+		for _, r := range c.u.ext.defaultRefs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
 	}
 	if best == nil {

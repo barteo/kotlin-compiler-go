@@ -173,7 +173,8 @@ type Checker struct {
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport
-	stars        []string // star-imported packages of the class path (internal names)
+	stars        []string  // star-imported packages of the class path (internal names)
+	starRefs     []*pkgRef // stars, resolved: see starPkgs
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
@@ -1858,19 +1859,19 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 	if c.u.ext.kotlin {
 		// A Kotlin library's, by a star import, then the standard
 		// library's default imports: DEFAULT_BUFFER_SIZE.
-		for _, pkg := range c.stars {
-			if c.renamedAway(pkg, name) {
+		for _, r := range c.starPkgs() {
+			if c.renamedAway(r.name, name) {
 				continue
 			}
-			if v := c.u.ext.pkgVar(strings.ReplaceAll(pkg, "/", "."), name); v != nil {
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}
-		for _, pkg := range defaultPackages {
-			if c.renamedAway(pkg, name) {
+		for _, r := range c.u.ext.defaultRefs() {
+			if c.renamedAway(r.name, name) {
 				continue
 			}
-			if v := c.u.ext.pkgVar(pkg, name); v != nil {
+			if v := c.u.ext.pkgVarIn(r, name); v != nil {
 				return v
 			}
 		}
