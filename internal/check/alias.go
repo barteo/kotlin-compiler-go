@@ -45,8 +45,21 @@ func (c *Checker) resolveAlias(a *types.AliasSym) {
 	}
 	d := a.Decl.(*syntax.TypeAliasDecl)
 	if a.Resolving {
-		c.u.aliasFile[a].errorf(d.P, "recursive type alias in expansion: %s", a.Name)
-		a.Type, a.Resolved = types.InvalidType, true
+		// Each alias of the cycle is an error: A and B of typealias A =
+		// B and typealias B = A.
+		cycle := c.u.aliasStack
+		if i := slices.Index(cycle, a); i >= 0 {
+			cycle = cycle[i:]
+		} else {
+			cycle = []*types.AliasSym{a}
+		}
+		for _, x := range cycle {
+			if x.Resolved {
+				continue
+			}
+			c.u.aliasFile[x].errorf(x.Decl.(*syntax.TypeAliasDecl).P, "recursive type alias in expansion: %s", x.Name)
+			x.Type, x.Resolved = types.InvalidType, true
+		}
 		return
 	}
 	if owner := c.u.aliasFile[a]; owner != c {
@@ -54,10 +67,12 @@ func (c *Checker) resolveAlias(a *types.AliasSym) {
 		return
 	}
 	a.Resolving = true
+	c.u.aliasStack = append(c.u.aliasStack, a)
 	savedParams, savedCls, savedChecks := c.tparams, c.lookupCls, c.noBoundChecks
 	c.tparams, c.lookupCls, c.noBoundChecks = a.TypeParams, a.Outer, true
 	t := c.resolveType(d.Type)
 	c.tparams, c.lookupCls, c.noBoundChecks = savedParams, savedCls, savedChecks
+	c.u.aliasStack = c.u.aliasStack[:len(c.u.aliasStack)-1]
 	a.Resolving = false
 	if !a.Resolved { // not already invalid as part of a cycle
 		a.Type, a.Resolved = t, true
@@ -83,6 +98,9 @@ func (c *Checker) lookupAlias(name string) *types.AliasSym {
 		if a := p.Aliases[last]; a != nil {
 			return a
 		}
+	}
+	if c.lookupAlias(prefix) != nil {
+		return nil // C.Self.Self, through typealias Self = C
 	}
 	if cls := c.lookupClass(prefix); cls != nil {
 		cls.Ensure()
@@ -188,6 +206,14 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 			if w != types.Inv && w != v {
 				return true
 			}
+			// In<out T>, which kotlinc reports, and then In3<in Int>
+			// of typealias In3<T> = In<out T>: the class's own variance
+			// conflicts too.
+			if i < len(t.C.TypeParams) {
+				if d := t.C.TypeParams[i].Var; d != types.Inv && d != v {
+					return true
+				}
+			}
 			continue
 		}
 		if projectionConflicts(a.T, p, v) {
@@ -239,6 +265,11 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
 	}
 	c.aliasCtors[x] = a
+	if args, ok := c.aliasTypeArgs[x]; ok {
+		// Checked again: the class's type arguments, as rewritten.
+		x.TypeArgs = args
+		return c.construct(x, cls, p, want, sink)
+	}
 	if c.inferAliasArgs[x] || len(x.TypeArgs) == 0 && len(a.TypeParams) > 0 && !bareAlias(a) && a.Type.K == types.Class && a.Type.C == cls {
 		// Alias(x) infers the alias's type arguments, as Alias<_>(x),
 		// and the class's are those the alias gives: Int for A of
@@ -265,6 +296,30 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		if t.K == types.Invalid {
 			c.args(x, nil)
 			return t
+		}
+		if t.K == types.Class && t.C == cls && t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+			// CIn() of typealias CIn = C<in Int>.
+			c.errorf(p, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+			c.args(x, nil)
+			return types.InvalidType
+		}
+		if len(x.TypeArgs) > 0 && t.K == types.Class && t.C == cls && !t.HasVars() {
+			// The explicit type arguments are the class's, not just
+			// the expected type: PR<Int, String>(1, "") is an error for
+			// typealias PR<T1, T2> = Pair<T2, T1>.
+			pos := x.TypeArgs[0].P
+			own := len(cls.TypeParams) - cls.OuterParams
+			out := make([]*syntax.TypeArg, min(own, t.A.Len()))
+			for i := range out {
+				at := t.A.Get(i).T
+				out[i] = &syntax.TypeArg{P: pos, Type: &syntax.TypeRef{P: pos, Known: &at}}
+			}
+			if c.aliasTypeArgs == nil {
+				c.aliasTypeArgs = map[*syntax.Call][]*syntax.TypeArg{}
+			}
+			c.aliasTypeArgs[x] = out
+			x.TypeArgs = out
+			return c.construct(x, cls, p, want, sink)
 		}
 		x.TypeArgs = nil
 		want = t
@@ -359,6 +414,9 @@ func (c *Checker) checkAliasBounds() {
 			stars[p] = types.Arg{V: types.Star}
 		}
 		c.tparams, c.lookupCls = a.TypeParams, a.Outer
+		if r := d.Type; a.Type.IsParam() && len(r.Args) == 0 && r.Ret == nil && r.Outer == nil && r.Known == nil && c.lookupTypeParam(r.Name) != nil {
+			c.errorf(r.P, "typealias should expand to a class, an interface or an object, not a type parameter")
+		}
 		c.refBounds(a.Type, d.Type, own, stars)
 	}
 	c.tparams, c.lookupCls = savedParams, savedCls

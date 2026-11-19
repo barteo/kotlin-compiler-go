@@ -85,6 +85,9 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
+	// aliasStack is the typealiases being resolved, innermost last: an
+	// alias that expands to itself is a cycle of all those after it.
+	aliasStack []*types.AliasSym
 	// ctx cancels checking, and rec, if set, receives its facts.
 	ctx context.Context
 	rec Recorder
@@ -370,6 +373,9 @@ type Checker struct {
 	// aliasCtors are the calls of typealiases' constructors, with their
 	// aliases: see ownParamArg.
 	aliasCtors map[*syntax.Call]*types.AliasSym
+	// aliasTypeArgs are the type arguments of the calls of typealiases'
+	// constructors with explicit ones, rewritten as their classes'.
+	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
@@ -1487,7 +1493,13 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 			continue // a cyclic bound was dropped
 		}
 		for i, b := range d.Sym.Bounds {
-			if ref := refs[d][i]; b.K == types.Class && b.A != nil && len(ref.Args) == len(b.A.List) {
+			if ref := refs[d][i]; b.K == types.Class && b.A != nil {
+				if len(ref.Args) != len(b.A.List) {
+					if c.lookupAlias(ref.Name) != nil {
+						c.refBounds(b.NonNull(), ref, nil, nil) // T : One<Any>
+					}
+					continue
+				}
 				c.checkBounds(b.NonNull(), ref)
 			}
 		}

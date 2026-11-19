@@ -844,6 +844,9 @@ type ClassSym struct {
 	// ProtectedNested is set on a protected nested Java class, which
 	// only its package and the subclasses of the class it is in see.
 	ProtectedNested bool
+	// JavaOuter is set on a protected or private nested Java class that
+	// isn't inner, whose Outer isn't: the class it is nested in.
+	JavaOuter *ClassSym
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

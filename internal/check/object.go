@@ -92,10 +92,21 @@ func (c *Checker) dottedClass(parts []string) *types.ClassSym {
 			return nestedPath(cls, parts[i+1:])
 		}
 	}
+	if aliasQualifier(c.findClassifier(parts[0]), parts) {
+		return nil
+	}
 	if cls := c.findClass(parts[0]); cls != nil && !cls.External {
 		return nestedPath(cls, parts[1:])
 	}
 	return nil
+}
+
+// aliasQualifier reports whether parts, a dotted name whose first part
+// is k, names a class nested in one through a typealias, KT.Nested for
+// typealias KT = KTest, which kotlinc doesn't resolve: only the
+// companion's members are found through one.
+func aliasQualifier(k classifier, parts []string) bool {
+	return k.alias != nil && len(parts) > 1 && parts[1] != "Companion"
 }
 
 // userClassPath resolves the fully qualified name of one of the program's

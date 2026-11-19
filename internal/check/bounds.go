@@ -283,7 +283,13 @@ func (c *Checker) checkClassTypeParams(d *syntax.ClassDecl) {
 			continue
 		}
 		for i, b := range tp.Sym.Bounds {
-			if ref := tp.Bounds[i]; b.K == types.Class && b.A != nil && len(ref.Args) == len(b.A.List) {
+			if ref := tp.Bounds[i]; b.K == types.Class && b.A != nil {
+				if len(ref.Args) != len(b.A.List) {
+					if c.lookupAlias(ref.Name) != nil {
+						c.refBounds(b.NonNull(), ref, nil, nil) // T : One<Any>
+					}
+					continue
+				}
 				c.checkBounds(b.NonNull(), ref)
 			}
 		}

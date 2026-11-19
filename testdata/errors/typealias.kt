@@ -1,5 +1,5 @@
 typealias A = B // ERROR recursive type alias in expansion: A
-typealias B = A
+typealias B = A // ERROR recursive type alias in expansion: B
 typealias C<T> = java.util.ArrayList<T>
 typealias D<T : Any> = java.util.ArrayList<T> // ERROR bounds are not allowed on type alias parameters
 class E // ERROR redeclaration: E
