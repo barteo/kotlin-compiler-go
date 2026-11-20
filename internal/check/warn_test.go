@@ -561,3 +561,9 @@ func TestWarningsRedundantSpread(t *testing.T) {
 func TestWarningsRedundantNullable(t *testing.T) {
 	checkReference(t, "testdata/nullable.kt", Options{Warnings: true})
 }
+
+// TestWarningsExprBodyReturn checks the returns of functions with an
+// expression body against kotlinc's warnings of testdata/exprret.kt.
+func TestWarningsExprBodyReturn(t *testing.T) {
+	checkReference(t, "testdata/exprret.kt", Options{Warnings: true})
+}

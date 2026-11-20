@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2781 of the 3667 warnings the tests expect (75.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2794 of the 3667 warnings the tests expect (76.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -245,6 +245,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 9 | 0 |
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
+| `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 | 13 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 | 12 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
@@ -279,7 +280,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
-| `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
@@ -301,5 +301,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `OPT_IN_OVERRIDE` | 5 |
 | `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 |
 | `REDUNDANT_REPEATABLE_ANNOTATION` | 5 |
-| *37 more* | |
+| `SYNCHRONIZED_ON_INLINE` | 5 |
+| *36 more* | |
 
