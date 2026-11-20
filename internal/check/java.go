@@ -3038,6 +3038,9 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		return c.resolve(x, hides, want, sink)
 	}
 	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
+	if c.trial == nil && slices.ContainsFunc(x.Names, func(n string) bool { return n != "" }) {
+		defer c.ambiguousNamedArgs(x, cls, rt)
+	}
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
 		if slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Operator }) && slices.ContainsFunc(c.extCalleesFor(fn.Name, rt, x), func(cl callee) bool { return cl.f.Operator && c.mayTake(cl.f, x) }) {
