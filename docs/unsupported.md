@@ -90,9 +90,10 @@ own tests.
   `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
   statement that may read the value comes before it is overwritten or
   out of scope, through `if` and `when` but not loops or `try`, and
-  never for a variable a lambda or a local function uses, and
+  never for a variable a lambda or a local function uses,
   `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
-  on an override of a member that inherits its visibility; and with
+  on an override of a member that inherits its visibility, and
+  `USELESS_CALL_ON_NOT_NULL`, but not of a callable reference; and with
   `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
   `@Suppress` silences a warning by its name, or all of them with
   `"warnings"`.

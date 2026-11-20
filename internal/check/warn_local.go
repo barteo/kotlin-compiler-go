@@ -89,6 +89,9 @@ func (c *Checker) localWarnings() {
 			c.redundantSpreads(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
+				if c.u.extraWarnings {
+					c.uselessCallOnNotNull(n)
+				}
 			}
 			if c.u.extraWarnings || c.u.experimentalWarnings {
 				c.emptyRangeWarning(n)

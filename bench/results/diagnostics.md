@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2905 of the 3667 warnings the tests expect (79.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2913 of the 3667 warnings the tests expect (79.4%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -264,6 +264,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
 | `REDUNDANT_MODIFIER` | 8 | 5 | 0 |
 | `SENSELESS_NULL_IN_WHEN` | 8 | 6 | 0 |
+| `USELESS_CALL_ON_NOT_NULL` | 8 | 8 | 0 |
 | `JAVA_CLASS_ON_COMPANION` | 7 | 7 | 0 |
 | `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 | 6 | 0 |
 | `NON_FINAL_MEMBER_IN_OBJECT` | 7 | 7 | 0 |
@@ -291,7 +292,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 |
 | `DANGEROUS_CHARACTERS` | 8 |
 | `FORBIDDEN_IDENTITY_EQUALS_WARNING` | 8 |
-| `USELESS_CALL_ON_NOT_NULL` | 8 |
 | `REDUNDANT_EXPLICIT_BACKING_FIELD` | 7 |
 | `UNNECESSARY_LATEINIT` | 7 |
 | `ANNOTATION_TARGETS_ONLY_IN_JAVA` | 6 |
@@ -308,5 +308,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 |
 | `CAN_BE_VAL` | 3 |
 | `DEPRECATED_MODIFIER_FOR_TARGET` | 3 |
-| *30 more* | |
+| `MISSING_DEPENDENCY_SUPERCLASS_WARNING` | 3 |
+| *29 more* | |
 

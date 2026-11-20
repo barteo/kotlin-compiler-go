@@ -599,3 +599,7 @@ func TestWarningsSynchronizedOnInline(t *testing.T) {
 func TestWarningsJavaClassOnCompanion(t *testing.T) {
 	checkReference(t, "testdata/javaclass.kt", Options{Warnings: true})
 }
+
+func TestWarningsUselessCallOnNotNull(t *testing.T) {
+	checkReference(t, "testdata/uselesscall.kt", Options{Warnings: true, ExtraWarnings: true})
+}
