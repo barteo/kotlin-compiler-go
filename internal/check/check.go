@@ -64,6 +64,8 @@ type Universe struct {
 	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
 	// Options.ExplicitReturnTypes.
 	explicitAPI, explicitReturnTypes APIMode
+	// notMultiplatform is Options.NotMultiplatform.
+	notMultiplatform bool
 	// noReflection is set if kotlin-reflect isn't on the class path,
 	// whose ReflectionFactoryImpl the standard library's reflection uses
 	// if it is.
@@ -790,6 +792,10 @@ type Options struct {
 	// declarations of the program's public API must say their types if
 	// they are inferred.
 	ExplicitReturnTypes APIMode
+	// NotMultiplatform is set for a compilation that isn't multiplatform,
+	// as kotlinc's without -Xmulti-platform: the expect and actual
+	// modifiers are errors (NOT_A_MULTIPLATFORM_COMPILATION).
+	NotMultiplatform bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -925,7 +931,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
-		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, jvmTarget: max(int(opts.JVMTarget), 52)}
+		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, notMultiplatform: opts.NotMultiplatform, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))

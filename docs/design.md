@@ -146,9 +146,10 @@ instructions; otherwise the checker builds Kotlin's call (`a.plus(b)`) as
 a `Call` marked `Operator`. Compound assignments and `++` are rewritten
 into statements that evaluate receivers and indexes once.
 
-**Multiplatform and contracts.** Code compiles for the JVM only: actual
-declarations are ordinary ones, and expect declarations are only checked
-against them (`expect.go`). `contract { }` calls are dropped
+**Multiplatform and contracts.** Code compiles for the JVM only: with
+`-Xmulti-platform`, as with `kotlinc` (without it, the `expect` and
+`actual` modifiers are errors), actual declarations are ordinary ones, and
+expect declarations are only checked against them (`expect.go`). `contract { }` calls are dropped
 (`contracts.go`).
 
 ## Class files

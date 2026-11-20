@@ -265,8 +265,9 @@ func kotlincFlags(path string) []string {
 }
 
 // flagOptions sets the options for kotlinc's flags -jvm-default,
-// -Xdebug and -opt-in=<marker> among flags.
+// -Xdebug, -Xmulti-platform and -opt-in=<marker> among flags.
 func flagOptions(opts *Options, flags []string) {
+	opts.MultiPlatform = slices.Contains(flags, "-Xmulti-platform")
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
@@ -537,7 +538,8 @@ var errorComment = regexp.MustCompile(`// ERROR (.+)$`)
 // TestErrors checks diagnostics. Each line of testdata/errors/X.kt that
 // should produce an error ends with "// ERROR <substring of message>". A
 // directory testdata/errors/X/ is one module of several files. Files
-// named stdlib* are compiled with the Kotlin standard library.
+// named stdlib* are compiled with the Kotlin standard library. A first
+// line "// kotlinc: <flags>" gives kotlinc's flags (see flagOptions).
 func TestErrors(t *testing.T) {
 	files, _ := filepath.Glob("../../testdata/errors/*.kt")
 	dirs, _ := filepath.Glob("../../testdata/errors/*/*.kt")
@@ -562,6 +564,7 @@ func TestErrors(t *testing.T) {
 				javas, _ := filepath.Glob(filepath.Join(f, "*.java")) // the module's Java sources
 				srcs = append(srcs, javas...)
 			}
+			flagOptions(&opts, kotlincFlags(srcs[0]))
 			skipPSIGrammar(t, srcs...)
 			checkErrors(t, srcs, Compile(srcs, opts))
 		})

@@ -1,6 +1,6 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
+//	kc [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
 //	kc -serve
 //
 // kc -serve compiles again and again, as a tool that runs many small
@@ -90,9 +90,10 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	jvmTarget := flags.String("jvm-target", "1.8", "the JVM version the class files are for, as kotlinc's -jvm-target: 1.8, or 9 to 25. Inline functions of class files built for a higher one can't be inlined")
 	explicitAPI := flags.String("Xexplicit-api", "disable", "kotlinc's explicit API mode: strict (errors) or warning (warnings) where a declaration of the public API doesn't say its visibility or its inferred type, or disable")
 	explicitReturnTypes := flags.String("XXexplicit-return-types", "disable", "as kotlinc's -XXexplicit-return-types: strict (errors) or warning (warnings) where a declaration of the public API doesn't say its inferred type, or disable")
+	multiPlatform := flags.Bool("Xmulti-platform", false, "compile multiplatform sources' expect and actual declarations, as kotlinc's -Xmulti-platform, without which they are errors")
 	jvmDefault := flags.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] files-or-dirs...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -144,7 +145,7 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	}
 	opts := driver.Options{OutDir: *outDir, JVMTarget: *jvmTarget, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
 		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Metro: *metro, MetroOptions: metroOptions, Debug: *debug, OptIns: optIns,
-		ExtraWarnings: *wextra, ExperimentalWarnings: *experimental, ExplicitAPI: apiMode, ExplicitReturnTypes: returnTypesMode,
+		ExtraWarnings: *wextra, ExperimentalWarnings: *experimental, ExplicitAPI: apiMode, ExplicitReturnTypes: returnTypesMode, MultiPlatform: *multiPlatform,
 		Libraries: libs, JavaTypes: true}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)
