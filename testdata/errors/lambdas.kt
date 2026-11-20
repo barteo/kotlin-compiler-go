@@ -103,3 +103,16 @@ fun newLineLambdas(): Int {
     return noArgs() // ERROR type mismatch: inferred type is Unit but Int was expected
     { } // ERROR unexpected trailing lambda on a new line
 }
+
+// A lambda ending in a declaration, which is Unit, is reported on it.
+fun endsInDeclaration() {
+    val v: () -> Int = {
+        val x = 2 // ERROR type mismatch: inferred type is Unit but Int was expected
+    }
+    val f: () -> Int = {
+        fun g() {} // ERROR type mismatch: inferred type is Unit but Int was expected
+    }
+    val c: () -> Int = {
+        class C // ERROR type mismatch: inferred type is Unit but Int was expected
+    }
+}

@@ -916,10 +916,12 @@ func resultPos(x *syntax.Lambda) syntax.Pos {
 		switch s := x.Body.Stmts[n-1].(type) {
 		case *syntax.ExprStmt:
 			return s.X.Pos()
-		case *syntax.Assign:
-			// kotlinc reports a lambda ending in an assignment, which is
-			// Unit, on the assignment.
+		case *syntax.Assign, *syntax.LocalFun, *syntax.VarStmt:
+			// kotlinc reports a lambda ending in an assignment or a
+			// declaration, which is Unit, on it.
 			return syntax.StmtPos(s)
+		case *syntax.LocalClass:
+			return s.Decl.P
 		}
 	}
 	return x.P

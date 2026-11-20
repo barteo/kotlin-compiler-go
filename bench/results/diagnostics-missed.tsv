@@ -5,8 +5,6 @@ tests/CharacterLiterals.kt	CharacterLiterals.kt:9	UNRESOLVED_REFERENCE	syntax-er
 tests/DeprecatedGetSetPropertyDelegateConvention.kt	DeprecatedGetSetPropertyDelegateConvention.kt:44	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/DeprecatedGetSetPropertyDelegateConvention.kt	DeprecatedGetSetPropertyDelegateConvention.kt:45	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/FreeFunctionCalledAsExtension.kt	FreeFunctionCalledAsExtension.kt:11	WRONG_EXTENSION_FUNCTION_TYPE	missing-check
-tests/FunctionReturnTypes.kt	FunctionReturnTypes.kt:177	RETURN_TYPE_MISMATCH	syntax-error
-tests/FunctionReturnTypes.kt	FunctionReturnTypes.kt:193	RETURN_TYPE_MISMATCH	syntax-error
 tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:23	ILLEGAL_ESCAPE	syntax-error
 tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:35	ILLEGAL_ESCAPE	syntax-error
 tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:6	EMPTY_CHARACTER_LITERAL	syntax-error
