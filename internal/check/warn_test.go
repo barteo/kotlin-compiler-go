@@ -475,3 +475,27 @@ func checkReference(t *testing.T, file string, opts Options) {
 func TestWarningsNullOperators(t *testing.T) {
 	checkReference(t, "testdata/nullops.kt", Options{Warnings: true})
 }
+
+// TestWarningsDeprecation checks the DEPRECATION warnings of
+// testdata/deprecation.kt.
+func TestWarningsDeprecation(t *testing.T) {
+	checkReference(t, "testdata/deprecation.kt", Options{Warnings: true})
+}
+
+// TestWarningsJDKList checks the deprecations of the JDK 21 members of
+// the collection interfaces that K2 hides, by testdata/jdklist.kt, with a
+// JDK that has them.
+func TestWarningsJDKList(t *testing.T) {
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cp.Has("java/util/SequencedCollection") {
+		t.Skip("the JDK is older than 21")
+	}
+	checkReference(t, "testdata/jdklist.kt", Options{Warnings: true})
+}

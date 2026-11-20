@@ -527,7 +527,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		return nil, &missingError{name}
 	}
 	r := &resolver{s: s, c: c}
-	info := &classfile.Info{Name: name, StabilityInferred: -1, Deprecated: r.deprecation(c.Annotations)}
+	info := &classfile.Info{Name: name, StabilityInferred: -1, Deprecated: r.deprecation(c.Annotations, c.DocDeprecated)}
 	// A nested class's access is public if it is protected, and package
 	// if it is private: the InnerClasses attribute has its own.
 	flags := c.Flags & (classfile.AccPublic | classfile.AccFinal | classfile.AccAbstract)
@@ -709,7 +709,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
 		fieldMarked := r.nullMarked(nil)
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.markNonNull(fieldMarked, f.Type, r.nullability(f.Annotations)), Deprecated: r.deprecation(f.Annotations)}
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.markNonNull(fieldMarked, f.Type, r.nullability(f.Annotations)), Deprecated: r.deprecation(f.Annotations, f.DocDeprecated)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -718,9 +718,13 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		info.Fields = append(info.Fields, m)
 	}
-	for _, k := range c.Constants {
-		info.Fields = append(info.Fields, classfile.Member{Access: classfile.AccPublic | classfile.AccStatic | classfile.AccFinal | classfile.AccEnum,
-			Name: k, Desc: "L" + name + ";"})
+	for i, k := range c.Constants {
+		m := classfile.Member{Access: classfile.AccPublic | classfile.AccStatic | classfile.AccFinal | classfile.AccEnum,
+			Name: k, Desc: "L" + name + ";"}
+		if i < len(c.ConstantMods) {
+			m.Deprecated = r.deprecation(c.ConstantMods[i].Annotations, c.ConstantMods[i].DocDeprecated)
+		}
+		info.Fields = append(info.Fields, m)
 	}
 	for _, p := range c.Components {
 		m := classfile.Member{Access: classfile.AccPrivate | classfile.AccFinal, Name: p.Name, Desc: r.desc(p.Type)}
@@ -764,7 +768,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
+		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations, m.DocDeprecated)}
 		marked := mr.nullMarked(m.Annotations)
 		if marked && m.Ret != nil && len(mr.nullability(m.Annotations)) == 0 {
 			mm.Annotations = append(mm.Annotations, mr.markNonNull(true, m.Ret, nil)...)

@@ -623,7 +623,8 @@ func (t *classTable) load(cls *types.ClassSym) {
 					continue
 				}
 				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
-					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate}
+					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate,
+					Deprecated: classFileDeprecation(fd.Deprecated)}
 			}
 			continue
 		}
@@ -662,7 +663,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
-				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant}
+				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant, Deprecated: classFileDeprecation(fd.Deprecated)}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -3268,10 +3269,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
-	if (getterName == "getFirst" || getterName == "getLast") && c.isSubclassOf(cls, "java/util/List") && !c.isSubclassOf(cls, "java/util/Deque") {
-		// JDK 21's List.getFirst() and getLast(), deprecated in Kotlin's
-		// List, aren't properties: list.last is the program's or the
-		// standard library's.
+	if (getterName == "getFirst" || getterName == "getLast") && cls.KotlinName != "" {
+		// JDK 21's List.getFirst() and getLast(), hidden in Kotlin's
+		// List, aren't its properties: list.last is the program's or the
+		// standard library's. Those of a Java class's or the program's
+		// overrides of them are, deprecated (see
+		// deprecatedOverrideOfHidden).
 		return types.InvalidType, false
 	}
 	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {

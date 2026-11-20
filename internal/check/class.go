@@ -1168,7 +1168,8 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if !fd.Override {
 			continue
 		}
-		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && !slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) {
+		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && (!slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) ||
+			c.deprecatedOverrideOfHidden(f) != "") {
 			c.overrideDeprecation(fd.P)
 		}
 		if f.Suspend && rawSuspendRet(f.Ret) {

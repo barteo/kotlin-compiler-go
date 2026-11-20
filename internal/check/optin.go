@@ -53,7 +53,7 @@ func optInErrors(checkers []*Checker) {
 		o.collect(c.file.Decls)
 	}
 	for _, c := range checkers {
-		w := &optWalker{o: o, c: c, writes: map[syntax.Expr]bool{}}
+		w := &optWalker{o: o, c: c, writes: map[syntax.Expr]bool{}, readWrites: map[syntax.Expr]bool{}}
 		w.push(c.file.Annotations)
 		w.annotationErrors(c.file.Annotations)
 		w.imports(c.file.Imports)
@@ -66,6 +66,9 @@ func optInErrors(checkers []*Checker) {
 // imports reports the imports of what is nested in one of the program's
 // markers: only the marker itself can be imported.
 func (w *optWalker) imports(imps []*syntax.Import) {
+	for _, imp := range imps {
+		w.importDeprecation(imp)
+	}
 	for _, imp := range imps {
 		parts := strings.Split(imp.Path, ".")
 		n := len(parts) - 1
@@ -83,6 +86,48 @@ func (w *optWalker) imports(imps []*syntax.Import) {
 			}
 		}
 	}
+}
+
+// importDeprecation reports an explicit import of a member or a nested
+// class of a deprecated class: import my.C.Companion.a for a deprecated
+// C. As with kotlinc, importing the deprecated class itself is no use of
+// it.
+func (w *optWalker) importDeprecation(imp *syntax.Import) {
+	if imp.Star {
+		return
+	}
+	name := imp.Alias
+	if name == "" {
+		name = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
+	}
+	var cls *types.ClassSym
+	if k := w.c.imports[name]; k != nil && qualName(k) == imp.Path {
+		cls = w.outerOf(k)
+	} else {
+		for _, mi := range w.c.memberImportsOf(name) {
+			if mi.p == imp.P {
+				cls = mi.owner
+			}
+		}
+	}
+	for ; cls != nil; cls = w.outerOf(cls) {
+		if d := notHidden(classDepr(cls)); d.level != "" {
+			w.deprecatedUse(imp.P, cls.DisplayName(), d)
+			return
+		}
+	}
+}
+
+// outerOf returns the class cls is nested in, or nil: a Java class's,
+// which isn't recorded, by its JVM name, Outer$Nested.
+func (w *optWalker) outerOf(cls *types.ClassSym) *types.ClassSym {
+	if cls.Outer != nil || !cls.External {
+		return cls.Outer
+	}
+	if i := strings.LastIndexByte(cls.Name, '$'); i > 0 {
+		return w.c.u.ext.class(cls.Name[:i])
+	}
+	return nil
 }
 
 // optPass holds what the checks of all files share.
@@ -550,8 +595,12 @@ type optWalker struct {
 	classes []*types.ClassSym
 	// inClassLit is set while the class of a class literal is walked.
 	inClassLit bool
-	// writes are the expressions assigned to.
-	writes map[syntax.Expr]bool
+	// writes are the expressions assigned to, and readWrites those a
+	// compound assignment or ++ and -- read and assign.
+	writes, readWrites map[syntax.Expr]bool
+	// hiddenOff is set while deprecations with level HIDDEN aren't
+	// reported (see ident).
+	hiddenOff bool
 	// entered is the annotated node whose annotations were just pushed.
 	entered any
 	// refReads are the positions of the property reads that callable
@@ -616,6 +665,9 @@ func (w *optWalker) require(p syntax.Pos, ms []*optMarker) {
 
 // deprecatedUse reports a use at p of name, deprecated with d.
 func (w *optWalker) deprecatedUse(p syntax.Pos, name string, d depr) {
+	if w.hiddenOff {
+		d = notHidden(d)
+	}
 	if d.level == "" || w.deprecated() {
 		return
 	}
@@ -736,6 +788,10 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 	w.pop()
 	for i := range as {
 		a := &as[i]
+		if cls := w.o.annClass(a); cls != nil {
+			// A deprecated annotation class, used as an annotation.
+			w.deprecatedUse(a.P, cls.DisplayName(), notHidden(classDepr(cls)))
+		}
 		var versions []*syntax.AnnotationArg
 		switch {
 		case a.Is("SinceKotlin"):
@@ -1305,6 +1361,9 @@ func (w *optWalker) visit(n any) bool {
 		}
 	case *syntax.Assign:
 		w.writes[n.Target] = true
+		if n.Op != syntax.ASSIGN {
+			w.readWrites[n.Target] = true
+		}
 	case *syntax.Is:
 		w.typeRef(n.Ref)
 	case *syntax.As:
@@ -1353,6 +1412,10 @@ func (w *optWalker) visit(n any) bool {
 	case *syntax.Unary:
 		if n.Call != nil {
 			w.call(n.Call)
+		}
+		if n.Op == syntax.INC || n.Op == syntax.DEC {
+			w.writes[n.X] = true
+			w.readWrites[n.X] = true
 		}
 	case *syntax.Index:
 		if n.Call != nil {
@@ -1427,6 +1490,10 @@ func (w *optWalker) call(n *syntax.Call) {
 			}
 		}
 	}
+	if n.Sym == nil && charToNumber(n) {
+		// Char's conversions to numbers, built in: 'c'.toInt().
+		w.deprecatedUse(p, n.Fun.(*syntax.Member).Name, depr{"WARNING", "Conversion of Char to Number is deprecated. Use Char.code property instead."})
+	}
 	if n.Sym == nil || n.Invoke {
 		return
 	}
@@ -1438,6 +1505,10 @@ func (w *optWalker) call(n *syntax.Call) {
 	}
 	if w.c.deprecatedListSort(n.Sym) && !superCall(n) && !w.deprecated() && !w.suppressed("DEPRECATION_ERROR") {
 		w.errorf(p, "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
+	}
+	if w.c.hiddenJDKMember(n.Sym) && !superCall(n) {
+		w.errorf(p, "unresolved reference: %s", n.Sym.Name)
+		return
 	}
 	w.fun1(n.Sym, p, n.T)
 	if onImplicitRecv(n.Fun) && n.Sym.Owner != nil && !n.Sym.Owner.External {
@@ -1586,7 +1657,7 @@ func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types
 		ms = append(ms, w.o.typeMarkers(t)...)
 	}
 	w.require(p, ms)
-	w.deprecatedUse(p, name, level)
+	w.deprecatedUse(p, name, level.or(w.c.jdkOverrideDepr(f)))
 }
 
 // componentProp returns the property that f, the componentN function
@@ -1702,9 +1773,9 @@ func (w *optWalker) propDeprecation(p *types.VarSym) depr {
 // or with ref of a reference to it, which a deprecated getter's level
 // WARNING doesn't make deprecated.
 func (w *optWalker) propReadDeprecation(p *types.VarSym, ref bool) depr {
-	targets := []string{"property", "get"}
+	targets := []string{"property", "all", "get"}
 	if ref {
-		targets = targets[:1]
+		targets = targets[:2]
 	}
 	switch d := p.Decl.(type) {
 	case *syntax.PropDecl:
@@ -1717,6 +1788,20 @@ func (w *optWalker) propReadDeprecation(p *types.VarSym, ref bool) depr {
 			return deprecation(d.Modifiers.Annotations, targets...).or(onlyErrors(deprecation(d.Modifiers.Annotations, "get")))
 		}
 		return deprecation(d.Modifiers.Annotations, targets...)
+	case nil:
+		return deprecationLevel(p.Deprecated)
+	}
+	return depr{}
+}
+
+// propWriteDeprecation returns the deprecation of an assignment of
+// property p: its own, or its setter's.
+func (w *optWalker) propWriteDeprecation(p *types.VarSym) depr {
+	switch d := p.Decl.(type) {
+	case *syntax.PropDecl:
+		return deprecation(d.Annotations, "property", "all", "set")
+	case *syntax.CtorParam:
+		return deprecation(d.Modifiers.Annotations, "property", "all", "set")
 	case nil:
 		return deprecationLevel(p.Deprecated)
 	}
@@ -1737,6 +1822,8 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 		w.require(p, w.propMarkers(v, write))
 		if !write {
 			w.deprecatedUse(p, v.Name, w.propReadDeprecation(v, w.refReads[p]))
+		} else {
+			w.deprecatedUse(p, v.Name, notHidden(w.propWriteDeprecation(v)))
 		}
 	case types.Local, types.Param:
 		if !write {
@@ -1746,7 +1833,24 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 		if !write {
 			w.require(p, w.entryMarkers(v))
 		}
+		w.deprecatedUse(p, v.Name, notHidden(w.staticDepr(v)))
 	}
+}
+
+// staticDepr returns the deprecation of v, a static field or an enum
+// entry: of the program's enum's entry, by its annotations.
+func (w *optWalker) staticDepr(v *types.VarSym) depr {
+	if cls := v.Owner; cls != nil {
+		if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+			for _, e := range d.Entries {
+				if e != nil && e.Name == v.Name {
+					return deprecation(e.Annotations)
+				}
+			}
+			return depr{}
+		}
+	}
+	return deprecationLevel(v.Deprecated)
 }
 
 // entryMarkers returns the markers of v if it is an enum entry: those it
@@ -1770,6 +1874,9 @@ func (w *optWalker) entryMarkers(v *types.VarSym) []*optMarker {
 func (w *optWalker) ident(n *syntax.Ident) {
 	write := w.writes[n]
 	if n.Sym != nil {
+		if w.readWrites[n] {
+			w.variable(n.Sym, n.P, false)
+		}
 		w.variable(n.Sym, n.P, write)
 		if n.Sym.Kind == types.Prop && n.Sym.Owner != nil && !n.Sym.Owner.External {
 			inside := false
@@ -1784,8 +1891,36 @@ func (w *optWalker) ident(n *syntax.Ident) {
 	if n.Sym == nil && !write {
 		w.accessor(n.Name, n.Getter, nil, n.P, false)
 	}
+	if n.Member != nil {
+		// A member of an implicit receiver: test in an extension of its
+		// class.
+		// K2 resolves around a member deprecated with level HIDDEN,
+		// which kc's resolution of these doesn't: only warnings and
+		// errors are reported.
+		w.hiddenOff = true
+		if w.readWrites[n] {
+			w.memberAccess(n.Member, false)
+		}
+		w.memberAccess(n.Member, write)
+		w.hiddenOff = false
+	}
 	if n.Object != nil {
 		w.object(n.Object, n.P)
+		w.aliasObject(n.Name, n.Object, n.P)
+	}
+}
+
+// aliasObject checks a typealias named name, used at p as the value of
+// object obj or of the companion object obj of the class it expands to.
+func (w *optWalker) aliasObject(name string, obj *types.ClassSym, p syntax.Pos) {
+	for _, a := range w.o.aliases[name] {
+		if c := a.Class(); c == nil || c != obj && c.Companion != obj {
+			continue
+		}
+		w.require(p, w.o.aliasMarkers(a, 0))
+		if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
+			w.deprecatedUse(p, a.Name, notHidden(deprecation(d.Annotations)))
+		}
 	}
 }
 
@@ -1798,17 +1933,18 @@ func (w *optWalker) accessor(name string, get, set *types.FunSym, p syntax.Pos, 
 	}
 	if f != nil && f.Decl == nil {
 		w.funNamed(f, name, p, types.Type{})
+	} else if f != nil {
+		// A synthetic property of the program's override of a Java
+		// getter that K2 deprecates: first of getFirst().
+		w.deprecatedUse(p, name, w.c.jdkOverrideDepr(f))
 	}
 }
 
 func (w *optWalker) member(n *syntax.Member) {
-	if n.Prop != nil {
-		w.variable(n.Prop, n.P, w.writes[n])
-	} else if n.Field != nil {
-		w.variable(n.Field, n.P, w.writes[n])
-	} else {
-		w.accessor(n.Name, n.Getter, n.Setter, n.P, w.writes[n])
+	if w.readWrites[n] {
+		w.memberAccess(n, false)
 	}
+	w.memberAccess(n, w.writes[n])
 	if n.Object != nil {
 		w.object(n.Object, n.P)
 	}
@@ -1816,6 +1952,19 @@ func (w *optWalker) member(n *syntax.Member) {
 		// The class of a static member: JavaClass.f().
 		w.require(n.X.Pos(), w.o.classMarkers(n.Static))
 		w.deprecatedUse(n.X.Pos(), n.Static.DisplayName(), classDepr(n.Static))
+	}
+}
+
+// memberAccess checks a read, or with write an assignment, of the
+// property or field n.
+func (w *optWalker) memberAccess(n *syntax.Member, write bool) {
+	switch {
+	case n.Prop != nil:
+		w.variable(n.Prop, n.P, write)
+	case n.Field != nil:
+		w.variable(n.Field, n.P, write)
+	default:
+		w.accessor(n.Name, n.Getter, n.Setter, n.P, write)
 	}
 }
 
@@ -1873,4 +2022,24 @@ func onlyErrors(d depr) depr {
 		return d
 	}
 	return depr{}
+}
+
+// charToNumber reports whether n is a call of one of Char's conversions to
+// a number, which the standard library deprecates for Char.code.
+func charToNumber(n *syntax.Call) bool {
+	switch n.Builtin {
+	case types.ToInt, types.ToLong, types.ToDouble, types.ToFloat, types.ToByte, types.ToShort:
+	default:
+		return false
+	}
+	m, ok := n.Fun.(*syntax.Member)
+	return ok && m.X != nil && m.X.Type().NonNull() == types.CharType
+}
+
+// notHidden returns d, or no deprecation if its level is HIDDEN.
+func notHidden(d depr) depr {
+	if d.level == "HIDDEN" {
+		return depr{}
+	}
+	return d
 }
