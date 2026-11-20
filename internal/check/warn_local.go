@@ -112,6 +112,7 @@ func (c *Checker) localWarnings() {
 			c.whenIsWarnings(n)
 			c.whenNullWarnings(n)
 			c.redundantElseWarning(n)
+			c.duplicateWhenConditions(n)
 			c.whenEnumWarnings(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {

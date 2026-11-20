@@ -543,3 +543,9 @@ func TestWarningsDelegationHides(t *testing.T) {
 func TestWarningsModifiers(t *testing.T) {
 	checkReference(t, "testdata/modifiers.kt", Options{Warnings: true})
 }
+
+// TestWarningsDuplicateConditions checks the warnings of conditions that
+// a when's branches repeat against kotlinc's of testdata/whendup.kt.
+func TestWarningsDuplicateConditions(t *testing.T) {
+	checkReference(t, "testdata/whendup.kt", Options{Warnings: true})
+}
