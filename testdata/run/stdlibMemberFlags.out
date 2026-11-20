@@ -1,0 +1,22 @@
+Sender.send: varargs true
+Sender.sendInts: varargs true
+Sender.withBody: varargs true
+Base.hidden: varargs true
+Base.many: varargs true
+Base.open: varargs true
+Outer.getProtVal: protected static final
+Outer.getProtVar: protected static final
+Outer.prot: protected static final
+Outer.pub: public static final
+Outer.setProtVar: protected static final
+Outer.CONST: public static final
+Outer.PROT_CONST: protected static final
+11
+Internal: public final copy$module, public static copy$module$default
+Protected: protected final copy, public static copy$default
+Published: public final copy$module, public static copy$module$default
+Public: public final copy, public static copy$default
+Plain: public final copy, public static copy$default
+Internal(a=2, b=y)
+Protected(a=2)
+Published(a=2)

@@ -275,8 +275,12 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 // property p, which call its accessors on the companion.
 func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 	t := types.GetterType(p)
+	access := g.stubAccess()
+	if pd, ok := p.Decl.(*syntax.PropDecl); ok && pd.Visibility == syntax.Protected {
+		access = protected(access)
+	}
 	stub := func(name, d string, param types.Type) {
-		g.code = g.cls.NewMethod(g.stubAccess(), name, d)
+		g.code = g.cls.NewMethod(access, name, d)
 		if param.K == types.Unit {
 			g.signAccessor(g.cls.LastMethod(), t, propRef(p), d, nil, comp)
 		} else {
@@ -373,6 +377,13 @@ func (g *gen) stubAccess() uint16 {
 	return cf.AccPublic | cf.AccStatic | cf.AccFinal
 }
 
+// protected returns the flags of a protected member's stub, which are
+// access for a public one: a protected member of a companion is for the
+// subclasses of its outer class, as its static method there is.
+func protected(access uint16) uint16 {
+	return access&^cf.AccPublic | cf.AccProtected
+}
+
 // staticStub generates the static method of descriptor d that calls the
 // method of companion comp with the same name and descriptor: a private
 // one for a private method, which it calls through its accessor, as
@@ -385,6 +396,9 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 	private := fd.Sym.Private && !fd.Sym.External
 	if private {
 		access = access&^cf.AccPublic | cf.AccPrivate
+	}
+	if fd.Visibility == syntax.Protected {
+		access = protected(access)
 	}
 	name := fd.Sym.JVM()
 	if fd.Sym.External && d == funDesc(fd.Sym) {

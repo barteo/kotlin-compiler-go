@@ -965,6 +965,14 @@ func varargs(f *types.FunSym) bool {
 	return hasVararg(f.Params) && !f.Composable && !f.Suspend
 }
 
+// varargsFlag is ACC_VARARGS if f's method is a variable arity method.
+func varargsFlag(f *types.FunSym) uint16 {
+	if varargs(f) {
+		return cf.AccVarargs
+	}
+	return 0
+}
+
 func (g *gen) check() {
 	if err := g.code.Err(); err != nil {
 		panic(fmt.Errorf("%s.%s: %w", g.cls.Name, g.code.Name(), err))
@@ -1510,7 +1518,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		if cls.HasDefaultImpls() && !f.Abstract {
 			// An abstract method, and the body in DefaultImpls.
 			if fd.Visibility != syntax.Private {
-				c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
+				c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract|varargsFlag(f)|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
 				g.signFun(c.LastMethod(), f, fd, funDesc(f), types.InvalidType)
 				g.annotateFun(c.LastMethod(), fd, false)
 				c.Throws(f.Throws...)
@@ -1531,7 +1539,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			if fd.Visibility == syntax.Protected || f.Inherited == types.InheritProtected && !f.PublicOnJVM {
 				acc = cf.AccProtected
 			}
-			c.AddAbstractMethod(acc|cf.AccAbstract|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
+			c.AddAbstractMethod(acc|cf.AccAbstract|varargsFlag(f)|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
 			g.signFun(c.LastMethod(), f, fd, funDesc(f), types.InvalidType)
 			g.annotateFun(c.LastMethod(), fd, false)
 			c.Throws(f.Throws...)
@@ -2121,6 +2129,9 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 func (g *gen) constFields(c *cf.Class, cd *syntax.ClassDecl) {
 	for _, pd := range constDecls(cd) {
 		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal)
+		if pd.Visibility == syntax.Protected {
+			acc = cf.AccProtected | cf.AccStatic | cf.AccFinal
+		}
 		if v := constPool(c, pd.Sym); v != 0 {
 			if pd.Visibility == syntax.Private {
 				acc = cf.AccPrivate | cf.AccStatic | cf.AccFinal
