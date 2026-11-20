@@ -235,7 +235,7 @@ tests/annotations/annotationParameterMustBeConstant/compareAndEquals.kt	rejects 
 tests/annotations/annotationParameterMustBeConstant/enumConst.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/javaProperties.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/kotlinProperties.kt	rejects invalid	on an expected line	
-tests/annotations/annotationParameterMustBeConstant/lambdaParameter.kt	rejects invalid	elsewhere	
+tests/annotations/annotationParameterMustBeConstant/lambdaParameter.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/standaloneInExpression.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/strings.kt	rejects invalid	on an expected line	
 tests/annotations/annotationRenderingInTypes.kt	rejects invalid	on an expected line	
@@ -284,7 +284,7 @@ tests/annotations/dontReportWarningAboutChangingExecutionOrderForVararg.kt	rejec
 tests/annotations/dslMarkerPropagation.kt	accepts valid		
 tests/annotations/extensionFunctionType.kt	rejects invalid	on an expected line	
 tests/annotations/forParameterAnnotationResolve.kt	rejects invalid	on an expected line	
-tests/annotations/functionInsideFileAnnotation.kt	rejects invalid	elsewhere	
+tests/annotations/functionInsideFileAnnotation.kt	rejects invalid	on an expected line	
 tests/annotations/functionParameterAsImplicitReturnType.kt	accepts valid		
 tests/annotations/functionalTypes/nonParenthesizedAnnotationsWithoutError.kt	rejects invalid	elsewhere	
 tests/annotations/functionalTypes/parameterName.kt	accepts valid		
@@ -4046,7 +4046,7 @@ tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	on an expected li
 tests/inference/commonSuperTypeOfTypesWithErrorSupertypes.kt	rejects invalid	on an expected line	
 tests/inference/commonSystem/boundOnNullableVariable.kt	accepts valid		
 tests/inference/commonSystem/castToSubtype.kt	accepts valid		
-tests/inference/commonSystem/cstFromNullableChildAndNonParameterizedType.kt	rejects invalid	elsewhere	
+tests/inference/commonSystem/cstFromNullableChildAndNonParameterizedType.kt	rejects invalid	on an expected line	
 tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	on an expected line	
 tests/inference/commonSystem/dontCaptureTypeVariable.kt	accepts valid		
 tests/inference/commonSystem/exactOnElvis.kt	accepts valid		
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=42991 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/b4921cbc-1bc5-5d24-9b44-dbd9de7c74fc/scratchpad/tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/claude-0/-workspace-kotlin-compiler-go/8b6e0e98-6e13-574e-a4f7-3911e7434a8e/scratchpad/work/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -7165,7 +7165,7 @@ tests/problems/kt12610.kt	rejects invalid	on an expected line
 tests/problems/kt13398.kt	accepts valid		
 tests/problems/kt14059.kt	accepts valid		
 tests/problems/kt14687.kt	rejects invalid	on an expected line	
-tests/problems/kt14773.kt	rejects invalid	elsewhere	
+tests/problems/kt14773.kt	rejects invalid	on an expected line	
 tests/problems/kt14778.kt	accepts valid		
 tests/problems/kt15919.kt	accepts valid		
 tests/problems/kt15949.kt	accepts valid		
@@ -10161,7 +10161,7 @@ testsWithStdLib/coroutines/tailCalls/nothingTypedSuspendFunction_1_3.kt	accepts 
 testsWithStdLib/coroutines/tailCalls/recursive.kt	accepts valid		
 testsWithStdLib/coroutines/tailCalls/tryCatch.kt	accepts valid		
 testsWithStdLib/coroutines/tailCalls/valid.kt	accepts valid		
-testsWithStdLib/coroutines/tryCatchLambda.kt	rejects invalid	elsewhere	
+testsWithStdLib/coroutines/tryCatchLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/usageOfResultTypeInReturnType.kt	skip	LANGUAGE	
 testsWithStdLib/coroutines/usageOfResultTypeWithNullableOperators.kt	accepts valid		
 testsWithStdLib/delegateInference/ifWithCallableReferenceInLazy.kt	accepts valid		
@@ -10772,7 +10772,7 @@ testsWithStdLib/smartcasts/whileLoopNotNull.kt	accepts valid
 testsWithStdLib/smartcasts/withChangesToNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/streams/basic.kt	accepts valid		
 testsWithStdLib/streams/wrongNullability.kt	skip	LANGUAGE	
-testsWithStdLib/streams/wrongNullabilityWithoutWrtHack.kt	rejects invalid	elsewhere	
+testsWithStdLib/streams/wrongNullabilityWithoutWrtHack.kt	rejects invalid	on an expected line	
 testsWithStdLib/stringConstructors.kt	accepts valid		
 testsWithStdLib/targetedBuiltIns/blackListed.kt	rejects invalid	on an expected line	
 testsWithStdLib/toSortedMapWithComparator.kt	accepts valid		
@@ -10791,7 +10791,7 @@ testsWithStdLib/tryCatch/catchRedeclaration.kt	rejects invalid	on an expected li
 testsWithStdLib/tryCatch/correctSmartcasts.kt	rejects invalid	on an expected line	
 testsWithStdLib/tryCatch/falseNegativeSmartcasts.kt	accepts valid		
 testsWithStdLib/tryCatch/falsePositiveSmartcasts.kt	rejects invalid	on an expected line	
-testsWithStdLib/tryCatch/tryExpression.kt	rejects invalid	elsewhere	
+testsWithStdLib/tryCatch/tryExpression.kt	rejects invalid	on an expected line	
 testsWithStdLib/typeAliasDeserialization.kt	accepts valid		
 testsWithStdLib/typeAliasWithForEach.kt	accepts valid		
 testsWithStdLib/typeParameterDerived.kt	accepts valid		
