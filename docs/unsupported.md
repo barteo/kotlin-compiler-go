@@ -317,7 +317,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   receiver takes `Nothing` for a generic extension property's type
   parameter its receiver projects out, and for an invariant argument of
   a member property's type that a star captures, checked after the
-  value is inferred against the read type.
+  value is inferred against the read type; so does a Java field or a
+  Java setter's parameter. A Java setter called as a method
+  (`setWrapper(w)` on a `Container<*>`) doesn't, and an invariant
+  argument that an `in` projection captures takes the projection.
 - Of K2's captured types, `kc` has only those of reading an explicit
   backing field through a stable receiver whose type projects the
   field's type parameters, `o.num` for an `o: C<*>`: the receiver is
