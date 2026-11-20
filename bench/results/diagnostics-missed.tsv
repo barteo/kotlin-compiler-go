@@ -980,16 +980,6 @@ tests/smartCasts/receivers/implicitReceivers.kt	implicitReceivers.kt:39	CANNOT_I
 tests/smartCasts/smartcastToInvisibleType_kotlin.kt	main.kt:16	INVISIBLE_REFERENCE	missing-check
 tests/smartCasts/varOnFinalReceiver.kt	varOnFinalReceiver.kt:56	SMARTCAST_IMPOSSIBLE	missing-check
 tests/smartCasts/varOnFinalReceiver.kt	varOnFinalReceiver.kt:66	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:11	SMARTCAST_IMPOSSIBLE	nearby
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:15	SMARTCAST_IMPOSSIBLE	nearby
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:27	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:28	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:30	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:48	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:52	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:78	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:80	SMARTCAST_IMPOSSIBLE	missing-check
-tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:82	SMARTCAST_IMPOSSIBLE	missing-check
 tests/sourceCompatibility/noMultiplatformProjects.kt	noMultiplatformProjects.kt:11	NOT_A_MULTIPLATFORM_COMPILATION	missing-check
 tests/sourceCompatibility/noMultiplatformProjects.kt	noMultiplatformProjects.kt:11	WRONG_MODIFIER_TARGET	missing-check
 tests/sourceCompatibility/noMultiplatformProjects.kt	noMultiplatformProjects.kt:12	NOT_A_MULTIPLATFORM_COMPILATION	missing-check

@@ -411,6 +411,11 @@ type Checker struct {
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
 	frameAssigns  map[varFrame][]types.Type
+	// classFrames are the frames of object expressions and local
+	// classes, with their declarations, and nullFrames whether such a
+	// class's code assigns null to a var it captures (see varStable).
+	classFrames map[*syntax.Lambda]*syntax.ClassDecl
+	nullFrames  map[varFrame]bool
 	// siblingAssigns has, for a lambda argument, the names of the locals
 	// the call's other lambda arguments assign, which may run before it.
 	siblingAssigns map[*syntax.Lambda]map[string]bool

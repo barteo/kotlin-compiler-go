@@ -90,6 +90,11 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 				return false
 			}
 		}
+		// A class's members, which may run in any order, may assign it
+		// before the code checked so far does.
+		if !t.N && c.classAssignsNull(key) {
+			return false
+		}
 	}
 	if assigned, ok := c.concurrent[key]; ok {
 		return !assigned
@@ -98,6 +103,91 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	assigned := !ok || assignedOutside(site.b.Stmts[site.i+1:], v.Name, key.frame)
 	c.concurrent[key] = assigned
 	return !assigned
+}
+
+// classAssignsNull reports whether frame key.frame is an object
+// expression's or a local class's whose code, any of its members,
+// assigns null to var key.v.
+func (c *Checker) classAssignsNull(key varFrame) bool {
+	d := c.classFrames[key.frame]
+	if d == nil {
+		return false
+	}
+	if found, ok := c.nullFrames[key]; ok {
+		return found
+	}
+	found := false
+	var code []any
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.InitBlock:
+			code = append(code, m.Body)
+		case *syntax.FunDecl:
+			code = append(code, funCode(m)...)
+		case *syntax.PropDecl:
+			code = append(code, m.Init)
+			for _, f := range []*syntax.FunDecl{m.Getter, m.Setter} {
+				if f != nil {
+					code = append(code, funCode(f)...)
+				}
+			}
+		}
+	}
+	for _, n := range code {
+		if found = nullAssigned(n, key.v.Name); found {
+			break
+		}
+	}
+	if c.nullFrames == nil {
+		c.nullFrames = map[varFrame]bool{}
+	}
+	c.nullFrames[key] = found
+	return found
+}
+
+// funCode returns the code of function d: its body, or its expression
+// body, and its parameters' default values.
+func funCode(d *syntax.FunDecl) []any {
+	var code []any
+	for _, p := range d.Params {
+		if p.Default != nil {
+			code = append(code, p.Default)
+		}
+	}
+	if d.Body != nil {
+		code = append(code, d.Body)
+	}
+	if d.ExprBody != nil {
+		code = append(code, d.ExprBody)
+	}
+	return code
+}
+
+// nullAssigned reports whether node assigns null to the local named
+// name, also in code nested in it, where no local declared in it shadows
+// name.
+func nullAssigned(node any, name string) bool {
+	found := false
+	inspect(node, func(n any) bool {
+		if found {
+			return false
+		}
+		if b, ok := n.(*syntax.Block); ok && b != nil && n != node {
+			for _, st := range b.Stmts {
+				if found = nullAssigned(st, name); found || slices.Contains(declaredNames(st), name) {
+					break
+				}
+			}
+			return false
+		}
+		if a, ok := n.(*syntax.Assign); ok && a.Op == syntax.ASSIGN {
+			if id, ok := a.Target.(*syntax.Ident); ok && id.Name == name {
+				_, found = a.Value.(*syntax.NullLit)
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // pastInPlace returns depth, the depth of the scope of a local, past the

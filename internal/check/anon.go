@@ -185,6 +185,10 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	saved, savedClasses, savedLookup := c.state, c.classes, c.lookupCls
 	frame := &syntax.Lambda{}
 	frame.P = d.P
+	if c.classFrames == nil {
+		c.classFrames = map[*syntax.Lambda]*syntax.ClassDecl{}
+	}
+	c.classFrames[frame] = d
 	depth := len(c.lambdas)
 	ctx := &anonCtx{scope: c.scope, lambdas: append(c.lambdas[:depth:depth], frame),
 		lrets: append(c.lrets[:len(c.lrets):len(c.lrets)], &lambdaResult{}), tparams: c.tparams, localCalls: c.localCalls}
