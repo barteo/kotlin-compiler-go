@@ -615,12 +615,39 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 					return nil, types.InvalidType, false
 				}
 				c.refContexts(x, p)
+				if ok && w.ret.K == types.Unit {
+					c.unitRefVar(x, p)
+				}
 			}
 			return ps, rt, ok
 		}
 		c.errs = c.errs[:n]
 	}
 	return nil, types.InvalidType, false
+}
+
+// unitRefVar reports, of reference x expected to be a function that
+// returns Unit, a referenced function whose result is one of its type
+// parameters, T or T?, that its parameters give a type other than Unit:
+// kotlinc infers the reference's type parameter from the expected
+// result too, and can't (val f: (Int) -> Unit = ::id for a
+// fun <T> id(x: T): T). A reference passed for a function parameter is
+// adapted to drop the result instead.
+func (c *Checker) unitRefVar(x *syntax.Lambda, p syntax.Pos) {
+	if x == c.adaptedRef {
+		return
+	}
+	call := kfunCall(x)
+	if call == nil || len(call.TypeArgs) > 0 || call.Sym.Ret.K != types.TypeParam || call.Ctor != nil {
+		return
+	}
+	if !slices.ContainsFunc(call.Sym.TypeParams, func(tp *types.TypeParamSym) bool { return tp == call.Sym.Ret.Param() }) {
+		return
+	}
+	if t := call.Type().NonNull(); t.K == types.Unit || t.K == types.Invalid {
+		return
+	}
+	c.errorf(p, "cannot infer type for type parameter '%s'. Specify it explicitly.", call.Sym.Ret.Param().Name)
 }
 
 // memberExtRef reports, if the checked body of reference x calls or reads

@@ -391,6 +391,9 @@ type Checker struct {
 	// intersection override of a property of this smart cast to a
 	// subclass (see castThisProp), which don't initialize it.
 	castThisAssigns map[syntax.Expr]bool
+	// adaptedRef is the callable reference checked as a call's argument
+	// for a parameter of a function type, which it may be adapted to.
+	adaptedRef *syntax.Lambda
 	// assignTarget is the member an assignment's target is while it is
 	// checked, whose getter isn't called (see protectedGetter).
 	assignTarget *syntax.Member

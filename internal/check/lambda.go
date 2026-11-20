@@ -1627,6 +1627,12 @@ func (c *Checker) argValue(arg *syntax.Expr, p types.Type, f *types.FunSym) type
 			c.samRef(l)
 			return p
 		}
+		if _, _, fn := funcParts(p); l.Ref != nil && fn {
+			// Adapted to the parameter's function type: see unitRefVar.
+			saved := c.adaptedRef
+			c.adaptedRef = l
+			defer func() { c.adaptedRef = saved }()
+		}
 	}
 	return c.value(a, p)
 }
@@ -1971,10 +1977,13 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		if !readyOnly {
 			c.fixRelated(s, pl)
 		}
-		saved := c.scope
+		saved, savedRef := c.scope, c.adaptedRef
 		c.scope = pl.scope
+		if _, _, fn := funcParts(pl.p); fn && pl.l.Ref != nil {
+			c.adaptedRef = pl.l // see unitRefVar
+		}
 		c.postponedLambda(s, pl.l, p, pl.noSAM)
-		c.scope = saved
+		c.scope, c.adaptedRef = saved, savedRef
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && shape.K != types.Invalid && s.unfixedVar(shape) == nil {
 			// The lambda's type is below the variable too, as K2's
 			// argument constraint: K of select(id { B() }, id { C() })
