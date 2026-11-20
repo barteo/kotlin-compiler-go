@@ -40,6 +40,18 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		if site == localFunSite {
 			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
 		}
+	case "JvmExposeBoxed":
+		if name, pos, named := exposedName(a); named {
+			if site.kind == siteClass || site.kind == siteCtor {
+				c.errorf(pos, "'@JvmExposeBoxed' with name is applicable only to functions, getters and setters")
+			}
+			if name != "" && !validJvmName(name) {
+				c.errorf(pos, "illegal JVM name")
+			}
+		}
+		if site == localFunSite {
+			c.errorf(a.P, "'@JvmExposeBoxed' cannot expose local functions")
+		}
 	case "JvmStatic":
 		if site == localFunSite {
 			c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
@@ -318,10 +330,13 @@ func fileAnnotation(f *syntax.File, name string) *syntax.Annotation {
 	return nil
 }
 
-// exposeBoxedPrivate reports @JvmExposeBoxed on the declarations among ds
-// that are private, or in a private class if outer, as kotlinc's
-// JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE: Java can't call them.
-func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
+// exposeBoxed checks @JvmExposeBoxed on the declarations among ds, in
+// class owner (nil at top level), as kotlinc's FirJvmExposeBoxedChecker
+// does: a private declaration, or one in a private class if outer, can't
+// have it, as Java can't call it; nor can an interface, or an open,
+// abstract, synthetic, suspend or reified function; and a function whose
+// boxed form would clash with it needs a name of its own.
+func (c *Checker) exposeBoxed(ds []syntax.Decl, owner *types.ClassSym, outer bool) {
 	report := func(as []syntax.Annotation, private bool, target string) {
 		if !private {
 			return
@@ -336,7 +351,17 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			report(d.Annotations, outer || d.Visibility == syntax.Private, "")
-			c.exposeBoxedSameName(d)
+			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Sym != nil {
+				f := exposedFun{name: d.Name, owner: owner, mods: &d.Modifiers, ret: d.Sym.Ret, contexts: d.Sym.Contexts,
+					suspend: d.Suspend, reified: slices.ContainsFunc(d.TypeParams, func(tp *syntax.TypeParam) bool { return tp.Reified })}
+				if d.Sym.Ext {
+					f.recv = d.Sym.Recv
+				}
+				for _, p := range d.Sym.Params {
+					f.params = append(f.params, p.Type)
+				}
+				c.exposeBoxedFun(a, f)
+			}
 		case *syntax.PropDecl:
 			private := outer || d.Visibility == syntax.Private
 			getter := false
@@ -347,6 +372,24 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 			}
 			report(d.Annotations, private || getter, "get")
 			report(d.Annotations, private || d.SetterVis == syntax.Private, "set")
+			if d.Sym == nil {
+				continue
+			}
+			for _, target := range [...]string{"get", "set"} {
+				a := d.Find(target, "JvmExposeBoxed")
+				if a == nil {
+					continue
+				}
+				f := exposedFun{target: target, owner: owner, mods: &d.Modifiers, ret: d.Sym.Type, contexts: d.Sym.Contexts,
+					reified: slices.ContainsFunc(d.TypeParams, func(tp *syntax.TypeParam) bool { return tp.Reified })}
+				if d.Recv != nil && d.Recv.Known != nil {
+					f.recv = *d.Recv.Known
+				}
+				if target == "set" {
+					f.params, f.ret = []types.Type{d.Sym.Type}, types.UnitType
+				}
+				c.exposeBoxedFun(a, f)
+			}
 		case *syntax.ClassDecl:
 			private := outer || d.Visibility == syntax.Private
 			report(d.Annotations, private, "")
@@ -354,21 +397,94 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 			for _, sc := range d.Secondaries() {
 				report(sc.Annotations, private || sc.Visibility == syntax.Private, "")
 			}
-			c.exposeBoxedPrivate(d.Members, private)
+			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Interface {
+				c.errorf(a.P, exposeBoxedOpen)
+			}
+			c.exposeBoxed(d.Members, d.Sym, private)
 		}
 	}
 }
 
-// exposeBoxedSameName reports a @JvmExposeBoxed name that is function d's
-// own, as kotlinc's JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME.
-func (c *Checker) exposeBoxedSameName(d *syntax.FunDecl) {
-	for i := range d.Annotations {
-		a := &d.Annotations[i]
-		if !a.Is("JvmExposeBoxed") || a.Target != "" {
-			continue
-		}
-		if name, ok := a.Str("jvmName"); ok && name == d.Name {
-			c.errorf(a.Arg(0, "jvmName").Toks[0].Pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
+const exposeBoxedOpen = "'@JvmExposeBoxed' cannot expose functions which are open or abstract, or member of an interface"
+
+// exposedFun is what kotlinc's rules for @JvmExposeBoxed read of a
+// function, or of a property's accessor.
+type exposedFun struct {
+	name     string // a function's
+	target   string // an accessor's: get or set
+	owner    *types.ClassSym
+	mods     *syntax.Modifiers
+	recv     types.Type
+	contexts []*types.VarSym
+	params   []types.Type
+	ret      types.Type
+	suspend  bool
+	reified  bool // has a reified type parameter
+}
+
+// overloadable reports whether f's boxed form can have f's name: some of
+// its receivers or parameters are of a value class, so that the two
+// differ in parameter types.
+func (f *exposedFun) overloadable() bool {
+	if types.IsValue(f.recv) || f.owner != nil && f.owner.Value {
+		return true
+	}
+	for _, p := range f.contexts {
+		if types.IsValue(p.Type) {
+			return true
 		}
 	}
+	return slices.ContainsFunc(f.params, types.IsValue)
+}
+
+// exposeBoxedFun checks annotation a, @JvmExposeBoxed, on f.
+func (c *Checker) exposeBoxedFun(a *syntax.Annotation, f exposedFun) {
+	name, pos, named := exposedName(a)
+	overloadable := f.overloadable()
+	if !named && !overloadable && types.IsValue(f.ret) && f.owner == nil {
+		// The boxed form would differ only in its result type.
+		c.errorf(a.P, "this declaration requires a name in the '@JvmExposeBoxed' annotation")
+	}
+	if f.mods.Find(f.target, "JvmSynthetic") != nil {
+		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose synthetic functions")
+	}
+	if overridable(*f.mods, f.owner) {
+		c.errorf(a.P, exposeBoxedOpen)
+	}
+	if named && !overloadable {
+		if jn := f.mods.Find(f.target, "JvmName"); jn != nil {
+			if s, ok := jn.Str("name"); ok && s == name {
+				c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with the one in '@JvmName'")
+			}
+		}
+	}
+	if f.reified {
+		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose inline functions with reified type parameters")
+	}
+	if f.suspend {
+		c.errorf(a.P, "suspend functions cannot be exposed by '@JvmExposeBoxed'")
+	}
+	if named && f.target == "" && name == f.name {
+		c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
+	}
+}
+
+// exposedName returns the name annotation a, @JvmExposeBoxed, gives, a
+// constant string, and where it is written; named is set if a has one.
+func exposedName(a *syntax.Annotation) (name string, pos syntax.Pos, named bool) {
+	arg := a.Arg(0, "jvmName")
+	if arg == nil || len(arg.Toks) == 0 {
+		return "", syntax.Pos{}, false
+	}
+	pos = arg.Toks[0].Pos
+	if s, ok := a.Str("jvmName"); ok {
+		return s, pos, true
+	}
+	for _, v := range a.Values {
+		if v.Name == "jvmName" && len(v.Elems) == 1 && v.Elems[0].X != nil {
+			s, _ := constString(v.Elems[0].X, 0)
+			return s, pos, true
+		}
+	}
+	return "", pos, true
 }

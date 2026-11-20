@@ -349,6 +349,9 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// ConstBad is set by the checker on a const val whose type or
+	// initializer isn't constant: reading it isn't constant either.
+	ConstBad bool
 	// MaybeConst is set on a static final field of a Java source with no
 	// Constant only because it reads a Kotlin class's const val.
 	MaybeConst bool
@@ -841,6 +844,9 @@ type ClassSym struct {
 	// ProtectedNested is set on a protected nested Java class, which
 	// only its package and the subclasses of the class it is in see.
 	ProtectedNested bool
+	// JavaOuter is set on a protected or private nested Java class that
+	// isn't inner, whose Outer isn't: the class it is nested in.
+	JavaOuter *ClassSym
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

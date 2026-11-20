@@ -462,6 +462,8 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	for _, a := range m.Annotations {
 		if a.Target == "" {
 			a.Target, a.Accessor = name, true
+		} else {
+			a.OnAccessor = true
 		}
 		pd.Annotations = append(pd.Annotations, a)
 	}

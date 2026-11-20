@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -55,8 +56,31 @@ func optInErrors(checkers []*Checker) {
 		w := &optWalker{o: o, c: c, writes: map[syntax.Expr]bool{}}
 		w.push(c.file.Annotations)
 		w.annotationErrors(c.file.Annotations)
+		w.imports(c.file.Imports)
 		for _, d := range c.file.Decls {
 			w.decl(d)
+		}
+	}
+}
+
+// imports reports the imports of what is nested in one of the program's
+// markers: only the marker itself can be imported.
+func (w *optWalker) imports(imps []*syntax.Import) {
+	for _, imp := range imps {
+		parts := strings.Split(imp.Path, ".")
+		n := len(parts) - 1
+		if imp.Star {
+			n = len(parts)
+		}
+	outer:
+		for i := 1; i <= n; i++ {
+			prefix := strings.Join(parts[:i], ".")
+			for _, cls := range w.o.annClasses[parts[i-1]] {
+				if qualName(cls) == prefix && w.o.marker(cls) != nil {
+					w.errorf(imp.P, "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", cls.DisplayName())
+					break outer
+				}
+			}
 		}
 	}
 }
@@ -627,9 +651,7 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 			return
 		}
 		w.require(r.P, w.o.classifierMarkers(k, 0))
-		if !w.inClassLit {
-			w.annotationAsType(r.P, k)
-		}
+		w.annotationAsType(r.P, k, !w.inClassLit)
 		switch k := k.(type) {
 		case *types.ClassSym:
 			w.deprecatedUse(r.P, k.DisplayName(), classDepr(k))
@@ -649,8 +671,9 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 // annotationAsType reports a type that names RequiresOptIn or OptIn, or
 // an opt-in requirement marker or a class nested in one, which can only
 // be used as annotations (and markers as @OptIn's arguments), through a
-// typealias too; but not in the marker's own code.
-func (w *optWalker) annotationAsType(p syntax.Pos, k any) {
+// typealias too; but not in the marker's own code. Only with markers are
+// markers reported: a class literal can name one.
+func (w *optWalker) annotationAsType(p syntax.Pos, k any, markers bool) {
 	var cls *types.ClassSym
 	switch k := k.(type) {
 	case *types.ClassSym:
@@ -666,6 +689,9 @@ func (w *optWalker) annotationAsType(p syntax.Pos, k any) {
 	switch qualName(cls) {
 	case "kotlin.RequiresOptIn", "kotlin.OptIn":
 		w.errorf(p, "this class can only be used as an annotation or as an argument to @OptIn")
+		return
+	}
+	if !markers {
 		return
 	}
 	for m := cls; m != nil; m = m.Outer {
@@ -703,6 +729,11 @@ func (w *optWalker) expansionDeprecated(t types.Type, depth int) *types.ClassSym
 // strings of @SinceKotlin and the like, and @DeprecatedSinceKotlin
 // outside the kotlin package.
 func (w *optWalker) annotationErrors(as []syntax.Annotation) {
+	w.push(as)
+	for i := range as {
+		w.annotationArgs(&as[i], 0)
+	}
+	w.pop()
 	for i := range as {
 		a := &as[i]
 		var versions []*syntax.AnnotationArg
@@ -726,6 +757,24 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			s, ok := literalString(arg.Toks[0])
 			if ok && !kotlinVersion.MatchString(s) {
 				w.errorf(arg.Toks[0].Pos, "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
+			}
+		}
+	}
+}
+
+// annotationArgs checks the arguments of annotation a, and of the
+// annotations among them, as the code they are.
+func (w *optWalker) annotationArgs(a *syntax.Annotation, depth int) {
+	if depth > 16 {
+		return
+	}
+	for _, v := range a.Values {
+		for _, e := range v.Elems {
+			switch {
+			case e.X != nil:
+				w.node(e.X)
+			case e.Nested != nil:
+				w.annotationArgs(e.Nested, depth+1)
 			}
 		}
 	}
@@ -1252,6 +1301,10 @@ func (w *optWalker) visit(n any) bool {
 		w.inClassLit = true
 		w.typeRef(n.Ref)
 		w.inClassLit = false
+		if n.Ref == nil && n.X != nil && !n.Bound && n.Class.K == types.Class {
+			// A class named as an expression, RequiresOptIn::class.
+			w.annotationAsType(n.X.Pos(), n.Class.C, false)
+		}
 	case *syntax.CallableRef:
 		w.typeRef(n.Type)
 	case *syntax.Lambda:
@@ -1350,6 +1403,18 @@ func (w *optWalker) call(n *syntax.Call) {
 		w.deprecatedUse(p, n.Ctor.DisplayName(), level.or(aliasLevel))
 		return
 	}
+	if n.SAM && n.T.K == types.Class {
+		// A SAM constructor, Runnable { }: the interface's markers and
+		// its abstract method's.
+		w.require(p, w.o.classMarkers(n.T.C))
+		if f, _ := w.c.samTarget(n.T); f != nil {
+			if d, ok := f.Decl.(*syntax.FunDecl); ok {
+				w.require(p, w.o.annMarkers(d.Annotations, ""))
+			} else if f.Decl == nil {
+				w.require(p, w.o.descMarkers(f.Annotations))
+			}
+		}
+	}
 	if n.Sym == nil || n.Invoke {
 		return
 	}
@@ -1363,7 +1428,7 @@ func (w *optWalker) call(n *syntax.Call) {
 		w.errorf(p, "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
 	}
 	w.fun1(n.Sym, p, n.T)
-	if _, ok := n.Fun.(*syntax.Ident); ok && n.Sym.Owner != nil && !n.Sym.Owner.External {
+	if onImplicitRecv(n.Fun) && n.Sym.Owner != nil && !n.Sym.Owner.External {
 		// A member called on an implicit receiver, which is the class's
 		// instance only outside of the class and its subclasses.
 		inside := false
@@ -1374,6 +1439,19 @@ func (w *optWalker) call(n *syntax.Call) {
 			w.require(p, w.o.classMarkers(n.Sym.Owner))
 		}
 	}
+}
+
+// onImplicitRecv reports whether fun, a call's callee, is called on an
+// implicit receiver: f in f(), or a lambda's receiver.
+func onImplicitRecv(fun syntax.Expr) bool {
+	switch f := fun.(type) {
+	case *syntax.Ident:
+		return true
+	case *syntax.Member:
+		t, ok := f.X.(*syntax.This)
+		return ok && t.Implicit && t.Recv != nil
+	}
+	return false
 }
 
 // javaPrivateKotlin reports call n, at p, of a constructor or method of
@@ -1485,6 +1563,10 @@ func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types
 		}
 		ms = append(ms, w.o.typeMarkers(f.Ret)...)
 		level = deprecationLevel(f.Deprecated)
+		if p := componentProp(f); p != nil {
+			// A data class's componentN reads its property.
+			ms = append(ms, w.propMarkers(p, false)...)
+		}
 	default:
 		return
 	}
@@ -1493,6 +1575,23 @@ func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types
 	}
 	w.require(p, ms)
 	w.deprecatedUse(p, name, level)
+}
+
+// componentProp returns the property that f, the componentN function
+// of a data class of the program, returns, or nil.
+func componentProp(f *types.FunSym) *types.VarSym {
+	if f.Owner == nil || !strings.HasPrefix(f.Name, "component") {
+		return nil
+	}
+	d, ok := f.Owner.Decl.(*syntax.ClassDecl)
+	if !ok || !d.Data {
+		return nil
+	}
+	i, err := strconv.Atoi(strings.TrimPrefix(f.Name, "component"))
+	if err != nil || i < 1 || i > len(d.CtorParams) || d.CtorParams[i-1] == nil {
+		return nil
+	}
+	return d.CtorParams[i-1].PropSym
 }
 
 // ctorMarkers returns the markers of a constructor of the
@@ -1631,7 +1730,29 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 		if !write {
 			w.require(p, w.o.typeMarkers(v.Type))
 		}
+	case types.Static:
+		if !write {
+			w.require(p, w.entryMarkers(v))
+		}
 	}
+}
+
+// entryMarkers returns the markers of v if it is an enum entry: those it
+// is annotated with, in the program or in its class file.
+func (w *optWalker) entryMarkers(v *types.VarSym) []*optMarker {
+	cls := v.Owner
+	if cls == nil || !slices.Contains(cls.Entries, v.Name) {
+		return nil
+	}
+	if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		for _, e := range d.Entries {
+			if e != nil && e.Name == v.Name {
+				return w.o.annMarkers(e.Annotations, "")
+			}
+		}
+		return nil
+	}
+	return w.o.descMarkers(v.Annotations)
 }
 
 func (w *optWalker) ident(n *syntax.Ident) {
@@ -1671,6 +1792,8 @@ func (w *optWalker) accessor(name string, get, set *types.FunSym, p syntax.Pos, 
 func (w *optWalker) member(n *syntax.Member) {
 	if n.Prop != nil {
 		w.variable(n.Prop, n.P, w.writes[n])
+	} else if n.Field != nil {
+		w.variable(n.Field, n.P, w.writes[n])
 	} else {
 		w.accessor(n.Name, n.Getter, n.Setter, n.P, w.writes[n])
 	}
@@ -1689,6 +1812,7 @@ func (w *optWalker) member(n *syntax.Member) {
 // deprecation applies.
 func (w *optWalker) object(cls *types.ClassSym, p syntax.Pos) {
 	w.require(p, w.o.classMarkers(cls))
+	w.annotationAsType(p, cls, true)
 	level := classDepr(cls)
 	if o := cls.CompanionOf; o != nil {
 		if d := classDepr(o); level.or(d) != level {

@@ -107,7 +107,13 @@ class C(@param:[A1 A2] val p, @[A1] @A2 val q: Int)
 	if got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
-	if len(m.Diagnostics) != 1 || m.Diagnostics[0].Message != "Parameters must have type annotation" {
+	// As kotlinc, @file: on a class is an error, for each annotation.
+	var msgs []string
+	for _, d := range m.Diagnostics {
+		msgs = append(msgs, d.Message)
+	}
+	wantMsgs := []string{"'@file:' annotations could be applied only to the file", "'@file:' annotations could be applied only to the file", "Parameters must have type annotation"}
+	if !slices.Equal(msgs, wantMsgs) {
 		t.Errorf("diagnostics: %+v", m.Diagnostics)
 	}
 }

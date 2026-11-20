@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -323,6 +324,16 @@ func classEffVis(cls *types.ClassSym) effVis {
 		}
 		if cls.PackagePrivate {
 			return effVis{k: evPackagePrivate}
+		}
+		outer := cmp.Or(cls.Outer, cls.JavaOuter)
+		switch {
+		case outer == nil || outer == cls:
+		case cls.ProtectedNested:
+			// A protected nested Java class: its outer class's
+			// subclasses see it.
+			return effVis{evProtected, outer}.lowerBound(classEffVis(outer))
+		case cls.Private:
+			return effVis{k: evPrivateInClass} // a private nested Java class
 		}
 		return effVis{k: evPublic}
 	case cls.Local || cls.Anonymous:
