@@ -203,7 +203,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2696 of the 3667 warnings the tests expect (73.5%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2697 of the 3667 warnings the tests expect (73.5%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -220,7 +220,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `SENSELESS_COMPARISON` | 91 | 72 | 1 |
 | `USELESS_CAST` | 91 | 68 | 2 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 79 | 1 |
-| `UNCHECKED_CAST` | 88 | 44 | 1 |
+| `UNCHECKED_CAST` | 88 | 45 | 1 |
 | `OPT_IN_USAGE` | 83 | 63 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |

@@ -442,6 +442,9 @@ func allStar(t types.Type) bool {
 // Any? for a parameter declared out, in Nothing or Nothing for one
 // declared in, as in Map<out Any?, Any?>, whose V is out.
 func starImplied(t types.Type) bool {
+	if t.A == nil || t.C == nil {
+		return false
+	}
 	ps := t.C.TypeParams
 	if len(ps) != len(t.A.List) {
 		return false

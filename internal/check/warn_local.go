@@ -324,6 +324,9 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 			// (Int) -> Number as (Any) -> Int: the JVM checks only
 			// that it's a Function1.
 		case t.K == types.Class && t.C != nil && starArgsOnly(t) && target.C.IsSubclassOf(t.C):
+		case t.K == types.Class && t.C != nil && starImplied(t) && target.C.IsSubclassOf(t.C) && x.Ref != nil && x.Ref.Args != nil:
+			// From MutableList<out Any?>, which tells as little, to type
+			// arguments written: those of a bare type follow from it.
 		default:
 			return
 		}
