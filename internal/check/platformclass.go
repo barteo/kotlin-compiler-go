@@ -142,3 +142,34 @@ func (c *Checker) platformClassImports() {
 		}
 	}
 }
+
+// jvmFunctionInit reports a lambda, an anonymous function or a callable
+// reference init that initializes a declaration of type ref written as
+// one of the classes kotlin.jvm.functions.FunctionN, by its qualified
+// name or an explicit import: K2 takes that for the class, not the
+// function type, which a function value isn't (INITIALIZER_TYPE_MISMATCH).
+// kc's function types are those classes, so only the name as written
+// tells, here only of a property's or a variable's initializer.
+func (c *Checker) jvmFunctionInit(ref *syntax.TypeRef, init syntax.Expr) {
+	if ref == nil || ref.Known != nil {
+		return
+	}
+	switch init.(type) {
+	case *syntax.Lambda: // and a callable reference, a Lambda with Ref
+	default:
+		return
+	}
+	name := ref.Name
+	first, rest, _ := strings.Cut(name, ".")
+	if path, ok := c.explicitImport(first); ok {
+		name = path
+		if rest != "" {
+			name += "." + rest
+		}
+	}
+	n, ok := strings.CutPrefix(name, "kotlin.jvm.functions.Function")
+	if !ok || n == "" || strings.Trim(n, "0123456789") != "" {
+		return
+	}
+	c.errorf(init.Pos(), "type mismatch: a function value isn't a %s, which names the class: use a function type", ref.Name)
+}

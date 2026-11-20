@@ -3786,6 +3786,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		}
 	}
 	sym := d.Sym
+	if d.DelegateOf == nil {
+		c.jvmFunctionInit(d.Type, d.Init)
+	}
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
 		return
