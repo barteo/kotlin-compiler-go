@@ -86,7 +86,11 @@ type system struct {
 	// an argument of another call leaves those whose parameter types are
 	// still unknown to the outer call.
 	lambdas []pendingLambda
-	ok      bool // false once a constraint cannot hold
+	// openLambdas are, for the system of a call that is an argument of
+	// another, the lambdas without parameter types passed before it to
+	// the other: see afterOpenLambda.
+	openLambdas []*syntax.Lambda
+	ok          bool // false once a constraint cannot hold
 	// nothingFix makes the variables it can't infer Nothing, besides the
 	// error: a builder's, whose lambda isn't inferred, as K2 fixes them
 	// (see lambdaResult.nothingTail).

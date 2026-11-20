@@ -1003,6 +1003,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if isCallArg(a) {
 			inner := newSystem(c)
+			for _, b := range x.Args[:i] {
+				if l, ok := b.(*syntax.Lambda); ok && untypedParams(l) {
+					inner.openLambdas = append(inner.openLambdas, l)
+				}
+			}
 			c.sink = inner
 			ts[i] = c.value(a, noWant)
 			if plain && len(inner.lambdas) == 0 && !inner.freeLits() && inner.selfInferable(ts[i]) {
@@ -1229,7 +1234,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i)})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i), false})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
@@ -1307,7 +1312,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		sink = nil
 	}
 	if sink != nil {
-		c.runLambdas(sys, true)
+		if c.afterOpenLambda(sink, x) && c.nestedInputs(sys) {
+			// A lambda of the call this one is an argument of, written
+			// before it, may come first (see readyFirst).
+			for i := range sys.lambdas {
+				sys.lambdas[i].deferred = true
+			}
+		} else {
+			c.runLambdas(sys, true)
+		}
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
 			sys.fixups = append(sys.fixups, func(s *system) {
 				// A safe call whose result is inferred as Unit here is an

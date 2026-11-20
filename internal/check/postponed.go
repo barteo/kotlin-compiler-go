@@ -193,6 +193,13 @@ func (c *Checker) readyFirst(s *system) {
 		return
 	}
 	var ready, rest, late []pendingLambda
+	waits := func(pl pendingLambda) bool {
+		// A deferred lambda waits for one written before it whose
+		// variable is fixed first (see nestedInputs).
+		return pl.deferred && slices.ContainsFunc(s.lambdas, func(o pendingLambda) bool {
+			return !o.deferred && before(o.l.Pos(), pl.l.Pos()) && untypedParams(o.l) && c.boundFirst(s, o)
+		})
+	}
 	for _, pl := range s.lambdas {
 		// An anonymous function whose parameters have types has a type
 		// of its own, which the others passed for its variable then take:
@@ -205,11 +212,23 @@ func (c *Checker) readyFirst(s *system) {
 		}
 		if c.returnedInputsOpen(s, pl) {
 			late = append(late, pl)
-		} else if ok {
+		} else if ok && !waits(pl) {
 			ready = append(ready, pl)
 		} else {
 			rest = append(rest, pl)
 		}
+	}
+	if slices.ContainsFunc(rest, waits) {
+		// A nested call's lambda waits for those written before it.
+		slices.SortStableFunc(rest, func(a, b pendingLambda) int {
+			switch {
+			case before(a.l.Pos(), b.l.Pos()):
+				return -1
+			case before(b.l.Pos(), a.l.Pos()):
+				return 1
+			}
+			return 0
+		})
 	}
 	s.lambdas = slices.Concat(ready, rest, late)
 }
@@ -251,7 +270,7 @@ func (c *Checker) sinkLambda(sink *system, p pendingBranch) types.Type {
 	l := p.body.Stmts[0].(*syntax.ExprStmt).X.(*syntax.Lambda)
 	k := &types.TypeParamSym{Name: "K"}
 	v := sink.fresh([]*types.TypeParamSym{k}, nil, l.P)[k].T
-	sink.lambdas = append(sink.lambdas, pendingLambda{l, v, p.scope, false})
+	sink.lambdas = append(sink.lambdas, pendingLambda{l, v, p.scope, false, false})
 	body := p.body
 	sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(v) })
 	return v
