@@ -15,11 +15,24 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	if !lb.Valid() {
 		l.fail(n, "expected '{'")
 	}
+	end := l.pos(rb)
 	if !rb.Valid() {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
+		end = l.end(n)
 	}
-	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb), Stmts: l.stmts(n)}
+	b := &syntax.Block{P: l.pos(lb), End: end, Stmts: l.stmts(n)}
 	return record(l, b, n)
+}
+
+// missingBrace reports the closing brace missing at the end of n. When
+// recovering, n is kept, as FIR keeps it, and checked for errors of its
+// own; the error is reported with them.
+func (l *lowerer) missingBrace(n psi.NodeRef) {
+	if l.recovering {
+		l.errorLater(l.end(n), "expected '}'")
+		return
+	}
+	l.failAt(l.end(n), "expected '}'")
 }
 
 // stmts lowers the statements of a BLOCK.

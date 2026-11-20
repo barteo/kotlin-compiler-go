@@ -768,7 +768,7 @@ func (l *lowerer) lambda(n psi.NodeRef) *syntax.Lambda {
 	block := child(fl, psi.KindBLOCK)
 	rbrace := child(fl, psi.KindRBRACE)
 	if !rbrace.Valid() {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
 	}
 	body := &syntax.Block{}
 	if arrow := child(fl, psi.KindARROW); arrow.Valid() {
@@ -781,6 +781,9 @@ func (l *lowerer) lambda(n psi.NodeRef) *syntax.Lambda {
 	}
 	body.Stmts = l.stmts(block)
 	body.End = l.pos(rbrace)
+	if !rbrace.Valid() {
+		body.End = l.end(n)
+	}
 	lam.Body = record(l, body, block)
 	return lam
 }
@@ -1021,7 +1024,7 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 		w.Branches = append(w.Branches, record(l, br, e))
 	}
 	if !has(n, psi.KindRBRACE) {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
 	}
 	return w
 }
