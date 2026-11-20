@@ -1099,7 +1099,9 @@ func (c *Checker) extFuncVar(name string) (types.Type, bool) {
 			// So is its delegate: val enabled by lazy { checker.enabled() }.
 			return types.InvalidType, false
 		}
+		c.probing++
 		ensureVar(p)
+		c.probing--
 		return p.Type, p.Type.Flex().IsExtFunc()
 	}
 	// The implicit receivers of lambdas and extensions come first: 5.foo()

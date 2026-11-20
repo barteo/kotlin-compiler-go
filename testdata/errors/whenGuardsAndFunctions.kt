@@ -35,3 +35,24 @@ fun localExt() {
 }
 
 fun main() {}
+
+fun commaGuard(s: Shape) = when (s) {
+    is Circle, is Square if s.hashCode() > 0 -> 1 // ERROR a guard condition is not allowed after several conditions
+    else -> 0
+}
+
+fun flag(): Boolean = true
+
+fun guardAssigns(x: Any) {
+    val v: Int
+    when (x) {
+        is String if flag() && { v = 1; true }() -> {} // ERROR captured values cannot be initialized
+        else -> {}
+    }
+    val w: Int
+    when (x) {
+        is String if (if (flag()) { w = 1; true } else false) -> {}
+        is Int if (if (flag()) { w = 2; true } else false) -> {} // ERROR val cannot be reassigned
+        else -> {}
+    }
+}

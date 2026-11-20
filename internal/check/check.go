@@ -29,10 +29,14 @@ type Universe struct {
 	Pkgs map[string]*Package // by dotted name; "" is the default package
 	// only is Options.Only, and late is set for the parallel phase of a
 	// check of only some files (lazily).
-	only     map[*syntax.File]bool
-	late     *lateInfer
-	prefixes map[string]bool // the packages and their prefixes: a and a.b for a.b
-	ext      *classTable
+	only map[*syntax.File]bool
+	late *lateInfer
+	// reentries counts the references to a declaration whose inference was
+	// in progress that were reported where they are, so that one can tell
+	// whether an inference ran into such a cycle.
+	reentries atomic.Int64
+	prefixes  map[string]bool // the packages and their prefixes: a and a.b for a.b
+	ext       *classTable
 	// local holds what ext's caches would but for the program's symbols,
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
@@ -173,10 +177,19 @@ type loopCtx struct {
 
 // Checker checks one file. Only one goroutine uses a Checker at a time.
 type Checker struct {
-	u       *Universe
-	file    *syntax.File
-	pkg     *Package                   // the file's package
-	imports map[string]*types.ClassSym // explicitly imported classes by name
+	u *Universe
+	// probing is set while a declaration's type is inferred only to try
+	// a reading of a call (extFuncVar): a cycle it runs into isn't
+	// reported at its references, as kotlinc reports the call instead.
+	probing int
+	// inferFrom is one more than the count of reentries
+	// (Universe.reentries) when the inference whose declaration the
+	// checker is checking began, or 0 outside one: a reference to a declaration left Cyclic is reported
+	// only in an inference that ran into the cycle too.
+	inferFrom int64
+	file      *syntax.File
+	pkg       *Package                   // the file's package
+	imports   map[string]*types.ClassSym // explicitly imported classes by name
 	// aliasImports are the program's explicitly imported typealiases.
 	aliasImports map[string]*types.AliasSym
 	funImports   map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
@@ -493,8 +506,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
-	// inInlineFun is set in the body of an inline function, and in its
-	// lambdas and local functions, which can't declare local functions.
+	// inInlineFun is set in the body of an inline function or accessor,
+	// and in its lambdas and local functions, which can't declare local
+	// functions or classes.
 	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
@@ -1495,6 +1509,9 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	for _, d := range decls {
 		d.Sym.Bounds = nil
 		for _, ref := range d.Bounds {
+			if ref.Ret != nil && (ref.Recv != nil || ref.Contexts != nil) && !c.hasErrorAt(ref.P, "an extension function type") {
+				c.errorf(ref.P, "an extension function type or a function type with context parameters can't be an upper bound")
+			}
 			if b := c.resolveType(ref); b.K != types.Invalid {
 				d.Sym.Bounds = append(d.Sym.Bounds, b)
 				refs[d] = append(refs[d], ref)
@@ -2051,12 +2068,8 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
 	}
-	seen := map[string]bool{}
+	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
-		if seen[p.Name] {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
-		}
-		seen[p.Name] = true
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}
@@ -3058,11 +3071,18 @@ func ensureVar(v *types.VarSym) {
 func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym := d.Sym
 	if sym.InProgress {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
-		sym.Ret, sym.Resolved = types.InvalidType, true
+		// A reference re-entered it: the reference reports it
+		// (recursiveFunRef), or else, at the end, the declaration.
+		sym.Reentered++
+		c.onUndo(func() { sym.Reentered-- })
+		sym.Ret = types.InvalidType
 		return
 	}
 	sym.InProgress = true
+	before := c.u.reentries.Load()
+	savedFrom := c.inferFrom
+	c.inferFrom = before + 1
+	defer func() { c.inferFrom = savedFrom }()
 	saved, trial := c.state, c.trial
 	c.trial = c.trialOf(sym.Owner)
 	c.checkFun(d, sym.Owner)
@@ -3071,6 +3091,10 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	c.state, c.trial = saved, trial
 	sym.InProgress = false
 	sym.Resolved = true
+	if sym.Reentered > 0 && sym.ReentryReported == 0 {
+		c.errorf(d.P, "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
+	}
+	sym.Cyclic = c.u.reentries.Load() > before && sym.Ret.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
 	if d.Operator && d.Ret == nil && !c.hasErrorAt(d.P, "'operator' modifier") {
 		c.operatorReturn(d, sym.Owner)
@@ -3093,11 +3117,17 @@ func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
 func (c *Checker) inferProp(d *syntax.PropDecl) {
 	sym := d.Sym
 	if sym.InProgress {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
-		sym.Type, sym.Resolved = types.InvalidType, true
+		// As in inferFun, recursiveVarRef reports it.
+		sym.Reentered++
+		c.onUndo(func() { sym.Reentered-- })
+		sym.Type = types.InvalidType
 		return
 	}
 	sym.InProgress = true
+	before := c.u.reentries.Load()
+	savedFrom := c.inferFrom
+	c.inferFrom = before + 1
+	defer func() { c.inferFrom = savedFrom }()
 	saved, trial := c.state, c.trial
 	c.trial = c.trialOf(sym.Owner)
 	if d.Getter != nil && d.Init == nil {
@@ -3127,7 +3157,61 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.state, c.trial = saved, trial
 	sym.InProgress = false
 	sym.Resolved = true
+	// A delegate's field, x$delegate, re-entered through x's getter, is
+	// reported as x.
+	if sym.Reentered > 0 && sym.ReentryReported == 0 && (d.DelegateOf == nil || d.DelegateOf.Sym.ReentryReported == 0) {
+		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
+	}
+	sym.Cyclic = c.u.reentries.Load() > before && sym.Type.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
+}
+
+// reportsRecursion reports whether a reference at the checker's position
+// to a declaration whose inference is in progress (or, if cyclic, left an
+// error for a cycle) is reported.
+func (c *Checker) reportsRecursion(inProgress, cyclic bool) bool {
+	switch {
+	case c.probing > 0:
+		return false
+	case inProgress:
+		return true
+	}
+	return cyclic && c.inferFrom > 0 && c.u.reentries.Load() >= c.inferFrom
+}
+
+// recursiveFunRef reports a reference at p to function f, resolved with
+// ensureFun, that re-entered the inference of its return type, or whose
+// return type that inference left an error for a cycle, as kotlinc
+// reports each reference in a cycle of omitted types.
+func (c *Checker) recursiveFunRef(f *types.FunSym, p syntax.Pos) {
+	if c.reportsRecursion(f.InProgress && !f.Resolved, f.Cyclic) {
+		// A trial's error is undone, and so is its count.
+		f.ReentryReported++
+		c.onUndo(func() { f.ReentryReported-- })
+		if f.InProgress {
+			c.u.reentries.Add(1)
+			c.onUndo(func() { c.u.reentries.Add(-1) })
+		}
+		c.errorf(p, "type checking has run into a recursive problem; specify the return type of '%s'", f.Name)
+	}
+}
+
+// recursiveVarRef is recursiveFunRef for a property. A delegated
+// property's field, read by its getter, is reported as the property.
+func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
+	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Type != nil {
+		return // only its backing field's type is inferred
+	}
+	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
+		// A trial's error is undone, and so is its count.
+		v.ReentryReported++
+		c.onUndo(func() { v.ReentryReported-- })
+		if v.InProgress {
+			c.u.reentries.Add(1)
+			c.onUndo(func() { c.u.reentries.Add(-1) })
+		}
+		c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+	}
 }
 
 // checkBodies checks everything not already checked during inference.
@@ -3707,7 +3791,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline || inlineAccessorDecl(d)}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -4170,4 +4254,24 @@ func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
 	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
 		c.errorf(a.P, jvmStaticNonPublic)
 	}
+}
+
+// inlineAccessorDecl reports whether d is an inline property's accessor, or
+// one declared inline: inline val p get() = ..., val p inline get() = ....
+func inlineAccessorDecl(d *syntax.FunDecl) bool {
+	if d.AccessorOf == nil {
+		return false
+	}
+	pd, ok := d.AccessorOf.Decl.(*syntax.PropDecl)
+	return ok && (pd.Inline || d.Name == "get" && pd.InlineGetter || d.Name == "set" && pd.InlineSetter)
+}
+
+// inlineAccessorBody reports whether the code is in an inline accessor's
+// body (see inlineAccessorDecl).
+func (c *Checker) inlineAccessorBody() bool {
+	if c.fn == nil {
+		return false
+	}
+	d, ok := c.fn.Decl.(*syntax.FunDecl)
+	return ok && inlineAccessorDecl(d)
 }

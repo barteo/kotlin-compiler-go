@@ -15,11 +15,24 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	if !lb.Valid() {
 		l.fail(n, "expected '{'")
 	}
+	end := l.pos(rb)
 	if !rb.Valid() {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
+		end = l.end(n)
 	}
-	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb), Stmts: l.stmts(n)}
+	b := &syntax.Block{P: l.pos(lb), End: end, Stmts: l.stmts(n)}
 	return record(l, b, n)
+}
+
+// missingBrace reports the closing brace missing at the end of n. When
+// recovering, n is kept, as FIR keeps it, and checked for errors of its
+// own; the error is reported with them.
+func (l *lowerer) missingBrace(n psi.NodeRef) {
+	if l.recovering {
+		l.errorLater(l.end(n), "expected '}'")
+		return
+	}
+	l.failAt(l.end(n), "expected '}'")
 }
 
 // stmts lowers the statements of a BLOCK.
@@ -208,10 +221,9 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 		lf.Decl.Annotations = append(as, lf.Decl.Annotations...)
 		return record(l, lf, n)
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		as, m, _, hasKw := l.stmtModifiers(n)
-		if kw := child(n, psi.KindOBJECT_KEYWORD); kw.Valid() && hasKw {
-			l.fail(kw, "named object cannot be local: use an anonymous object instead")
-		}
+		// A named local object is kept: the checker reports it, as
+		// kotlinc, and checks its body.
+		as, m, _, _ := l.stmtModifiers(n)
 		lc := l.localClass(n, m)
 		lc.Annotations = append(as, lc.Annotations...)
 		return record(l, lc, n)

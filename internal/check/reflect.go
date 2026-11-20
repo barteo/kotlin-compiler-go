@@ -98,6 +98,10 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	defer func(old bool) { c.starFallback = old }(c.starFallback)
 	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
+		if ref.Nullable && !callable {
+			c.errorf(ref.P, "type in a class literal must not be nullable")
+			return types.InvalidType
+		}
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
 		}
@@ -105,6 +109,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	written := ref.Args != nil || ref.Outer != nil
+	args := ref.Args // as written, before stars are added
 	if !written && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
@@ -120,7 +125,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
 			}
 			if n > 0 {
-				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars, Nullable: ref.Nullable}
 			}
 		}
 	}
@@ -128,19 +133,51 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	c.refLHS, c.classLitLHS = callable && written, true
 	t := c.resolveType(ref)
 	c.refLHS, c.classLitLHS = old, oldLit
-	if t.K != types.Invalid && !t.IsArray() && !callable {
-		if ref.Outer != nil {
+	if t.K == types.Invalid || callable {
+		return t
+	}
+	if t.N {
+		// A?::class, or a typealias of a nullable type.
+		c.errorf(ref.P, "type in a class literal must not be nullable")
+		return types.InvalidType
+	}
+	if t.IsArray() {
+		// As kotlinc, an array's elements must be known at run time:
+		// Array<Int?> and Array<Array<Any?>?>, not Array<T> or
+		// Array<List<String>>.
+		if args != nil && !classLitArray(t) { // Array::class is fine
 			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
 			return types.InvalidType
 		}
-		for _, a := range ref.Args {
-			if a.Variance != types.Star {
-				c.errorf(a.P, "only classes are allowed on the left hand side of a class literal")
-				return types.InvalidType
-			}
-		}
+		return t
+	}
+	if ref.Outer != nil || len(args) > 0 {
+		// A<*>::class too: only A::class is.
+		c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+		return types.InvalidType
 	}
 	return t
+}
+
+// classLitArray reports whether array type t may be on the left of a class
+// literal: its element type is reified, a class without type arguments,
+// or such an array.
+func classLitArray(t types.Type) bool {
+	if t.A.Len() == 0 {
+		return true // IntArray
+	}
+	a := t.A.Get(0)
+	switch e := a.T; {
+	case a.V == types.Star:
+		return false
+	case e.K == types.TypeParam:
+		return e.Param().Reified
+	case e.IsArray():
+		return classLitArray(e)
+	case e.K == types.Class:
+		return e.A.Len() == 0
+	}
+	return true
 }
 
 // starInner returns an inner class's type with all its type arguments,
@@ -455,10 +492,6 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if !ok {
 			return nil, types.InvalidType, false
 		}
-		if f != nil && f.Ext && f.Owner != nil && !f.Owner.External {
-			c.errorf(p, "%s: a reference to an extension declared in a class is not allowed", refString(r))
-			return nil, types.InvalidType, false
-		}
 		if f != nil {
 			fps := ps
 			sub := c.memberSubst(recvType, f.Owner)
@@ -578,6 +611,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				sink.merge(tail)
 			}
 			if len(c.errs) == n {
+				if c.memberExtRef(x) {
+					return nil, types.InvalidType, false
+				}
 				c.refContexts(x, p)
 			}
 			return ps, rt, ok
@@ -585,6 +621,37 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		c.errs = c.errs[:n]
 	}
 	return nil, types.InvalidType, false
+}
+
+// memberExtRef reports, if the checked body of reference x calls or reads
+// an extension declared in a class or an object, that a callable
+// reference can't name one, as kotlinc: String::ext for an Obj's
+// String.ext, B::ext and b::ext for a member extension of B's.
+func (c *Checker) memberExtRef(x *syntax.Lambda) bool {
+	if len(x.Body.Stmts) != 1 {
+		return false
+	}
+	s, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	inClass := func(f *types.FunSym) bool {
+		return f != nil && f.Ext && f.Owner != nil && !f.Owner.External
+	}
+	var bad bool
+	switch e := s.X.(type) {
+	case *syntax.Call:
+		m, _ := e.Fun.(*syntax.Member)
+		bad = !e.Invoke && (inClass(e.Sym) || m != nil && m.Dispatch != nil)
+	case *syntax.Member:
+		bad = e.Dispatch != nil || inClass(e.Getter)
+	case *syntax.Ident:
+		bad = inClass(e.Getter)
+	}
+	if bad {
+		c.errorf(x.P, "%s: a reference to an extension declared in a class is not allowed", refString(x.Ref))
+	}
+	return bad
 }
 
 // refRecvType returns the receiver type of unbound reference r, C of
@@ -1059,7 +1126,7 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 	get := lambdaOf(f.params, &syntax.ExprStmt{X: f.body()})
 	x.Arrow, x.Params, x.Body, x.Captures, x.This = true, get.Params, get.Body, nil, false
 	ps, rt, ok := c.checkLambda1(x, lambdaWant{params: f.params, known: true, ret: noWant})
-	if !ok || rt.K == types.Invalid || c.refContexts(x, p) {
+	if !ok || rt.K == types.Invalid || c.memberExtRef(x) || c.refContexts(x, p) {
 		return ps, rt, false
 	}
 	k := &syntax.KProp{Bound: bound}

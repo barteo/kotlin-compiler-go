@@ -313,7 +313,7 @@ Kotlin 2.4.21's tests on `kc`:
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,044 of the 22,025 expected errors (95.5%) on their lines, and 2,697 of
+21,231 of the 22,025 expected errors (96.4%) on their lines, and 2,697 of
 the 3,667 expected warnings (74%), with 18 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 10 of the 28
 that *accept invalid* code. The reports break the failures down; the

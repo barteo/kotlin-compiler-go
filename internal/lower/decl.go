@@ -133,6 +133,8 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 	case psi.KindDESTRUCTURING_DECLARATION:
 		l.newDestructuring(n)
 		l.failAt(l.pos(child(n, psi.KindLPAR)), "Destructuring declarations are only allowed for local variables/values")
+	case psi.KindMODIFIER_LIST:
+		f.Dangling = append(f.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected declaration")
 	}
@@ -716,9 +718,22 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 			}
 		}
 		l.unsupported(pos, "companion block", "companion blocks are not supported")
+	case psi.KindMODIFIER_LIST:
+		cd.Dangling = append(cd.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected member declaration")
 	}
+}
+
+// dangling returns the annotations of MODIFIER_LIST n, which no
+// declaration follows, to check as kotlinc does. psi reports the missing
+// declaration in an error element after n; if there is none, n is
+// reported.
+func (l *lowerer) dangling(n psi.NodeRef) []syntax.Annotation {
+	if next(n).NumericKind() != psi.KindERROR_ELEMENT {
+		l.fail(n, "unexpected declaration")
+	}
+	return l.modifiers(n).Annotations
 }
 
 // secondaryCtor lowers a SECONDARY_CONSTRUCTOR with modifiers m.
@@ -745,11 +760,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 // m.
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
 	syntax.NoContexts(&m, "classes", l)
-	switch {
-	case has(n, psi.KindOBJECT_KEYWORD):
-		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
-			ident(child(n, psi.KindIDENTIFIER)))
-	case m.Enum:
+	if m.Enum {
 		l.errorLater(l.pos(child(n, psi.KindCLASS_KEYWORD)), "local enum classes are not allowed")
 	}
 	cd := l.class(n, m)

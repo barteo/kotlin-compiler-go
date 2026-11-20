@@ -814,6 +814,9 @@ func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
 }
 
 func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink *system) types.Type {
+	if x.Dropped != nil && !c.hasErrorAt(x.Dropped.Pos(), "unexpected trailing lambda") {
+		c.errorf(x.Dropped.Pos(), "unexpected trailing lambda on a new line")
+	}
 	name := cands[0].f.Name
 	byArity := cands[:0] // cands is the caller's own slice
 	unsupported, why, feature := false, "", "inline-only call"
@@ -860,8 +863,14 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
 			// Only @Deprecated(level = HIDDEN) ones, as a Java method's.
 			c.errorf(x.P, "unresolved reference: %s", name)
+		case x.Trailing() && x.TrailingNL && newLineLambdaExcess(x, cands):
+			// As kotlinc, the call is resolved without the lambda, which
+			// is reported.
+			x.DropTrailing()
+			return c.resolve1(x, cands, want, sink)
 		default:
-			c.errorf(x.P, "no function '%s' takes %d arguments", name, len(x.Args))
+			c.arityError(x, name, cands)
+			return types.InvalidType
 		}
 		c.args(x, nil)
 		return types.InvalidType
@@ -1191,6 +1200,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	c.dslCall(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
+	c.recursiveFunRef(f, x.P)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	c.inlineCall(x, &best.callee)
@@ -1774,6 +1784,78 @@ func (c *Checker) memberResultClass(rt types.Type, name string) *types.ClassSym 
 	return out
 }
 
+// arityError reports call x, of the function name, that no candidate of
+// cands takes its number of arguments. As kotlinc, the first argument
+// none of them has a place for is reported where it is if there is one
+// candidate: one too many (TOO_MANY_ARGUMENTS), or a trailing lambda after
+// a vararg's arguments (VARARG_OUTSIDE_PARENTHESES).
+// The arguments before it are checked against their parameters, as
+// kotlinc does (ARGUMENT_TYPE_MISMATCH), where their types are known.
+func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
+	report := func(p syntax.Pos) { c.errorf(p, "no function '%s' takes %d arguments", name, len(x.Args)) }
+	excess, vararg := excessArg(x, cands)
+	switch {
+	case excess < 0 || len(cands) > 1:
+		report(x.P)
+	case vararg:
+		c.errorf(x.Args[excess].Pos(), "passing value as a vararg is only allowed inside a parenthesized argument list")
+	default:
+		report(x.Args[excess].Pos())
+		f := cands[0].f
+		for i := range x.Args {
+			want := noWant
+			if i < excess && !f.Params[i].Type.HasParams() {
+				if _, lambda := x.Args[i].(*syntax.Lambda); !lambda {
+					want = f.Params[i].Type
+				}
+			}
+			t := c.argValue(&x.Args[i], want, nil)
+			if want != noWant && t.K != types.Invalid && !c.subtype(t, want) {
+				c.errorf(x.Args[i].Pos(), "type mismatch: inferred type is %s but %s was expected", t, want)
+			}
+		}
+		return
+	}
+	c.args(x, nil)
+}
+
+// newLineLambdaExcess reports whether call x's trailing lambda, on a new
+// line, is the only argument that no candidate of cands has a place for:
+// kotlinc reports it (UNEXPECTED_TRAILING_LAMBDA_ON_A_NEW_LINE) and
+// resolves the call without it.
+func newLineLambdaExcess(x *syntax.Call, cands []callee) bool {
+	excess, vararg := excessArg(x, cands)
+	return excess == len(x.Args)-1 && !vararg // a vararg's is reported as such
+}
+
+// excessArg returns the index of the first argument of call x, which no
+// candidate of cands takes, that none of them has a place for, and
+// whether it is a trailing lambda after a vararg's arguments; -1 if
+// that isn't known: with named or spread arguments, a receiver among
+// them (r.(f)(b)), or a vararg that takes any number.
+func excessArg(x *syntax.Call, cands []callee) (int, bool) {
+	if x.Names != nil || x.Recv || slices.ContainsFunc(x.Args, isSpread) {
+		return -1, false
+	}
+	last := len(x.Args) - 1
+	lambda := x.Trailing() && last >= 0
+	excess, vararg := 0, false
+	for _, cl := range cands {
+		n := len(cl.f.Params)
+		if i := slices.IndexFunc(cl.f.Params, func(q *types.VarSym) bool { return q.Vararg }); i >= 0 {
+			if !lambda || i < n-1 {
+				return -1, false
+			}
+			n, vararg = last, true // all but the lambda
+		}
+		excess = max(excess, n)
+	}
+	if excess > last {
+		return -1, false
+	}
+	return excess, vararg && excess == last
+}
+
 // spreadMisplaced reports whether a call spreads an array where none of
 // the candidates takes a vararg.
 func spreadMisplaced(x *syntax.Call, cands []callee) bool {
@@ -1913,6 +1995,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.setContexts(x, best, nil, nil)
 	c.javaVariances(x, best, func(i int) types.Type { return best.argType(i, x.Args) })
 	ensureFun(f)
+	c.recursiveFunRef(f, x.P)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	if len(cs) > 1 {

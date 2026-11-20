@@ -157,6 +157,15 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		return t
 	case !cd.HasPrimary && st.Call != nil:
 		c.errorf(st.Type.P, "supertype initialization is impossible without a primary constructor")
+		for _, sc := range cd.Secondaries() {
+			if len(sc.Params) == 0 {
+				// kotlinc's class still has a primary constructor, which
+				// a secondary one without parameters conflicts with.
+				c.errorf(cd.P, "conflicting overloads: constructor %s()", cd.Name)
+				c.errorf(sc.P, "conflicting overloads: constructor %s()", cd.Name)
+				break
+			}
+		}
 		st.Call = nil
 		return t
 	case st.Call == nil && cd.HasPrimary:

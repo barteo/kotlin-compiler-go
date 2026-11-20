@@ -170,6 +170,7 @@ func (m *metroAnalysis) options(opts map[string]string) error {
 // declarations.
 func (c *Checker) allAnnotations() {
 	c.annotations(c.file.Annotations, nil, fileSite)
+	c.annotations(c.file.Dangling, nil, annotSite{kind: siteUnchecked})
 	for _, d := range c.file.Decls {
 		c.declAnnotations(d, nil)
 	}

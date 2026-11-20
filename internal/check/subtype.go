@@ -84,7 +84,7 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		}
 	}
 	if u.IsParam() {
-		return c.reachesParam(t, u.Param())
+		return c.reachesParam(t, u.Param(), u.N || t.D) // E & Any isn't null, whatever bounds E
 	}
 	t, u = t.NonNull(), u.NonNull()
 	if t.IsParam() {
@@ -128,16 +128,17 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 }
 
 // reachesParam reports whether t is the type parameter p, or a parameter
-// bounded (directly or not) by p, as U is in <T, U : T>.
-func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym) bool {
-	if !t.IsParam() {
+// bounded (directly or not) by p, as U is in <T, U : T>. Unless nullOK, a
+// nullable bound doesn't reach p: W of <Z : F, W : Z?> isn't an F.
+func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym, nullOK bool) bool {
+	if !t.IsParam() || t.N && !nullOK {
 		return false
 	}
 	if t.Param() == p {
 		return true
 	}
 	for _, b := range t.Param().Bounds {
-		if c.reachesParam(b, p) {
+		if c.reachesParam(b, p, nullOK) {
 			return true
 		}
 	}

@@ -1233,6 +1233,12 @@ func (p *parser) classRefEnd(j int) (int, bool) {
 				depth++
 			case COLON_COLON:
 				return j, true
+			case QUEST:
+				// A nullable type, List<String>?::class, which the
+				// checker reports.
+				if p.toks[j+1].Kind != QUEST && p.toks[j+1].Kind != COLON_COLON {
+					return 0, false
+				}
 			case DOT:
 				if p.toks[j+1].Kind != IDENT {
 					return 0, false
@@ -1248,7 +1254,7 @@ func (p *parser) classRefEnd(j int) (int, bool) {
 			depth++
 		case GT:
 			depth--
-			if depth == 0 && p.toks[j+1].Kind != COLON_COLON && (p.toks[j+1].Kind != DOT || p.toks[j+2].Kind != IDENT) {
+			if depth == 0 && p.toks[j+1].Kind != COLON_COLON && p.toks[j+1].Kind != QUEST && (p.toks[j+1].Kind != DOT || p.toks[j+2].Kind != IDENT) {
 				return 0, false
 			}
 		case IDENT, DOT, COMMA, QUEST, STAR, IN, LPAREN, RPAREN, ARROW, AMP:
@@ -2665,7 +2671,10 @@ func (p *parser) parsePostfix() Expr {
 	if inParens {
 		paren = x
 	}
+	nlLambda := false // the brace is on a new line, after the call
 	for {
+		nl := nlLambda
+		nlLambda = false
 		switch t := p.tok(); t.Kind {
 		case LPAREN:
 			x = p.parseCall(x, nil)
@@ -2676,6 +2685,10 @@ func (p *parser) parsePostfix() Expr {
 					// List<*>::class: the type arguments of a class name,
 					// and Outer<A>.Inner<B>::foo, an inner class's.
 					ref := p.innerTypeChain(&TypeRef{P: x.Pos(), Name: name, Args: p.parseTypeArgs()})
+					for p.at(QUEST) {
+						p.next()
+						ref.Nullable = true
+					}
 					x = p.parseColonColon(x, ref)
 					continue
 				}
@@ -2692,10 +2705,12 @@ func (p *parser) parsePostfix() Expr {
 				// As with kotlinc, a lambda on the next line after a
 				// call's arguments is a trailing lambda: Kotlin has no
 				// blocks as statements.
+				nlLambda = true
 			default:
 				return x
 			}
 			p.skipNL()
+			continue
 		case DOT, SAFE_DOT:
 			op := p.next()
 			p.skipNL()
@@ -2797,6 +2812,7 @@ func (p *parser) parsePostfix() Expr {
 			}
 			fn.Args = append(fn.Args, l)
 			fn.trailing = true
+			fn.TrailingNL = nl && ok
 			LabelLambdas(fn)
 		default:
 			return x

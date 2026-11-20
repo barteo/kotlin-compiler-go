@@ -58,7 +58,7 @@ tests/IncorrectPaddedMultiDollarInterpolationCodeB.kt	skip	LANGUAGE
 tests/InferNullabilityInThenBlock.kt	accepts valid		
 tests/Infix.kt	rejects invalid	on an expected line	
 tests/InfixModifierApplicability.kt	rejects invalid	on an expected line	
-tests/InvokeAndRecursiveResolve.kt	rejects invalid	elsewhere	
+tests/InvokeAndRecursiveResolve.kt	rejects invalid	on an expected line	
 tests/IsExpressions.kt	rejects invalid	on an expected line	
 tests/KT-65044.kt	rejects invalid	on an expected line	
 tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	on an expected line	
@@ -415,7 +415,7 @@ tests/annotations/rendering/memberProjectedOut.kt	rejects invalid	on an expected
 tests/annotations/rendering/multipleInheritedDefaults.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/notImplementedMembers.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/notImplementedMembersAroundJava.kt	rejects invalid	on an expected line	
-tests/annotations/rendering/tooManyArguments.kt	rejects invalid	elsewhere	
+tests/annotations/rendering/tooManyArguments.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchDueToTypeProjections.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchOnOverride.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchOnOverrideJavaNullable.kt	rejects invalid	on an expected line	
@@ -829,7 +829,7 @@ tests/callableReference/kt35959.kt	accepts valid
 tests/callableReference/kt37530.kt	rejects invalid	on an expected line	
 tests/callableReference/kt46437.kt	rejects invalid	on an expected line	
 tests/callableReference/kt49038.kt	rejects invalid	on an expected line	
-tests/callableReference/kt52503.kt	rejects invalid	elsewhere	
+tests/callableReference/kt52503.kt	rejects invalid	on an expected line	
 tests/callableReference/kt55373.kt	rejects invalid	on an expected line	
 tests/callableReference/kt7430_wrongClassOnLHS.kt	rejects invalid	on an expected line	
 tests/callableReference/lambdaResult.kt	accepts valid		
@@ -4036,8 +4036,8 @@ tests/inference/coercionToUnit/genericInApply.kt	accepts valid
 tests/inference/coercionToUnit/indirectCoercionWithExpectedType.kt	accepts valid		
 tests/inference/coercionToUnit/kt30242.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/lambdaWithNullableUnitInElvis.kt	accepts valid		
-tests/inference/coercionToUnit/lastStatementInNonUnitLambda.kt	rejects invalid	elsewhere	
-tests/inference/coercionToUnit/lastStatementInNonUnitLambdaWithRegularReturn.kt	rejects invalid	elsewhere	
+tests/inference/coercionToUnit/lastStatementInNonUnitLambda.kt	rejects invalid	on an expected line	
+tests/inference/coercionToUnit/lastStatementInNonUnitLambdaWithRegularReturn.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/nestedLambda.kt	accepts valid		
 tests/inference/coercionToUnit/noCoercion.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/nonPropagationOfCoercionToUnitInsideNestedLambda.kt	accepts valid		
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35883 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40183 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/e2358a94-e914-5f98-af4c-6fa86bc264c6/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -7288,7 +7288,7 @@ tests/properties/inferenceFromGetters/cantBeInferred.kt	rejects invalid	on an ex
 tests/properties/inferenceFromGetters/explicitGetterType.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/members.kt	accepts valid		
 tests/properties/inferenceFromGetters/nullAsNothing.kt	rejects invalid	on an expected line	
-tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	elsewhere	
+tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/overrides.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/primaryConstructorParameter.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/recursiveGetter.kt	rejects invalid	on an expected line	
@@ -7518,7 +7518,7 @@ tests/regressions/kt1647.kt	accepts valid
 tests/regressions/kt1736.kt	rejects invalid	on an expected line	
 tests/regressions/kt174.kt	accepts valid		
 tests/regressions/kt201.kt	accepts valid		
-tests/regressions/kt235.kt	rejects invalid	elsewhere	
+tests/regressions/kt235.kt	rejects invalid	on an expected line	
 tests/regressions/kt2376.kt	accepts valid		
 tests/regressions/kt24488.kt	rejects invalid	on an expected line	
 tests/regressions/kt251.kt	rejects invalid	on an expected line	
@@ -8325,7 +8325,7 @@ tests/smartCasts/kt7561.kt	accepts valid
 tests/smartCasts/lambdaAndArgument.kt	accepts valid		
 tests/smartCasts/lambdaAndArgumentFun.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentNoSubstitutedReturn.kt	accepts valid		
-tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	elsewhere	
+tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentWithExpectedGenericType.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithoutType.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithoutTypeIf.kt	accepts valid		
@@ -10088,7 +10088,7 @@ testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfNoinlineSuspend.kt	a
 testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfSuspend.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/irrelevantSuspendDeclarations.kt	accepts valid		
-testsWithStdLib/coroutines/kt18292.kt	rejects invalid	elsewhere	
+testsWithStdLib/coroutines/kt18292.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt28658.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt36947.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt37309.kt	rejects invalid	on an expected line	

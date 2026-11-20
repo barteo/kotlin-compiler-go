@@ -14,7 +14,12 @@ type File struct {
 	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
-	Facade      string // JVM internal name of the class holding top-level declarations
+	// Dangling are the annotations of modifier lists at the top level that
+	// no declaration follows, which kotlinc resolves and checks, as the
+	// checker does, but annotate nothing. The file then has a syntax
+	// error.
+	Dangling []Annotation
+	Facade   string // JVM internal name of the class holding top-level declarations
 	// Part is set on a file annotated @file:JvmMultifileClass: the class
 	// that holds its top-level declarations, Facade__FileKt, whose
 	// non-private ones Facade, the multi-file class, calls. Others call
@@ -676,6 +681,9 @@ type CtorParam struct {
 type ClassDecl struct {
 	Modifiers
 	P Pos
+	// Dangling are the annotations of modifier lists in the class's body
+	// that no member follows (see File.Dangling).
+	Dangling []Annotation
 	// Generated is set on a declaration a compiler plugin of kc's
 	// declares, which the opt-in and deprecation checks skip.
 	Generated  bool
@@ -1441,7 +1449,14 @@ type Call struct {
 	SAM      bool // Runnable { ... }: the value is the lambda argument
 	Infix    bool // a f b, which is a.f(b)
 	Literal  bool // [a, b], a collection literal, which is arrayOf(a, b)
-	Recv     bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
+	// TrailingNL is set on a call whose trailing lambda is on a line
+	// after the call's: f()\n{ }.
+	TrailingNL bool
+	// Dropped is set by the checker on such a call that takes no lambda
+	// there: the lambda, which isn't an argument, and is reported
+	// wherever the call is checked.
+	Dropped Expr
+	Recv    bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
 	// Outer is set by the checker on a call of an inner class's
 	// constructor: the instance of the outer class it is in, which the
 	// constructor takes first.
@@ -1494,6 +1509,11 @@ type Call struct {
 // parameter: a lambda after the parentheses, or the value of an indexed
 // assignment's call of set (see PassLast).
 func (c *Call) Trailing() bool { return c.trailing }
+
+// DropTrailing removes the call's trailing lambda (see Call.Dropped).
+func (c *Call) DropTrailing() {
+	c.Dropped, c.Args, c.trailing = c.Args[len(c.Args)-1], c.Args[:len(c.Args)-1], false
+}
 
 // PassLast makes the last argument go to the last parameter, as an
 // indexed assignment's value goes to set's: a[i] = v passes v after the

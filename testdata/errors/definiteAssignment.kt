@@ -92,3 +92,18 @@ fun capturedInLocalMembers() {
     v = 1
     println(v + Local().g())
 }
+
+// An exception in a try's body may come after an assignment on a path
+// that jumps out of it: the catch block may assign again.
+fun tryJumps(flag: Boolean) {
+    val n: Int
+    try {
+        if (flag) {
+            n = 1
+            if (flag) throw Exception()
+            return
+        }
+    } catch (e: Exception) {
+        n = 3 // ERROR val cannot be reassigned
+    }
+}

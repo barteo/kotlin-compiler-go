@@ -120,6 +120,10 @@ type assignment struct {
 	// inlined counts the lambdas walked that are passed to inline
 	// functions, which run where they are for the entries' check.
 	inlined int
+	// tries are the variables assigned in the bodies of the try
+	// expressions the code is in, innermost last, on any path: maybe
+	// assigned in their catch blocks.
+	tries []map[*types.VarSym]bool
 }
 
 // daOnce records the states at the returns from a lambda that its
@@ -425,6 +429,9 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 		s.def[v] = true
 	}
 	s.maybe[v] = true
+	for _, t := range a.tries {
+		t[v] = true
+	}
 }
 
 func (a *assignment) block(b *syntax.Block, s *daState) {
@@ -743,11 +750,19 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 	case *syntax.Try:
 		entry := s.clone()
 		body := s.clone()
+		assigned := map[*types.VarSym]bool{}
+		a.tries = append(a.tries, assigned)
 		a.block(x.Body, body)
+		a.tries = a.tries[:len(a.tries)-1]
 		outs := []*daState{body}
 		for _, c := range x.Catches {
 			cs := entry.clone()
 			cs.mergeMaybe(body)
+			for v := range assigned {
+				// Assigned before the body throws, also on a path that
+				// then jumps out of it.
+				cs.maybe[v] = true
+			}
 			a.block(c.Body, cs)
 			outs = append(outs, cs)
 		}
@@ -801,6 +816,12 @@ func (a *assignment) when(x *syntax.When, s *daState) {
 			a.expr(c.X, s)
 		}
 		body := s.clone()
+		if b.Guard != nil {
+			// The guard runs after the conditions match: the body runs
+			// after it, and the branches after it may run after it too.
+			a.expr(b.Guard, body)
+			s.mergeMaybe(body)
+		}
 		a.block(b.Body, body)
 		outs = append(outs, body)
 		els = els || b.Else

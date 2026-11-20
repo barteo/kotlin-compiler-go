@@ -437,6 +437,31 @@ func allStar(t types.Type) bool {
 	return true
 }
 
+// starImplied reports whether t's type arguments are all ones its star
+// projection implies, which need no check, as kotlinc's: *, out Any? or
+// Any? for a parameter declared out, in Nothing or Nothing for one
+// declared in, as in Map<out Any?, Any?>, whose V is out.
+func starImplied(t types.Type) bool {
+	if t.A == nil || t.C == nil {
+		return false
+	}
+	ps := t.C.TypeParams
+	if len(ps) != len(t.A.List) {
+		return false
+	}
+	for i, a := range t.A.List {
+		p := ps[i]
+		switch {
+		case a.V == types.Star:
+		case (a.V == types.Out || a.V == types.Inv && p.Var == types.Out) && len(p.Bounds) == 0 && a.T.K == types.Any && a.T.N:
+		case (a.V == types.In || a.V == types.Inv && p.Var == types.In) && a.T.K == types.Nothing && !a.T.N:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // argsKnown reports whether the type arguments of t, written as ref,
 // follow from the subject's type: a Collection<String> that is a List is
 // a List<String>. As with kotlinc, they do if the type with the arguments
@@ -446,6 +471,9 @@ func allStar(t types.Type) bool {
 func (c *Checker) argsKnown(t, subject types.Type, ref *syntax.TypeRef) bool {
 	s := subject.NonNull()
 	if c.subtype(s, t) {
+		return true
+	}
+	if starImplied(t) {
 		return true
 	}
 	if s.K != types.Class {

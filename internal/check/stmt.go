@@ -678,6 +678,12 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
 		c.errorf(s.P, "conflicting declarations: %s", s.Name)
+		// And the local it conflicts with, as kotlinc.
+		for _, w := range c.scope.vars {
+			if prev, ok := w.Decl.(*syntax.VarStmt); ok && w.Name == s.Name && !c.hasErrorAt(prev.P, "conflicting declarations") {
+				c.errorf(prev.P, "conflicting declarations: %s", s.Name)
+			}
+		}
 	}
 	if narrowed.K != types.Invalid {
 		c.assignedVar(s.Sym, narrowed)

@@ -223,7 +223,12 @@ func (c *Checker) checkClassImport(ci memberImport) {
 	}
 	cls.Ensure()
 	switch {
-	case cls.Missing || !cls.Private:
+	case cls.Missing:
+	case !cls.Private:
+		if o := c.invisibleJavaOuter(cls); o != nil {
+			// import p.Foo.Nested of a package-private p.Foo.
+			c.errorf(ci.p, "cannot access '%s': it is package-private in '%s'", o.DisplayName(), o.DisplayName())
+		}
 	case cls.Internal:
 		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
 	case ci.path != c.file.Package:

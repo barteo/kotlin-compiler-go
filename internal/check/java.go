@@ -1049,6 +1049,15 @@ func (c *Checker) resolveImports() {
 // class of another file: import p.Private.Nested, import p.C.Companion.f
 // of a private companion, import p.C.PrivateNested.*.
 func (c *Checker) checkImportVisible(cls *types.ClassSym, p syntax.Pos) {
+	if cls.External && !cls.FromKotlin && !c.file.SuppressInvisible {
+		// A Java class's: import p.Foo.Nested of a package-private p.Foo.
+		if cls.Ensure(); cls.Private && !cls.Missing && !(cls.PackagePrivate && c.samePackage(cls)) {
+			c.errorf(p, "cannot access '%s': it is not public", cls.DisplayName())
+		} else if o := c.invisibleJavaOuter(cls); o != nil {
+			c.errorf(p, "cannot access '%s': it is not public", o.DisplayName())
+		}
+		return
+	}
 	k := c.invisibleOuter(cls)
 	if k == nil || k.External {
 		return
@@ -2145,11 +2154,39 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	case cls.Private && !(cls.Internal && c.file.SuppressInvisible) && !(cls.PackagePrivate && c.samePackage(cls)):
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
+	case c.invisibleJavaOuter(cls) != nil:
+		c.errorf(p, "class %s is not public", c.invisibleJavaOuter(cls).DisplayName())
 	default:
 		c.checkModuleExport(cls, p)
 		return true
 	}
 	return false
+}
+
+// invisibleJavaOuter returns the Java class that Java class cls is nested
+// in, directly or not, that the code can't see, or nil: p.Foo.Nested is
+// as invisible as a package-private p.Foo outside p, though public.
+func (c *Checker) invisibleJavaOuter(cls *types.ClassSym) *types.ClassSym {
+	if cls.FromKotlin || c.u.ext == nil || c.file.SuppressInvisible {
+		return nil
+	}
+	for name := cls.Name; ; {
+		i := strings.LastIndexByte(name, '$')
+		if i <= strings.LastIndexByte(name, '/')+1 {
+			return nil
+		}
+		name = name[:i]
+		o := c.u.ext.class(name)
+		if o == nil {
+			return nil
+		}
+		if o.Ensure(); o.Missing || o.FromKotlin {
+			return nil
+		}
+		if o.Private && !(o.PackagePrivate && c.samePackage(o)) {
+			return o
+		}
+	}
 }
 
 // checkModuleExport reports a use of a JDK class whose module doesn't
@@ -2245,6 +2282,18 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
 			o := f.Owner
 			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
+		})
+	}
+	if len(ms) > 0 && (strings.HasPrefix(name, "get") || strings.HasPrefix(name, "is")) {
+		// A Java class's method that overrides a Kotlin property's getter
+		// is the property's too: x.getA() is unresolved, as in Kotlin, for
+		// a Java class extending a Kotlin class with a val a. Not one that
+		// overrides a Kotlin function as well, nor a setter's override,
+		// which kotlinc resolves.
+		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+			o := f.Owner
+			return !f.Static && o != nil && o.External && o.KotlinName == "" && !o.FromKotlin && isJavaClass(o) &&
+				kotlinAccessorImplements(o, o, f) && !overridesKotlinFun(o, f)
 		})
 	}
 	if len(ms) > 0 && slices.ContainsFunc(numberConversions, func(conv [2]string) bool { return conv[1] == name }) {

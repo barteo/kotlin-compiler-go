@@ -913,8 +913,15 @@ func (c *Checker) markTailIfs(e syntax.Expr) {
 // resultPos is where a lambda's result is reported: its last expression.
 func resultPos(x *syntax.Lambda) syntax.Pos {
 	if n := len(x.Body.Stmts); n > 0 {
-		if es, ok := x.Body.Stmts[n-1].(*syntax.ExprStmt); ok {
-			return es.X.Pos()
+		switch s := x.Body.Stmts[n-1].(type) {
+		case *syntax.ExprStmt:
+			return s.X.Pos()
+		case *syntax.Assign, *syntax.LocalFun, *syntax.VarStmt:
+			// kotlinc reports a lambda ending in an assignment or a
+			// declaration, which is Unit, on it.
+			return syntax.StmtPos(s)
+		case *syntax.LocalClass:
+			return s.Decl.P
 		}
 	}
 	return x.P
@@ -1316,10 +1323,19 @@ func abstractMethods(cls *types.ClassSym) []*types.FunSym {
 // must have one abstract method, without type parameters or default
 // values, and no abstract properties.
 func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
+	// As kotlinc, a member the interface declares is reported where it
+	// is declared, an inherited one on the interface.
+	own := map[*types.VarSym]bool{}
+	for _, m := range d.Members {
+		if p, ok := m.(*syntax.PropDecl); ok && p.Sym != nil && p.Sym.Abstract {
+			own[p.Sym] = true
+			c.errorf(p.P, "fun interfaces cannot have abstract properties")
+		}
+	}
 	props := false
 	d.Sym.Supertypes(func(s *types.ClassSym) bool {
 		for _, p := range s.Props {
-			props = props || p.Abstract
+			props = props || p.Abstract && !own[p]
 		}
 		return true
 	})
@@ -1332,12 +1348,26 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 		return
 	}
 	f := ms[0]
-	if len(f.TypeParams) > 0 {
-		c.errorf(d.P, "single abstract member cannot declare type parameters")
+	var decl *syntax.FunDecl
+	for _, m := range d.Members {
+		if fd, ok := m.(*syntax.FunDecl); ok && fd.Sym == f {
+			decl = fd
+		}
 	}
-	for _, p := range f.Params {
+	if len(f.TypeParams) > 0 {
+		p := d.P
+		if decl != nil && len(decl.TypeParams) > 0 {
+			p = decl.TypeParams[0].P
+		}
+		c.errorf(p, "single abstract member cannot declare type parameters")
+	}
+	for i, p := range f.Params {
 		if p.Default {
-			c.errorf(d.P, "single abstract member cannot declare default values")
+			pos := d.P
+			if decl != nil && i < len(decl.Params) {
+				pos = decl.Params[i].P
+			}
+			c.errorf(pos, "single abstract member cannot declare default values")
 			break
 		}
 	}
@@ -3233,7 +3263,19 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// declared with a type contradicts it, as String does R's Int in
 	// foo { s: String -> 1 } for (R) -> R: the result is then checked
 	// against the type the parameter gives R (see the fixup below).
-	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) {
+	// A result that contradicts R's declared bound isn't a lower bound of
+	// R either: as kotlinc, R is within its bound, and the result is
+	// reported where it is. (Not the type expected of the call, which an
+	// overload being tried can give.)
+	contradicts := false
+	if tv := s.unfixedVar(r); tv != nil && bt.K != types.Invalid && bt.K != types.Unit && !bt.HasVars() && !r.N {
+		for _, u := range tv.v.Bounds {
+			if u = s.apply(u); !u.HasVars() && u.K != types.Invalid && !c.subtype(bt, u) {
+				contradicts = true
+			}
+		}
+	}
+	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) && !contradicts {
 		trial := s.clone()
 		if trial.sub(bt, r); trial.ok || !declared {
 			s.sub(bt, r)
