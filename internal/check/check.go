@@ -3744,7 +3744,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.retAllowed = false // `return` needs an explicit return type
 	rets := []exprRet{}
 	c.exprRets = &rets
-	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	t := c.safeUnit(d.ExprBody, types.ApproxFlexNothing(c.expr(d.ExprBody, noWant)))
 	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
