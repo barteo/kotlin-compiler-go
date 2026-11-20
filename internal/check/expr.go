@@ -4608,8 +4608,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		if br.Guard != nil {
 			cov = saved
 			later = later[:laterLen]
-			if x.Subject == nil {
+			switch {
+			case x.Subject == nil:
 				c.errorf(br.Guard.Pos(), "guard conditions are only allowed in 'when' with a subject")
+			case len(br.Conds) > 1:
+				c.errorf(br.Guard.Pos(), "a guard condition is not allowed after several conditions separated by commas")
 			}
 			c.push()
 			c.scope.narrows = append(c.scope.narrows, whenTrue...)
