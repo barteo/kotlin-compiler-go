@@ -567,3 +567,9 @@ func TestWarningsRedundantNullable(t *testing.T) {
 func TestWarningsExprBodyReturn(t *testing.T) {
 	checkReference(t, "testdata/exprret.kt", Options{Warnings: true})
 }
+
+// TestWarningsContextualShadowing checks CONTEXTUAL_OVERLOAD_SHADOWED
+// against kotlinc's warnings of testdata/ctxshadow.kt.
+func TestWarningsContextualShadowing(t *testing.T) {
+	checkReference(t, "testdata/ctxshadow.kt", Options{Warnings: true})
+}

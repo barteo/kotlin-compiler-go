@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2794 of the 3667 warnings the tests expect (76.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2848 of the 3667 warnings the tests expect (77.7%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -213,6 +213,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNNECESSARY_SAFE_CALL` | 90 | 79 | 1 |
 | `UNCHECKED_CAST` | 88 | 45 | 1 |
 | `OPT_IN_USAGE` | 83 | 63 | 0 |
+| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 54 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
@@ -272,7 +273,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 
 | Warning | Count |
 |:---|---:|
-| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
@@ -302,5 +302,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 |
 | `REDUNDANT_REPEATABLE_ANNOTATION` | 5 |
 | `SYNCHRONIZED_ON_INLINE` | 5 |
-| *36 more* | |
+| `DSL_MARKER_PROPAGATES_TO_MANY` | 4 |
+| *35 more* | |
 
