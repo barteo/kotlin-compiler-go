@@ -19,7 +19,7 @@ type File struct {
 	// checker does, but annotate nothing. The file then has a syntax
 	// error.
 	Dangling []Annotation
-	Facade      string // JVM internal name of the class holding top-level declarations
+	Facade   string // JVM internal name of the class holding top-level declarations
 	// Part is set on a file annotated @file:JvmMultifileClass: the class
 	// that holds its top-level declarations, Facade__FileKt, whose
 	// non-private ones Facade, the multi-file class, calls. Others call
@@ -1456,7 +1456,7 @@ type Call struct {
 	// there: the lambda, which isn't an argument, and is reported
 	// wherever the call is checked.
 	Dropped Expr
-	Recv     bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
+	Recv    bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
 	// Outer is set by the checker on a call of an inner class's
 	// constructor: the instance of the outer class it is in, which the
 	// constructor takes first.
