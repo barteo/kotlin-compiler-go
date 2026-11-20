@@ -128,6 +128,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			}
 		}
 		sym, t, cast, ok := c.lookupVar(x.Name)
+		if ok {
+			c.recursiveVarRef(sym, x.P)
+		}
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
 			// top-level properties: a property of this, an extension
@@ -2513,6 +2516,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			c.shadowedField(cls, p, x.P)
 		}
 		ensureVar(x.Prop)
+		c.recursiveVarRef(x.Prop, x.P)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 		t = c.intersectionProp(xt.NonNull(), rt, x.Prop, t)
 		t = c.starBoundsProp(rt, x.Prop, t)

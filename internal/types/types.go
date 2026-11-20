@@ -268,6 +268,14 @@ type VarSym struct {
 	Infer      func()
 	Resolved   bool
 	InProgress bool
+	// Reentered counts the references that reached the declaration while
+	// its type was being inferred, and ReentryReported the references to
+	// it the checker reported for such a cycle where they are; Cyclic is set when its inference
+	// ran into such a cycle and its type is an error, which each
+	// reference to it is reported for, as kotlinc reports a reference
+	// whose type is its recursive implicit type.
+	Reentered, ReentryReported int
+	Cyclic                     bool
 
 	// FieldT is the type of a final property's explicit backing field,
 	// val x: List<T> field = mutableListOf(), if it has one: what x reads
@@ -599,6 +607,14 @@ type FunSym struct {
 	Infer      func()
 	Resolved   bool
 	InProgress bool
+	// Reentered counts the references that reached the declaration while
+	// its type was being inferred, and ReentryReported the references to
+	// it the checker reported for such a cycle where they are; Cyclic is set when its inference
+	// ran into such a cycle and its type is an error, which each
+	// reference to it is reported for, as kotlinc reports a reference
+	// whose type is its recursive implicit type.
+	Reentered, ReentryReported int
+	Cyclic                     bool
 
 	// Inheritance.
 	Final     bool // can't be overridden

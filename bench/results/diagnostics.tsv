@@ -58,7 +58,7 @@ tests/IncorrectPaddedMultiDollarInterpolationCodeB.kt	skip	LANGUAGE
 tests/InferNullabilityInThenBlock.kt	accepts valid		
 tests/Infix.kt	rejects invalid	on an expected line	
 tests/InfixModifierApplicability.kt	rejects invalid	on an expected line	
-tests/InvokeAndRecursiveResolve.kt	rejects invalid	elsewhere	
+tests/InvokeAndRecursiveResolve.kt	rejects invalid	on an expected line	
 tests/IsExpressions.kt	rejects invalid	on an expected line	
 tests/KT-65044.kt	rejects invalid	on an expected line	
 tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	on an expected line	
@@ -829,7 +829,7 @@ tests/callableReference/kt35959.kt	accepts valid
 tests/callableReference/kt37530.kt	rejects invalid	on an expected line	
 tests/callableReference/kt46437.kt	rejects invalid	on an expected line	
 tests/callableReference/kt49038.kt	rejects invalid	on an expected line	
-tests/callableReference/kt52503.kt	rejects invalid	elsewhere	
+tests/callableReference/kt52503.kt	rejects invalid	on an expected line	
 tests/callableReference/kt55373.kt	rejects invalid	on an expected line	
 tests/callableReference/kt7430_wrongClassOnLHS.kt	rejects invalid	on an expected line	
 tests/callableReference/lambdaResult.kt	accepts valid		
@@ -7288,7 +7288,7 @@ tests/properties/inferenceFromGetters/cantBeInferred.kt	rejects invalid	on an ex
 tests/properties/inferenceFromGetters/explicitGetterType.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/members.kt	accepts valid		
 tests/properties/inferenceFromGetters/nullAsNothing.kt	rejects invalid	on an expected line	
-tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	elsewhere	
+tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/overrides.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/primaryConstructorParameter.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/recursiveGetter.kt	rejects invalid	on an expected line	
@@ -10088,7 +10088,7 @@ testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfNoinlineSuspend.kt	a
 testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfSuspend.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/irrelevantSuspendDeclarations.kt	accepts valid		
-testsWithStdLib/coroutines/kt18292.kt	rejects invalid	elsewhere	
+testsWithStdLib/coroutines/kt18292.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt28658.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt36947.kt	rejects invalid	on an expected line	
 testsWithStdLib/coroutines/kt37309.kt	rejects invalid	on an expected line	
