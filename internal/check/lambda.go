@@ -478,8 +478,15 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		if s != x.It {
 			c.scope.shadow(s)
 		}
-		if s.Name != "_" && !c.scope.declare(s) {
-			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
+		lp, _ := s.Decl.(*syntax.LambdaParam)
+		if (s.Name != "_" || lp != nil && lp.Quoted) && !c.scope.declare(s) {
+			c.errorf(lp.P, "conflicting declarations: %s", s.Name)
+			// As in kotlinc, the name is the later parameter's.
+			for i, v := range c.scope.vars {
+				if v.Name == s.Name {
+					c.scope.vars[i] = s
+				}
+			}
 		}
 	}
 	for _, p := range x.AnonCtx {
