@@ -1068,9 +1068,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// as equals' argument: ::top == Int::intExt.
 			yWant = noWant
 		}
-		if signedIntLit(x.Y) {
+		if signedIntLit(x.Y) && !c.plugin {
 			// An integer literal compared is an Int, as on the left: x ==
-			// 3 for a Long x is an error, as 3 == x is.
+			// 3 for a Long x is an error, as 3 == x is. A plugin's code
+			// compares a property with its default value, a literal of
+			// the property's type.
 			yWant = noWant
 		}
 		yt := c.value(x.Y, yWant)

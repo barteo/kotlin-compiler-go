@@ -1641,7 +1641,7 @@ func TestMetro(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")
 			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
-			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options, JVMTarget: "17"})
 			var se *syntax.Error
 			switch {
 			case err == nil:

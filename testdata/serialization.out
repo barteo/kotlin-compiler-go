@@ -14,6 +14,14 @@ defaults: {"r":"req"}
   back: Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500) false
   defaults: {"a":5,"b":10,"r":"req","renamed":"n","body":"body5"}
   list: [5, 10, req, n, body5] -> Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500)
+literals: {}
+  back: Literals(l=0, s=1, b=-2, n=3, u=4, d=5.0) true
+  defaults: {"l":0,"s":1,"b":-2,"n":3,"u":4,"d":5.0}
+  list: [0, 1, -2, !, 3, 4, 5.0] -> Literals(l=0, s=1, b=-2, n=3, u=4, d=5.0)
+literals2: {"l":1,"s":2,"b":3,"n":null,"u":5,"d":6.0}
+  back: Literals(l=1, s=2, b=3, n=null, u=5, d=6.0) true
+  defaults: {"l":1,"s":2,"b":3,"n":null,"u":5,"d":6.0}
+  list: [1, 2, 3, null, 5, 6.0] -> Literals(l=1, s=2, b=3, n=null, u=5, d=6.0)
 defaults2: {"a":1,"r":"r","renamed":"m"}
   back: Defaults(a=1, b=2, r=r, n=m, body=body1, t=3, computed=2, lazyV=100) false
   defaults: {"a":1,"b":2,"r":"r","renamed":"m","body":"body1"}

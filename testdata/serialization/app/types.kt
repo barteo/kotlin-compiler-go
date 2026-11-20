@@ -20,6 +20,10 @@ import lib.LibUpper
 
 val log = mutableListOf<String>()
 
+// Integer literals as the defaults of properties of other types than Int.
+@Serializable
+data class Literals(val l: Long = 0, val s: Short = 1, val b: Byte = -2, val n: Long? = 3, val u: UInt = 4u, val d: Double = 5.0)
+
 @Serializable
 data class Prims(val i: Int, val l: Long, val s: Short, val b: Byte, val c: Char, val f: Float, val d: Double, val z: Boolean, val str: String)
 

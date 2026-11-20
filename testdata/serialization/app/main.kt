@@ -78,6 +78,8 @@ fun main() {
     check("nullables", Nullables.serializer(), Nullables(str = null))
     check("nullables2", Nullables.serializer(), Nullables(1, "s", LibPoint(1, 2), listOf("a", null), null))
     check("defaults", Defaults.serializer(), Defaults())
+    check("literals", Literals.serializer(), Literals())
+    check("literals2", Literals.serializer(), Literals(1, 2, 3, null, 5u, 6.0))
     check("defaults2", Defaults.serializer(), Defaults(1, 2, "r", "m"))
     println(Json.Default.decodeFromString(Defaults.serializer(), """{"a":3,"r":"x","body":"b"}"""))
     check("enums", Enums.serializer(), Enums(Color.GREEN, Mood.SAD, Plain.Y, LibColor.GREEN, LibPlain.B))
