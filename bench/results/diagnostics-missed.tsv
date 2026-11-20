@@ -736,10 +736,6 @@ tests/jvm/duplicateJvmSignature/inlineClasses/declarationClash.kt	declarationCla
 tests/jvm/duplicateJvmSignature/traitImpl/traitFunctionOverriddenByPropertyInTrait.kt	traitFunctionOverriddenByPropertyInTrait.kt:6	CONFLICTING_JVM_DECLARATIONS	missing-check
 tests/jvm/duplicateJvmSignature/traitImpl/traitPropertyOverriddenByFunctionInTrait.kt	traitPropertyOverriddenByFunctionInTrait.kt:7	CONFLICTING_JVM_DECLARATIONS	missing-check
 tests/jvm/internal/internalFromForeignModule.kt	source.kt:5	INVISIBLE_REFERENCE	missing-check
-tests/jvm/suspensionPointInMonitor.kt	main.kt:13	SUSPENSION_POINT_INSIDE_MONITOR	accepted
-tests/jvm/suspensionPointInMonitor.kt	main.kt:48	SUSPENSION_POINT_INSIDE_MONITOR	accepted
-tests/jvm/suspensionPointInMonitor.kt	main.kt:49	SUSPENSION_POINT_INSIDE_MONITOR	accepted
-tests/jvm/suspensionPointInMonitor.kt	main.kt:7	SUSPENSION_POINT_INSIDE_MONITOR	accepted
 tests/jvm/typeOf/suspendType.kt	suspendType.kt:11	TYPEOF_SUSPEND_TYPE	missing-check
 tests/jvm/typeOf/suspendType.kt	suspendType.kt:14	TYPEOF_SUSPEND_TYPE	missing-check
 tests/kt41984.kt	main.kt:15	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check

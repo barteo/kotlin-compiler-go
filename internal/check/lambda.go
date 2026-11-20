@@ -1002,6 +1002,7 @@ type inlineJumps struct {
 	suspends    bool // the callee is a suspend function
 	inTry       bool
 	composable  bool
+	inMonitor   bool // the callee invokes it holding a monitor
 }
 
 // leave checks a jump that leaves the lambdas c.lambdas[from:]: only

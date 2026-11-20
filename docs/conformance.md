@@ -250,9 +250,9 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `Map<*, *>` the library's `get` extension resolves.
 - **A directive `kc` doesn't model**: `PROGRESSIVE_MODE`
   (`dataClassInternalConstructorUsageWillBecomeInaccessible`).
-- **The backend's analysis of inlined library bodies**:
-  `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
-  that reach `typeOf` through another reified function.
+- **The backend's analysis of inlined library bodies**: the calls in
+  `jvm/typeOf/suspendType` that reach `typeOf` through another reified
+  function.
 - **Two classes with the same name in two modules**: the three
   `multimodule/duplicate*` tests and
   `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
@@ -285,26 +285,26 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,575 | |
-| pass | 6,575 | 100% |
+| run (of 7,480) | 6,576 | |
+| pass | 6,576 | 100% |
 | check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 8,532 | |
-| rejects invalid | 4,367 | 51.2% |
-| accepts valid | 4,127 | 48.4% |
-| accepts invalid | 37 | 0.4% |
+| run (of 10,827) | 8,614 | |
+| rejects invalid | 4,427 | 51.4% |
+| accepts valid | 4,150 | 48.2% |
+| accepts invalid | 36 | 0.4% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,432 of the 21,714 expected errors (94%) on their lines, and 1,490 of
+20,834 of the 22,025 expected errors (95%) on their lines, and 1,490 of
 the 3,652 expected warnings (41%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 13 of the 37
+none. Tests with Java sources are 1,221 of the run, and 13 of the 36
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 

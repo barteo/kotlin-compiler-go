@@ -5819,7 +5819,7 @@ tests/jvm/rawTypes/simple.kt	accepts valid
 tests/jvm/sealed/sealedClassesAndInterfaces.kt	accepts valid		
 tests/jvm/sealed/sealedInheritorInDifferentModule.kt	rejects invalid	on an expected line	
 tests/jvm/signatureConflictHiddenByTypeParameter.kt	rejects invalid	on an expected line	
-tests/jvm/suspensionPointInMonitor.kt	accepts invalid	SUSPENSION_POINT_INSIDE_MONITOR	main.kt:7: SUSPENSION_POINT_INSIDE_MONITOR
+tests/jvm/suspensionPointInMonitor.kt	rejects invalid	on an expected line	
 tests/jvm/typeOf/nonReifiedTypeParameterWithRecursiveBound.kt	skip	LANGUAGE	
 tests/jvm/typeOf/nonReifiedTypeParameterWithRecursiveBoundEnabled.kt	skip	LANGUAGE	
 tests/jvm/typeOf/suspendType.kt	rejects invalid	on an expected line	

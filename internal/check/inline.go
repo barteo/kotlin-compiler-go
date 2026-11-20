@@ -101,9 +101,11 @@ func (c *Checker) markInline(l *syntax.Lambda, f *types.FunSym, b *inline.Body, 
 	j.callee, j.composable, j.suspends = f.Name, f.Composable, f.Suspend
 	j.crossinline = j.crossinline || f.Inline.Crossinline[i]
 	l.Crossinline = j.crossinline
-	for _, t := range b.Params[jvmParam(f, b, i)].InTry {
+	bp := b.Params[jvmParam(f, b, i)]
+	for _, t := range bp.InTry {
 		j.inTry = j.inTry || t
 	}
+	j.inMonitor = bp.InMonitor
 	c.jumps[l] = j
 }
 
