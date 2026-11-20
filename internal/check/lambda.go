@@ -1321,10 +1321,19 @@ func abstractMethods(cls *types.ClassSym) []*types.FunSym {
 // must have one abstract method, without type parameters or default
 // values, and no abstract properties.
 func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
+	// As kotlinc, a member the interface declares is reported where it
+	// is declared, an inherited one on the interface.
+	own := map[*types.VarSym]bool{}
+	for _, m := range d.Members {
+		if p, ok := m.(*syntax.PropDecl); ok && p.Sym != nil && p.Sym.Abstract {
+			own[p.Sym] = true
+			c.errorf(p.P, "fun interfaces cannot have abstract properties")
+		}
+	}
 	props := false
 	d.Sym.Supertypes(func(s *types.ClassSym) bool {
 		for _, p := range s.Props {
-			props = props || p.Abstract
+			props = props || p.Abstract && !own[p]
 		}
 		return true
 	})
@@ -1337,12 +1346,26 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 		return
 	}
 	f := ms[0]
-	if len(f.TypeParams) > 0 {
-		c.errorf(d.P, "single abstract member cannot declare type parameters")
+	var decl *syntax.FunDecl
+	for _, m := range d.Members {
+		if fd, ok := m.(*syntax.FunDecl); ok && fd.Sym == f {
+			decl = fd
+		}
 	}
-	for _, p := range f.Params {
+	if len(f.TypeParams) > 0 {
+		p := d.P
+		if decl != nil && len(decl.TypeParams) > 0 {
+			p = decl.TypeParams[0].P
+		}
+		c.errorf(p, "single abstract member cannot declare type parameters")
+	}
+	for i, p := range f.Params {
 		if p.Default {
-			c.errorf(d.P, "single abstract member cannot declare default values")
+			pos := d.P
+			if decl != nil && i < len(decl.Params) {
+				pos = decl.Params[i].P
+			}
+			c.errorf(pos, "single abstract member cannot declare default values")
 			break
 		}
 	}

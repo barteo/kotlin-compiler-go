@@ -77,7 +77,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21054 of 22025 expected errors (95.6%) on their lines.
+kc reports 21063 of 22025 expected errors (95.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -119,7 +119,6 @@ kc reports 21054 of 22025 expected errors (95.6%) on their lines.
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 157 | 6 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `CYCLIC_CONSTRUCTOR_DELEGATION_CALL` | 28 | 23 | 5 |
-| `FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES` | 6 | 1 | 5 |
 | `OVERRIDING_FINAL_MEMBER_BY_DELEGATION` | 8 | 3 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `TYPE_PARAMETERS_NOT_ALLOWED` | 13 | 8 | 5 |
@@ -141,6 +140,7 @@ kc reports 21054 of 22025 expected errors (95.6%) on their lines.
 | `OPT_IN_USAGE_ERROR` | 102 | 98 | 4 |
 | `TYPE_PARAMETER_AS_REIFIED` | 19 | 15 | 4 |
 | `TYPE_PARAMETER_ON_LHS_OF_DOT` | 5 | 1 | 4 |
+| `VARARG_OUTSIDE_PARENTHESES` | 10 | 6 | 4 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -150,10 +150,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 54 | 5.6% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
-| syntax-error | 152 | 15.7% | `UNRESOLVED_REFERENCE` 22, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `RETURN_TYPE_MISMATCH` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| syntax-error | 152 | 15.8% | `UNRESOLVED_REFERENCE` 22, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `RETURN_TYPE_MISMATCH` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 150 | 15.4% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 615 | 63.3% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 20, `RETURN_TYPE_MISMATCH` 19 |
+| nearby | 142 | 14.8% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 614 | 63.8% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 20, `RETURN_TYPE_MISMATCH` 19 |
 
 ## Errors kotlinc doesn't report
 
@@ -191,7 +191,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
-| *178 more* | |
+| *175 more* | |
 
 ## Unsupported features
 
