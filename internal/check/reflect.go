@@ -1179,6 +1179,15 @@ func (c *Checker) kfunRef(x *syntax.Lambda, want, fn types.Type) types.Type {
 		return types.InvalidType // already reported
 	}
 	call := kfunCall(x)
+	if call != nil {
+		if adapted, _ := refAdaptation(x, call); adapted {
+			// As kotlinc: a reference that leaves parameters to their
+			// defaults or varargs, ignores a result or converts to a
+			// suspend function isn't a KFunction.
+			c.errorf(x.P, "adapted callable reference cannot be used against a reflection type")
+			return types.InvalidType
+		}
+	}
 	if call == nil {
 		call = builtinKFunCall(x)
 	}
