@@ -585,3 +585,9 @@ func TestWarningsRedundantVisibility(t *testing.T) {
 func TestWarningsEqualityNotApplicable(t *testing.T) {
 	checkReference(t, "testdata/equality.kt", Options{Warnings: true})
 }
+
+// TestWarningsWeakerSetter checks CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING
+// against kotlinc's warnings of testdata/weaken.kt.
+func TestWarningsWeakerSetter(t *testing.T) {
+	checkReference(t, "testdata/weaken.kt", Options{Warnings: true})
+}

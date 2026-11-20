@@ -50,7 +50,8 @@ own tests.
   `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
   types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
   (of smart-cast values, not of enums nor an identity comparison of a
-  value without identity) and, in
+  value without identity), `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` (of
+  an inherited var's setter) and, in
   explicit API warning mode, `NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING`
   and `NO_EXPLICIT_RETURN_TYPE_IN_API_MODE_WARNING`; and those only
   where the types make them certain, so that `-Werror` doesn't reject
