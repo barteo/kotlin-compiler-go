@@ -189,6 +189,7 @@ func (c *Checker) findCycles() {
 			continue
 		}
 		c.cyclic = append(c.cyclic, cd)
+		c.cyclicAlias(cd, walk)
 		if !c.u.shadowing {
 			continue
 		}
@@ -201,6 +202,35 @@ func (c *Checker) findCycles() {
 			if st.Type != nil && st.T.K == types.Class && st.T.C != nil &&
 				(st.T.C == cd.Sym || inherits(st.T.C, cd.Sym, walk, map[*types.ClassSym]bool{})) {
 				c.cyclicAt[cd] = append(c.cyclicAt[cd], st.Type.P)
+			}
+		}
+	}
+}
+
+// cyclicAlias reports the typealiases among the supertypes of class cd,
+// in a cycle, that expand to a class nested in one of the cycle: kotlinc
+// can't expand them (RECURSIVE_TYPEALIAS_EXPANSION).
+//
+//	class A : B() { open class Nested<T> }
+//	typealias ANested<T> = A.Nested<T>
+//	open class B : ANested<Int>()
+func (c *Checker) cyclicAlias(cd *syntax.ClassDecl, walk func(*types.ClassSym) bool) {
+	saved := c.lookupCls
+	c.lookupCls = cd.Sym.Outer // as the supertypes are resolved
+	defer func() { c.lookupCls = saved }()
+	for _, st := range cd.Supers {
+		if st.Type == nil || st.T.K != types.Class {
+			continue
+		}
+		a := c.lookupAlias(st.Type.Name)
+		if a == nil || a.Decl == nil || c.u.aliasFile[a] == nil {
+			continue
+		}
+		for o := st.T.C.Outer; o != nil; o = o.Outer {
+			if o == cd.Sym || inherits(o, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+				d := a.Decl.(*syntax.TypeAliasDecl)
+				c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
+				break
 			}
 		}
 	}
@@ -233,7 +263,15 @@ func (c *Checker) checkSupers() {
 				}
 			}
 			if st.T.K == types.Class && st.T.A != nil {
-				c.checkBounds(st.T, st.Type)
+				c.lookupCls = cd.Sym.Outer // as the supertypes are resolved
+				if st.Type != nil && c.lookupAlias(st.Type.Name) != nil {
+					// The arguments of its expansion's arguments too:
+					// List<TK<Any, Any>> of OneList<Any>.
+					c.refBounds(st.T, st.Type, nil, nil)
+				} else {
+					c.checkBounds(st.T, st.Type)
+				}
+				c.lookupCls = cd.Sym
 			}
 			// A sealed class's subclasses are in its package, and known.
 			if s := st.T.C; st.T.K == types.Class && s.Sealed && !s.JavaSealed {
@@ -1949,8 +1987,15 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 		// The supertype's class, written without type arguments, which
 		// the supertype gives: super<List>.
 		var want types.Type
+		args := false // a typealias that gives the type arguments
 		if ref := s.Iface; ref.Args == nil && ref.Ret == nil && ref.Name != "Any" {
-			if wc := c.lookupClass(ref.Name); wc != nil {
+			if a := c.lookupAlias(ref.Name); a != nil && len(a.TypeParams) == 0 {
+				c.resolveAlias(a)
+				if at := a.Type; at.K == types.Class && at.A.Len() > 0 {
+					want, args = at, true
+				}
+			}
+			if wc := c.lookupClass(ref.Name); wc != nil && !args {
 				want = types.ClassType(wc)
 			}
 		}
@@ -1961,7 +2006,7 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			return want, false
 		}
 		for _, st := range cls.Supers {
-			if st.C == want.C || want.K == types.Any {
+			if st.C == want.C && (!args || c.sameArgs(st, want)) || want.K == types.Any {
 				t = st
 			}
 		}

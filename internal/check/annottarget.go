@@ -186,7 +186,7 @@ func (c *Checker) useSiteApplies(u string, site annotSite) bool {
 		return u != "file" && u != "set"
 	case siteFun:
 		switch u {
-		case "field", "delegate", "property", "get", "set":
+		case "field", "delegate", "property", "get", "set", "setparam":
 			return true
 		}
 	case siteParam:
@@ -224,13 +224,8 @@ type repeatKey struct {
 // another annotation among seen has the same class and target, and
 // records it.
 func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annotSite, seen map[repeatKey]bool) {
-	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown && !javaRepeatChecked(a, cls, site) || cls.Repeatable {
+	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown && !javaRepeatChecked(a, cls, site) || repeatable(cls) {
 		return
-	}
-	for _, m := range cls.Annotations {
-		if m.Name == "kotlin/annotation/Repeatable" || m.Name == "java/lang/annotation/Repeatable" {
-			return
-		}
 	}
 	if a.Target == "all" {
 		// @all: is on each of the property's elements it applies to.

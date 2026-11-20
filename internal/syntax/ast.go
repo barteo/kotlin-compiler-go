@@ -404,6 +404,10 @@ type Annotation struct {
 	// Accessor is set on an annotation written on an accessor, @A get(),
 	// which the property keeps with Target get or set.
 	Accessor bool
+	// OnAccessor is set on an annotation with a use-site target written
+	// on an accessor, @get:A get(), which kotlinc reports: the property
+	// keeps it as if written on the property.
+	OnAccessor bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by

@@ -592,7 +592,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 		}
 		return t
 	case syntax.NOT:
-		if t := c.value(x.X, types.BoolType); !builtinOperand(t) || c.unaryExt(x, t.Flex()) {
+		if t := c.fixedStub(c.value(x.X, types.BoolType)); !builtinOperand(t) || c.unaryExt(x, t.Flex()) {
 			return c.unaryOp(x, t.Flex(), want)
 		}
 		c.wantBool(x.X)

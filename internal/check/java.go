@@ -405,6 +405,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
 	cls.ProtectedNested = info.Inner != nil && info.Inner.Access&classfile.AccProtected != 0
+	if (cls.ProtectedNested || cls.Private && !cls.PackagePrivate) && cls.Outer == nil {
+		if i := strings.LastIndexByte(cls.Name, '$'); i > 0 {
+			cls.JavaOuter = t.class(cls.Name[:i])
+		}
+	}
 	// The package-private members of Java classes are their package's
 	// code's, which Kotlin code in another module may be, but not the
 	// JDK's.
@@ -1773,7 +1778,7 @@ func (c *Checker) lookupClass(name string) *types.ClassSym {
 		if a := c.lookupAlias(name); a != nil {
 			return c.aliasClass(a) // a.b.Alias(x), Outer.Alias.member
 		}
-		if first := c.findClass(parts[0]); first != nil && first.External {
+		if first := c.findClass(parts[0]); first != nil && first.External && !aliasQualifier(c.findClassifier(parts[0]), parts) {
 			// A nested type of a Kotlin collection type: Map.Entry.
 			if first.KotlinName != "" {
 				if _, ok := collectionJVM[first.KotlinName+"."+strings.Join(parts[1:], ".")]; ok {

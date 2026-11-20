@@ -1088,6 +1088,7 @@ func (c *Checker) invoke(x *syntax.Call, want types.Type, sink *system) types.Ty
 
 // invokeValue checks a call of x.Fun, already checked to have type ft.
 func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system) types.Type {
+	ft = c.fixedStub(ft) // a builder's variable, fixed on demand
 	if ft.K == types.Invalid {
 		c.args(x, nil)
 		return ft
@@ -2052,6 +2053,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		c.stubs = map[*types.TypeParamSym]*stubRun{}
 	}
 	r := &stubRun{s: s, vars: vars, depth: c.stubDepth}
+	c.stubRuns++
 	c.stubDepth++
 	defer func() { c.stubDepth-- }()
 	for _, v := range vars {
@@ -2063,9 +2065,13 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// Any other error leaves the variables uninferred, as in Kotlin.
 	clean := false
 	for _, sl := range group {
-		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
-		ok, ambiguous := c.stubCheck(s, sl, r)
-		if ok {
+		nc, nj, ne, nr, nruns := len(r.cons), len(r.joined), len(r.extra), len(c.stubRejected), c.stubRuns
+		ok, ambiguous, msgs := c.stubCheck(s, sl, r)
+		if ok || !ambiguous && rejectedOnly(msgs, c.stubRejected[nr:]) && c.stubRuns == nruns {
+			// Errors that are each a constraint that disagrees with
+			// those recorded (see rejectedOnly). Not in a lambda with
+			// builders of its own, whose errors kc doesn't infer
+			// through.
 			clean = true
 			continue
 		}
@@ -2180,11 +2186,12 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 }
 
 // stubCheck checks sl for stubInference, and reports whether it checks
-// without errors, and whether its errors are all ambiguous calls. They and the types the check gives the tree are
+// without errors, whether its errors are all ambiguous calls, and their
+// messages. They and the types the check gives the tree are
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool) {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
@@ -2220,8 +2227,31 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	if clean && bt.K != types.Invalid && bt.K != types.Unit && (ret.Has(ours) || ret.Has(unfixed) && bt.Has(ours)) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
+	for _, e := range c.errs[n:] {
+		msgs = append(msgs, e.Msg)
+	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean, ambiguous
+	return clean, ambiguous, msgs
+}
+
+// rejectedOnly reports whether msgs, the errors of a lambda that
+// stubInference checks, are each a mismatch of an argument with the bound
+// of a constraint among rejected, which stubRun.add rejected: Kotlin
+// infers the variables from the others, and the check that counts
+// reports the argument, consumeDifferentType(get()) after
+// set(TargetType()).
+func rejectedOnly(msgs []string, rejected [][2]types.Type) bool {
+	if len(msgs) == 0 || len(msgs) != len(rejected) {
+		return false
+	}
+	for _, m := range msgs {
+		if !strings.HasPrefix(m, "type mismatch") || !slices.ContainsFunc(rejected, func(k [2]types.Type) bool {
+			return strings.HasSuffix(m, " but "+k[1].String()+" was expected")
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 // stubRun is a check of stubInference's: the system of the call whose
@@ -2325,6 +2355,10 @@ func (r *stubRun) add(t, u types.Type) bool {
 	trial, _ := r.fixAll()
 	if !trial.ok || slices.ContainsFunc(trial.errs[len(r.s.errs):], func(e inferError) bool { return !strings.HasPrefix(e.msg, "cannot infer") }) {
 		r.cons = r.cons[:len(r.cons)-1]
+		k := [2]types.Type{t, u}
+		if !slices.Contains(r.s.c.stubRejected, k) {
+			r.s.c.stubRejected = append(r.s.c.stubRejected, k)
+		}
 		return false
 	}
 	return true
