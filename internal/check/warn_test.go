@@ -603,3 +603,7 @@ func TestWarningsJavaClassOnCompanion(t *testing.T) {
 func TestWarningsUselessCallOnNotNull(t *testing.T) {
 	checkReference(t, "testdata/uselesscall.kt", Options{Warnings: true, ExtraWarnings: true})
 }
+
+func TestWarningsDangerousCharacters(t *testing.T) {
+	checkReference(t, "testdata/dangerous.kt", Options{Warnings: true})
+}
