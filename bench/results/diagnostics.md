@@ -210,7 +210,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2274 of the 3652 warnings the tests expect (62.3%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2322 of the 3652 warnings the tests expect (63.6%) on their lines, and 11 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -244,9 +244,11 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 1 | 0 |
+| `INLINE_CLASS_DEPRECATED` | 26 | 26 | 0 |
 | `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
 | `REDUNDANT_ELSE_IN_WHEN` | 26 | 19 | 0 |
 | `DIVISION_BY_ZERO` | 25 | 22 | 0 |
+| `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 | 22 | 0 |
 | `NON_TAIL_RECURSIVE_CALL` | 22 | 22 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
@@ -264,11 +266,9 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
-| `INLINE_CLASS_DEPRECATED` | 26 |
 | `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
-| `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 |
 | `PROPERTY_HIDES_JAVA_FIELD` | 22 |
 | `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
 | `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
@@ -291,5 +291,7 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
 | `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
-| *63 more* | |
+| `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 |
+| `USELESS_VARARG_ON_PARAMETER` | 10 |
+| *61 more* | |
 
