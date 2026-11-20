@@ -3,6 +3,7 @@ package javasrc
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,15 +23,16 @@ type cval struct {
 // ConstantValue attribute holds it: an int32, int64, float32, float64 or
 // string, or nil if its initializer isn't a constant expression. seen
 // holds the fields whose values are being computed, which a cycle of
-// references isn't constant through. If the value is nil, maybe reports
-// whether that is only because the initializer reads a field of a Kotlin
-// class (see KotlinClasses), whose value javasrc doesn't know.
-func (s *Set) constant(c *Class, f *Field, seen map[*Field]bool) (v any, maybe bool) {
-	cv, ok := s.fieldValue(c, f, seen, &maybe)
+// references isn't constant through. If the value is nil, kotlin are the
+// fields of Kotlin classes (see KotlinClasses), whose values javasrc
+// doesn't know, that the initializer reads, as Class.field of the
+// class's internal name, if that is the only reason.
+func (s *Set) constant(c *Class, f *Field, seen map[*Field]bool) (v any, kotlin []string) {
+	cv, ok := s.fieldValue(c, f, seen, &kotlin)
 	if !ok {
-		return nil, maybe
+		return nil, kotlin
 	}
-	return cv.attr(), false
+	return cv.attr(), nil
 }
 
 // KotlinClasses is what an Outside that knows the Kotlin classes compiled
@@ -40,7 +42,7 @@ type KotlinClasses interface {
 	IsKotlin(name string) bool
 }
 
-func (s *Set) fieldValue(c *Class, f *Field, seen map[*Field]bool, kotlin *bool) (cval, bool) {
+func (s *Set) fieldValue(c *Class, f *Field, seen map[*Field]bool, kotlin *[]string) (cval, bool) {
 	k := fieldKind(f.Type)
 	if k == 0 || seen[f] || len(f.Init) == 0 {
 		return cval{}, false
@@ -249,8 +251,8 @@ type evaluator struct {
 	toks []token
 	pos  int
 	seen map[*Field]bool
-	// kotlin is set when the expression reads a Kotlin class's field.
-	kotlin *bool
+	// kotlin collects the Kotlin classes' fields the expression reads.
+	kotlin *[]string
 }
 
 func (e *evaluator) tok() token {
@@ -477,7 +479,9 @@ func (e *evaluator) declaredField(class, name string) (cval, bool, bool) {
 		return cval{}, false, false
 	}
 	if k, ok := e.s.Outside.(KotlinClasses); ok && k.IsKotlin(class) {
-		*e.kotlin = true
+		if f := class + "." + name; !slices.Contains(*e.kotlin, f) {
+			*e.kotlin = append(*e.kotlin, f)
+		}
 		return cval{}, false, true
 	}
 	a, desc := e.s.Outside.Constant(class, name)

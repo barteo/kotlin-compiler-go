@@ -46,7 +46,7 @@ func (c *Checker) constInit(d *syntax.PropDecl) {
 	bad := nonConst(d.Init, 0)
 	if bad == nil {
 		var path []*types.VarSym
-		if constCycle(d.Sym, d.Init, map[*types.VarSym]bool{d.Sym: true}, 0, &path) {
+		if c.constCycle(d.Sym, d.Init, map[*types.VarSym]bool{d.Sym: true}, 0, &path) {
 			bad = d.Init // const val a = b + 1 with const val b = a + 1
 			// The other const vals of the cycle, checked before this
 			// one, are reported too, if they are in this file.
@@ -84,7 +84,7 @@ func nonConstRef(x syntax.Expr) bool {
 
 // constCycle reports whether the const vals that x reads, and those
 // their initializers read, read the one being checked, in seen.
-func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, depth int, path *[]*types.VarSym) bool {
+func (c *Checker) constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, depth int, path *[]*types.VarSym) bool {
 	found := false
 	syntax.Inspect(x, func(n any) bool {
 		if found || depth > 64 {
@@ -99,6 +99,16 @@ func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, 
 		case *syntax.Lambda, *syntax.ObjectExpr:
 			return false
 		}
+		if v != nil && v.MaybeConst && !seen[v] {
+			// A Java source's static final field that reads Kotlin
+			// const vals, which may read it back.
+			seen[v] = true
+			found = c.javaConstCycle(self, v, seen, depth+1, path)
+			if found {
+				*path = append(*path, v)
+			}
+			return !found
+		}
 		if v == nil || !v.Const {
 			return true
 		}
@@ -111,7 +121,7 @@ func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, 
 		}
 		seen[v] = true
 		if pd, ok := v.Decl.(*syntax.PropDecl); ok && pd.Init != nil && pd.Init.Type().K != types.Invalid {
-			found = constCycle(self, pd.Init, seen, depth+1, path)
+			found = c.constCycle(self, pd.Init, seen, depth+1, path)
 			if found {
 				*path = append(*path, v)
 			}
@@ -119,6 +129,71 @@ func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, 
 		return !found
 	})
 	return found
+}
+
+// javaConstCycle reports whether the Kotlin const vals that Java field v
+// reads (see types.VarSym.ConstReads) read the one being checked, as
+// constCycle: const val FOO = Bar.BAR + 1 with a Java
+// static final int BAR = Foo.FOO + 1.
+func (c *Checker) javaConstCycle(self, v *types.VarSym, seen map[*types.VarSym]bool, depth int, path *[]*types.VarSym) bool {
+	if depth > 64 {
+		return false
+	}
+	for _, r := range v.ConstReads {
+		k := c.kotlinConstField(r)
+		if k == nil {
+			continue
+		}
+		if k == self {
+			return true
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if pd, ok := k.Decl.(*syntax.PropDecl); ok && pd.Init != nil && pd.Init.Type().K != types.Invalid && c.constCycle(self, pd.Init, seen, depth+1, path) {
+			*path = append(*path, k)
+			return true
+		}
+	}
+	return false
+}
+
+// kotlinConstField returns the program's const val whose static field is
+// r, Class.field of the class's internal name: of the class, an object,
+// a class's companion, or a file facade.
+func (c *Checker) kotlinConstField(r string) *types.VarSym {
+	class, name, ok := strings.Cut(r, ".")
+	if !ok {
+		return nil
+	}
+	find := func(ps []*types.VarSym) *types.VarSym {
+		for _, p := range ps {
+			if p.Name == name && p.Const {
+				return p
+			}
+		}
+		return nil
+	}
+	if cls := c.u.sourceClass(class); cls != nil {
+		if p := find(cls.Props); p != nil {
+			return p
+		}
+		if cls.Companion != nil {
+			return find(cls.Companion.Props)
+		}
+		return nil
+	}
+	pkg := ""
+	if i := strings.LastIndexByte(class, '/'); i >= 0 {
+		pkg = strings.ReplaceAll(class[:i], "/", ".")
+	}
+	if p := c.u.Pkgs[pkg]; p != nil {
+		if v := p.Vars[name]; v != nil && v.Const && v.Facade == class {
+			return v
+		}
+	}
+	return nil
 }
 
 func nonConst(x syntax.Expr, depth int) syntax.Expr {

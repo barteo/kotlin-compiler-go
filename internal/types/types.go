@@ -364,6 +364,9 @@ type VarSym struct {
 	// MaybeConst is set on a static final field of a Java source with no
 	// Constant only because it reads a Kotlin class's const val.
 	MaybeConst bool
+	// ConstReads are, with MaybeConst, the Kotlin classes' fields it
+	// reads, as Class.field of the class's internal name.
+	ConstReads []string
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
