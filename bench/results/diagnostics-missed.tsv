@@ -59,7 +59,6 @@ tests/annotations/withUseSiteTarget/repeatable.kt	repeatable.kt:65	INAPPLICABLE_
 tests/assigningAssignments.kt	assigningAssignments.kt:8	NO_SET_METHOD	syntax-error
 tests/breakLoopsBug4.kt	breakLoopsBug4.kt:6	CYCLIC_INHERITANCE_HIERARCHY	missing-check
 tests/callableReference/function/abstractClassConstructors.kt	abstractClassConstructors.kt:11	CALLABLE_REFERENCE_TO_ANNOTATION_CONSTRUCTOR	missing-check
-tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt	ambiguityTopLevelVsTopLevelGeneric.kt:8	CANNOT_INFER_PARAMETER_TYPE	accepted
 tests/callableReference/generic/argumentAndReturnExpectedType.kt	argumentAndReturnExpectedType.kt:19	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/callableReference/resolve/withExtFun.kt	withExtFun.kt:18	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/callableReference/resolve/withExtFun.kt	withExtFun.kt:25	OVERLOAD_RESOLUTION_AMBIGUITY	nearby
@@ -74,8 +73,6 @@ tests/classObjects/typeParametersInAnnonymousObject.kt	typeParametersInAnnonymou
 tests/collectionLiterals/collectionLiteralsDisabled/argumentsOfAnnotation.kt	argumentsOfAnnotation.kt:39	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/collectionLiterals/collectionLiteralsDisabled/collectionLiteralsWithVarargs.kt	collectionLiteralsWithVarargs.kt:40	NON_VARARG_SPREAD	missing-check
 tests/collectionLiterals/collectionLiteralsDisabled/collectionLiteralsWithVarargs.kt	collectionLiteralsWithVarargs.kt:43	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/collectionLiterals/kt82964.kt	kt82964.kt:11	ARGUMENT_TYPE_MISMATCH	accepted
-tests/collectionLiterals/kt82964.kt	kt82964.kt:19	ARGUMENT_TYPE_MISMATCH	accepted
 tests/constantEvaluator/constant/identityCompare.kt	identityCompare.kt:19	CONST_VAL_WITH_NON_CONST_INITIALIZER	missing-check
 tests/constantEvaluator/constant/identityCompare.kt	identityCompare.kt:20	CONST_VAL_WITH_NON_CONST_INITIALIZER	missing-check
 tests/constantEvaluator/constant/identityCompare.kt	identityCompare.kt:21	CONST_VAL_WITH_NON_CONST_INITIALIZER	missing-check
@@ -111,9 +108,6 @@ tests/controlFlowAnalysis/assignmentOfSyntheticVarWithInconsistentNullability.kt
 tests/controlFlowAnalysis/cfgOfFullyIncorrectCode.kt	cfgOfFullyIncorrectCode.kt:10	RETURN_NOT_ALLOWED	syntax-error
 tests/controlFlowAnalysis/reassignmentInConcurrentLambdas.kt	reassignmentInConcurrentLambdas.kt:34	CAPTURED_VAL_INITIALIZATION	missing-check
 tests/controlFlowAnalysis/reassignmentInConcurrentLambdas.kt	reassignmentInConcurrentLambdas.kt:36	CAPTURED_VAL_INITIALIZATION	missing-check
-tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt	smartcastOnThisInInitializationSection.kt:11	ASSIGNMENT_TYPE_MISMATCH	accepted
-tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt	smartcastOnThisInInitializationSection.kt:11	VAL_REASSIGNMENT	accepted
-tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt	smartcastOnThisInInitializationSection.kt:6	MUST_BE_INITIALIZED_OR_BE_ABSTRACT	accepted
 tests/controlStructures/catchOfTypeNothing.kt	catchOfTypeNothing.kt:5	THROWABLE_TYPE_MISMATCH	missing-check
 tests/controlStructures/forWithIncorrectTypeSpecializer.kt	forWithIncorrectTypeSpecializer.kt:6	UNRESOLVED_REFERENCE	missing-check
 tests/controlStructures/ifToAnyDiscriminatingUsages.kt	ifToAnyDiscriminatingUsages.kt:32	RETURN_TYPE_MISMATCH	missing-check
@@ -283,8 +277,6 @@ tests/inference/kt49658.kt	kt49658.kt:15	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658.kt	kt49658.kt:6	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658Strict.kt	kt49658Strict.kt:15	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658Strict.kt	kt49658Strict.kt:6	RETURN_TYPE_MISMATCH	nearby
-tests/inference/kt68570.kt	kt68570.kt:11	UNRESOLVED_REFERENCE	accepted
-tests/inference/kt68570.kt	kt68570.kt:12	UNRESOLVED_REFERENCE	accepted
 tests/inference/nonFunctionalExpectedTypeForLambdaArgument.kt	nonFunctionalExpectedTypeForLambdaArgument.kt:24	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/nonFunctionalExpectedTypeForLambdaArgument.kt	nonFunctionalExpectedTypeForLambdaArgument.kt:30	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/constraints/violating.kt	violating.kt:13	RETURN_TYPE_MISMATCH	nearby
@@ -336,7 +328,6 @@ tests/inference/pcla/fixingDependentVariablesForReceivers.kt	fixingDependentVari
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	differentBehaviorWhenSpecifiedArgument.kt:38	ARGUMENT_TYPE_MISMATCH	nearby
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	earlyReturn.kt:12	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/multiLambdas.kt	multiLambdas.kt:13	UNRESOLVED_REFERENCE	nearby
-tests/inference/pcla/innerTvFixationFromLowerConstraints.kt	innerTvFixationFromLowerConstraints.kt:29	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/issues/kt43710b.kt	kt43710b.kt:7	BUILDER_INFERENCE_STUB_RECEIVER	nearby
 tests/inference/pcla/issues/kt43710b.kt	kt43710b.kt:7	NONE_APPLICABLE	nearby
 tests/inference/pcla/issues/kt47989a.kt	kt47989a.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
@@ -456,7 +447,6 @@ tests/j+k/genericConstructor/classTypeParameterInferredFromArgument.kt	main.kt:3
 tests/j+k/genericConstructor/innerClass.kt	main.kt:5	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/j+k/genericFunAndClassNullabilityInconsistency.kt	Test.kt:5	ARGUMENT_TYPE_MISMATCH	accepted
 tests/j+k/jSpecifyWithVarargs.kt	main.kt:3	NULL_FOR_NONNULL_TYPE	missing-check
-tests/j+k/kjkimplicitTypesCrash.kt	test.kt:3	ACCIDENTAL_OVERRIDE	accepted
 tests/j+k/manyImplNotImplementedComplexHierarchy.kt	main.kt:6	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	missing-check
 tests/j+k/manyImplNotImplementedComplexHierarchy2.kt	main.kt:7	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	missing-check
 tests/j+k/missingTypeOfParameterInFakeOverride_2.kt	missingTypeOfParameterInFakeOverride_2.kt:5	ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED	accepted
@@ -466,7 +456,6 @@ tests/j+k/sam/enhancedSamConstructor.kt	main.kt:8	UNSAFE_CALL	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:9	NULL_FOR_NONNULL_TYPE	missing-check
 tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	main.kt:3	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	main.kt:8	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/j+k/syntheticPropertyOverridden2.kt	DeserializedClassDescriptor.kt:17	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	accepted
 tests/j+k/typeFromGenericFunWithAnnotationWithoutWrtHack.kt	Test.kt:47	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/j+k/typeFromGenericFunWithAnnotationWithoutWrtHack.kt	Test.kt:47	NULL_FOR_NONNULL_TYPE	missing-check
 tests/j+k/typeFromGenericFunWithAnnotationWithoutWrtHack.kt	Test.kt:58	ARGUMENT_TYPE_MISMATCH	missing-check
@@ -510,8 +499,6 @@ tests/library/Collections.kt	Collections.kt:81	ARGUMENT_TYPE_MISMATCH	missing-ch
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:10	WRONG_NUMBER_OF_TYPE_ARGUMENTS	missing-check
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:15	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/localClasses/inCallableReferenceLHS/insideGenericClass.kt	insideGenericClass.kt:16	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/modifiers/const/kotlinJavaCycle.kt	Test.kt:10	CONST_VAL_WITH_NON_CONST_INITIALIZER	accepted
-tests/modifiers/const/kotlinJavaCycle.kt	Test.kt:4	CONST_VAL_WITH_NON_CONST_INITIALIZER	accepted
 tests/modifiers/operatorInfix/LocalFunctions.kt	LocalFunctions.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/modifiers/operatorInfix/LocalFunctions.kt	LocalFunctions.kt:20	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/modifiers/primaryConstructorMissingKeyword.kt	primaryConstructorMissingKeyword.kt:5	MISSING_CONSTRUCTOR_KEYWORD	syntax-error
@@ -546,9 +533,6 @@ tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited
 tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited.kt:12	CONFLICTING_INHERITED_MEMBERS	missing-check
 tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited.kt:31	CONFLICTING_INHERITED_MEMBERS	missing-check
 tests/overrides/suspendMismatchOnOverride.kt	suspendMismatchOnOverride.kt:50	SUSPEND_OVERRIDDEN_BY_NON_SUSPEND	missing-check
-tests/platformTypes/commonSupertype/withNothing.kt	k.kt:12	UNRESOLVED_REFERENCE_WRONG_RECEIVER	accepted
-tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt	comparingWithWrongNullabilityWithoutWrtHack.kt:8	ARGUMENT_TYPE_MISMATCH	accepted
-tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt	comparingWithWrongNullabilityWithoutWrtHack.kt:8	UPPER_BOUND_VIOLATED	accepted
 tests/platformTypes/genericVarianceViolation/strangeVariance.kt	main.kt:4	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/platformTypes/notNullTypeParameter/substitutionInSuperType.kt	k.kt:11	NULL_FOR_NONNULL_TYPE	missing-check
 tests/privateInFile/visibility.kt	file2.kt:5	INVISIBLE_REFERENCE	missing-check
@@ -747,7 +731,6 @@ testsWithStdLib/coroutines/tryCatchLambda.kt	tryCatchLambda.kt:11	RETURN_TYPE_MI
 testsWithStdLib/errorsInUnreachable.kt	errorsInUnreachable.kt:8	UNINITIALIZED_VARIABLE	missing-check
 testsWithStdLib/errorsInUnreachable.kt	errorsInUnreachable.kt:9	UNINITIALIZED_VARIABLE	missing-check
 testsWithStdLib/incorrectExtensionFunctionType.kt	incorrectExtensionFunctionType.kt:4	WRONG_EXTENSION_FUNCTION_TYPE	syntax-error
-testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundConstraint.kt	exactAnnotationWithUpperBoundConstraint.kt:17	ARGUMENT_TYPE_MISMATCH	accepted
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:30	TYPE_MISMATCH	missing-check
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:33	INITIALIZER_TYPE_MISMATCH	missing-check
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:33	TYPE_MISMATCH	missing-check

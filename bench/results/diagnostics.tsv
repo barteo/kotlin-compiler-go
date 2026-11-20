@@ -727,7 +727,7 @@ tests/callableReference/emptyLhs.kt	accepts valid
 tests/callableReference/expectedTypeAsSubtypeOfFunctionType.kt	rejects invalid	on an expected line	
 tests/callableReference/function/abstractClassConstructors.kt	rejects invalid	on an expected line	
 tests/callableReference/function/ambiguityTopLevelVsTopLevel.kt	rejects invalid	on an expected line	
-tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE	ambiguityTopLevelVsTopLevelGeneric.kt:8: CANNOT_INFER_PARAMETER_TYPE
+tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt	rejects invalid	on an expected line	
 tests/callableReference/function/annotationClassConstructor.kt	rejects invalid	on an expected line	
 tests/callableReference/function/callableRefrenceOnNestedObject.kt	accepts valid		
 tests/callableReference/function/classMemberVsConstructorLikeFunction.kt	rejects invalid	on an expected line	
@@ -1251,7 +1251,7 @@ tests/collectionLiterals/kt81777/withDisabledCL.kt	skip	LANGUAGE
 tests/collectionLiterals/kt81777/withEnabledCL.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt82684.kt	rejects invalid	on an expected line	
 tests/collectionLiterals/kt82684withArrayOf.kt	rejects invalid	on an expected line	
-tests/collectionLiterals/kt82964.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	kt82964.kt:11: ARGUMENT_TYPE_MISMATCH
+tests/collectionLiterals/kt82964.kt	rejects invalid	on an expected line	
 tests/collectionLiterals/kt84559.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt84559WithFallback.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt85842NoStdlib.kt	skip	LANGUAGE	
@@ -2040,7 +2040,7 @@ tests/controlFlowAnalysis/repeatUnitializedErrorOnlyForLocalVars.kt	rejects inva
 tests/controlFlowAnalysis/safeCallAfterVariableInitialization.kt	accepts valid		
 tests/controlFlowAnalysis/scopeOfAnonymousInitializer.kt	accepts valid		
 tests/controlFlowAnalysis/smartCastInCatch.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt	accepts invalid	MUST_BE_INITIALIZED_OR_BE_ABSTRACT; VAL_REASSIGNMENT; ASSIGNMENT_TYPE_MISMATCH	smartcastOnThisInInitializationSection.kt:6: MUST_BE_INITIALIZED_OR_BE_ABSTRACT
+tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/tryCatchFinallyIfs.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/tryWithAssignmentUsedInCatch.kt	accepts valid		
 tests/controlFlowAnalysis/uninintializedProperyWithDirectAndDelayedInitialization.kt	rejects invalid	on an expected line	
@@ -4316,7 +4316,7 @@ tests/inference/kt619.kt	accepts valid
 tests/inference/kt62609.kt	accepts valid		
 tests/inference/kt63577.kt	skip	LANGUAGE	
 tests/inference/kt63982.kt	accepts valid		
-tests/inference/kt68570.kt	accepts invalid	UNRESOLVED_REFERENCE	kt68570.kt:11: UNRESOLVED_REFERENCE
+tests/inference/kt68570.kt	rejects invalid	on an expected line	
 tests/inference/kt69159Simplified.kt	accepts valid		
 tests/inference/kt69159WithComparable.kt	accepts valid		
 tests/inference/kt69326.kt	accepts valid		
@@ -4529,7 +4529,7 @@ tests/inference/pcla/forceLambdaCompletionFromReturnStatement/noPostponedAtomFor
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/noPostponedAtomForNestedLambda20.kt	skip	LANGUAGE	
 tests/inference/pcla/ifInBuildMap.kt	accepts valid		
 tests/inference/pcla/incompleteCallInReturnArgumentsWithProperExpectType.kt	accepts valid		
-tests/inference/pcla/innerTvFixationFromLowerConstraints.kt	rejects invalid	elsewhere	
+tests/inference/pcla/innerTvFixationFromLowerConstraints.kt	rejects invalid	on an expected line	
 tests/inference/pcla/invalidateKeys.kt	rejects invalid	on an expected line	
 tests/inference/pcla/invokeExtensionReceiverWithNotFixedVariables.kt	accepts valid		
 tests/inference/pcla/invokeExtensionReceiverWithNotFixedVariablesInitial.kt	accepts valid		
@@ -5353,7 +5353,7 @@ tests/j+k/javaSupertypeNameDisambiguation.kt	accepts valid
 tests/j+k/jkjPrivateProperty.kt	accepts valid		
 tests/j+k/kjkImplicitReturnType.kt	rejects invalid	on an expected line	
 tests/j+k/kjkRawTypeWithKotlinUpperBound.kt	rejects invalid	on an expected line	
-tests/j+k/kjkimplicitTypesCrash.kt	accepts invalid	ACCIDENTAL_OVERRIDE	test.kt:3: ACCIDENTAL_OVERRIDE
+tests/j+k/kjkimplicitTypesCrash.kt	rejects invalid	on an expected line	
 tests/j+k/kt1402.kt	accepts valid		
 tests/j+k/kt1431.kt	accepts valid		
 tests/j+k/kt1730_implementCharSequence.kt	accepts valid		
@@ -5500,7 +5500,7 @@ tests/j+k/staticMethodInClass.kt	accepts valid
 tests/j+k/supertypeUsesNested.kt	accepts valid		
 tests/j+k/syntheticAssignmentInLambdaExpressionBody.kt	accepts valid		
 tests/j+k/syntheticPropertyOverridden.kt	accepts valid		
-tests/j+k/syntheticPropertyOverridden2.kt	accepts invalid	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	DeserializedClassDescriptor.kt:17: TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM
+tests/j+k/syntheticPropertyOverridden2.kt	rejects invalid	on an expected line	
 tests/j+k/throwableConstructor.kt	accepts valid		
 tests/j+k/throwableInference/basicThrowableComputable.kt	skip	LANGUAGE	
 tests/j+k/throwableInference/basicThrowableComputableFeatureDisabled.kt	skip	LANGUAGE	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40183 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/e2358a94-e914-5f98-af4c-6fa86bc264c6/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40425 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/35abd9e1-f33e-54f7-92cd-71b7eb6b2e41/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -5955,7 +5955,7 @@ tests/modifiers/const/incAndDecOperations.kt	rejects invalid	on an expected line
 tests/modifiers/const/kCallable.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/modifiers/const/kClassInEquals.kt	rejects invalid	on an expected line	
 tests/modifiers/const/kClassInStringConcatenation.kt	rejects invalid	on an expected line	
-tests/modifiers/const/kotlinJavaCycle.kt	accepts invalid	CONST_VAL_WITH_NON_CONST_INITIALIZER	Test.kt:4: CONST_VAL_WITH_NON_CONST_INITIALIZER
+tests/modifiers/const/kotlinJavaCycle.kt	rejects invalid	on an expected line	
 tests/modifiers/const/kt12248.kt	accepts valid		
 tests/modifiers/const/kt15913.kt	accepts valid		
 tests/modifiers/const/kt57802.kt	rejects invalid	on an expected line	
@@ -6977,9 +6977,9 @@ tests/platformTypes/commonSupertype/mixedIf.kt	accepts valid
 tests/platformTypes/commonSupertype/recursiveGeneric.kt	accepts valid		
 tests/platformTypes/commonSupertype/stringOrNull.kt	accepts valid		
 tests/platformTypes/commonSupertype/typeOfElvis.kt	accepts valid		
-tests/platformTypes/commonSupertype/withNothing.kt	accepts invalid	UNRESOLVED_REFERENCE_WRONG_RECEIVER	k.kt:12: UNRESOLVED_REFERENCE_WRONG_RECEIVER
+tests/platformTypes/commonSupertype/withNothing.kt	rejects invalid	on an expected line	
 tests/platformTypes/comparingWithWrongNullability.kt	skip	LANGUAGE	
-tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt	accepts invalid	UPPER_BOUND_VIOLATED; ARGUMENT_TYPE_MISMATCH	comparingWithWrongNullabilityWithoutWrtHack.kt:8: UPPER_BOUND_VIOLATED
+tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt	rejects invalid	on an expected line	
 tests/platformTypes/delegateByComplexInheritance.kt	accepts valid		
 tests/platformTypes/dereference.kt	accepts valid		
 tests/platformTypes/elvis.kt	accepts valid		
@@ -10289,7 +10289,7 @@ testsWithStdLib/incorrectLabelReference.kt	rejects invalid	on an expected line
 testsWithStdLib/incorrectReturnFromNothingLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/checkLowPriorityIsResolvedSuccessfully.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/exactAnnotation.kt	accepts valid		
-testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundConstraint.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	exactAnnotationWithUpperBoundConstraint.kt:17: ARGUMENT_TYPE_MISMATCH
+testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundConstraint.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/explicitTypeArgumentAsValidInputType.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/internalAnnotationsOnTypes.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/kt26698.kt	rejects invalid	on an expected line	
