@@ -77,7 +77,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21175 of 22025 expected errors (96.1%) on their lines.
+kc reports 21181 of 22025 expected errors (96.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -106,7 +106,6 @@ kc reports 21175 of 22025 expected errors (96.1%) on their lines.
 | `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 90 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
 | `TOO_MANY_ARGUMENTS` | 118 | 112 | 6 |
-| `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` | 8 | 2 | 6 |
 | `VAL_REASSIGNMENT` | 231 | 225 | 6 |
 | `WRONG_EXTENSION_FUNCTION_TYPE` | 6 | 0 | 6 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 157 | 6 |
@@ -141,6 +140,7 @@ kc reports 21175 of 22025 expected errors (96.1%) on their lines.
 | `INCONSISTENT_BACKING_FIELD_TYPE` | 18 | 15 | 3 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 11 | 3 |
 | `INVALID_TYPE_OF_ANNOTATION_MEMBER` | 30 | 27 | 3 |
+| `INVISIBLE_ABSTRACT_MEMBER_FROM_SUPER_ERROR` | 4 | 1 | 3 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -150,10 +150,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 54 | 6.4% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
-| syntax-error | 128 | 15.1% | `UNRESOLVED_REFERENCE` 21, `RETURN_TYPE_MISMATCH` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6, `CANNOT_INFER_PARAMETER_TYPE` 5, `NOT_YET_SUPPORTED_IN_INLINE` 5 |
+| syntax-error | 122 | 14.5% | `UNRESOLVED_REFERENCE` 21, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 5, `NOT_YET_SUPPORTED_IN_INLINE` 5, `TYPE_PARAMETERS_NOT_ALLOWED` 5 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 130 | 15.3% | `ARGUMENT_TYPE_MISMATCH` 25, `UNRESOLVED_REFERENCE` 24, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 538 | 63.3% | `ARGUMENT_TYPE_MISMATCH` 77, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 35, `RETURN_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 15 |
+| nearby | 130 | 15.4% | `ARGUMENT_TYPE_MISMATCH` 25, `UNRESOLVED_REFERENCE` 24, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 538 | 63.7% | `ARGUMENT_TYPE_MISMATCH` 77, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 35, `RETURN_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 15 |
 
 ## Errors kotlinc doesn't report
 

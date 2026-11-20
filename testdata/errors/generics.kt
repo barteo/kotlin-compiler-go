@@ -83,3 +83,6 @@ class NullableBound<F> {
         if (w != null) take(w)
     }
 }
+
+fun <T : Int.() -> String> extBound() {} // ERROR an extension function type or a function type with context parameters can't be an upper bound
+class CtxBound<T> where T : context(Int) () -> Unit // ERROR an extension function type or a function type with context parameters can't be an upper bound

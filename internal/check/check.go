@@ -1524,6 +1524,9 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	for _, d := range decls {
 		d.Sym.Bounds = nil
 		for _, ref := range d.Bounds {
+			if ref.Ret != nil && (ref.Recv != nil || ref.Contexts != nil) && !c.hasErrorAt(ref.P, "an extension function type") {
+				c.errorf(ref.P, "an extension function type or a function type with context parameters can't be an upper bound")
+			}
 			if b := c.resolveType(ref); b.K != types.Invalid {
 				d.Sym.Bounds = append(d.Sym.Bounds, b)
 				refs[d] = append(refs[d], ref)
