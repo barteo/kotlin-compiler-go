@@ -198,7 +198,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if cls != nil {
 				// An object named as a function is the object: a value.
 				if obj := objectOf(cls); obj != nil {
-					c.checkClassVisible(cls, x.P)
+					c.checkClassVisible(obj, x.P) // the class, or its private companion
 					return objectValue(x, obj)
 				}
 				if obj := c.starObject(x.Name, cls); obj != nil {
@@ -2373,7 +2373,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
-			c.checkClassVisible(cls, x.P)
+			c.checkClassVisible(obj, x.P)
 			return objectValue(x, obj) // a.b.Obj, Outer.Companion, kotlin.random.Random
 		}
 	}
@@ -3556,6 +3556,11 @@ func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 		}
 		return ft.K == types.Invalid || c.hasFun(ft, "invoke", x)
 	}
+	if x.Infix {
+		// A function type's invoke isn't infix: b f 3 is an infix
+		// extension f's call.
+		return false
+	}
 	for _, n := range x.Names {
 		if n != "" {
 			return false
@@ -3768,8 +3773,12 @@ func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bo
 }
 
 func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type, sink *system) types.Type {
-	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe {
+	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe && !(x.Infix && c.infixExtOnly(fn.Name, rt)) {
+		infix := x.Infix
 		if t, ok := c.memberRange(x, fn, rt, want); ok {
+			if infix {
+				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+			}
 			return t
 		}
 	}
@@ -3783,6 +3792,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		}
 		if _, res, ok := types.OperatorFunType(fn.Name, rt, at); ok {
 			x.Builtin = types.OperatorFun
+			c.builtinInfix(x, fn)
 			return res
 		}
 		if at.K == types.Invalid {
@@ -3860,6 +3870,9 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 	if s != nil && stdlibExt(rt, fn.Name) && c.extShadows(fn.Name, rt, x) {
 		s = nil // as ktor's Char.isLowerCase, of a star import
 	}
+	if s != nil && x.Infix && s.b != types.Bitwise && c.infixExtOnly(fn.Name, rt) {
+		s = nil // an infix extension, which the member that isn't infix leaves the call to
+	}
 	if s == nil {
 		object := c.u.ext.class("java/lang/Object")
 		arity := 0
@@ -3913,7 +3926,17 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		c.assignable(at, s.params[i], a.Pos())
 	}
 	x.Builtin = s.b
+	c.builtinInfix(x, fn)
 	return s.ret
+}
+
+// builtinInfix reports an infix call x of a built-in member that isn't
+// infix: 1 plus 1, "a" get 0. Only the bitwise functions of Int, Long
+// and Boolean (and, or, xor, shl, shr, ushr) are infix.
+func (c *Checker) builtinInfix(x *syntax.Call, fn *syntax.Member) {
+	if x.Infix && x.Builtin != types.Bitwise {
+		c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+	}
 }
 
 // conversion returns the builtin of a number's or Char's conversion

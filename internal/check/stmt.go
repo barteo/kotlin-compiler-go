@@ -632,6 +632,9 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 }
 
 func (c *Checker) varStmt(s *syntax.VarStmt) {
+	if s.Init != nil {
+		c.jvmFunctionInit(s.Type, s.Init)
+	}
 	saved := c.declName
 	c.declName = s.Name
 	if strings.HasPrefix(s.Name, "<") {

@@ -10267,7 +10267,7 @@ testsWithStdLib/forInArrayLoop/rangeVariableAssignment13.kt	accepts valid
 testsWithStdLib/functionAndFunctionN.kt	accepts valid		
 testsWithStdLib/functionLiterals/nullableUnitLiteral.kt	rejects invalid	on an expected line	
 testsWithStdLib/functionLiterals/pseudocodeMemoryOverhead.kt	rejects invalid	on an expected line	
-testsWithStdLib/functionX.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	functionX.kt:5: INITIALIZER_TYPE_MISMATCH
+testsWithStdLib/functionX.kt	rejects invalid	on an expected line	
 testsWithStdLib/genericContainer.kt	accepts valid		
 testsWithStdLib/getOnKProperty.kt	accepts valid		
 testsWithStdLib/getOrPutAmbiguity.kt	accepts valid		

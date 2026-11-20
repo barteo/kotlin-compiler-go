@@ -77,7 +77,11 @@ type assignment struct {
 	cls     *types.ClassSym       // the class whose properties are tracked, if any
 	depth   map[*types.VarSym]int // tracked variables, by the lambda depth they are declared at
 	lambdas int                   // the lambdas and local functions the code is in
-	quiet   int                   // >0 while a loop's body is walked the first time
+	// foreign > 0 while the walk is in code that its own walk checks:
+	// the members of a local class or an object expression, walked only
+	// for the captured local vals they assign (see foreignMembers).
+	foreign int
+	quiet   int // >0 while a loop's body is walked the first time
 	// reported are the reads reported as before assignment: each is, as
 	// in kotlinc, but once, though the code may be walked again.
 	reported map[syntax.Pos]bool
@@ -372,7 +376,7 @@ func (a *assignment) tracked(v *types.VarSym) bool {
 
 // read checks a read of v.
 func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
-	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] {
+	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] || a.foreign > 0 {
 		return
 	}
 	if (v.Kind == types.Prop || v.Kind == types.Global) && a.lambdas > 0 {
@@ -392,6 +396,12 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	}
 	if a.inited[v] {
 		return // assigned by its initializer, as other checks report
+	}
+	if a.foreign > 0 {
+		if !v.Mutable && v.Kind == types.Local && a.lambdas > a.depth[v] && a.quiet == 0 && !s.dead {
+			a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+		}
+		return
 	}
 	switch {
 	case a.quiet > 0 || s.dead:
@@ -439,6 +449,9 @@ func (a *assignment) stmt(st syntax.Stmt, s *daState) {
 		if st.Delegate != nil {
 			a.expr(st.Delegate, s)
 		}
+		if a.foreign > 0 {
+			break // tracked by the member's own walk
+		}
 		if v := st.Sym; v != nil && v.Deferred {
 			a.depth[v] = a.lambdas
 			delete(s.def, v)
@@ -452,6 +465,8 @@ func (a *assignment) stmt(st syntax.Stmt, s *daState) {
 		}
 	case *syntax.Assign:
 		a.assignStmt(st, s)
+	case *syntax.LocalClass:
+		a.foreignMembers(st.Decl, s, true)
 	case *syntax.LocalFun:
 		a.lambdas++
 		fs := s.clone()
@@ -825,6 +840,55 @@ func (a *assignment) objectExpr(d *syntax.ClassDecl, s *daState) {
 			a.block(m.Body, s)
 		}
 	}
+	a.foreignMembers(d, s, false)
+}
+
+// foreignMembers walks the members of a local class or object expression
+// d that run later, as a lambda's body, for the captured local vals they
+// assign, which kotlinc reports (CAPTURED_VAL_INITIALIZATION): its
+// functions and accessors, and with all, as for a local class, its
+// initializers, init blocks and constructors too. Their own walks check
+// the rest. An object's initializers and init blocks run in place: see
+// objectExpr.
+func (a *assignment) foreignMembers(d *syntax.ClassDecl, s *daState, all bool) {
+	if d == nil {
+		return
+	}
+	a.lambdas++
+	a.foreign++
+	fun := func(f *syntax.FunDecl) {
+		if f == nil {
+			return
+		}
+		fs := s.clone()
+		if f.Body != nil {
+			a.block(f.Body, fs)
+		} else if f.ExprBody != nil {
+			a.expr(f.ExprBody, fs)
+		}
+	}
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			fun(m)
+		case *syntax.PropDecl:
+			fun(m.Getter)
+			fun(m.Setter)
+			if all && m.Init != nil {
+				a.expr(m.Init, s.clone())
+			}
+		case *syntax.InitBlock:
+			if all {
+				a.block(m.Body, s.clone())
+			}
+		case *syntax.SecondaryCtor:
+			if all {
+				a.block(m.Body, s.clone())
+			}
+		}
+	}
+	a.foreign--
+	a.lambdas--
 }
 
 // supers walks a class's superclass constructor call and the objects its

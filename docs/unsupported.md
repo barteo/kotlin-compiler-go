@@ -126,7 +126,11 @@ own tests.
   lambda ends with can't infer its variables, which are `Nothing`. A
   builder's lambda that casts its receiver to a
   star-projected subtype, `this as DerivedBuildee<*>`, infers the
-  variable as `Unit`, where K2 infers a captured type.
+  variable as `Unit`, where K2 infers a captured type. Of the errors a
+  call adds to K2's shared constraint system, only one shape is carried
+  to the calls after it: a generic extension called on an unresolved
+  receiver with the lambda's `this`, `Unresolved().bar(this)`, after
+  which the extension calls on the builder's receiver are inapplicable.
 
 ## Without the standard library
 
@@ -380,7 +384,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   built-in type: `kotlinc` keeps the Java class, so that a
   `java.lang.Comparable<*>` isn't a `kotlin.Comparable<*>`. Only a
   smart cast by `is java.lang.CharSequence` keeps the Java class's
-  `length()` method callable.
+  `length()` method callable. So is a type written as one of the
+  classes `kotlin.jvm.functions.FunctionN`, the function type, but where
+  a lambda, an anonymous function or a callable reference initializes a
+  property or a variable of that type, which is an error, as with
+  `kotlinc`: one passed for a parameter of that type is taken.
 - jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
   Java method's, parameter's or field's type, and `@NullMarked` and
   `@NullUnmarked` only on the classes and methods of the program's Java

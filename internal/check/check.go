@@ -64,6 +64,8 @@ type Universe struct {
 	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
 	// Options.ExplicitReturnTypes.
 	explicitAPI, explicitReturnTypes APIMode
+	// notMultiplatform is Options.NotMultiplatform.
+	notMultiplatform bool
 	// noReflection is set if kotlin-reflect isn't on the class path,
 	// whose ReflectionFactoryImpl the standard library's reflection uses
 	// if it is.
@@ -395,6 +397,10 @@ type Checker struct {
 	stubRejected [][2]types.Type
 	// stubRuns counts stubInference's runs.
 	stubRuns int
+	// pclaPoison are the builder lambdas whose variables stubInference
+	// couldn't infer because of an unresolved reference, by where the
+	// first one is (see poisonedRecv).
+	pclaPoison map[*syntax.Lambda]syntax.Pos
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
@@ -790,6 +796,10 @@ type Options struct {
 	// declarations of the program's public API must say their types if
 	// they are inferred.
 	ExplicitReturnTypes APIMode
+	// NotMultiplatform is set for a compilation that isn't multiplatform,
+	// as kotlinc's without -Xmulti-platform: the expect and actual
+	// modifiers are errors (NOT_A_MULTIPLATFORM_COMPILATION).
+	NotMultiplatform bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -925,7 +935,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
-		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, jvmTarget: max(int(opts.JVMTarget), 52)}
+		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, notMultiplatform: opts.NotMultiplatform, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))
@@ -3780,6 +3790,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		}
 	}
 	sym := d.Sym
+	if d.DelegateOf == nil {
+		c.jvmFunctionInit(d.Type, d.Init)
+	}
 	if sym.Resolved {
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
 		return

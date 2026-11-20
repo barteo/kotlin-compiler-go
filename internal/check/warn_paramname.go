@@ -69,3 +69,54 @@ func (c *Checker) supertypeParamNameWarnings(d *syntax.ClassDecl, gr []*types.Fu
 		}
 	}
 }
+
+// ambiguousNamedArgs reports the named arguments of call x of member
+// x.Sym on a receiver of class cls and type rt for a parameter that the
+// functions it is inherited from as one member name differently
+// (NAME_FOR_AMBIGUOUS_PARAMETER), as kotlinc: interface C : A, B, with
+// A's foo(x: Int) and B's foo(y: Int), takes neither c.foo(x = 0) nor
+// c.foo(y = 0). An override in between names them: nothing is reported.
+// As the warning, nothing is reported of a Java method's names.
+func (c *Checker) ambiguousNamedArgs(x *syntax.Call, cls *types.ClassSym, rt types.Type) {
+	f := x.Sym
+	if f == nil || f.Owner == nil || f.Static || f.Owner == cls || !stableParamNames(f) {
+		return
+	}
+	var gr []*types.FunSym
+	own := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		for _, g := range s.Methods[f.Name] {
+			// Not another overload of f's class, Base<T>'s foo(x: T) and
+			// foo(y: String) on a Base<String>.
+			if g.Static || g.Private || g.Ext != f.Ext || g != f && g.Owner == f.Owner || !c.sameParams(rt, f, g) {
+				continue
+			}
+			if s == cls {
+				own = true
+			} else if !slices.Contains(gr, g) {
+				gr = append(gr, g)
+			}
+		}
+		return !own
+	})
+	if own {
+		return
+	}
+	gr = slices.DeleteFunc(gr, func(g *types.FunSym) bool { return overriddenByAnother(g, gr) })
+	if len(gr) < 2 || slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !stableParamNames(g) || len(g.Params) != len(f.Params) }) {
+		return
+	}
+	for i, a := range x.Args {
+		name := x.Name(i)
+		if name == "" {
+			continue
+		}
+		j := slices.IndexFunc(f.Params, func(p *types.VarSym) bool { return p.Name == name })
+		if j < 0 {
+			continue
+		}
+		if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Params[j].Name != name }) {
+			c.errorf(a.Pos(), "named argument is prohibited for parameter with an ambiguous name")
+		}
+	}
+}

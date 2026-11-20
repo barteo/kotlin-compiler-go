@@ -69,7 +69,7 @@ for kind in ['kc', 'kotlinc', 'warm']:
         opts = ['-module-name', module, '-jvm-default=enable', '-cp', classpath, '-d', str(dest)]
         if kind == 'kc':
             dirs = [str(src / module / s / 'src') for s in sets]
-            commands[kind].append([str(work / 'kc'), '-j', '"$1"', '-serialization', *opts, *dirs])
+            commands[kind].append([str(work / 'kc'), '-j', '"$1"', '-serialization', '-Xmulti-platform', *opts, *dirs])
             files += [Path(p) for p in all_sources]
         else:
             refines = [f'{sets[i]}:{sets[i-1]}' for i in range(1, len(sets))]

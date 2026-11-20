@@ -36,6 +36,16 @@ func declKey(pkg string, d syntax.Decl) (expectKey, syntax.Pos, bool) {
 // bodies, each has an actual declaration, and, if there are any, each
 // actual declaration has one.
 func expectActual(checkers []*Checker) {
+	if len(checkers) > 0 && checkers[0].u.notMultiplatform {
+		for _, c := range checkers {
+			for _, d := range c.file.Expects {
+				c.notMultiplatform(d)
+			}
+			for _, d := range c.file.Decls {
+				c.notMultiplatform(d)
+			}
+		}
+	}
 	expects := map[expectKey]bool{}
 	actuals := map[expectKey]bool{}
 	for _, c := range checkers {
@@ -66,6 +76,36 @@ func expectActual(checkers []*Checker) {
 				c.errorf(p, "'%s' has no corresponding 'expect' declaration", k.name)
 			}
 		}
+	}
+}
+
+// notMultiplatform reports the expect and actual modifiers written on d
+// and its members, as kotlinc does where the compilation isn't
+// multiplatform (without -Xmulti-platform).
+func (c *Checker) notMultiplatform(d syntax.Decl) {
+	var m *syntax.Modifiers
+	var members []syntax.Decl
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		m = &d.Modifiers
+	case *syntax.PropDecl:
+		m = &d.Modifiers
+	case *syntax.TypeAliasDecl:
+		m = &d.Modifiers
+	case *syntax.SecondaryCtor:
+		m = &d.Modifiers
+	case *syntax.ClassDecl:
+		m, members = &d.Modifiers, d.Members
+	}
+	if m != nil {
+		for _, w := range m.Written {
+			if w.Name == "expect" || w.Name == "actual" {
+				c.errorf(w.P, "'expect' and 'actual' declarations can be used only in multiplatform projects (-Xmulti-platform)")
+			}
+		}
+	}
+	for _, d := range members {
+		c.notMultiplatform(d)
 	}
 }
 

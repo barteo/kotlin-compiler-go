@@ -95,6 +95,9 @@ type Options struct {
 	// ExplicitAPI is kotlinc's -Xexplicit-api and ExplicitReturnTypes
 	// its -XXexplicit-return-types: see check.Options.
 	ExplicitAPI, ExplicitReturnTypes check.APIMode
+	// MultiPlatform is kotlinc's -Xmulti-platform: the sources may have
+	// expect and actual declarations, which are otherwise errors.
+	MultiPlatform bool
 	// Libraries, if set, keeps the class path and library for later
 	// compiles of the same configuration, and gives this compile those
 	// of an earlier one: see Libraries.
@@ -411,7 +414,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	}
 	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true,
 		JVMTarget: major, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings,
-		ExplicitAPI: opts.ExplicitAPI, ExplicitReturnTypes: opts.ExplicitReturnTypes})
+		ExplicitAPI: opts.ExplicitAPI, ExplicitReturnTypes: opts.ExplicitReturnTypes, NotMultiplatform: !opts.MultiPlatform})
 	for _, e := range checked {
 		if e.IsWarning() {
 			*warnings = append(*warnings, e)

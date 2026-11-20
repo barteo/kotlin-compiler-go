@@ -154,6 +154,13 @@ if (gradle.parent == null) {
         }.getOrNull()
       if (explicitApi != null) args += "-Xexplicit-api=$explicitApi"
       freeArgs.lastOrNull { it.startsWith("-XXexplicit-return-types=") }?.let { args += it }
+      // A multiplatform module's JVM compilation has expect and actual declarations, which are
+      // errors without -Xmulti-platform, as with kotlinc: the task's multiPlatformEnabled (an
+      // internal property, whose getter's name is mangled) says so, or its free arguments do.
+      val multiPlatform = "-Xmulti-platform" in freeArgs || runCatching {
+        (callPrefixed(task, "getMultiPlatformEnabled") as org.gradle.api.provider.Provider<*>?)?.orNull == true
+      }.getOrDefault(false)
+      if (multiPlatform) args += "-Xmulti-platform"
       // The JVM version the class files are for, the module's jvmTarget, as kotlinc's -jvm-target:
       // a library's inline functions built for a higher one are errors, as with kotlinc.
       option("getJvmTarget")?.let { call(it, "getTarget") as String }?.let { args += listOf("-jvm-target", it) }
