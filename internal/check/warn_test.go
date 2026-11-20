@@ -488,6 +488,12 @@ func TestWarningsNullCast(t *testing.T) {
 	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
 }
 
+// TestWarningsParamName checks the PARAMETER_NAME_CHANGED_ON_OVERRIDE
+// warnings of testdata/paramname.kt.
+func TestWarningsParamName(t *testing.T) {
+	checkReference(t, "testdata/paramname.kt", Options{Warnings: true})
+}
+
 // TestWarningsJDKList checks the deprecations of the JDK 21 members of
 // the collection interfaces that K2 hides, by testdata/jdklist.kt, with a
 // JDK that has them.
