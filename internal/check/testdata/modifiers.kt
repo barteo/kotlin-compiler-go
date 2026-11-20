@@ -46,3 +46,9 @@ open abstract class A1 { abstract open fun x() } // REDUNDANT_MODIFIER
 abstract sealed class S1 // REDUNDANT_MODIFIER
 sealed abstract class S2 // REDUNDANT_MODIFIER
 abstract class A2 { open abstract val p: Int } // REDUNDANT_MODIFIER
+val v1 = fun(vararg p: Int) {} // USELESS_VARARG_ON_PARAMETER
+fun outer(f: (Int) -> Unit) = f
+fun use() {
+    outer(fun(vararg p: Int) {}) // USELESS_VARARG_ON_PARAMETER
+    val g = fun(@Suppress("USELESS_VARARG_ON_PARAMETER") vararg p: Int) {}
+}

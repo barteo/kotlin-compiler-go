@@ -550,13 +550,16 @@ func (p *parser) anonFun(label string) *Lambda {
 		m := p.modifiers()
 		NoContexts(&m, "value parameters", p)
 		name := p.ident()
-		lp := &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted}
+		lp := &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted, Mods: m.Written, Annotations: m.Annotations}
 		if p.at(COLON) {
 			p.next()
 			lp.Type = p.parseType()
 		}
 		if p.at(ASSIGN) {
-			p.failAt(p.tok().Pos, "anonymous functions can't have default values")
+			// As kotlinc, the function is kept, without the value.
+			p.next()
+			p.errorLater(p.tok().Pos, "anonymous functions can't have default values")
+			p.parseExpr()
 		}
 		l.Params = append(l.Params, lp)
 		if !p.comma() {

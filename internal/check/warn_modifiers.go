@@ -110,3 +110,16 @@ func (c *Checker) redundantModifiers(written []syntax.Mod) {
 		}
 	}
 }
+
+// uselessVarargs reports the parameters of anonymous function l written
+// vararg, which it ignores, as USELESS_VARARG_ON_PARAMETER.
+func uselessVarargs(c *Checker, l *syntax.Lambda) {
+	for _, p := range l.Params {
+		for _, w := range p.Mods {
+			if w.Name == "vararg" {
+				c.warnf(w.P, "USELESS_VARARG_ON_PARAMETER", "the 'vararg' modifier is ignored on parameters of anonymous functions")
+				break
+			}
+		}
+	}
+}

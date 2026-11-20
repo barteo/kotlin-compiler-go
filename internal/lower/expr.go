@@ -903,12 +903,13 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 		m := l.modifiers(child(p, psi.KindMODIFIER_LIST))
 		syntax.NoContexts(&m, "value parameters", l)
 		name := child(p, psi.KindIDENTIFIER)
-		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name)}
+		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name), Mods: m.Written, Annotations: m.Annotations}
 		if t := child(p, psi.KindTYPE_REFERENCE); t.Valid() {
 			lp.Type = l.typeRef(t)
 		}
 		if eq := child(p, psi.KindEQ); eq.Valid() {
-			l.fail(eq, "anonymous functions can't have default values")
+			// As kotlinc, the function is kept, without the value.
+			l.errorLater(l.pos(exprAfter(p, psi.KindEQ)), "anonymous functions can't have default values")
 		}
 		lam.Params = append(lam.Params, record(l, lp, p))
 	}

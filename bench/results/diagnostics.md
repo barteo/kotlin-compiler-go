@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2724 of the 3667 warnings the tests expect (74.3%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2734 of the 3667 warnings the tests expect (74.6%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -249,6 +249,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
 | `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 | 11 | 0 |
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
+| `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
 | `REDUNDANT_OPEN_IN_INTERFACE` | 9 | 9 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
 | `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
@@ -282,7 +283,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
 | `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
 | `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 |
-| `USELESS_VARARG_ON_PARAMETER` | 10 |
 | `DUPLICATE_BRANCH_CONDITION_IN_WHEN` | 9 |
 | `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 |
 | `REDUNDANT_NULLABLE` | 9 |
@@ -295,5 +295,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `UNNECESSARY_LATEINIT` | 7 |
 | `ANNOTATION_TARGETS_ONLY_IN_JAVA` | 6 |
 | `DSL_MARKER_APPLIED_TO_WRONG_TARGET` | 6 |
-| *43 more* | |
+| `INFERRED_INVISIBLE_VARARG_TYPE_ARGUMENT_WARNING` | 6 |
+| *42 more* | |
 

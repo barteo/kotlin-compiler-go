@@ -1553,6 +1553,11 @@ type LambdaParam struct {
 	Types  []*TypeRef // and their types, nil where omitted
 	Type   *TypeRef   // nil: from the expected type
 	Sym    *types.VarSym
+	// Mods are the modifiers written on an anonymous function's
+	// parameter, which ignores them: fun (vararg x: Int) {}, and
+	// Annotations its annotations, whose @Suppress the checker reads.
+	Mods        []Mod
+	Annotations []Annotation
 }
 
 // Lambda is a lambda literal: { x, y -> body } or { body }.

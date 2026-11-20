@@ -71,6 +71,9 @@ func (c *Checker) localWarnings() {
 				c.identityWarnings(n)
 			}
 		case *syntax.Lambda:
+			if n.Anon {
+				uselessVarargs(c, n)
+			}
 			if n.Ref != nil {
 				syntax.Inspect(n.Body, func(m any) bool {
 					if x, ok := m.(*syntax.Call); ok {
