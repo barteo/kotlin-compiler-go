@@ -868,6 +868,21 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 		}
 		lam.P, lam.AnonCtx = l.pos(m), l.contextParams(cs[0])
 	}
+	if tps := child(n, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
+		// As kotlinc, the function is kept, without them.
+		l.errorLater(l.pos(tps), "type parameters are not allowed for anonymous functions")
+		names := map[string]bool{}
+		for _, tp := range kids(tps) {
+			if tp.NumericKind() == psi.KindTYPE_PARAMETER {
+				names[ident(child(tp, psi.KindIDENTIFIER))] = true
+			}
+		}
+		for _, c := range kids(child(n, psi.KindTYPE_CONSTRAINT_LIST)) {
+			if ref := child(c, psi.KindREFERENCE_EXPRESSION); c.NumericKind() == psi.KindTYPE_CONSTRAINT && !names[ident(first(ref))] {
+				l.errorLater(l.pos(ref), "'%s' does not refer to a type parameter of this declaration", ident(first(ref)))
+			}
+		}
+	}
 	ps := child(n, psi.KindVALUE_PARAMETER_LIST)
 	if !ps.Valid() {
 		l.failAt(l.end(n), "expected '('")

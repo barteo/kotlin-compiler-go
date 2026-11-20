@@ -227,8 +227,6 @@ tests/funInterface/kt78942.kt	kt78942.kt:33	RETURN_TYPE_MISMATCH	nearby
 tests/funInterface/kt78942.kt	kt78942.kt:38	RETURN_TYPE_MISMATCH	nearby
 tests/funInterface/kt78942.kt	kt78942.kt:54	RETURN_TYPE_MISMATCH	nearby
 tests/functionAsExpression/FunctionType.kt	FunctionType.kt:31	INITIALIZER_TYPE_MISMATCH	missing-check
-tests/functionAsExpression/WithGenericParameters.kt	WithGenericParameters.kt:14	TYPE_PARAMETERS_NOT_ALLOWED	syntax-error
-tests/functionAsExpression/WithGenericParameters.kt	WithGenericParameters.kt:18	TYPE_PARAMETERS_NOT_ALLOWED	syntax-error
 tests/functionLiterals/ExpectedParametersTypesMismatch.kt	ExpectedParametersTypesMismatch.kt:16	CANNOT_INFER_VALUE_PARAMETER_TYPE	missing-check
 tests/functionLiterals/ExpectedParametersTypesMismatch.kt	ExpectedParametersTypesMismatch.kt:16	CANNOT_INFER_VALUE_PARAMETER_TYPE	missing-check
 tests/functionLiterals/ExpectedParametersTypesMismatch.kt	ExpectedParametersTypesMismatch.kt:26	CANNOT_INFER_VALUE_PARAMETER_TYPE	missing-check
@@ -710,10 +708,6 @@ tests/thisAndSuper/Super.kt	Super.kt:55	NOT_A_SUPERTYPE	syntax-error
 tests/typeAliasWithTypeArguments.kt	typeAliasWithTypeArguments.kt:14	CONSTRUCTOR_IN_INTERFACE	missing-check
 tests/typeAliasWithTypeArguments.kt	typeAliasWithTypeArguments.kt:78	MEMBER_PROJECTED_OUT	missing-check
 tests/typeAliasWithTypeArguments.kt	typeAliasWithTypeArguments.kt:83	UNRESOLVED_REFERENCE	missing-check
-tests/typeParameters/anonymousFunction.kt	anonymousFunction.kt:4	TYPE_PARAMETERS_NOT_ALLOWED	syntax-error
-tests/typeParameters/anonymousFunction.kt	anonymousFunction.kt:5	TYPE_PARAMETERS_NOT_ALLOWED	syntax-error
-tests/typeParameters/anonymousFunction.kt	anonymousFunction.kt:6	NAME_IN_CONSTRAINT_IS_NOT_A_TYPE_PARAMETER	syntax-error
-tests/typeParameters/anonymousFunction.kt	anonymousFunction.kt:6	TYPE_PARAMETERS_NOT_ALLOWED	syntax-error
 tests/typeParameters/deprecatedSyntax.kt	deprecatedSyntax.kt:3	DEPRECATED_TYPE_PARAMETER_SYNTAX	syntax-error
 tests/typealias/aliasToNotKnownAnnotation.kt	test.kt:2	UNRESOLVED_IMPORT	missing-check
 tests/typealias/aliasToNotKnownJavaAnnotation.kt	test.kt:2	UNRESOLVED_IMPORT	missing-check
