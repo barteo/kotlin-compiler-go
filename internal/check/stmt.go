@@ -1367,6 +1367,21 @@ func (c *Checker) assign(s *syntax.Assign) {
 			c.starWrite(s.Target, vt)
 		}
 		if v != nil {
+			if exactValue(s.Value) {
+				// As K2, x = a ?: b infers the elvis's type from x's, as
+				// a call whose result is @Exact: x is smart cast only to
+				// not null, if b can't be. kc keeps the smart cast to a
+				// platform type, as Java constants are where K2 knows
+				// them not null.
+				_, elvis := unchecked(s.Value).(*syntax.Binary)
+				switch {
+				case elvis && vt.P:
+				case elvis && vt.K != types.Invalid && !types.MayBeNull(vt):
+					vt = v.Type.NonNull()
+				default:
+					vt = v.Type
+				}
+			}
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
 			if slices.Contains(c.scope.vars, v) {
@@ -1660,4 +1675,26 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 	}
 	x.X, x.Prop, x.Builtin = recv, p, types.IsInitialized
 	return types.BoolType
+}
+
+// exactValue reports whether value x takes the type it's expected to,
+// not its own, as K2 infers it: an elvis a ?: b, unless b is of type
+// Nothing, or a call of a generic function whose result is annotated
+// @kotlin.internal.Exact.
+func exactValue(x syntax.Expr) bool {
+	switch x := unchecked(x).(type) {
+	case *syntax.Binary:
+		if x.Op != syntax.ELVIS || x.Y == nil {
+			return false
+		}
+		t := x.Y.Type()
+		return t.K != types.Nothing && t.K != types.Invalid
+	case *syntax.Call:
+		if x.Sym == nil || len(x.Sym.TypeParams) == 0 {
+			return false
+		}
+		d, ok := x.Sym.Decl.(*syntax.FunDecl)
+		return ok && d.Ret != nil && d.Ret.Exact
+	}
+	return false
 }
