@@ -357,6 +357,7 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		}
 		if b := child(c, psi.KindTYPE_REFERENCE); b.Valid() {
 			tp.Bounds = []*syntax.TypeRef{l.typeRef(b)}
+			tp.DeclBound = true
 		}
 		ps = append(ps, tp)
 	}
@@ -390,6 +391,7 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 			l.fail(ref, "'%s' does not refer to a type parameter of this declaration", name)
 		}
 		tp.Bounds = append(tp.Bounds, l.typeRef(child(c, psi.KindTYPE_REFERENCE)))
+		tp.WhereBound = true
 	}
 }
 

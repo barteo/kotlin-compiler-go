@@ -317,3 +317,90 @@ func (c *Checker) unreachable(p syntax.Pos) {
 		c.warnf(p, "UNREACHABLE_CODE", "unreachable code")
 	}
 }
+
+// classDeadCode reports the code of class d that can't run, and of the
+// classes nested in it, once: the initializers, init blocks and
+// secondary constructors' bodies that its initialization runs after a
+// property's initializer or an init block that always jumps, as with
+// kotlinc, which judges a class's initialization as one graph.
+func (c *Checker) classDeadCode(d *syntax.ClassDecl, done map[*syntax.ClassDecl]bool) {
+	if d == nil || done[d] || d.Generated || d.Synthetic {
+		return
+	}
+	done[d] = true
+	dead := false
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.ClassDecl:
+			c.classDeadCode(m, done)
+		case *syntax.PropDecl:
+			switch {
+			case m.Init == nil || m.Generated:
+			case dead:
+				c.deadInit(m.Init)
+			case m.DelegateOf != nil:
+				dead = c.cfgJumps(m.Init, false)
+			default:
+				dead = c.cfgJumps(m.Init, m.Type != nil && (m.Sym == nil || m.Sym.Type.K != types.Nothing))
+			}
+		case *syntax.InitBlock:
+			if dead {
+				c.deadBlock(m.Body)
+			} else {
+				dead = c.blockCFGJumps(m.Body)
+			}
+		}
+	}
+	if !dead {
+		return
+	}
+	for _, m := range d.Members {
+		if s, ok := m.(*syntax.SecondaryCtor); ok && s.Serial == nil {
+			// Its body runs after the class's initializers.
+			c.unreachable(s.P)
+			c.deadBlock(s.Body)
+		}
+	}
+}
+
+// deadInit reports the initializer or delegate e of a property, which
+// can't run, where kotlinc does: at its start and, of a lambda or a call
+// with a trailing one, as lazy { }, at the lambda's closing brace; of an
+// object expression, at the closing braces of its properties' lambdas,
+// and a delegate call's start.
+func (c *Checker) deadInit(e syntax.Expr) {
+	c.unreachable(syntax.StartPos(e))
+	if o, ok := e.(*syntax.ObjectExpr); ok && o.Decl != nil {
+		for _, m := range o.Decl.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Init != nil {
+				if l := trailingLambda(pd.Init); l != nil {
+					if _, call := pd.Init.(*syntax.Call); call {
+						c.unreachable(syntax.StartPos(pd.Init))
+					}
+					c.unreachable(l.Body.End)
+				}
+			}
+		}
+	} else if l := trailingLambda(e); l != nil {
+		c.unreachable(l.Body.End)
+	}
+	c.markDead(e)
+}
+
+// trailingLambda returns e if it is a lambda or an anonymous function,
+// or the lambda that call e takes last, or nil.
+func trailingLambda(e syntax.Expr) *syntax.Lambda {
+	switch e := e.(type) {
+	case *syntax.Lambda:
+		if e.Body != nil {
+			return e
+		}
+	case *syntax.Call:
+		if len(e.Args) > 0 {
+			if l, ok := e.Args[len(e.Args)-1].(*syntax.Lambda); ok && l.Body != nil {
+				return l
+			}
+		}
+	}
+	return nil
+}

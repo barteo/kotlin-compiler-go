@@ -17,9 +17,20 @@ import (
 func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	c.shadowWarnings()
+	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
+		// Before the walk, so that unreachableWarnings skips the blocks
+		// reported here.
+		deadClasses = map[*syntax.ClassDecl]bool{}
+		for _, d := range c.classes {
+			c.classDeadCode(d, deadClasses)
+		}
 	}
+	callees := map[*syntax.Member]bool{} // the members called, which reflectionWarning judges with the call
+	// refCalls are the calls that callable references are lambdas of, as
+	// s.toString() of s::toString, which aren't written.
+	refCalls := map[*syntax.Call]bool{}
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
 		c.divisionWarning(n)
@@ -28,20 +39,64 @@ func (c *Checker) localWarnings() {
 		}
 		switch n := n.(type) {
 		case *syntax.NotNull:
+			if l, ok := unchecked(n.X).(*syntax.Lambda); ok {
+				switch {
+				case l.Ref != nil:
+					c.warnf(n.P, "NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE", "Non-null assertion (!!) called on a callable reference expression.")
+				case !l.Anon:
+					c.warnf(n.P, "NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION", "Non-null assertion (!!) called on a lambda expression.")
+				}
+			}
 			if t := n.X.Type(); definitelyNonNull(t) && !c.maybeNull[n] && !lambdaLike(n.X) {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
+			if !callees[n] {
+				c.reflectionWarning(n, nil)
+			}
 			if n.Safe && n.X != nil {
 				if t := n.X.Type(); definitelyNonNull(t) {
 					c.warnf(n.P, "UNNECESSARY_SAFE_CALL", "unnecessary safe call on a non-null receiver of type '%s'", t)
 				}
 			}
 		case *syntax.Binary:
+			c.arrayEqualityWarning(n)
+			if c.u.extraWarnings || c.u.experimentalWarnings {
+				c.emptyRangeWarning(n)
+			}
 			c.binaryWarnings(n)
 			c.enumComparisonWarning(n)
 			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
 				c.identityWarnings(n)
+			}
+		case *syntax.Lambda:
+			if n.Ref != nil {
+				syntax.Inspect(n.Body, func(m any) bool {
+					if x, ok := m.(*syntax.Call); ok {
+						refCalls[x] = true
+					}
+					return true
+				})
+			}
+		case *syntax.Call:
+			c.atomicWarnings(n)
+			if !refCalls[n] {
+				c.conversionWarning(n)
+			}
+			if c.u.extraWarnings || c.u.experimentalWarnings {
+				c.emptyRangeWarning(n)
+			}
+			if m, ok := n.Fun.(*syntax.Member); ok && !n.Invoke {
+				callees[m] = true
+				c.reflectionWarning(m, n)
+			}
+		case *syntax.ObjectExpr:
+			if deadClasses != nil {
+				c.classDeadCode(n.Decl, deadClasses)
+			}
+		case *syntax.LocalClass:
+			if deadClasses != nil {
+				c.classDeadCode(n.Decl, deadClasses)
 			}
 		case *syntax.As:
 			c.castWarnings(n)
@@ -88,6 +143,23 @@ func (c *Checker) noteMaybeNull(n syntax.Expr, t types.Type) {
 		c.maybeNull = map[syntax.Expr]bool{}
 	}
 	c.maybeNull[n] = true
+}
+
+// unchecked returns e without the Checked nodes around it.
+func unchecked(e syntax.Expr) syntax.Expr {
+	for {
+		x, ok := e.(*syntax.Checked)
+		if !ok {
+			return e
+		}
+		e = x.X
+	}
+}
+
+// isNullLit reports whether e is the literal null.
+func isNullLit(e syntax.Expr) bool {
+	_, ok := unchecked(e).(*syntax.NullLit)
+	return ok
 }
 
 // lambdaLike reports whether x is a lambda or a callable reference,
@@ -148,24 +220,44 @@ func (c *Checker) binaryWarnings(x *syntax.Binary) {
 		if x.X == nil {
 			return
 		}
+		// As kotlinc's FirUselessElvisChecker: null ?: y, then a left
+		// operand that can't be null, then x ?: null.
+		if isNullLit(x.X) {
+			c.warnf(x.P, "USELESS_ELVIS_LEFT_IS_NULL", "Elvis operator (?:) is redundant if the left operand is always null.")
+			return
+		}
 		// A left operand of type Nothing never gives a value: kotlinc
 		// warns of the elvis too.
 		if t := x.X.Type(); (definitelyNonNull(t) || t.K == types.Nothing && !t.N) && !c.maybeNull[x] && !lambdaLike(x.X) {
 			c.warnf(x.P, "USELESS_ELVIS", "elvis operator (?:) always returns the left operand of non-nullable type '%s'", t)
+			return
+		}
+		if isNullLit(x.Y) && x.X.Type().K != types.Invalid && !lambdaLike(x.X) {
+			c.warnf(x.P, "USELESS_ELVIS_RIGHT_IS_NULL", "Elvis operator (?:) is redundant if the right operand is always null.")
 		}
 	}
 }
 
-// castWarnings reports a cast x as T of a value that is already of type T.
+// castWarnings reports a cast x as T of a value that is already of type
+// T, or x as? T of one of type T or, if x may be null, T?: as kotlinc, a
+// safe cast of a nullable value to its type's non-null form only checks
+// that it's not null.
 func (c *Checker) castWarnings(x *syntax.As) {
-	if x.Safe || x.X == nil {
+	if x.X == nil {
 		return
 	}
-	switch x.X.(type) {
-	case *syntax.Lambda, *syntax.NullLit, *syntax.IntLit, *syntax.DoubleLit, *syntax.FloatLit:
-		// A cast that gives a lambda, a reference or a literal its
-		// type changes what it is.
+	switch e := x.X.(type) {
+	case *syntax.Lambda, *syntax.NullLit:
+		// A cast that gives a lambda or a reference its type changes
+		// what it is.
 		return
+	case *syntax.IntLit:
+		// An integer literal takes the type it's cast to, 1 as Long,
+		// unless written as a Long (1L), which kotlinc reports as
+		// useless. 1 as Int is INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL.
+		if !e.Long || e.Unsigned || e.Val != int64(int32(e.Val)) {
+			return
+		}
 	case *syntax.Call:
 		// A generic call without type arguments may take them from the
 		// type the cast expects: foo() as String.
@@ -177,6 +269,9 @@ func (c *Checker) castWarnings(x *syntax.As) {
 	t, target := x.X.Type(), x.Target
 	if t.K == types.Invalid || target.K == types.Invalid || t.P || t.IsParam() || target.IsParam() {
 		return
+	}
+	if x.Safe && t.N {
+		target = target.Nullable()
 	}
 	if t.N != target.N || t != target && !c.sameType(t, target) {
 		return

@@ -64,6 +64,10 @@ type Universe struct {
 	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
 	// Options.ExplicitReturnTypes.
 	explicitAPI, explicitReturnTypes APIMode
+	// noReflection is set if kotlin-reflect isn't on the class path,
+	// whose ReflectionFactoryImpl the standard library's reflection uses
+	// if it is.
+	noReflection bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -269,8 +273,8 @@ type Checker struct {
 	// redundantElses are the whens whose else branch is redundant: see
 	// noteRedundantElse.
 	redundantElses map[*syntax.When]bool
-	// blockJumps are, with -Wextra, the blocks with a statement that
-	// always jumps, and its index: what follows it is unreachable.
+	// blockJumps are the blocks with a statement that always jumps, and
+	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
 	// deadBlocks are the blocks in code reported as unreachable.
 	deadBlocks map[*syntax.Block]bool
@@ -923,6 +927,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
 		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
+	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},

@@ -192,9 +192,12 @@ type TypeParam struct {
 	Variance types.Variance // Inv, Out or In
 	// Bounds are its upper bounds, none for Any?: the one declared with
 	// it, then those of the declaration's where clause, in their order.
-	Bounds  []*TypeRef
-	Sym     *types.TypeParamSym
-	Reified bool
+	Bounds []*TypeRef
+	// DeclBound is set if a bound is declared with it, and WhereBound if
+	// the where clause has one.
+	DeclBound, WhereBound bool
+	Sym                   *types.TypeParamSym
+	Reified               bool
 	// Annotations are the type parameter's annotations as written.
 	Annotations []Annotation
 	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.

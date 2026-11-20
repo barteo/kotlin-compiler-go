@@ -19,6 +19,13 @@ func (c *Checker) valueClass(d *syntax.ClassDecl) {
 		c.errorf(d.P, "value classes without '@JvmInline' annotation are not yet supported")
 	}
 	if d.Inline {
+		at := d.P
+		for _, m := range d.Written {
+			if m.Name == "inline" {
+				at = m.P
+			}
+		}
+		c.warnf(at, "INLINE_CLASS_DEPRECATED", "'inline' modifier is deprecated. Use 'value' instead.")
 		for _, a := range d.Annotations {
 			if a.Target == "" && a.Is("JvmInline") && !a.Implicit {
 				c.errorf(a.P, "'@JvmInline' annotation is applicable only to value classes")
