@@ -397,6 +397,10 @@ type Checker struct {
 	stubRejected [][2]types.Type
 	// stubRuns counts stubInference's runs.
 	stubRuns int
+	// pclaPoison are the builder lambdas whose variables stubInference
+	// couldn't infer because of an unresolved reference, by where the
+	// first one is (see poisonedRecv).
+	pclaPoison map[*syntax.Lambda]syntax.Pos
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call

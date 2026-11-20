@@ -303,6 +303,7 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 			}
 		}
 		if !c.extensionsGiveWay(t, id.Name, x) {
+			c.poisonedRecv(r, t, x, id)
 			c.rewriteFun(x, m)
 			return true
 		}

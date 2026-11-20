@@ -2185,7 +2185,15 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	clean := false
 	for _, sl := range group {
 		nc, nj, ne, nr, nruns := len(r.cons), len(r.joined), len(r.extra), len(c.stubRejected), c.stubRuns
-		ok, ambiguous, msgs := c.stubCheck(s, sl, r)
+		ok, ambiguous, msgs, unresolved := c.stubCheck(s, sl, r)
+		if !ok && !ambiguous && unresolved.Line > 0 && c.poisons(sl.l, unresolved) {
+			if c.pclaPoison == nil {
+				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
+			}
+			c.pclaPoison[sl.l] = unresolved
+		} else {
+			delete(c.pclaPoison, sl.l)
+		}
 		if ok || !ambiguous && rejectedOnly(msgs, c.stubRejected[nr:]) && c.stubRuns == nruns {
 			// Errors that are each a constraint that disagrees with
 			// those recorded (see rejectedOnly). Not in a lambda with
@@ -2310,7 +2318,7 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string) {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string, unresolved syntax.Pos) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
@@ -2348,9 +2356,83 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	}
 	for _, e := range c.errs[n:] {
 		msgs = append(msgs, e.Msg)
+		if unresolved.Line == 0 && strings.HasPrefix(e.Msg, "unresolved reference") {
+			unresolved = e.Pos
+		}
 	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean, ambiguous, msgs
+	return clean, ambiguous, msgs, unresolved
+}
+
+// poisonedRecv reports a call f() at p on the receiver r of a builder
+// lambda whose variables stubInference couldn't infer because of an
+// unresolved reference before p, as K2 does: the error is in the shared
+// constraint system of the builder's calls (PCLA), and every later call
+// of an extension on the receiver, of the builder's type with them, adds
+// constraints to it and is inapplicable (UNRESOLVED_REFERENCE_WRONG_RECEIVER).
+// A member of the builder's type, add(arr) in buildList, still resolves.
+// The lambda has an error already, so this rejects nothing kotlinc
+// compiles.
+func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id *syntax.Ident) {
+	name, p := id.Name, id.P
+	l, ok := r.owner.(*syntax.Lambda)
+	if !ok || c.trial != nil || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+		return
+	}
+	at, ok := c.pclaPoison[l]
+	if !ok || p.Line < at.Line || p.Line == at.Line && p.Col <= at.Col {
+		return
+	}
+	if !t.Has(func(u types.Type) bool { return u.K == types.Invalid }) {
+		return
+	}
+	c.errorf(p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", name)
+}
+
+// poisons reports whether the unresolved reference at p in builder
+// lambda l is the receiver of a call of a generic extension that takes
+// the lambda's this, MyUnresolvedClass().bar(this) for fun <V, Y>
+// V.bar(y: Y): K2 adds the call, which can't infer V, to the builder's
+// shared constraint system, and its error makes the extension calls on
+// the receiver after it inapplicable (see poisonedRecv). Another
+// unresolved reference, as MyUnresolvedClass().bar(1) or baz(this,
+// MyUnresolvedClass()), leaves them alone.
+func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
+	head := func(e syntax.Expr) syntax.Pos {
+		for {
+			switch y := e.(type) {
+			case *syntax.Call:
+				e = y.Fun
+			case *syntax.Member:
+				e = y.X
+			case *syntax.Ident:
+				return y.P
+			default:
+				return syntax.Pos{}
+			}
+		}
+	}
+	found := false
+	syntax.Inspect(l.Body, func(n any) bool {
+		x, ok := n.(*syntax.Call)
+		if !ok || found {
+			return !found
+		}
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || head(m.X) != p || !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool {
+			t, ok := a.(*syntax.This)
+			return ok && t.Label == ""
+		}) {
+			return true
+		}
+		for _, cl := range c.extCalleesFor(m.Name, types.Type{K: types.Any}.Nullable(), nil) {
+			if cl.f.Recv.K == types.TypeParam {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // rejectedOnly reports whether msgs, the errors of a lambda that
