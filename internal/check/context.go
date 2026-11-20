@@ -63,18 +63,36 @@ func (c *Checker) reservedContextError(p syntax.Pos) {
 	c.errorf(p, "context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use")
 }
 
+// paramClashes reports the context parameters ctxs and the value
+// parameters ps of a declaration that have the same name, at each, as
+// kotlinc: context(x: A, x: B), context(x: A) fun f(x: B), f(x: A, x: B).
+// Context parameters named _ don't clash.
+func (c *Checker) paramClashes(ctxs, ps []*syntax.Param) {
+	seen := map[string]syntax.Pos{}
+	report := func(p syntax.Pos, name string) {
+		if !c.hasErrorAt(p, "conflicting declarations") {
+			c.errorf(p, "conflicting declarations: %s", name)
+		}
+	}
+	for i, p := range slices.Concat(ctxs, ps) {
+		if i < len(ctxs) && p.Name == "_" {
+			continue
+		}
+		if q, ok := seen[p.Name]; ok {
+			report(q, p.Name)
+			report(p.P, p.Name)
+			continue
+		}
+		seen[p.Name] = p.P
+	}
+}
+
 // contextSyms resolves the types of context parameters ps and returns
 // their symbols.
 func (c *Checker) contextSyms(ps []*syntax.Param) []*types.VarSym {
 	var out []*types.VarSym
-	seen := map[string]bool{}
+	c.paramClashes(ps, nil)
 	for _, p := range ps {
-		if p.Name != "_" {
-			if seen[p.Name] {
-				c.errorf(p.P, "conflicting declarations: %s", p.Name)
-			}
-			seen[p.Name] = true
-		}
 		name := p.Name
 		if name == "_" {
 			// As kotlinc names its local: $context-Logger.
@@ -120,6 +138,10 @@ func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 		c.errorf(d.P, "a property with context parameters must have accessors or be abstract")
 	}
 	sym.Contexts = c.contextSyms(d.Contexts)
+	if d.Setter != nil && len(d.Setter.Params) == 1 && d.Setter.Params[0].P != d.Setter.P {
+		// A written setter's parameter, not the value of one kc makes.
+		c.paramClashes(d.Contexts, d.Setter.Params)
+	}
 	if d.Inline || d.InlineGetter || d.InlineSetter {
 		c.noinlineContexts(d.Contexts)
 	}

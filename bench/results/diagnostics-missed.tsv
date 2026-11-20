@@ -109,10 +109,6 @@ tests/contextParameters/declarationAndUsages/initializerInProperty.kt	initialize
 tests/contextParameters/declarationAndUsages/initializerInProperty.kt	initializerInProperty.kt:8	CONTEXT_PARAMETERS_WITH_BACKING_FIELD	nearby
 tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	inlineForTypeWithContext.kt:20	USAGE_IS_NOT_INLINABLE	syntax-error
 tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	inlineForTypeWithContext.kt:23	NON_LOCAL_RETURN_NOT_ALLOWED	syntax-error
-tests/contextParameters/declarationAndUsages/nameClashes.kt	nameClashes.kt:10	REDECLARATION	missing-check
-tests/contextParameters/declarationAndUsages/nameClashes.kt	nameClashes.kt:11	REDECLARATION	missing-check
-tests/contextParameters/declarationAndUsages/nameClashes.kt	nameClashes.kt:21	REDECLARATION	missing-check
-tests/contextParameters/declarationAndUsages/nameClashes.kt	nameClashes.kt:24	REDECLARATION	missing-check
 tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	visibilityOfContextTypeOnFunction.kt:41	INVISIBLE_REFERENCE	missing-check
 tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	visibilityOfContextTypeOnFunction.kt:49	INVISIBLE_REFERENCE	missing-check
 tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	visibilityOfContextTypeOnFunction.kt:57	INVISIBLE_REFERENCE	missing-check
@@ -122,8 +118,6 @@ tests/contextParameters/functionTypeWithNamedContextParametersEnabled.kt	functio
 tests/contextParameters/inline.kt	inline.kt:20	ILLEGAL_INLINE_PARAMETER_MODIFIER	missing-check
 tests/contextParameters/inline.kt	inline.kt:24	ILLEGAL_INLINE_PARAMETER_MODIFIER	missing-check
 tests/contextParameters/invoke.kt	invoke.kt:109	UNSUPPORTED_CONTEXTUAL_DECLARATION_CALL	missing-check
-tests/contextParameters/overloads/OverloadingByOrder.kt	OverloadingByOrder.kt:15	REDECLARATION	missing-check
-tests/contextParameters/overloads/OverloadingByOrder.kt	OverloadingByOrder.kt:42	REDECLARATION	missing-check
 tests/contextParameters/overloads/OverloadingByOrder.kt	OverloadingByOrder.kt:69	REDECLARATION	missing-check
 tests/contextParameters/overloads/OverloadingByOrder.kt	OverloadingByOrder.kt:70	REDECLARATION	missing-check
 tests/contextParameters/overrides/baseKotlinJavaOverride.kt	test.kt:18	ARGUMENT_TYPE_MISMATCH	missing-check
@@ -165,7 +159,6 @@ tests/crashOnPlusAssignWithUnresolvedInBuildList.kt	crashOnPlusAssignWithUnresol
 tests/cyclicHierarchy/kotlinJavaNestedCycle.kt	StorageManager.kt:2	CYCLIC_INHERITANCE_HIERARCHY	missing-check
 tests/cyclicHierarchy/withTypeAlias2.kt	withTypeAlias2.kt:14	RECURSIVE_TYPEALIAS_EXPANSION	missing-check
 tests/dataClasses/missingDependencyInSupertype.kt	missingDependencyInSupertype.kt:5	MISSING_DEPENDENCY_SUPERCLASS	missing-check
-tests/dataClasses/repeatedProperties.kt	repeatedProperties.kt:6	REDECLARATION	syntax-error
 tests/delegatedProperty/kt48546.kt	kt48546.kt:16	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
 tests/delegatedProperty/kt48546.kt	kt48546.kt:22	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
 tests/delegatedProperty/kt48546.kt	kt48546.kt:26	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
@@ -214,7 +207,6 @@ tests/diagnostics/nonConstValInAnnotationArgument.kt	nonConstValInAnnotationArgu
 tests/diagnostics/recursiveProblemWithSyntaxError.kt	recursiveProblemWithSyntaxError.kt:2	UNRESOLVED_REFERENCE	syntax-error
 tests/diagnostics/superNotAvailable.kt	superNotAvailable.kt:15	UNRESOLVED_REFERENCE	missing-check
 tests/diagnostics/superNotAvailable.kt	superNotAvailable.kt:19	UNRESOLVED_REFERENCE	missing-check
-tests/diagnostics/supertypeInitializedWithoutPrimaryConstructor.kt	supertypeInitializedWithoutPrimaryConstructor.kt:11	CONFLICTING_OVERLOADS	missing-check
 tests/diagnostics/typeOfAnnotationMember.kt	typeOfAnnotationMember.kt:9	INVALID_TYPE_OF_ANNOTATION_MEMBER	missing-check
 tests/dynamicTypes/withInvisibleSynthesized.kt	k.kt:9	ARGUMENT_PASSED_TWICE	nearby
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesPrioritized.kt	nameShadowingOfExternallyDefinedEntriesPrioritized.kt:25	UNRESOLVED_REFERENCE	missing-check
@@ -616,7 +608,6 @@ tests/objects/ObjectsNested.kt	ObjectsNested.kt:16	AMBIGUOUS_LABEL	missing-check
 tests/objects/localObjects.kt	localObjects.kt:9	UNRESOLVED_REFERENCE	syntax-error
 tests/operatorsOverloading/unresolvedOperator.kt	unresolvedOperator.kt:17	UNRESOLVED_REFERENCE	missing-check
 tests/operatorsOverloading/unresolvedOperator.kt	unresolvedOperator.kt:18	UNRESOLVED_REFERENCE	missing-check
-tests/overload/ConflictingOverloadsValsDifferentTypeInClass.kt	ConflictingOverloadsValsDifferentTypeInClass.kt:3	REDECLARATION	missing-check
 tests/overload/ConstructorVsFunOverload.kt	test.kt:29	CONFLICTING_OVERLOADS	missing-check
 tests/overload/disambiguateByFailedAbstractClassCheck.kt	test.kt:10	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/overload/disambiguateByFailedAbstractClassCheck.kt	test.kt:11	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
@@ -643,14 +634,7 @@ tests/propertyOfFinalClassSmartcastEdgeCases.kt	Kotlin.kt:37	CANNOT_CHECK_FOR_ER
 tests/redeclarations/DuplicateParameterNamesInFunctionType.kt	DuplicateParameterNamesInFunctionType.kt:10	DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE	missing-check
 tests/redeclarations/DuplicateParameterNamesInFunctionType.kt	DuplicateParameterNamesInFunctionType.kt:6	DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE	missing-check
 tests/redeclarations/EnumName.kt	EnumName.kt:5	DECLARATION_OF_ENUM_ENTRY_ENTRIES_ERROR	missing-check
-tests/redeclarations/RedeclarationInMultiFile.kt	a.kt:1	REDECLARATION	missing-check
-tests/redeclarations/RedeclaringPrivateToFile.kt	a.kt:10	REDECLARATION	missing-check
 tests/redeclarations/RedeclaringPrivateToFile.kt	a.kt:14	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
-tests/redeclarations/RedeclaringPrivateToFile.kt	a.kt:9	CONFLICTING_OVERLOADS	missing-check
-tests/redeclarations/RedeclaringPrivateToFile.kt	b.kt:6	CONFLICTING_OVERLOADS	missing-check
-tests/redeclarations/RedeclaringPrivateToFile.kt	b.kt:8	REDECLARATION	missing-check
-tests/redeclarations/kt2418.kt	kt2418.kt:18	REDECLARATION	missing-check
-tests/redeclarations/kt2418.kt	kt2418.kt:20	REDECLARATION	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:26	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:26	UNRESOLVED_REFERENCE	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:9	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
@@ -670,7 +654,6 @@ tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	twoLoops.kt:12	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	twoLoops.kt:12	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	twoLoops.kt:9	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
-tests/resolve/invoke/invokeOnRedeclaredProperty.kt	invokeOnRedeclaredProperty.kt:5	REDECLARATION	missing-check
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	2.kt:18	FUNCTION_CALL_EXPECTED	missing-check
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	2.kt:18	UNRESOLVED_REFERENCE	missing-check
 tests/resolve/invoke/wrongInvokeExtension.kt	wrongInvokeExtension.kt:15	CANNOT_INFER_PARAMETER_TYPE	missing-check
@@ -718,7 +701,6 @@ tests/scopes/visibility3.kt	file2.kt:5	INVISIBLE_REFERENCE	missing-check
 tests/secondaryConstructors/cyclicDelegationCalls.kt	cyclicDelegationCalls.kt:13	CYCLIC_CONSTRUCTOR_DELEGATION_CALL	missing-check
 tests/secondaryConstructors/cyclicDelegationCalls.kt	cyclicDelegationCalls.kt:17	CYCLIC_CONSTRUCTOR_DELEGATION_CALL	missing-check
 tests/secondaryConstructors/cyclicDelegationCalls.kt	cyclicDelegationCalls.kt:28	CYCLIC_CONSTRUCTOR_DELEGATION_CALL	missing-check
-tests/secondaryConstructors/headerSupertypeInitialization.kt	headerSupertypeInitialization.kt:5	CONFLICTING_OVERLOADS	missing-check
 tests/secondaryConstructors/propertyInitializationWithoutPrimary.kt	propertyInitializationWithoutPrimary.kt:27	VAL_REASSIGNMENT	missing-check
 tests/settersGetters.kt	settersGetters.kt:6	ASSIGNMENT_TYPE_MISMATCH	missing-check
 tests/smartCasts/booleans/booleanOperators.kt	booleanOperators.kt:88	UNRESOLVED_REFERENCE	missing-check
@@ -862,8 +844,6 @@ testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	exte
 testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	extensionWithNonValuableConstraints.kt:55	ARGUMENT_TYPE_MISMATCH	nearby
 testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	extensionWithNonValuableConstraints.kt:55	UNRESOLVED_REFERENCE_WRONG_RECEIVER	nearby
 testsWithStdLib/coroutines/inference/suspendCallsWrongUpperBound.kt	suspendCallsWrongUpperBound.kt:11	ARGUMENT_TYPE_MISMATCH	missing-check
-testsWithStdLib/coroutines/suspendConflictsWithNoSuspend.kt	main.kt:2	CONFLICTING_OVERLOADS	missing-check
-testsWithStdLib/coroutines/suspendConflictsWithNoSuspend.kt	main.kt:3	CONFLICTING_OVERLOADS	missing-check
 testsWithStdLib/coroutines/suspensionPointInMonitorNewInf.kt	suspensionPointInMonitorNewInf.kt:37	SUSPENSION_POINT_INSIDE_CRITICAL_SECTION	missing-check
 testsWithStdLib/coroutines/tryCatchLambda.kt	tryCatchLambda.kt:11	RETURN_TYPE_MISMATCH	nearby
 testsWithStdLib/errorsInUnreachable.kt	errorsInUnreachable.kt:8	UNINITIALIZED_VARIABLE	missing-check
@@ -895,7 +875,6 @@ testsWithStdLib/pcla/typeVariableShouldNotBeFixed.kt	spr/foo.kt:18	CANNOT_INFER_
 testsWithStdLib/pcla/unsafeAssignmentExtra.kt	unsafeAssignmentExtra.kt:31	NONE_APPLICABLE	missing-check
 testsWithStdLib/pcla/unsafeAssignmentExtra.kt	unsafeAssignmentExtra.kt:35	NONE_APPLICABLE	missing-check
 testsWithStdLib/pcla/unsafeAssignmentExtra.kt	unsafeAssignmentExtra.kt:68	INAPPLICABLE_CANDIDATE	nearby
-testsWithStdLib/problems.kt	problems.kt:17	REDECLARATION	missing-check
 testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	backingFieldWithContextParameter.kt:4	CONTEXT_PARAMETERS_WITH_BACKING_FIELD	nearby
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:12	OPT_IN_MARKER_ON_WRONG_TARGET	missing-check
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:17	OPT_IN_USAGE_ERROR	missing-check
@@ -915,5 +894,4 @@ testsWithStdLib/reified/arrayConstruction.kt	arrayConstruction.kt:13	TYPE_PARAME
 testsWithStdLib/repeatedAnnotations.kt	test.kt:15	REPEATED_ANNOTATION	missing-check
 testsWithStdLib/streams/wrongNullabilityWithoutWrtHack.kt	wrongNullabilityWithoutWrtHack.kt:18	RETURN_TYPE_MISMATCH	missing-check
 testsWithStdLib/tryCatch/assignTry.kt	assignTry.kt:8	INITIALIZER_TYPE_MISMATCH	missing-check
-testsWithStdLib/tryCatch/catchRedeclaration.kt	catchRedeclaration.kt:38	REDECLARATION	missing-check
 testsWithStdLib/tryCatch/tryExpression.kt	tryExpression.kt:29	RETURN_TYPE_MISMATCH	nearby

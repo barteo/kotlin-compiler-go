@@ -2080,12 +2080,8 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
 	}
-	seen := map[string]bool{}
+	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
-		if seen[p.Name] {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
-		}
-		seen[p.Name] = true
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}

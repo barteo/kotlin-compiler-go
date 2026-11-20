@@ -43,7 +43,7 @@ fun noContext() = Holder().p // ERROR no context argument for 'a: Logger' found
 context(a: Logger)
 val twin: String get() = a.name
 
-val twin: String get() = "plain"
+val twin: String get() = "plain" // ERROR conflicting declarations: twin
 
 val twin: Int get() = 1 // ERROR conflicting declarations: twin
 
@@ -65,7 +65,7 @@ class Square : Shape { // ERROR class 'Square' is not abstract and does not impl
 abstract class Fn : context(Logger) () -> Unit // ERROR extension function type or function type with context parameters is not allowed as supertype
 
 context(a: Logger, b: Holder)
-val ordered: String get() = ""
+val ordered: String get() = "" // ERROR conflicting declarations: ordered
 
 context(b: Holder, a: Logger)
 val ordered: String get() = "" // ERROR conflicting declarations: ordered

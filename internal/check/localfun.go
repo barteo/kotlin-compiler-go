@@ -70,12 +70,8 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.declareRecv(d) // a local extension function
 	}
 	c.declareContexts(d, sym)
-	names := map[string]bool{}
+	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
-		if names[p.Name] {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
-		}
-		names[p.Name] = true
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}

@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -225,10 +226,10 @@ func stringArray(t types.Type) bool {
 // sameSignature reports whether overloads a and b take the same
 // receiver, context parameters and parameters, with the same type
 // parameters, which correspond by position: kotlinc doesn't tell them
-// apart by what they return.
+// apart by what they return, nor by suspend.
 func sameSignature(a, b *overload) bool {
 	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.ctx) != len(b.ctx) ||
-		len(a.params) != len(b.params) || a.vararg != b.vararg || a.suspend != b.suspend {
+		len(a.params) != len(b.params) || a.vararg != b.vararg {
 		return false
 	}
 	s := types.Subst{}
@@ -296,13 +297,18 @@ func overloadConflicts(ovs []overload, reported map[any]bool) {
 			switch {
 			case a.ctor && b.ctor, // a class's, which resolveSecondaries reports
 				a.decl == b.decl,
-				a.c != b.c && (a.private || b.private || a.main && b.main),
+				a.c != b.c && (a.private && b.private || a.main && b.main),
 				(a.hidden || b.hidden) && !a.open && !b.open,
 				a.low != b.low,
 				!sameSignature(a, b):
 				continue
 			}
 			for _, o := range []*overload{a, b} {
+				if a.c != b.c && a.private != b.private && !o.private {
+					// A private one of one file, and another file's: kotlinc
+					// reports the private one.
+					continue
+				}
 				if o.fun != nil {
 					o.c.u.conflicted[o.fun] = true
 				}
@@ -389,7 +395,76 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 				}
 			}
 		}
+		if !a.entry {
+			propRedeclarations(a, decls, byName[a.name], reported)
+		}
 	}
+}
+
+// propRedeclarations reports property a where it is declared if it
+// conflicts with another of decls (by index is): an enum's entry, or a
+// property of its file kc reported where that one is declared (see
+// declare and declareClass), or one of another file of the package, where
+// a private property conflicts with one that isn't and is reported alone.
+func propRedeclarations(a *namedDecl, decls []namedDecl, is []int, reported map[any]bool) {
+	for _, j := range is {
+		b := &decls[j]
+		if b == a || !b.prop || a.hidden || b.hidden {
+			continue
+		}
+		msg := "conflicting declarations"
+		switch {
+		case b.entry:
+			// An enum's entry and a property: both.
+			msg = "redeclaration"
+			if !reported[b.decl] && !b.c.hasErrorAt(b.pos, msg) {
+				reported[b.decl] = true
+				b.c.errorf(b.pos, "%s: %s", msg, b.name)
+			}
+		case a.c == b.c:
+			if !b.c.hasErrorAt(b.pos, "conflicting declarations") || !propsConflict(a.decl, b.decl) {
+				continue
+			}
+		case a.private && b.private, !a.private && b.private, !propsConflict(a.decl, b.decl):
+			continue
+		}
+		if !reported[a.decl] && !a.c.hasErrorAt(a.pos, "conflicting declarations") && !a.c.hasErrorAt(a.pos, "redeclaration") {
+			reported[a.decl] = true
+			a.c.errorf(a.pos, "%s: %s", msg, a.name)
+		}
+	}
+}
+
+// propsConflict reports whether properties (or constructor parameters)
+// a and b of a name conflict: their context parameters' types are the
+// same, in any order if neither is hidden (see altProp).
+func propsConflict(a, b any) bool {
+	ctx := func(d any) ([]string, string, bool) {
+		pd, ok := d.(*syntax.PropDecl)
+		if !ok {
+			return nil, "", false
+		}
+		var tps strings.Builder // the type parameters' bounds
+		for _, tp := range pd.TypeParams {
+			tps.WriteString("<")
+			for _, b := range tp.Bounds {
+				typeKey(&tps, b)
+				tps.WriteString(",")
+			}
+		}
+		ctx := contextTypes(pd)
+		for i, q := range pd.Contexts {
+			if q.Type.And != nil { // T & Any isn't T
+				var b strings.Builder
+				typeKey(&b, q.Type.And)
+				ctx[i] += "&" + b.String()
+			}
+		}
+		return ctx, tps.String(), pd.Hidden()
+	}
+	x, xt, xh := ctx(a)
+	y, yt, yh := ctx(b)
+	return xt == yt && (slices.Equal(x, y) || !xh && !yh && slices.Equal(sorted(x), sorted(y)))
 }
 
 // hasErrorAt reports whether the file has an error at p whose message
