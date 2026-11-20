@@ -579,3 +579,9 @@ func TestWarningsContextualShadowing(t *testing.T) {
 func TestWarningsRedundantVisibility(t *testing.T) {
 	checkReference(t, "testdata/visibility.kt", Options{Warnings: true, ExtraWarnings: true})
 }
+
+// TestWarningsEqualityNotApplicable checks the comparisons of smart-cast
+// values against kotlinc's warnings of testdata/equality.kt.
+func TestWarningsEqualityNotApplicable(t *testing.T) {
+	checkReference(t, "testdata/equality.kt", Options{Warnings: true})
+}

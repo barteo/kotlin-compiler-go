@@ -1482,6 +1482,10 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	n := len(c.errs)
 	if xn, yn := xt.Flex().NonNull(), yt.Flex().NonNull(); xn.IsNumeric() && yn.IsNumeric() && xn != yn {
 		if t := c.equality(x.P, syntax.EQ, dx, dy); t.K != types.Invalid {
+			if x.Op == syntax.EQ || x.Op == syntax.NE {
+				// Inapplicable to the smart-cast types: kotlinc warns.
+				c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
+			}
 			t = types.Wider(xn, yn)
 			if types.MayBeNull(xt) || types.MayBeNull(yt) {
 				t = t.Nullable()
@@ -1496,7 +1500,14 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	m := len(c.errs)
 	if t := c.equality(x.P, x.Op, dx, dy); t.K != types.Invalid {
 		// Compared as the declared types: the operands are read as those.
+		// As kotlinc, a comparison inapplicable only to the smart-cast
+		// types is EQUALITY_NOT_APPLICABLE_WARNING, but of enums or of
+		// values without identity.
+		general := m == n+1 && strings.HasPrefix(c.errs[n].Msg, "operator '") && c.generalEquality(x.Op, xt, yt)
 		c.errs = c.errs[:n]
+		if general {
+			c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
+		}
 		for _, e := range []syntax.Expr{x.X, x.Y} {
 			if id, ok := e.(*syntax.Ident); ok && id.Cast {
 				id.Cast = false
@@ -1507,6 +1518,21 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	}
 	c.errs = c.errs[:m]
 	return types.InvalidType
+}
+
+// generalEquality reports whether kotlinc's diagnostic of comparing
+// values of types xt and yt with op, if it is inapplicable, is
+// EQUALITY_NOT_APPLICABLE: not of enums, nor an identity comparison of a
+// value without identity.
+func (c *Checker) generalEquality(op syntax.Kind, xt, yt types.Type) bool {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	if c.enumType(x) || c.enumType(y) {
+		return false
+	}
+	if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
+		return !x.IsPrimitive() && !y.IsPrimitive() && !types.IsValue(x) && !types.IsValue(y)
+	}
+	return true
 }
 
 // originalType returns the type of x, of type t, before smart casts: a

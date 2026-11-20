@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2866 of the 3667 warnings the tests expect (78.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2878 of the 3667 warnings the tests expect (78.5%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -244,6 +244,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 | 18 | 0 |
 | `DEPRECATED_JAVA_ANNOTATION` | 16 | 16 | 0 |
 | `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 | 12 | 0 |
+| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 12 | 0 |
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 9 | 0 |
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
@@ -278,7 +279,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
-| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
@@ -304,5 +304,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `SYNCHRONIZED_ON_INLINE` | 5 |
 | `DSL_MARKER_PROPAGATES_TO_MANY` | 4 |
 | `TRIM_MARGIN_BLANK_PREFIX` | 4 |
-| *34 more* | |
+| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 |
+| *33 more* | |
 
