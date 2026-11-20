@@ -518,6 +518,7 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 			continue
 		}
 		c.Args = append(c.Args, l.expr(first(a)))
+		c.TrailingNL = args.Valid() && newLineBefore(a)
 		trailing = true
 	}
 	if !args.Valid() && !trailing {

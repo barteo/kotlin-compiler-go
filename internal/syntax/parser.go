@@ -2671,7 +2671,10 @@ func (p *parser) parsePostfix() Expr {
 	if inParens {
 		paren = x
 	}
+	nlLambda := false // the brace is on a new line, after the call
 	for {
+		nl := nlLambda
+		nlLambda = false
 		switch t := p.tok(); t.Kind {
 		case LPAREN:
 			x = p.parseCall(x, nil)
@@ -2702,10 +2705,12 @@ func (p *parser) parsePostfix() Expr {
 				// As with kotlinc, a lambda on the next line after a
 				// call's arguments is a trailing lambda: Kotlin has no
 				// blocks as statements.
+				nlLambda = true
 			default:
 				return x
 			}
 			p.skipNL()
+			continue
 		case DOT, SAFE_DOT:
 			op := p.next()
 			p.skipNL()
@@ -2807,6 +2812,7 @@ func (p *parser) parsePostfix() Expr {
 			}
 			fn.Args = append(fn.Args, l)
 			fn.trailing = true
+			fn.TrailingNL = nl && ok
 			LabelLambdas(fn)
 		default:
 			return x

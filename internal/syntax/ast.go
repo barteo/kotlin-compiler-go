@@ -1441,6 +1441,13 @@ type Call struct {
 	SAM      bool // Runnable { ... }: the value is the lambda argument
 	Infix    bool // a f b, which is a.f(b)
 	Literal  bool // [a, b], a collection literal, which is arrayOf(a, b)
+	// TrailingNL is set on a call whose trailing lambda is on a line
+	// after the call's: f()\n{ }.
+	TrailingNL bool
+	// Dropped is set by the checker on such a call that takes no lambda
+	// there: the lambda, which isn't an argument, and is reported
+	// wherever the call is checked.
+	Dropped Expr
 	Recv     bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
 	// Outer is set by the checker on a call of an inner class's
 	// constructor: the instance of the outer class it is in, which the
@@ -1494,6 +1501,11 @@ type Call struct {
 // parameter: a lambda after the parentheses, or the value of an indexed
 // assignment's call of set (see PassLast).
 func (c *Call) Trailing() bool { return c.trailing }
+
+// DropTrailing removes the call's trailing lambda (see Call.Dropped).
+func (c *Call) DropTrailing() {
+	c.Dropped, c.Args, c.trailing = c.Args[len(c.Args)-1], c.Args[:len(c.Args)-1], false
+}
 
 // PassLast makes the last argument go to the last parameter, as an
 // indexed assignment's value goes to set's: a[i] = v passes v after the

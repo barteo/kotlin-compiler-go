@@ -415,7 +415,7 @@ tests/annotations/rendering/memberProjectedOut.kt	rejects invalid	on an expected
 tests/annotations/rendering/multipleInheritedDefaults.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/notImplementedMembers.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/notImplementedMembersAroundJava.kt	rejects invalid	on an expected line	
-tests/annotations/rendering/tooManyArguments.kt	rejects invalid	elsewhere	
+tests/annotations/rendering/tooManyArguments.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchDueToTypeProjections.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchOnOverride.kt	rejects invalid	on an expected line	
 tests/annotations/rendering/typeMismatchOnOverrideJavaNullable.kt	rejects invalid	on an expected line	

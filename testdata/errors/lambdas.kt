@@ -84,3 +84,22 @@ fun declaredParamContradicted() {
     sameInOut { s: String -> 1 } // ERROR type mismatch: inferred type is Int but String was expected
     sameInOut { _: String -> } // ERROR type mismatch: inferred type is Unit but String was expected
 }
+
+// A lambda on the line after a call that takes none isn't its argument:
+// the call is resolved without it. One too many arguments is reported
+// where it is, after the others are checked.
+fun noArgs() {}
+fun oneArg(i: Int) {}
+fun varargs(vararg xs: Int) {}
+
+fun newLineLambdas(): Int {
+    noArgs()
+    {} // ERROR unexpected trailing lambda on a new line
+    oneArg(
+        "", // ERROR type mismatch: inferred type is String but Int was expected
+        2 // ERROR no function 'oneArg' takes 2 arguments
+    )
+    varargs(1, 2) {} // ERROR passing value as a vararg is only allowed inside a parenthesized argument list
+    return noArgs() // ERROR type mismatch: inferred type is Unit but Int was expected
+    { } // ERROR unexpected trailing lambda on a new line
+}
