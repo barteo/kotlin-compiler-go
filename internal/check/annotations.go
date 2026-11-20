@@ -213,6 +213,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, a.TypeArgs, args, a.P)
 		c.state, c.lookupCls = saved, savedLookup
+		if !quiet {
+			c.annotationSpreads(cls, args, a.Args)
+		}
 		if vrec != nil {
 			vrec.AnnotationValues(c.file, a, values)
 		}

@@ -171,7 +171,7 @@ fun f(s: String, a: Any) {
     g<String>() as String
     val x = g() as String
     1 as Int
-}`, []string{"4:USELESS_CAST", "6:USELESS_CAST"}},
+}`, []string{"4:USELESS_CAST", "6:USELESS_CAST", "8:INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL"}},
 		{"generics and platform types", `
 fun <T> f(t: T, v: T, u: List<T>) {
     t?.hashCode()
@@ -536,4 +536,74 @@ func TestWarningsSupertypeParamNames(t *testing.T) {
 // testdata/delegationhides.kt.
 func TestWarningsDelegationHides(t *testing.T) {
 	checkReference(t, "testdata/delegationhides.kt", Options{Warnings: true})
+}
+
+// TestWarningsModifiers checks the warnings of modifiers that have no
+// effect or are redundant against kotlinc's of testdata/modifiers.kt.
+func TestWarningsModifiers(t *testing.T) {
+	checkReference(t, "testdata/modifiers.kt", Options{Warnings: true})
+}
+
+// TestWarningsDuplicateConditions checks the warnings of conditions that
+// a when's branches repeat against kotlinc's of testdata/whendup.kt.
+func TestWarningsDuplicateConditions(t *testing.T) {
+	checkReference(t, "testdata/whendup.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantSpread checks the warnings of spread operators in
+// named arguments against kotlinc's of testdata/spread.kt.
+func TestWarningsRedundantSpread(t *testing.T) {
+	checkReference(t, "testdata/spread.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantNullable checks REDUNDANT_NULLABLE against
+// testdata/nullable.kt.
+func TestWarningsRedundantNullable(t *testing.T) {
+	checkReference(t, "testdata/nullable.kt", Options{Warnings: true})
+}
+
+// TestWarningsExprBodyReturn checks the returns of functions with an
+// expression body against kotlinc's warnings of testdata/exprret.kt.
+func TestWarningsExprBodyReturn(t *testing.T) {
+	checkReference(t, "testdata/exprret.kt", Options{Warnings: true})
+}
+
+// TestWarningsContextualShadowing checks CONTEXTUAL_OVERLOAD_SHADOWED
+// against kotlinc's warnings of testdata/ctxshadow.kt.
+func TestWarningsContextualShadowing(t *testing.T) {
+	checkReference(t, "testdata/ctxshadow.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantVisibility checks REDUNDANT_VISIBILITY_MODIFIER,
+// with -Wextra, against kotlinc's warnings of testdata/visibility.kt.
+func TestWarningsRedundantVisibility(t *testing.T) {
+	checkReference(t, "testdata/visibility.kt", Options{Warnings: true, ExtraWarnings: true})
+}
+
+// TestWarningsEqualityNotApplicable checks the comparisons of smart-cast
+// values against kotlinc's warnings of testdata/equality.kt.
+func TestWarningsEqualityNotApplicable(t *testing.T) {
+	checkReference(t, "testdata/equality.kt", Options{Warnings: true})
+}
+
+// TestWarningsWeakerSetter checks CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING
+// against kotlinc's warnings of testdata/weaken.kt.
+func TestWarningsWeakerSetter(t *testing.T) {
+	checkReference(t, "testdata/weaken.kt", Options{Warnings: true})
+}
+
+func TestWarningsSynchronizedOnInline(t *testing.T) {
+	checkReference(t, "testdata/synchronized.kt", Options{Warnings: true})
+}
+
+func TestWarningsJavaClassOnCompanion(t *testing.T) {
+	checkReference(t, "testdata/javaclass.kt", Options{Warnings: true})
+}
+
+func TestWarningsUselessCallOnNotNull(t *testing.T) {
+	checkReference(t, "testdata/uselesscall.kt", Options{Warnings: true, ExtraWarnings: true})
+}
+
+func TestWarningsDangerousCharacters(t *testing.T) {
+	checkReference(t, "testdata/dangerous.kt", Options{Warnings: true})
 }

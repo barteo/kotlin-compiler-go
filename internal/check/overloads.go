@@ -32,6 +32,7 @@ type overload struct {
 	vararg  int // the index of the vararg parameter, or -1
 	suspend bool
 	ctor    bool
+	prop    bool // a property, which contextualShadowing compares too
 	// private is set on a private one, which doesn't conflict with those
 	// of other files.
 	private bool
@@ -76,6 +77,10 @@ func conflicts(checkers []*Checker) {
 		}
 		overloadConflicts(ovs, reported)
 		redeclarations(decls, reported)
+		for _, c := range pkgs[name] {
+			ovs = c.propOverloads(ovs, c.file.Decls, nil)
+		}
+		contextualShadowing(ovs, false)
 	}
 	for _, c := range checkers {
 		for _, d := range c.classes {
@@ -105,6 +110,7 @@ func conflicts(checkers []*Checker) {
 			overloadConflicts(ovs, reported)
 			redeclarations(decls, reported)
 			c.inheritedConflicts(d, reported)
+			contextualShadowing(c.propOverloads(ovs, d.Members, d), true)
 		}
 	}
 	classNames(checkers)
@@ -228,9 +234,17 @@ func stringArray(t types.Type) bool {
 // parameters, which correspond by position: kotlinc doesn't tell them
 // apart by what they return, nor by suspend.
 func sameSignature(a, b *overload) bool {
-	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.ctx) != len(b.ctx) ||
+	_, ok := signatureMatch(a, b, true)
+	return ok
+}
+
+// signatureMatch is sameSignature, but of context parameters only if
+// ctx, which also returns the substitution of b's type parameters by
+// a's.
+func signatureMatch(a, b *overload, ctx bool) (types.Subst, bool) {
+	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || ctx && len(a.ctx) != len(b.ctx) ||
 		len(a.params) != len(b.params) || a.vararg != b.vararg {
-		return false
+		return nil, false
 	}
 	s := types.Subst{}
 	for i, p := range b.tparams {
@@ -243,7 +257,7 @@ func sameSignature(a, b *overload) bool {
 		// The same bounds, in any order.
 		q := b.tparams[i]
 		if len(p.Bounds) != len(q.Bounds) {
-			return false
+			return nil, false
 		}
 		for _, x := range p.Bounds {
 			found := false
@@ -251,17 +265,20 @@ func sameSignature(a, b *overload) bool {
 				found = found || same(x, y)
 			}
 			if !found {
-				return false
+				return nil, false
 			}
 		}
 	}
 	if a.recv != nil && !same(*a.recv, *b.recv) {
-		return false
+		return nil, false
 	}
 	// The same context parameters' types, in any order: a call passes
 	// them by type.
 	used := make([]bool, len(b.ctx))
 	for _, x := range a.ctx {
+		if !ctx {
+			break
+		}
 		found := false
 		for j, y := range b.ctx {
 			if !used[j] && same(x, y) {
@@ -270,15 +287,15 @@ func sameSignature(a, b *overload) bool {
 			}
 		}
 		if !found {
-			return false
+			return nil, false
 		}
 	}
 	for i := range a.params {
 		if !same(a.params[i], b.params[i]) {
-			return false
+			return nil, false
 		}
 	}
-	return true
+	return s, true
 }
 
 // overloadConflicts reports the overloads of one scope that conflict.

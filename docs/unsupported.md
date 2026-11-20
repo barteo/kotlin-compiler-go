@@ -39,7 +39,22 @@ own tests.
   `PROPERTY_HIDES_JAVA_FIELD`, `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY`,
   `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY`,
   `NO_REFLECTION_IN_CLASS_PATH`, `DIVISION_BY_ZERO`,
-  `REDUNDANT_ELSE_IN_WHEN`, `INCOMPATIBLE_ENUM_COMPARISON` and, in
+  `REDUNDANT_ELSE_IN_WHEN`, `INCOMPATIBLE_ENUM_COMPARISON`,
+  `NON_FINAL_MEMBER_IN_FINAL_CLASS`, `NON_FINAL_MEMBER_IN_OBJECT`,
+  `REDUNDANT_OPEN_IN_INTERFACE`, `REDUNDANT_MODIFIER`,
+  `USELESS_VARARG_ON_PARAMETER`, `DUPLICATE_BRANCH_CONDITION_IN_WHEN`,
+  `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION`,
+  `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION`,
+  `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL`, `REDUNDANT_NULLABLE`,
+  `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING`,
+  `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
+  types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
+  (of smart-cast values, not of enums nor an identity comparison of a
+  value without identity), `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` (of
+  an inherited var's setter), `SYNCHRONIZED_ON_INLINE`,
+  `JAVA_CLASS_ON_COMPANION` (not through an alias of a built-in type),
+  `DANGEROUS_CHARACTERS` (not of a function type's parameter names, nor
+  of a destructuring `for` loop's) and, in
   explicit API warning mode, `NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING`
   and `NO_EXPLICIT_RETURN_TYPE_IN_API_MODE_WARNING`; and those only
   where the types make them certain, so that `-Werror` doesn't reject
@@ -77,7 +92,10 @@ own tests.
   `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
   statement that may read the value comes before it is overwritten or
   out of scope, through `if` and `when` but not loops or `try`, and
-  never for a variable a lambda or a local function uses; and with
+  never for a variable a lambda or a local function uses,
+  `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
+  on an override of a member that inherits its visibility, and
+  `USELESS_CALL_ON_NOT_NULL`, but not of a callable reference; and with
   `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
   `@Suppress` silences a warning by its name, or all of them with
   `"warnings"`.

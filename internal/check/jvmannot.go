@@ -133,7 +133,7 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.overloads(&d.Modifiers, owner)
-		c.synchronized(&d.Modifiers, owner, "")
+		c.synchronized(&d.Modifiers, owner, "", d.Inline)
 		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
 			c.errorf(a.P, inapplicableJvmName)
 		}
@@ -153,13 +153,13 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				}
 			}
 		}
-		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
+		for i, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
-				c.synchronized(&acc.Modifiers, owner, "")
+				c.synchronized(&acc.Modifiers, owner, "", d.Inline || acc.Inline || i == 0 && d.InlineGetter || i == 1 && d.InlineSetter)
 			}
 		}
-		c.synchronized(&d.Modifiers, owner, "get")
-		c.synchronized(&d.Modifiers, owner, "set")
+		c.synchronized(&d.Modifiers, owner, "get", d.Inline || d.InlineGetter)
+		c.synchronized(&d.Modifiers, owner, "set", d.Inline || d.InlineSetter)
 		c.jvmFieldApplicable(d, owner)
 		if d.Field != nil {
 			if a := d.Find("delegate", "JvmSynthetic"); a != nil {
@@ -267,10 +267,19 @@ func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym) {
 }
 
 // synchronized checks the @Synchronized, with use-site target target, of
-// a member of owner with modifiers m.
-func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string) {
+// a function or accessor of owner (nil at top level) with modifiers m,
+// inline if it is inline or an inline property's accessor.
+func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string, inline bool) {
 	a := m.Find(target, "Synchronized")
-	if a == nil || owner == nil {
+	if a == nil {
+		return
+	}
+	if inline {
+		// SYNCHRONIZED_ON_INLINE: an inline function's body is copied
+		// into its callers without the lock.
+		c.warnf(a.P, "SYNCHRONIZED_ON_INLINE", "'@Synchronized' annotation has no effect on inline functions")
+	}
+	if owner == nil {
 		return
 	}
 	switch {

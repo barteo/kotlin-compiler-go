@@ -317,6 +317,12 @@ func (c *Checker) codeSuppressRanges(rs []suppressRange) []suppressRange {
 			for _, m := range n.Decl.Members {
 				rs = suppressRanges(m, rs)
 			}
+		case *syntax.Lambda:
+			for _, p := range n.Params {
+				if len(p.Annotations) > 0 {
+					rs = annotationsRange(rs, p.Annotations, p.P, syntax.Pos{Line: p.P.Line, Col: 1 << 30})
+				}
+			}
 		}
 		if as, ok := c.file.Annotated[n]; ok {
 			rs = annotationsRange(rs, as, nodePos(n), nodeEnd(n))

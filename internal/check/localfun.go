@@ -95,6 +95,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.errorf(d.P, "conflicting overloads: %s", d.Name)
 	} else {
 		c.localCtorConflicts(sym, d, saved.scope)
+		c.localShadowing(saved.scope, sym, d)
 	}
 
 	frame := &syntax.Lambda{}

@@ -1153,6 +1153,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		return *ref.Known
 	}
 	c.noteTypeAnnotations(ref)
+	var a *types.AliasSym // the typealias ref names
+	if ref.And == nil && ref.Ret == nil && ref.Outer == nil && c.lookupTypeParam(ref.Name) == nil {
+		a = c.lookupAlias(ref.Name)
+	}
+	if ref.Redundant != (syntax.Pos{}) && a == nil {
+		// As kotlinc, not A?? of a typealias, whose A? is.
+		c.warnf(ref.Redundant, "REDUNDANT_NULLABLE", "redundant '?'")
+	}
 	if ref.And != nil {
 		return c.defNotNull(ref)
 	}
@@ -1165,7 +1173,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if c.lookupTypeParam(ref.Name) == nil {
 		c.starAmbiguity(ref.Name, ref.P)
 	}
-	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
+	if a != nil {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
@@ -1173,6 +1181,10 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		t := c.expandAlias(a, ref)
 		if !c.noBoundChecks {
 			c.arrayNothingRef(ref, t)
+		}
+		if ref.Nullable && a.Resolved && a.Type.N && t.K != types.Invalid {
+			// A? of typealias A = B?, which is nullable already.
+			c.warnf(ref.Quest, "REDUNDANT_NULLABLE", "redundant '?'")
 		}
 		if t.K == types.Class && isMissingDep(t.C) {
 			// As K2's ForbidTypeAliasWithMissingDependencyType.
@@ -3360,6 +3372,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
 		c.classRules(d)
+		c.openMembers(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}

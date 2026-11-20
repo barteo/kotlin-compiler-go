@@ -107,6 +107,9 @@ type TypeRef struct {
 	Name     string     // may be qualified: java.util.Random
 	Args     []*TypeArg // as written; nil if there are none
 	Nullable bool
+	// Quest is the position of a nullable type's ?, and Redundant that of
+	// a second one, T??, which kotlinc warns of.
+	Quest, Redundant Pos
 	// Known is set on a type of a declaration the checker writes: the
 	// type, which needs no resolving.
 	Known *types.Type
@@ -1553,6 +1556,11 @@ type LambdaParam struct {
 	Types  []*TypeRef // and their types, nil where omitted
 	Type   *TypeRef   // nil: from the expected type
 	Sym    *types.VarSym
+	// Mods are the modifiers written on an anonymous function's
+	// parameter, which ignores them: fun (vararg x: Int) {}, and
+	// Annotations its annotations, whose @Suppress the checker reads.
+	Mods        []Mod
+	Annotations []Annotation
 }
 
 // Lambda is a lambda literal: { x, y -> body } or { body }.

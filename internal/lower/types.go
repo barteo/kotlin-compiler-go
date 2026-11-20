@@ -26,7 +26,7 @@ func (l *lowerer) recvType(n psi.NodeRef) (*syntax.TypeRef, []syntax.Annotation)
 func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.Annotation) {
 	var (
 		elem      psi.NodeRef
-		quest     bool
+		quest     psi.NodeRef
 		mods      []psi.NodeRef
 		recvAs    []syntax.Annotation
 		leading   = true // still before the type's other annotations
@@ -40,7 +40,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 			psi.KindINTERSECTION_TYPE, psi.KindTYPE_REFERENCE:
 			elem = c
 		case psi.KindQUEST:
-			quest = true
+			quest = c
 		case psi.KindLPAR, psi.KindRPAR:
 		default:
 			l.unexpected(c)
@@ -84,7 +84,15 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		l.fail(n, "expected a type")
 	}
 	t := l.typeElem(elem, recv)
-	if quest {
+	if quest.Valid() {
+		// T?? is a nullable type of a nullable type, outside
+		// parentheses: kotlinc warns of the second ?.
+		switch first := kids(n)[0]; {
+		case t.Quest == syntax.Pos{}:
+			t.Quest = l.pos(quest)
+		case first == elem && elem.NumericKind() == psi.KindNULLABLE_TYPE && t.Redundant == syntax.Pos{}:
+			t.Redundant = l.pos(quest)
+		}
 		t.Nullable = true
 	}
 	if suspendAt.Valid() {

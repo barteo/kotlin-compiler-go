@@ -386,3 +386,19 @@ fun w36() {
     1L as Long // USELESS_CAST
     1.0 as Double?
 }
+fun w37(x: Int, l: Long) {
+    1 as Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    1 as? Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    -1 as Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    (1 + 2 * 3) as Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    (1 shl 2) as Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    1.plus(2) as Int // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    1u as UInt // INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL
+    1UL as ULong // USELESS_CAST
+    (1 + x) as Int // USELESS_CAST
+    (1 + 2L) as Long // USELESS_CAST
+    1.inc() as Int // USELESS_CAST
+    1.toInt() as Int // USELESS_CAST
+    1 as Number
+    @Suppress("INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL") val a = 1 as Int
+}

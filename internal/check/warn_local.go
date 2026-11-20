@@ -17,9 +17,11 @@ import (
 func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	c.shadowWarnings()
+	c.dangerousNames()
 	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
+		c.redundantVisibilities()
 		// Before the walk, so that unreachableWarnings skips the blocks
 		// reported here.
 		deadClasses = map[*syntax.ClassDecl]bool{}
@@ -51,6 +53,7 @@ func (c *Checker) localWarnings() {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
+			c.javaClassOnCompanion(n)
 			if !callees[n] {
 				c.reflectionWarning(n, nil)
 			}
@@ -71,6 +74,9 @@ func (c *Checker) localWarnings() {
 				c.identityWarnings(n)
 			}
 		case *syntax.Lambda:
+			if n.Anon {
+				uselessVarargs(c, n)
+			}
 			if n.Ref != nil {
 				syntax.Inspect(n.Body, func(m any) bool {
 					if x, ok := m.(*syntax.Call); ok {
@@ -81,8 +87,12 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Call:
 			c.atomicWarnings(n)
+			c.redundantSpreads(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
+				if c.u.extraWarnings {
+					c.uselessCallOnNotNull(n)
+				}
 			}
 			if c.u.extraWarnings || c.u.experimentalWarnings {
 				c.emptyRangeWarning(n)
@@ -109,6 +119,7 @@ func (c *Checker) localWarnings() {
 			c.whenIsWarnings(n)
 			c.whenNullWarnings(n)
 			c.redundantElseWarning(n)
+			c.duplicateWhenConditions(n)
 			c.whenEnumWarnings(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {
@@ -259,10 +270,9 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		}
 		return
 	case *syntax.IntLit:
-		// An integer literal takes the type it's cast to, 1 as Long,
-		// unless written as a Long (1L, 1UL), which kotlinc reports as
-		// useless. 1 as Int is INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL.
-		if !e.Long || !e.Unsigned && e.Val != int64(int32(e.Val)) {
+		// A Long literal too large for an Int may be written without
+		// the L that kotlinc tells it by.
+		if e.Long && !e.Unsigned && e.Val != int64(int32(e.Val)) {
 			return
 		}
 	case *syntax.Call:
@@ -283,7 +293,50 @@ func (c *Checker) castWarnings(x *syntax.As) {
 	if t.N != target.N || t != target && !c.sameType(t, target) {
 		return
 	}
+	if intLiteral(x.X) {
+		// As kotlinc, 1 as Int, which may be meant as a conversion.
+		c.warnf(x.P, "INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL", "use 'to%s' to give the type explicitly", target)
+		return
+	}
 	c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+}
+
+// intLiteralOps are the operators of the integer literal operations
+// whose type kotlinc takes from where they're used, as of literals.
+var intLiteralOps = map[string]bool{
+	"plus": true, "minus": true, "times": true, "div": true, "rem": true,
+	"shl": true, "shr": true, "ushr": true, "and": true, "or": true, "xor": true,
+	"inv": true, "unaryMinus": true, "unaryPlus": true,
+}
+
+// intLiteral reports whether x is an integer literal of type Int or
+// UInt, 1 or 1u, or an operation of those, -1 or 1 shl 2: whose type
+// kotlinc's hasIntegerLiteralTypeAmbiguity says depends on where it's
+// used.
+func intLiteral(x syntax.Expr) bool {
+	switch e := x.(type) {
+	case *syntax.IntLit:
+		return !e.Long
+	case *syntax.Unary:
+		return (e.Op == syntax.MINUS || e.Op == syntax.PLUS) && intLiteral(e.X)
+	case *syntax.Binary:
+		switch e.Op {
+		case syntax.PLUS, syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
+			return intLiteral(e.X) && intLiteral(e.Y)
+		}
+	case *syntax.Call:
+		m, ok := e.Fun.(*syntax.Member)
+		if !ok || m.Safe || e.Invoke || len(e.TypeArgs) > 0 || !intLiteralOps[m.Name] || !intLiteral(m.X) {
+			return false
+		}
+		for _, a := range e.Args {
+			if !intLiteral(a) {
+				return false
+			}
+		}
+		return len(e.Args) <= 1
+	}
+	return false
 }
 
 // uncheckedCast reports a cast x as T or x as? T that the JVM can't

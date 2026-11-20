@@ -420,6 +420,10 @@ func (c *Checker) checkInheritedProps(d *syntax.ClassDecl, reported map[string]b
 				}
 				if cmp, ok := compareVisibility(o.vis, q.vis); ok && cmp > 0 {
 					c.errorf(d.P, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.vis), name, q.owner.DisplayName())
+				} else if o.mutable && q.mutable && !q.inheritsSetter && !o.inheritsSetter {
+					if cmp, ok := compareVisibility(o.setterVis, q.setterVis); ok && cmp > 0 {
+						c.warnf(d.P, "CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.setterVis), name, q.owner.DisplayName())
+					}
 				}
 			}
 		}
