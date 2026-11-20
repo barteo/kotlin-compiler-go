@@ -72,3 +72,14 @@ fun useOutOfBounds() = outOfBounds(1) // ERROR type argument is not within its b
 // out of their bounds.
 class SelfBounded<T : Comparable<T>>(val x: T)
 fun explicitOutOfBounds(c: Comparable<*>) = SelfBounded<Comparable<*>>(c) // ERROR type argument is not within its bounds
+
+// A nullable bound on the way doesn't reach a non-null parameter: W of
+// <Z : F, W : Z?> isn't an F, but W & Any is.
+class NullableBound<F> {
+    fun <E : F> take(x: E) = x
+
+    fun <Z : F, W : Z?> use(w: W) {
+        take<W>(w) // ERROR type argument is not within its bounds
+        if (w != null) take(w)
+    }
+}
