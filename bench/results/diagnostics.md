@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2760 of the 3667 warnings the tests expect (75.3%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2772 of the 3667 warnings the tests expect (75.6%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -246,6 +246,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
+| `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 | 12 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
 | `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 | 11 | 0 |
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 | 11 | 0 |
@@ -279,7 +280,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
 | `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
-| `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
@@ -299,5 +299,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `UNUSED_ANONYMOUS_PARAMETER` | 6 |
 | `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` | 5 |
 | `OPT_IN_OVERRIDE` | 5 |
-| *39 more* | |
+| `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 |
+| *38 more* | |
 
