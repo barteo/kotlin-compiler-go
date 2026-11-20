@@ -188,7 +188,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 	for _, gr := range c.inheritedFunGroups(d, false) {
 		name := gr[0].Name
 		c.supertypeParamNameWarnings(d, gr)
-		if !mixed &&slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
+		if !mixed && slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
 			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
 		}
 		var impls, classImpls, classMembers int
@@ -504,6 +504,7 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 // delegated member's must be too, a delegated val can't implement a var,
 // and only one of the direct supertypes may declare a default value.
 func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
+	c.delegationHidesWarnings(d)
 	cls := d.Sym
 	this := cls.This()
 	// fits returns how type t, the delegated member's, fits the others:

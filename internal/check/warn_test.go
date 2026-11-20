@@ -530,3 +530,10 @@ func TestWarningsJavaField(t *testing.T) {
 func TestWarningsSupertypeParamNames(t *testing.T) {
 	checkReference(t, "testdata/supernames.kt", Options{Warnings: true})
 }
+
+// TestWarningsDelegationHides checks
+// DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE by
+// testdata/delegationhides.kt.
+func TestWarningsDelegationHides(t *testing.T) {
+	checkReference(t, "testdata/delegationhides.kt", Options{Warnings: true})
+}
