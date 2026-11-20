@@ -50,3 +50,17 @@ fun calls(c: C, d: D, f: F, i: I, s: Same) {
     f.foo(x = 0, z = 1)
     s.baz(p = 1)
 }
+
+// Overloads of one class whose signatures clash once substituted aren't
+// one member: each takes its own names.
+open class Base<T> {
+    fun qux(x: T) = "x:$x"
+    fun qux(y: String) = "y:$y"
+}
+
+class Derived : Base<String>()
+
+fun overloads(b: Base<String>, d: Derived) {
+    println(b.qux(x = "O") + b.qux(y = "K"))
+    println(d.qux(x = "O") + d.qux(y = "K"))
+}

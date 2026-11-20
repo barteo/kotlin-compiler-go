@@ -86,7 +86,9 @@ func (c *Checker) ambiguousNamedArgs(x *syntax.Call, cls *types.ClassSym, rt typ
 	own := false
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		for _, g := range s.Methods[f.Name] {
-			if g.Static || g.Private || g.Ext != f.Ext || !c.sameParams(rt, f, g) {
+			// Not another overload of f's class, Base<T>'s foo(x: T) and
+			// foo(y: String) on a Base<String>.
+			if g.Static || g.Private || g.Ext != f.Ext || g != f && g.Owner == f.Owner || !c.sameParams(rt, f, g) {
 				continue
 			}
 			if s == cls {
