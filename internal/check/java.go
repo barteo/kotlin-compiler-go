@@ -2604,7 +2604,7 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
-			if seen[params] || javaRemoveAt(f) {
+			if seen[params] || javaRemoveAt(cls, f) {
 				continue
 			}
 			// The program's overloads in one class are distinct even when
@@ -2640,13 +2640,26 @@ func cloneable(cls *types.ClassSym) bool {
 	return found
 }
 
-// javaRemoveAt reports whether f is a Java List's remove(int), which
-// Kotlin, which sees every Java List as a MutableList, calls removeAt:
-// remove(x) on a list of Ints removes the element x.
-func javaRemoveAt(f *types.FunSym) bool {
-	return f.Name == "remove" && f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" &&
-		len(f.Params) == 1 && f.Params[0].Type.Flex() == types.IntType && strings.HasPrefix(f.Desc, "(I)") &&
-		f.Owner.IsSubclassOf(listInterface(f.Owner))
+// javaRemoveAt reports whether f, a method of class cls or of one of its
+// superclasses, is a Java List's remove(int), which Kotlin, which sees
+// every Java List as a MutableList, calls removeAt: remove(x) on a list of
+// Ints removes the element x. So is a remove(int) that a Java List
+// inherits from a class that isn't one, Java's or Kotlin's: of
+// class A extends AImpl implements List<String>, AImpl's.
+func javaRemoveAt(cls *types.ClassSym, f *types.FunSym) bool {
+	if f.Name != "remove" || f.Owner == nil || f.Owner.KotlinName != "" || len(f.Params) != 1 || f.Params[0].Type.Flex() != types.IntType {
+		return false
+	}
+	if f.Owner.External && !strings.HasPrefix(f.Desc, "(I)") {
+		return false
+	}
+	list := listInterface(cls)
+	if list == nil {
+		return false
+	}
+	// A Kotlin class's remove(element: Int) of its own MutableList<Int>
+	// is the element's.
+	return f.Owner.External || !f.Owner.IsSubclassOf(list)
 }
 
 // listInterface returns the java.util.List class among cls's supertypes,

@@ -23,9 +23,13 @@ func (c *Checker) subtype(t, u types.Type) bool {
 
 // readOnlyView returns a platform mutable collection type as the read-only
 // type: Kotlin sees java.util.List as (Mutable)List, which also takes
-// read-only lists.
+// read-only lists. Not one with a contravariant argument, List<? super T>,
+// which only a mutable collection can be: MutableList<in T>.
 func readOnlyView(u types.Type) (types.Type, bool) {
 	if !u.P || u.K != types.Class || u.C.ReadOnly == nil {
+		return u, false
+	}
+	if u.A != nil && slices.ContainsFunc(u.A.List, func(a types.Arg) bool { return a.V == types.In }) {
 		return u, false
 	}
 	u.C = u.C.ReadOnly

@@ -1282,9 +1282,63 @@ func findSAM(cls *types.ClassSym) *types.FunSym {
 		return nil
 	}
 	if f := ms[0]; !f.Unsupported && len(f.TypeParams) == 0 && len(f.Params) <= types.MaxArity {
-		return f
+		return inheritedNullability(f)
 	}
 	return nil
+}
+
+// inheritedNullability returns f, a Java interface's method, with the
+// nullability of a method of a Java superinterface that it overrides
+// where its own types are platform types, as K2 enhances an override
+// without annotations: J2's String foo(String x), overriding J's
+// @NotNull String foo(@Nullable String x), takes a String? and returns
+// a String. It returns f if it inherits none.
+func inheritedNullability(f *types.FunSym) *types.FunSym {
+	if f.Owner == nil || !isJavaClass(f.Owner) || f.Desc == "" {
+		return f
+	}
+	out := f
+	inherit := func(own, over types.Type) (types.Type, bool) {
+		if !own.P || over.P || over.K == types.Invalid || over.K != own.K {
+			return own, false
+		}
+		if over.N {
+			return own.Nullable(), true
+		}
+		return own.NonNull(), true
+	}
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || !isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if g.Static || len(g.Params) != len(f.Params) || g.Desc != f.Desc {
+				continue
+			}
+			for j := range out.Params {
+				if t, ok := inherit(out.Params[j].Type, g.Params[j].Type); ok {
+					if out == f {
+						cp := *f
+						cp.Params = slices.Clone(f.Params)
+						out = &cp
+					}
+					v := *out.Params[j]
+					v.Type = t
+					out.Params[j] = &v
+				}
+			}
+			if t, ok := inherit(out.Ret, g.Ret); ok {
+				if out == f {
+					cp := *f
+					cp.Params = slices.Clone(f.Params)
+					out = &cp
+				}
+				out.Ret = t
+			}
+		}
+		return true
+	})
+	return out
 }
 
 // abstractMethods returns the abstract methods of an interface and its
