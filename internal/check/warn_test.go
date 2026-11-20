@@ -549,3 +549,9 @@ func TestWarningsModifiers(t *testing.T) {
 func TestWarningsDuplicateConditions(t *testing.T) {
 	checkReference(t, "testdata/whendup.kt", Options{Warnings: true})
 }
+
+// TestWarningsRedundantSpread checks the warnings of spread operators in
+// named arguments against kotlinc's of testdata/spread.kt.
+func TestWarningsRedundantSpread(t *testing.T) {
+	checkReference(t, "testdata/spread.kt", Options{Warnings: true})
+}

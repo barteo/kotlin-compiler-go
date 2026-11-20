@@ -41,6 +41,9 @@ func ArrayElems(x Expr) ([]Expr, bool) {
 	var out []Expr
 	for i, a := range call.Args {
 		if i < len(call.Names) && call.Names[i] == "elements" {
+			if sp, ok := a.(*Spread); ok {
+				a = sp.X // elements = *intArrayOf(1) is elements = intArrayOf(1)
+			}
 			elems, ok := ArrayElems(a)
 			if !ok {
 				return nil, false

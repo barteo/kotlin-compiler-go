@@ -84,6 +84,7 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Call:
 			c.atomicWarnings(n)
+			c.redundantSpreads(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
 			}

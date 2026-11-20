@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2743 of the 3667 warnings the tests expect (74.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2760 of the 3667 warnings the tests expect (75.3%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -248,6 +248,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
 | `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 | 11 | 0 |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 | 11 | 0 |
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
 | `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
 | `DUPLICATE_BRANCH_CONDITION_IN_WHEN` | 9 | 9 | 0 |
@@ -258,6 +259,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `SENSELESS_NULL_IN_WHEN` | 8 | 6 | 0 |
 | `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 | 6 | 0 |
 | `NON_FINAL_MEMBER_IN_OBJECT` | 7 | 7 | 0 |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION` | 7 | 6 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
@@ -279,7 +281,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
-| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
 | `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
@@ -291,11 +292,12 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `USELESS_CALL_ON_NOT_NULL` | 8 |
 | `JAVA_CLASS_ON_COMPANION` | 7 |
 | `REDUNDANT_EXPLICIT_BACKING_FIELD` | 7 |
-| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION` | 7 |
 | `UNNECESSARY_LATEINIT` | 7 |
 | `ANNOTATION_TARGETS_ONLY_IN_JAVA` | 6 |
 | `DSL_MARKER_APPLIED_TO_WRONG_TARGET` | 6 |
 | `INFERRED_INVISIBLE_VARARG_TYPE_ARGUMENT_WARNING` | 6 |
 | `UNUSED_ANONYMOUS_PARAMETER` | 6 |
-| *41 more* | |
+| `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` | 5 |
+| `OPT_IN_OVERRIDE` | 5 |
+| *39 more* | |
 
