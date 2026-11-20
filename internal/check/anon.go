@@ -164,7 +164,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	if !c.localMembers(d, what) {
 		return nil
 	}
-	if c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil && d.Local {
+	if (c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil || c.inInlineFun && c.inlineAccessorBody()) && d.Local {
 		c.errorf(d.P, "local classes are not yet supported in inline functions")
 		return nil
 	}

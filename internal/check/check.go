@@ -506,8 +506,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
-	// inInlineFun is set in the body of an inline function, and in its
-	// lambdas and local functions, which can't declare local functions.
+	// inInlineFun is set in the body of an inline function or accessor,
+	// and in its lambdas and local functions, which can't declare local
+	// functions or classes.
 	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
@@ -3796,7 +3797,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline || inlineAccessorDecl(d)}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -4259,4 +4260,24 @@ func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
 	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
 		c.errorf(a.P, jvmStaticNonPublic)
 	}
+}
+
+// inlineAccessorDecl reports whether d is an inline property's accessor, or
+// one declared inline: inline val p get() = ..., val p inline get() = ....
+func inlineAccessorDecl(d *syntax.FunDecl) bool {
+	if d.AccessorOf == nil {
+		return false
+	}
+	pd, ok := d.AccessorOf.Decl.(*syntax.PropDecl)
+	return ok && (pd.Inline || d.Name == "get" && pd.InlineGetter || d.Name == "set" && pd.InlineSetter)
+}
+
+// inlineAccessorBody reports whether the code is in an inline accessor's
+// body (see inlineAccessorDecl).
+func (c *Checker) inlineAccessorBody() bool {
+	if c.fn == nil {
+		return false
+	}
+	d, ok := c.fn.Decl.(*syntax.FunDecl)
+	return ok && inlineAccessorDecl(d)
 }

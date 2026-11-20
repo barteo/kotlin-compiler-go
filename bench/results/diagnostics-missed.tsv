@@ -446,9 +446,6 @@ tests/inline/parenthesized.kt	parenthesized.kt:27	MULTIPLE_LABELS_ARE_FORBIDDEN	
 tests/inline/property/invoke.kt	invoke.kt:11	USAGE_IS_NOT_INLINABLE	nearby
 tests/inline/property/invoke.kt	invoke.kt:20	USAGE_IS_NOT_INLINABLE	missing-check
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:14	LOCAL_OBJECT_NOT_ALLOWED	syntax-error
-tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:17	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
-tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:18	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
-tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:7	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:8	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:9	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inline/protectedCallError.kt	main.kt:13	PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR	missing-check
