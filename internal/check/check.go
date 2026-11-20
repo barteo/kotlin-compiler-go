@@ -691,22 +691,6 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 	return out
 }
 
-// moduleSuffix returns what the JVM names of a module's internal members
-// end with: $ and its name, with the characters that can't be in a Java
-// identifier replaced by _, as kotlinc writes them.
-func moduleSuffix(module string) string {
-	if module == "" {
-		module = "main"
-	}
-	b := []byte(module)
-	for i, r := range b {
-		if !(r == '_' || r == '$' || '0' <= r && r <= '9' || 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z') {
-			b[i] = '_'
-		}
-	}
-	return "$" + string(b)
-}
-
 // internal returns the suffix of the JVM name of a member of a class
 // declared with modifiers m: the module's, if it is internal, as kotlinc
 // mangles them, but for those that are @PublishedApi, which inline
@@ -931,7 +915,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		w.t = lib.t.private()
 		lib = &w
 	}
-	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: types.ModuleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,

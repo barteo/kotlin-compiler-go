@@ -1830,7 +1830,7 @@ func TestCompose(t *testing.T) {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
 	cp := append([]string{lib, libOut}, runtimeJars...)
-	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "app", Compose: true}
+	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "compose-app", Compose: true}
 	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
 		t.Fatalf("compile program: %v", err)
 	}
@@ -1855,7 +1855,7 @@ func TestCompose(t *testing.T) {
 		}
 		refOut := t.TempDir()
 		args := kotlincArgs(path(rt, libOut), refOut, sources(t, filepath.Join(dir, "app"))...)
-		if out, err := exec.Command(kotlinc, append([]string{"-module-name", "app"}, args...)...).CombinedOutput(); err != nil {
+		if out, err := exec.Command(kotlinc, append([]string{"-module-name", "compose-app"}, args...)...).CombinedOutput(); err != nil {
 			t.Fatalf("kotlinc app: %v\n%s", err, out)
 		}
 		classes, _ := filepath.Glob(filepath.Join(refOut, "app", "*.class"))
@@ -1884,6 +1884,47 @@ func TestCompose(t *testing.T) {
 					sort.Strings(shape)
 				}
 			}
+			if !slices.Equal(want, got) {
+				t.Errorf("%s: kotlinc's\n\t%s\nkc's\n\t%s", name, strings.Join(want, "\n\t"), strings.Join(got, "\n\t"))
+			}
+		}
+	})
+
+	// The parcelize plugin's Creator has no $stable field, as kotlinc's.
+	t.Run("parcelize", func(t *testing.T) {
+		javap, err := exec.LookPath("javap")
+		if err != nil {
+			t.Skip("javap not found on PATH")
+		}
+		stubs, refOut, kcOut := t.TempDir(), t.TempDir(), t.TempDir()
+		var javas []string
+		filepath.WalkDir("../../testdata/parcelize/java", func(p string, d fs.DirEntry, err error) error {
+			if err == nil && strings.HasSuffix(p, ".java") {
+				javas = append(javas, p)
+			}
+			return err
+		})
+		if out, err := exec.Command(javac, append([]string{"-d", stubs}, javas...)...).CombinedOutput(); err != nil {
+			t.Fatalf("javac: %v\n%s", err, out)
+		}
+		file := filepath.Join(t.TempDir(), "a.kt")
+		os.WriteFile(file, []byte("import android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+
+			"@Parcelize\nclass A(val x: Int) : Parcelable\n\n@Parcelize\nclass B<T : Parcelable>(var x: T) : Parcelable\n\n@Parcelize\nobject C : Parcelable\n"), 0o644)
+		parcelRuntime := filepath.Join(filepath.Dir(lib), "parcelize-runtime.jar")
+		// After Compose's plugin: before it, kotlinc infers the stability
+		// of a class from its CREATOR field too.
+		args := kotlincArgs(path(rt, parcelRuntime, stubs), refOut, file)
+		args = slices.Insert(args, 2, "-Xplugin="+filepath.Join(filepath.Dir(lib), "parcelize-compiler.jar"))
+		if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+			t.Fatalf("kotlinc: %v\n%s", err, out)
+		}
+		opts := Options{OutDir: kcOut, Jobs: 1, ClassPath: append([]string{parcelRuntime, stubs}, cp...), Compose: true, Parcelize: true}
+		if err := Compile([]string{file}, opts); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		for _, name := range []string{"A", "A$Creator", "B", "B$Creator", "C", "C$Creator"} {
+			want := composeShape(t, javap, refOut, name)
+			got := composeShape(t, javap, kcOut, name)
 			if !slices.Equal(want, got) {
 				t.Errorf("%s: kotlinc's\n\t%s\nkc's\n\t%s", name, strings.Join(want, "\n\t"), strings.Join(got, "\n\t"))
 			}
@@ -1953,7 +1994,8 @@ func TestCompose(t *testing.T) {
 // that TestCompose compares with kotlinc's: the methods' and fields' names
 // and descriptors, marked @Composable for composable functions, and the
 // class's @StabilityInferred annotation, but for the lambdas' methods and
-// the static initializer, which kc's composables don't need.
+// the static initializer, which kc's composables don't need. The members
+// of a ComposableSingletons class have their generic signatures too.
 func composeShape(t *testing.T, javap, dir, class string) []string {
 	out, err := exec.Command(javap, "-p", "-v", "-cp", dir, class).Output()
 	if err != nil {
@@ -1983,6 +2025,11 @@ func composeShape(t *testing.T, javap, dir, class string) []string {
 		}
 		if strings.Contains(block, "ACC_VARARGS") {
 			m += " varargs"
+		}
+		if _, sig, ok := strings.Cut(block, "Signature: #"); ok && strings.Contains(class, "ComposableSingletons$") {
+			_, sig, _ = strings.Cut(sig, "// ")
+			sig, _, _ = strings.Cut(sig, "\n")
+			m += " " + sig
 		}
 		shape = append(shape, m)
 	}

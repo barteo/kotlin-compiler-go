@@ -1569,6 +1569,10 @@ type Lambda struct {
 	// parameter, whose body isn't the code around the call's: Compose's
 	// plugin doesn't remember lambdas in it.
 	Crossinline bool
+	// InlineArg is set on a lambda passed for a parameter of an inline
+	// function that isn't noinline, inlined or not: Compose's plugin
+	// doesn't keep it in a ComposableSingletons class.
+	InlineArg bool
 	// Once is set by the checker on a lambda passed to a function that
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
@@ -1686,12 +1690,12 @@ func (l *Lambda) RefName() string {
 
 // Singleton reports whether the composable lambda l is one that Compose
 // creates once, in its file's ComposableSingletons class, as kotlinc's
-// plugin does: one that returns Unit, isn't inlined and captures nothing,
-// as the checker found, nor calls a local function, or creates an
-// instance of a local class, declared outside it, which the plugin
-// counts as captures.
+// plugin does: one that returns Unit, isn't an inline function's lambda
+// and captures nothing, as the checker found, nor calls a local function,
+// or creates an instance of a local class, declared outside it, which the
+// plugin counts as captures.
 func (l *Lambda) Singleton() bool {
-	if !l.Composable || l.Ret.K != types.Unit || l.Ret.N || l.Inline || l.SAM != nil || l.KProp != nil || l.This || len(l.Captures) > 0 {
+	if !l.Composable || l.Ret.K != types.Unit || l.Ret.N || l.Inline || l.InlineArg || l.SAM != nil || l.KProp != nil || l.This || len(l.Captures) > 0 {
 		return false
 	}
 	inner := map[any]bool{}

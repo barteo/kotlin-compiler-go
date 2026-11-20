@@ -180,6 +180,18 @@ fun Scoped(block: @Composable String.(Int) -> Unit) {
     "scope".block(1)
 }
 
+// A composable lambda's field and getter in ComposableSingletons have the
+// generic signature of its type, with the wildcards of its arguments.
+@Composable
+fun Listed(item: @Composable (List<CharSequence>) -> Unit) {
+    item(listOf("a"))
+}
+
+@Composable
+fun Lists() {
+    Listed { Text(it.joinToString()) }
+}
+
 // A composable lambda that returns a value runs in a group of its own.
 @Composable
 fun Compute(f: @Composable (Int) -> String): String = f(2)
