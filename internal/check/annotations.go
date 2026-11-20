@@ -493,11 +493,13 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.repeatableContainer(d)
 		}
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
-		c.typeParamAnnotations(d.TypeParams, cls)
-		superSite := typeSite
-		superSite.outerThis = cls.Inner
-		for _, s := range d.Supers {
-			c.typeAnnotationsAt(cls.Outer, superSite, s.Type) // outside it, as its annotations
+		if !c.done[localHeader{d}] {
+			c.typeParamAnnotations(d.TypeParams, cls)
+			superSite := typeSite
+			superSite.outerThis = cls.Inner
+			for _, s := range d.Supers {
+				c.typeAnnotationsAt(cls.Outer, superSite, s.Type) // outside it, as its annotations
+			}
 		}
 		for _, cp := range d.CtorParams {
 			c.signatureTypeAnnotations(cls, cp.Type)

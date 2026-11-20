@@ -136,6 +136,45 @@ func (c *Checker) localTypeParamAnnotations(tps []*syntax.TypeParam) {
 	}
 }
 
+// localHeader keys Checker.done for a local class whose header's
+// annotations localHeaderAnnotations checked.
+type localHeader struct{ *syntax.ClassDecl }
+
+// localHeaderAnnotations checks the annotations of local class d's type
+// parameters, their bounds and its supertypes in the scope around it, as
+// its own: @A("$x") for a local variable x isn't a constant.
+func (c *Checker) localHeaderAnnotations(d *syntax.ClassDecl) {
+	c.done[localHeader{d}] = true
+	c.localTypeParamAnnotations(d.TypeParams)
+	for _, tp := range d.TypeParams {
+		c.localTypeAnnotations(typeBoundSite, tp.Bounds...)
+	}
+	for _, s := range d.Supers {
+		c.localTypeAnnotations(typeSite, s.Type)
+	}
+}
+
+// localTypeAnnotations is typeAnnotationsAt for the types of a local
+// declaration, in the current scope.
+func (c *Checker) localTypeAnnotations(site annotSite, refs ...*syntax.TypeRef) {
+	for _, ref := range refs {
+		if ref == nil || ref.Known != nil {
+			continue
+		}
+		if len(ref.Annotations) > 0 {
+			if _, done := c.u.typeAnnotsDone.LoadOrStore(ref, true); !done {
+				c.localAnnotations(typeUseAnnotations(ref.Annotations), site)
+			}
+		}
+		for _, a := range ref.Args {
+			c.localTypeAnnotations(site, a.Type)
+		}
+		c.localTypeAnnotations(site, ref.Params...)
+		c.localTypeAnnotations(site, ref.Contexts...)
+		c.localTypeAnnotations(site, ref.Ret, ref.Recv, ref.Outer, ref.And)
+	}
+}
+
 // aliasRepeatRef keys Checker.done for a reference to a typealias whose
 // repeated annotations are reported: types are resolved more than once.
 type aliasRepeatRef struct{ *syntax.TypeRef }
