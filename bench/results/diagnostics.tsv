@@ -8325,7 +8325,7 @@ tests/smartCasts/kt7561.kt	accepts valid
 tests/smartCasts/lambdaAndArgument.kt	accepts valid		
 tests/smartCasts/lambdaAndArgumentFun.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentNoSubstitutedReturn.kt	accepts valid		
-tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	elsewhere	
+tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentWithExpectedGenericType.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithoutType.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithoutTypeIf.kt	accepts valid		

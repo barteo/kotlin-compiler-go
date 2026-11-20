@@ -116,3 +116,15 @@ fun endsInDeclaration() {
         class C // ERROR type mismatch: inferred type is Unit but Int was expected
     }
 }
+
+// A lambda result outside the bound of the type parameter it gives is
+// reported where it is.
+interface Shape
+interface Round : Shape
+fun <T : Round> make(f: () -> T): T = f()
+fun shape(): Shape = TODO()
+fun boundedResult() {
+    val s: Shape = make {
+        shape() // ERROR type mismatch: inferred type is Shape but Round was expected
+    }
+}

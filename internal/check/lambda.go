@@ -3263,7 +3263,19 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// declared with a type contradicts it, as String does R's Int in
 	// foo { s: String -> 1 } for (R) -> R: the result is then checked
 	// against the type the parameter gives R (see the fixup below).
-	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) {
+	// A result that contradicts R's declared bound isn't a lower bound of
+	// R either: as kotlinc, R is within its bound, and the result is
+	// reported where it is. (Not the type expected of the call, which an
+	// overload being tried can give.)
+	contradicts := false
+	if tv := s.unfixedVar(r); tv != nil && bt.K != types.Invalid && bt.K != types.Unit && !bt.HasVars() && !r.N {
+		for _, u := range tv.v.Bounds {
+			if u = s.apply(u); !u.HasVars() && u.K != types.Invalid && !c.subtype(bt, u) {
+				contradicts = true
+			}
+		}
+	}
+	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) && !contradicts {
 		trial := s.clone()
 		if trial.sub(bt, r); trial.ok || !declared {
 			s.sub(bt, r)

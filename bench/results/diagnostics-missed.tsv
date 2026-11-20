@@ -633,8 +633,6 @@ tests/smartCasts/castchecks/castInTryWithJump.kt	castInTryWithJump.kt:100	CANNOT
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:17	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:28	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:43	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
-tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	lambdaArgumentWithBoundWithoutType.kt:19	RETURN_TYPE_MISMATCH	nearby
-tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	lambdaArgumentWithBoundWithoutType.kt:25	RETURN_TYPE_MISMATCH	nearby
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlace.kt	lambdaWithCallInPlace.kt:363	SMARTCAST_IMPOSSIBLE	missing-check
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlace.kt	lambdaWithCallInPlace.kt:374	SMARTCAST_IMPOSSIBLE	missing-check
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlace.kt	lambdaWithCallInPlace.kt:385	SMARTCAST_IMPOSSIBLE	missing-check
