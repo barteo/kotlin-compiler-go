@@ -58,6 +58,7 @@ static foo
 first last last
 abc null null
 b 4 4 0 3 4
+p, p, p, p, p
 <null>
 5:2 3:5 13 true
 a b leaf both

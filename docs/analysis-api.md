@@ -93,7 +93,7 @@ Hilt's Android processors (`@AndroidEntryPoint`, `@HiltAndroidApp`, `@HiltViewMo
 - Java PSI finds the classes of the Java sources a processor generated, and the packages that only generated sources are in, so a generated Java source's imports and class literals name the classes earlier rounds generated (Hilt's `@ComponentTreeDeps` lists the classes of `hilt_aggregated_deps`).
 - The check of Java sources that KSP runs after a processor's error has the IntelliJ extension point and registry key that Java's type inference reads.
 
-`build.sh test` and `stock` run Hilt's processors over `test/hilt-android/src` against hilt-android's class files and stand-ins for the Android classes (`test/hilt-android/stubs`), a three-round processor over `test/rounds/src`, and a failing processor over `test/errors/src` (on kc only: stock KSP 2.3.13 fails in that check).
+`build.sh test` and `stock` run Hilt's processors over `test/hilt-android/src` against hilt-android's class files and stand-ins for the Android classes (`test/hilt-android/stubs`), a three-round processor over `test/rounds/src`, a failing processor over `test/errors/src` (on kc only: stock KSP 2.3.13 fails in that check), and a processor that lists the members of a library class whose class file names a class missing from the class path, as an Android library's implementation dependency is missing from its consumers' (`test/missing`).
 
 ## Gaps and open questions
 
@@ -121,8 +121,8 @@ Hilt's Android processors (`@AndroidEntryPoint`, `@HiltAndroidApp`, `@HiltViewMo
   `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
   backend gets one from `KotlinCoreEnvironment`, whose setup is part of the
   cold-start cost measured in `bench/ksp`.
-- **KSP member coverage.** The fork's bytecode uses 310 AA members; kc
-  answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
+- **KSP member coverage.** The fork's bytecode uses 324 AA members; kc
+  answers 221, answers 23 for some of its classes, leaves 4 to stubs, 71
   are the API's own and 5 are of types kc never makes
   (`jvm/kc-aa/members.txt`, `build.sh members`).
 - **Aliases inside a class path typealias's expansion** are expanded, not

@@ -20,7 +20,9 @@
 # processing's dirty set over test/ic, what the class literals of a Java
 # source and of a generated one name in each round (test/rounds), and that
 # a run a processor fails (test/errors) reports the processor's errors
-# only. "stock" does what "test" does, and then runs
+# only, and it lists the members of a library class that names a class
+# missing from the class path (test/missing). "stock" does what "test"
+# does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
@@ -545,6 +547,28 @@ fi
 { grep -E '^(e: |KSP exited|Exception|[a-zA-Z.]+(Exception|Error))' "$out/errors.err" || true; } > "$out/errors.got"
 diff -u "$here/test/errors/want.txt" "$out/errors.got"
 echo "errors: ok"
+
+# test/missing: the members of a library class that names a class missing
+# from the class path, in KSP's order of JVM names (test/missing/Missing.kt).
+rm -rf "$out/missing-lib" "$out/missing-classes" "$out/missing"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar" -d "$out/missing-lib" -jvm-target 17 -nowarn "$here/test/missing/lib/m/"*.kt
+rm "$out/missing-lib/m/Missing.class"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/missing-classes" -jvm-target 17 -nowarn \
+	"$here/test/missing/Missing.kt"
+mkdir -p "$out/missing-classes/META-INF/services"
+echo MissingProvider > "$out/missing-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/missing-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/missing/src" "$out/missing" \
+	"$lib/kotlin-stdlib-2.4.21.jar:$out/missing-lib" > "$out/missing.txt"
+diff -u "$here/test/missing/want.txt" "$out/missing/resources/missing.txt"
+echo "missing: ok"
+if [ "$mode" = stock ]; then
+	rm -rf "$out/stock-missing"
+	java -cp "$out/runksp-stock:$out/missing-classes$stockcp" RunKspKt "$here/test/missing/src" "$out/stock-missing" \
+		"$lib/kotlin-stdlib-2.4.21.jar:$out/missing-lib" > "$out/stock-missing.txt"
+	diff -u "$here/test/missing/want.txt" "$out/stock-missing/resources/missing.txt"
+	echo "missing: stock KSP ok"
+fi
 
 # test/dump/Dump.kt over test/dump/src, on kc and on stock KSP: what
 # KSP says about each declaration, and the files in the order KSP lists

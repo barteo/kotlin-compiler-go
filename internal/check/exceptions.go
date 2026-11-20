@@ -92,7 +92,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	}
 	block := func(b *syntax.Block) types.Type {
 		if pending != nil {
-			return c.branch(b, want, valueUsed, pending)
+			return c.ifBranch(b, want, valueUsed, true, pending)
 		}
 		return c.block(b, want, valueUsed)
 	}

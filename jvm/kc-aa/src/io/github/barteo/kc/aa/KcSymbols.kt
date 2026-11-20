@@ -615,7 +615,14 @@ internal class KcReceiverParameterSymbol(
     override fun hashCode() = owningCallableSymbol.hashCode() + 7
 }
 
-/** A class kc doesn't have, known only by its ID. */
+/**
+ * A class kc doesn't have, known only by its ID: one a library's class
+ * file names that isn't on the class path, as an Android library's
+ * implementation dependency isn't on its consumers'. FIR has an error type
+ * for it, without a symbol, which is none of the kinds of class below: KSP
+ * asks whether a function's parameter and result types are value classes
+ * for its JVM name, by which it orders a library class's members.
+ */
 internal class KcLibraryClassSymbol(val round: KcRound, override val classId: ClassId) : StubKaNamedClassSymbol() {
     override val token get() = round.token
     override val psi: PsiElement? get() = null
@@ -624,6 +631,13 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
     override val location get() = KaSymbolLocation.TOP_LEVEL
     override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
     override val isInner get() = false
+    override val isInline get() = false
+    override val isData get() = false
+    override val isFun get() = false
+    override val isExternal get() = false
+    override val isExpect get() = false
+    override val isActual get() = false
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = KcPointer("class:" + classId.asString())
     override fun toString() = "KcLibraryClassSymbol($classId)"
 }
