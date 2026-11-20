@@ -133,7 +133,8 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			}
 		} else if c.u.rec != nil {
 			// The type arguments, @A<String>, are only reported: a
-			// generic annotation's arguments don't use them.
+			// generic annotation's arguments use them only in
+			// collection literals (see literalAnnotations).
 			for _, ta := range a.TypeArgs {
 				if ta.Type != nil {
 					c.resolveType(ta.Type)
@@ -189,7 +190,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			continue
 		}
 		if local {
-			values, _ := c.annotationValues(cls, args, a.P)
+			values, _ := c.annotationValues(cls, a.TypeArgs, args, a.P)
 			if vrec != nil {
 				vrec.AnnotationValues(c.file, a, values)
 			}
@@ -210,7 +211,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			c.inAnon(this) // an inner or local class's outer receivers
 		}
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
-		values, ok := c.annotationValues(cls, args, a.P)
+		values, ok := c.annotationValues(cls, a.TypeArgs, args, a.P)
 		c.state, c.lookupCls = saved, savedLookup
 		if vrec != nil {
 			vrec.AnnotationValues(c.file, a, values)
@@ -285,7 +286,7 @@ func (c *Checker) kclassOfJava(t types.Type) types.Type {
 // annotationValues maps the arguments of an annotation of class cls to its
 // parameters, and checks them: positional ones in order, until a vararg
 // parameter takes the rest, then named ones.
-func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p syntax.Pos) ([]syntax.AnnotationValue, bool) {
+func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg, args []annotArg, p syntax.Pos) ([]syntax.AnnotationValue, bool) {
 	params := c.annotationParams(cls)
 	// The arguments of a generic annotation class's annotation, @A<T>(x),
 	// are checked with its type parameters projected: KClass<*> for a
@@ -380,10 +381,137 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 				ok = ok && eok
 				val.Elems = append(val.Elems, e)
 			}
+			if ok && arg.array && targs != nil && !v.Vararg && val.Array {
+				ok = c.literalAnnotations(cls, targs, v.Type, elems, arg.pos)
+			}
 		}
 		values = append(values, val)
 	}
 	return values, ok
+}
+
+// literalAnnotations checks the elements of a collection literal, the
+// argument [B(x), ...] of a generic annotation class cls's parameter of
+// type want, Array<B<T>>, written with type arguments targs: as in
+// kotlinc (KT-82964), each nested annotation's type arguments are
+// inferred from its own arguments, without the expected type, B<T> with
+// cls's T substituted. Only class literals, KClass<T>, are inferred
+// from; B() with nothing to infer its T from doesn't fit.
+func (c *Checker) literalAnnotations(cls *types.ClassSym, targs []*syntax.TypeArg, want types.Type, elems []syntax.Expr, pos syntax.Pos) bool {
+	if !slices.ContainsFunc(cls.TypeParams, func(tp *types.TypeParamSym) bool { return mentionsParam(want, tp) }) {
+		return true // the literal has its expected type
+	}
+	if len(targs) != len(cls.TypeParams) {
+		return true
+	}
+	sub := types.Subst{}
+	for i, tp := range cls.TypeParams {
+		ta := targs[i]
+		if ta.Type == nil || ta.Variance != types.Inv {
+			return true
+		}
+		t := c.resolveTypeRef(ta.Type)
+		if t.K == types.Invalid {
+			return true
+		}
+		sub[tp] = types.Arg{V: types.Inv, T: t}
+	}
+	want = sub.Apply(want)
+	wantElem := types.VarargElem(want)
+	if wantElem.K != types.Class || len(wantElem.C.TypeParams) == 0 || wantElem.C.Retention == types.NoRetention {
+		return true
+	}
+	var actual []types.Type
+	fits := true
+	for _, x := range elems {
+		call, ok := x.(*syntax.Call)
+		if !ok || call.Literal {
+			return true
+		}
+		t, ok := c.literalAnnotationType(wantElem.C, call)
+		if !ok {
+			return true
+		}
+		actual = append(actual, t)
+		fits = fits && c.subtype(t, wantElem)
+	}
+	if fits || len(actual) == 0 {
+		return true
+	}
+	elem := actual[0]
+	for _, t := range actual[1:] {
+		elem = c.lub(elem, t)
+	}
+	got := types.GenericType(want.C, []types.Arg{{V: types.Inv, T: elem}})
+	c.errorf(pos, "argument type mismatch: actual type is %s but %s was expected", got, want)
+	return false
+}
+
+// literalAnnotationType returns the type of the nested annotation call
+// of class b, with its type arguments explicit or inferred from the
+// class literals passed for its KClass<T> parameters; false if they are
+// inferred from anything else. A type parameter with nothing to infer it
+// from stays itself.
+func (c *Checker) literalAnnotationType(b *types.ClassSym, call *syntax.Call) (types.Type, bool) {
+	if call.TypeArgs != nil {
+		ts := c.typeArgs(call)
+		if len(ts) != len(b.TypeParams) {
+			return types.Type{}, false
+		}
+		args := make([]types.Arg, len(ts))
+		for i, t := range ts {
+			if t.K == types.Invalid {
+				return types.Type{}, false
+			}
+			args[i] = types.Arg{V: types.Inv, T: t}
+		}
+		return types.GenericType(b, args), true
+	}
+	params := c.annotationParams(b)
+	lower := make(map[*types.TypeParamSym][]types.Type)
+	next := 0
+	for i, a := range call.Args {
+		j := next
+		if i < len(call.Names) && call.Names[i] != "" {
+			j = slices.IndexFunc(params, func(v *types.VarSym) bool { return v.Name == call.Names[i] })
+		} else if j < len(params) && !params[j].Vararg {
+			next++
+		}
+		if j < 0 || j >= len(params) {
+			return types.Type{}, false
+		}
+		v := params[j]
+		t := v.Type
+		if v.Vararg {
+			t = types.VarargElem(t)
+		}
+		if !slices.ContainsFunc(b.TypeParams, func(tp *types.TypeParamSym) bool { return mentionsParam(t, tp) }) {
+			continue
+		}
+		lit, ok := a.(*syntax.ClassLit)
+		if !ok || lit.Bound || lit.Class.K == types.Invalid || t.K != types.Class || len(t.A.List) != 1 || t.A.List[0].V == types.In {
+			return types.Type{}, false
+		}
+		tp := t.A.List[0].T
+		if tp.K != types.TypeParam || !slices.Contains(b.TypeParams, tp.Param()) {
+			return types.Type{}, false
+		}
+		lower[tp.Param()] = append(lower[tp.Param()], lit.Class)
+	}
+	args := make([]types.Arg, len(b.TypeParams))
+	for i, tp := range b.TypeParams {
+		ts := lower[tp]
+		if len(ts) == 0 {
+			args[i] = types.Arg{V: types.Inv, T: types.ParamType(tp)}
+			continue
+		}
+		t := ts[0]
+		for _, u := range ts[1:] {
+			t = c.lub(t, u)
+		}
+		args[i] = types.Arg{V: types.Inv, T: t}
+	}
+	return types.GenericType(b, args), true
 }
 
 // annotationElem checks a value of an annotation's argument, of type t:
@@ -405,7 +533,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 					args[i].name = call.Names[i]
 				}
 			}
-			values, ok := c.annotationValues(t.C, args, call.Pos())
+			values, ok := c.annotationValues(t.C, nil, args, call.Pos())
 			nested := &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}
 			if rec := c.u.rec; rec != nil {
 				rec.Annotation(c.file, nested, t.C)
