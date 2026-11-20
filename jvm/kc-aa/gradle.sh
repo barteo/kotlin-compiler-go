@@ -23,9 +23,11 @@
 # directory that lacks kc-aa.jar: under KC_STRICT=1 the build fails, and
 # without it stock KSP takes over and the output is the reference's. Then,
 # with KC_VARIANTS=debug, which names no variant of these modules, KSP
-# stays stock. Last, with KC_KSP_KEEP=1, two builds of each project: the
+# stays stock. Then, with KC_KSP_KEEP=1, two builds of each project: the
 # first loads the processors of its four class paths or finds those the
-# other project loaded, and the second finds all four kept.
+# other project loaded, and the second finds all four kept. Last, with
+# KC_KSP_FORGET=1, two builds of each project, whose four runs each keep
+# nothing for the next.
 #
 # Environment:
 #	GRADLE  the gradle command (default gradle)
@@ -212,6 +214,17 @@ for k in 1 2; do
 	done
 done
 echo "keep: the processors' classes stay loaded, same output"
+
+for k in 1 2; do
+	for b in 1 2; do
+		KC_KSP=$ksp KC_STRICT=1 KC_KSP_FORGET=1 KC_TIMING=1 g "$k" -I "$init" || { cat "$log" >&2; exit 1; }
+		on_kc 4
+		forgot=$(grep -c '^kc-jvm: environments forgotten$' "$log" || true)
+		[ "$forgot" = 4 ] || { echo "gradle.sh: $forgot runs kept nothing with KC_KSP_FORGET=1, not 4: $log" >&2; exit 1; }
+		same "$k" "build $b of project $k with KC_KSP_FORGET=1"
+	done
+done
+echo "forget: the runs keep nothing for the next, same output"
 
 mine=$(comm -13 <(sort <<< "$before") <(daemons | sort))
 [ "$(wc -w <<< "$mine")" -le 1 ] || { echo "gradle.sh: the builds ran in daemons" $mine >&2; exit 1; }
