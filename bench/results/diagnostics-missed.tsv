@@ -11,14 +11,6 @@ tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:23	ILLEGAL_ESC
 tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:35	ILLEGAL_ESCAPE	syntax-error
 tests/IncorrectCharacterLiterals.kt	IncorrectCharacterLiterals.kt:6	EMPTY_CHARACTER_LITERAL	syntax-error
 tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	KotlinActualAnnotationHasNoEffectInKotlin.kt:20	KOTLIN_ACTUAL_ANNOTATION_HAS_NO_EFFECT_IN_KOTLIN	missing-check
-tests/MultipleBounds.kt	MultipleBounds.kt:32	TYPE_PARAMETER_ON_LHS_OF_DOT	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:32	UNRESOLVED_REFERENCE	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:33	TYPE_PARAMETER_ON_LHS_OF_DOT	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:33	UNRESOLVED_REFERENCE	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:60	TYPE_PARAMETER_ON_LHS_OF_DOT	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:60	UNRESOLVED_REFERENCE	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:61	TYPE_PARAMETER_ON_LHS_OF_DOT	syntax-error
-tests/MultipleBounds.kt	MultipleBounds.kt:61	UNRESOLVED_REFERENCE	syntax-error
 tests/ObjectWithConstructor.kt	ObjectWithConstructor.kt:2	CONSTRUCTOR_IN_OBJECT	syntax-error
 tests/PackageQualified.kt	c.kt:4	INITIALIZER_TYPE_MISMATCH	missing-check
 tests/Properties.kt	Properties.kt:17	VAL_WITH_SETTER	syntax-error

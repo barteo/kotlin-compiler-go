@@ -388,7 +388,9 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 			}
 		}
 		if tp == nil {
-			l.fail(ref, "'%s' does not refer to a type parameter of this declaration", name)
+			// As kotlinc, the declaration is kept, without the bound.
+			l.errorLater(l.pos(ref), "'%s' does not refer to a type parameter of this declaration", name)
+			continue
 		}
 		tp.Bounds = append(tp.Bounds, l.typeRef(child(c, psi.KindTYPE_REFERENCE)))
 		tp.WhereBound = true
