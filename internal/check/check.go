@@ -3846,7 +3846,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
@@ -3892,7 +3892,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.jvmFunctionInit(d.Type, d.Init)
 	}
 	if sym.Resolved {
-		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
+		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init))
 		return
 	}
 	var t types.Type

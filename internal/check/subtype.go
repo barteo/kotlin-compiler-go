@@ -596,7 +596,8 @@ func joinNull(t, a, b types.Type) types.Type {
 // joinBranch joins the type of a branch of an if, when or try, bt, with
 // the result of the branches before it. Where they are different value
 // types, as Int and String, and the expected type is one of them, the
-// branch is reported, as kotlinc checks each branch against it.
+// mismatch is reported at p, the start of the if, when or try, where
+// kotlinc reports the whole expression's type not fitting it.
 func (c *Checker) joinBranch(result, bt, want types.Type, p syntax.Pos) (types.Type, bool) {
 	if want.K != types.Invalid && !want.HasVars() && isBuiltin(result) && isBuiltin(bt) && result.NonNull() != bt.NonNull() &&
 		!c.subtype(types.AnyType, want.NonNull()) {

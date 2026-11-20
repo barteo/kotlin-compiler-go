@@ -529,8 +529,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		bt = c.unitBody(x.Body)
 		c.stubTail(lr)
-		if x.Anon && x.AnonExpr && x.AnonRet != nil {
-			// fun (): Unit = c?.close() returns a Unit?.
+		if x.Anon && x.AnonExpr && (x.AnonRet != nil || w.check) {
+			// fun (): Unit = c?.close() returns a Unit?. Nor is an
+			// expression body coerced to the Unit expected of it, as a
+			// lambda's is: (fun() = "1") isn't a () -> Unit.
 			if e := tailExpr(x.Body); e != nil {
 				if t := c.safeUnit(e, e.Type()); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
 					c.errorf(e.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
@@ -999,7 +1001,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 		}
 		switch {
 		case lr.check && lr.want.K != types.Invalid:
-			c.assignable(t, lr.want, x.X.Pos())
+			c.assignable(t, lr.want, syntax.StartPos(x.X))
 		case len(c.errs) > n && simpleExpr(x.X):
 			// As kotlinc postpones its type variables, the value is
 			// checked against the lambda's other results.
@@ -3313,6 +3315,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			}
 		} else if ft, ok := c.refOverloadHint(s, l, r); ok {
 			w.ret = ft
+		}
+	}
+	if l.Anon {
+		// An anonymous function's result is its declared type, or Unit
+		// for a block body: run(fun () { return 42 }) returns Unit, and
+		// its return is reported.
+		switch {
+		case l.AnonRet != nil:
+			w.ret, w.check = c.resolveType(l.AnonRet), true
+		case l.AnonUnit:
+			w.ret, w.check = types.UnitType, true
 		}
 	}
 	var bt types.Type

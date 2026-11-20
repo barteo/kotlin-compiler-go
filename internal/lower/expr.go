@@ -1021,6 +1021,7 @@ func (l *lowerer) whenEntry(w *syntax.When, e psi.NodeRef) *syntax.WhenBranch {
 		case psi.KindWHEN_CONDITION_IN_RANGE:
 			wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
 			wc.NotIn = !wc.In
+			wc.P = l.pos(opOf(c))
 			wc.X = l.confusingCond(w, exprChild(c))
 		case psi.KindWHEN_CONDITION_IS_PATTERN:
 			kw := first(c)

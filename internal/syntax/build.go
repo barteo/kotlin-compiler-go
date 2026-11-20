@@ -368,9 +368,9 @@ func IntLiteralErrors(text string) []string {
 	return msgs
 }
 
-// TokenizeAt lexes src, which starts at pos, as an expression: newlines
-// are never significant. The tokens end with EOF.
-func TokenizeAt(file, src string, pos Pos) ([]Token, []*Error) { return tokenizeAt(file, src, pos) }
+// TokenizeArgAt lexes src, an argument in a call's parentheses starting
+// at pos, where newlines count only in a lambda's braces.
+func TokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) { return tokenizeArgAt(file, src, pos) }
 
 // CharValue decodes a character literal's text, quotes included, or
 // returns an error message.
