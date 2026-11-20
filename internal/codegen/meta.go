@@ -1220,7 +1220,7 @@ func (g *gen) dataMeta(s *metaScope, cd *syntax.ClassDecl) []*kmeta.Function {
 		add(synthesized(cls, componentName(i)), visibility(cp.Visibility), kmeta.Final, true)
 	}
 	copyVis := kmeta.Public
-	if f := synthesized(cls, "copy"); f != nil && (f.Protected || f.Module != "") {
+	if f := synthesized(cls, "copy"); f != nil && (f.Private || f.Protected || f.Module != "") {
 		copyVis = visibility(cd.CtorMods.Visibility) // @ConsistentCopyVisibility
 	}
 	add(synthesized(cls, "copy"), copyVis, kmeta.Final, false)

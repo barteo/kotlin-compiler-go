@@ -4,19 +4,27 @@ Sender.withBody: varargs true
 Base.hidden: varargs true
 Base.many: varargs true
 Base.open: varargs true
+Outer.getPrivSet: public static final
+Outer.getProtSetBody: public static final
 Outer.getProtVal: protected static final
 Outer.getProtVar: protected static final
 Outer.prot: protected static final
 Outer.pub: public static final
+Outer.readProtSet: public static final
+Outer.setProtSet: protected static final
+Outer.setProtSetBody: protected static final
 Outer.setProtVar: protected static final
 Outer.CONST: public static final
 Outer.PROT_CONST: protected static final
 11
+40
 Internal: public final copy$module, public static copy$module$default
 Protected: protected final copy, public static copy$default
+Private: private final copy, static copy$default
 Published: public final copy$module, public static copy$module$default
 Public: public final copy, public static copy$default
 Plain: public final copy, public static copy$default
 Internal(a=2, b=y)
 Protected(a=2)
+[Private(a=2, b=x), Private(a=0, b=all), Private(a=1, b=later), Private(a=2, b=x), Private(a=9, b=companion), Private(a=8, b=nested)]
 Published(a=2)

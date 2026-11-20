@@ -1,9 +1,10 @@
 // What Java callers and other modules link against: an abstract method
 // with a vararg parameter is a variable arity method, as one with a body
 // is; a companion's protected @JvmStatic members and consts are protected
-// in the outer class; and the copy of a data class with
-// @ConsistentCopyVisibility has its constructor's visibility, and the
-// module's name in its own if that is internal.
+// in the outer class, as is the setter of a property with a protected
+// set; and the copy of a data class with @ConsistentCopyVisibility has
+// its constructor's visibility, and the module's name in its own if that
+// is internal.
 import java.lang.reflect.Modifier
 
 interface Sender {
@@ -24,6 +25,14 @@ open class Outer {
         @JvmStatic protected val protVal = 2
         @JvmStatic protected var protVar = 3
         @JvmStatic fun pub() = 4
+        @JvmStatic
+        @get:JvmName("readProtSet")
+        var protSet = 7
+            @JvmStatic protected set
+        @JvmStatic var protSetBody = 8
+            protected set(value) { field = value + 1 }
+        @JvmStatic var privSet = 9
+            private set
         protected const val PROT_CONST = 5
         const val CONST = 6
     }
@@ -31,6 +40,12 @@ open class Outer {
 
 class Sub : Outer() {
     fun sum() = prot() + protVal + protVar + PROT_CONST
+
+    fun set(): Int {
+        protSet = 10
+        protSetBody = 20
+        return protSet + protSetBody + privSet
+    }
 }
 
 @ConsistentCopyVisibility
@@ -44,6 +59,23 @@ data class Protected protected constructor(val a: Int) {
 
     companion object {
         fun of(a: Int) = Protected(a)
+    }
+}
+
+@ConsistentCopyVisibility
+data class Private private constructor(val a: Int, val b: String) {
+    fun bump() = copy(a = a + 1)
+    fun all() = copy(0, "all")
+    fun later() = { copy(b = "later") }
+
+    companion object {
+        fun of(a: Int) = Private(a, "x")
+        fun bump(p: Private) = p.copy(a = p.a + 1)
+        fun all(p: Private) = p.copy(9, "companion")
+    }
+
+    class Nested {
+        fun all(p: Private) = p.copy(8, "nested")
     }
 }
 
@@ -68,7 +100,8 @@ fun main() {
         println("Outer.${f.name}: ${Modifier.toString(f.modifiers)}")
     }
     println(Sub().sum())
-    for (c in listOf(Internal::class.java, Protected::class.java, Published::class.java, Public::class.java, Plain::class.java)) {
+    println(Sub().set())
+    for (c in listOf(Internal::class.java, Protected::class.java, Private::class.java, Published::class.java, Public::class.java, Plain::class.java)) {
         val copies = c.declaredMethods.filter { it.name.startsWith("copy") }.sortedBy { it.name }
         println(c.simpleName + ": " + copies.joinToString { m ->
             Modifier.toString(m.modifiers and Modifier.methodModifiers()) + " " + m.name.replace(Regex("""\$(?!default).*?(?=\$|$)"""), "\\\$module")
@@ -76,5 +109,7 @@ fun main() {
     }
     println(Internal(1, "x").copy(b = "y").bump())
     println(Protected.of(1).bump())
+    val p = Private.of(1)
+    println(listOf(p.bump(), p.all(), p.later()(), Private.bump(p), Private.all(p), Private.Nested().all(p)))
     println(Published(1).copy(2))
 }
