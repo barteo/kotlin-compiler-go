@@ -535,6 +535,13 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 		}
 		return a, true
 	}
+	if a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && a.N == b.N && a.P == b.P && c.sameType(a, b) {
+		// Of instances whose arguments differ only in their flexibility,
+		// as K2's common supertype, the first: MutableList<J> of
+		// MutableList<J> and MutableList<J!>, but MutableList<J!> of
+		// MutableList<J!> and MutableList<J>.
+		return a, true
+	}
 	if t, ok := c.stubJoin(a, b); ok {
 		return t, true
 	}
