@@ -126,7 +126,11 @@ own tests.
   lambda ends with can't infer its variables, which are `Nothing`. A
   builder's lambda that casts its receiver to a
   star-projected subtype, `this as DerivedBuildee<*>`, infers the
-  variable as `Unit`, where K2 infers a captured type.
+  variable as `Unit`, where K2 infers a captured type. Of the errors a
+  call adds to K2's shared constraint system, only one shape is carried
+  to the calls after it: a generic extension called on an unresolved
+  receiver with the lambda's `this`, `Unresolved().bar(this)`, after
+  which the extension calls on the builder's receiver are inapplicable.
 
 ## Without the standard library
 

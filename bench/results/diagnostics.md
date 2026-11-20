@@ -6,16 +6,16 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4434 | 51.5% |
+| rejects invalid | 4435 | 51.5% |
 | accepts valid | 4150 | 48.2% |
-| accepts invalid | 29 | 0.3% |
+| accepts invalid | 28 | 0.3% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4434 tests both reject, kc reports an error on the line of an expected one in 4362.
+Of the 4435 tests both reject, kc reports an error on the line of an expected one in 4363.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -59,7 +59,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 1 | 1 | `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 1 | 1 | `testsWithStdLib/functionX.kt` |
 | `MEMBER_PROJECTED_OUT` | 1 | 1 | `tests/typealias/starProjection.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 1 | 0 | `tests/j+k/differentFilename.kt` |
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
@@ -78,26 +77,23 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20915 of 22025 expected errors (95.0%) on their lines.
+kc reports 21044 of 22025 expected errors (95.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2552 | 2423 | 129 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1370 | 121 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 168 | 83 |
 | `RETURN_TYPE_MISMATCH` | 418 | 362 | 56 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 588 | 47 |
-| `INVISIBLE_REFERENCE` | 525 | 487 | 38 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
+| `INVISIBLE_REFERENCE` | 525 | 502 | 23 |
 | `REDECLARATION` | 196 | 176 | 20 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 143 | 16 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 236 | 15 |
 | `VAL_REASSIGNMENT` | 231 | 217 | 14 |
-| `CAPTURED_VAL_INITIALIZATION` | 34 | 21 | 13 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 415 | 13 |
 | `SMARTCAST_IMPOSSIBLE` | 183 | 170 | 13 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 115 | 12 |
-| `INFIX_MODIFIER_REQUIRED` | 46 | 34 | 12 |
-| `NAME_FOR_AMBIGUOUS_PARAMETER` | 31 | 20 | 11 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 416 | 12 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 144 | 11 |
 | `WRONG_ANNOTATION_TARGET` | 403 | 392 | 11 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 104 | 10 |
@@ -106,7 +102,6 @@ kc reports 20915 of 22025 expected errors (95.0%) on their lines.
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 243 | 8 |
 | `EXTENSION_IN_CLASS_REFERENCE_NOT_ALLOWED` | 14 | 6 | 8 |
-| `NOT_A_MULTIPLATFORM_COMPILATION` | 16 | 8 | 8 |
 | `NO_ELSE_IN_WHEN` | 217 | 209 | 8 |
 | `UPPER_BOUND_VIOLATED` | 125 | 117 | 8 |
 | `CLASS_LITERAL_LHS_NOT_A_CLASS` | 16 | 9 | 7 |
@@ -136,12 +131,16 @@ kc reports 20915 of 22025 expected errors (95.0%) on their lines.
 | `BUILDER_INFERENCE_STUB_RECEIVER` | 5 | 1 | 4 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 23 | 4 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 87 | 4 |
+| `CAPTURED_VAL_INITIALIZATION` | 34 | 30 | 4 |
 | `CONFLICTING_PROJECTION` | 29 | 25 | 4 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 80 | 4 |
 | `INAPPLICABLE_LATEINIT_MODIFIER` | 61 | 57 | 4 |
 | `JVM_STATIC_ON_CONST_OR_JVM_FIELD` | 6 | 2 | 4 |
 | `MULTIPLE_LABELS_ARE_FORBIDDEN` | 17 | 13 | 4 |
 | `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 22 | 4 |
+| `OPT_IN_USAGE_ERROR` | 102 | 98 | 4 |
+| `TYPE_PARAMETER_AS_REIFIED` | 19 | 15 | 4 |
+| `TYPE_PARAMETER_ON_LHS_OF_DOT` | 5 | 1 | 4 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -150,11 +149,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 55 | 5.0% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
-| syntax-error | 154 | 13.9% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| accepted | 54 | 5.5% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
+| syntax-error | 154 | 15.7% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 160 | 14.4% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 741 | 66.8% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
+| nearby | 158 | 16.1% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 615 | 62.7% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 20, `RETURN_TYPE_MISMATCH` 19 |
 
 ## Errors kotlinc doesn't report
 
