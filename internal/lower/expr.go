@@ -959,11 +959,24 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w := &syntax.When{}
 	w.P = l.pos(n)
 	if has(n, psi.KindLPAR) {
-		if pd := child(n, psi.KindPROPERTY); pd.Valid() {
+		if dd := child(n, psi.KindDESTRUCTURING_DECLARATION); dd.Valid() && has(dd, psi.KindEQ) {
+			// As kotlinc, the initializer is the subject, and the names
+			// aren't declared.
+			l.errorLater(l.pos(dd), "illegal variable declaration in 'when' subject: destructuring declaration; only 'val' variables with initializers are allowed")
+			w.Subject = l.expr(exprAfter(dd, psi.KindEQ))
+		} else if pd := child(n, psi.KindPROPERTY); pd.Valid() {
 			if m := child(pd, psi.KindMODIFIER_LIST); m.Valid() || has(pd, psi.KindVAR_KEYWORD) {
-				l.fail(pd, "unexpected declaration in 'when' subject")
+				if !has(pd, psi.KindEQ) || has(pd, psi.KindPROPERTY_DELEGATE) || has(pd, psi.KindTYPE_REFERENCE) && has(pd, psi.KindDOT) {
+					l.fail(pd, "unexpected declaration in 'when' subject")
+				}
+				// As kotlinc, the variable is declared all the same.
+				l.errorLater(l.pos(pd), "illegal variable declaration in 'when' subject; only 'val' variables with initializers are allowed")
 			}
-			w.SubjVar = ident(child(pd, psi.KindIDENTIFIER))
+			if id := child(pd, psi.KindIDENTIFIER); id.Valid() {
+				w.SubjVar = ident(id)
+			} else if e := child(pd, psi.KindERROR_ELEMENT); unnamedSubject(pd) {
+				l.errorLater(l.pos(e), "expecting property name or receiver type")
+			}
 			l.prov[WhenSubject{w}] = pd.ID()
 			if t := child(pd, psi.KindTYPE_REFERENCE); t.Valid() {
 				w.SubjType = l.typeRef(t)

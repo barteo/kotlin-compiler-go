@@ -322,11 +322,33 @@ func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	if enumWithoutKeyword(p) && !first(e).Valid() {
 		return true
 	}
+	if unnamedSubject(p) {
+		return true
+	}
 	return p.NumericKind() == psi.KindVALUE_PARAMETER && !has(p, psi.KindTYPE_REFERENCE) &&
 		has(p, psi.KindIDENTIFIER) && p.Parent().NumericKind() == psi.KindVALUE_PARAMETER_LIST &&
 		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||
 			p.Parent().Parent().NumericKind() == psi.KindFUN ||
 			p.Parent().Parent().NumericKind() == psi.KindSECONDARY_CONSTRUCTOR)
+}
+
+// unnamedSubject reports whether n is the PROPERTY of a when subject
+// written without its name, when (val = x), which psi reports missing.
+// when keeps x as its subject, as FIR does, and reports the error.
+func unnamedSubject(n psi.NodeRef) bool {
+	if n.NumericKind() != psi.KindPROPERTY || n.Parent().NumericKind() != psi.KindWHEN || has(n, psi.KindIDENTIFIER) || !has(n, psi.KindEQ) {
+		return false
+	}
+	errs := 0
+	for _, c := range kids(n) {
+		if c.NumericKind() == psi.KindERROR_ELEMENT {
+			if first(c).Valid() {
+				return false
+			}
+			errs++
+		}
+	}
+	return errs == 1
 }
 
 // enumWithoutKeyword reports whether n is a CLASS psi parses from enum and

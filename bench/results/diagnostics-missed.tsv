@@ -167,11 +167,8 @@ tests/deprecated/deprecatedPropertyInheritance.kt	deprecatedPropertyInheritance.
 tests/deprecated/hiddenPropertyAccessors.kt	hiddenPropertyAccessors.kt:36	UNRESOLVED_REFERENCE	missing-check
 tests/deprecated/hiddenPropertyAccessors.kt	hiddenPropertyAccessors.kt:38	UNRESOLVED_REFERENCE	missing-check
 tests/deprecated/hiddenPropertyAccessors.kt	hiddenPropertyAccessors.kt:40	UNRESOLVED_REFERENCE	missing-check
-tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:16	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
 tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:17	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
-tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:7	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
 tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:8	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
-tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:9	UNRESOLVED_REFERENCE	syntax-error
 tests/diagnostics/annotationArgumentKClassLiteralTypeError.kt	annotationArgumentKClassLiteralTypeError.kt:11	ANNOTATION_ARGUMENT_KCLASS_LITERAL_OF_TYPE_PARAMETER_ERROR	missing-check
 tests/diagnostics/annotationArgumentKClassLiteralTypeError.kt	annotationArgumentKClassLiteralTypeError.kt:9	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	missing-check
 tests/diagnostics/annotationArgumentMustBeConst.kt	annotationArgumentMustBeConst.kt:25	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	missing-check
@@ -740,7 +737,6 @@ tests/when/guard/initializationAnalyses.kt	initializationAnalyses.kt:84	VAL_REAS
 tests/when/guard/typeCheckerBehaves.kt	typeCheckerBehaves.kt:33	NO_ELSE_IN_WHEN	nearby
 tests/when/kt10439.kt	kt10439.kt:21	ARGUMENT_TYPE_MISMATCH	nearby
 tests/when/kt9972.kt	kt9972.kt:24	INITIALIZER_TYPE_MISMATCH	nearby
-tests/when/withSubjectVariable/unnamedSubject.kt	unnamedSubject.kt:6	UNRESOLVED_REFERENCE	syntax-error
 tests/when/withSubjectVariable/unsupportedVariableDeclarationsInWhenSubject.kt	unsupportedVariableDeclarationsInWhenSubject.kt:15	UNINITIALIZED_VARIABLE	syntax-error
 testsWithStdLib/ArrayOfNothing.kt	ArrayOfNothing.kt:69	TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR	missing-check
 testsWithStdLib/annotations/annotationAllRepeatable.kt	annotationAllRepeatable.kt:31	REPEATED_ANNOTATION	nearby
