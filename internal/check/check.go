@@ -3926,7 +3926,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t = c.provideDelegate(d, p, t, provided)
 	}
 	c.ambiguousAnon(d, cls, t)
-	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
+	if sym.Type = t; d.DelegateOf != nil && !keepsAnon(&d.Modifiers, cls) {
+		sym.Type = approxTop(c.approxIntersections(t))
+	} else if !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}
 	if d.Const && sym.Type.P {

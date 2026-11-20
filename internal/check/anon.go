@@ -456,8 +456,19 @@ func (c *Checker) anonName() string {
 
 // approx returns the type that a declaration whose value is an object
 // expression has: its supertype, or Any, as Kotlin approximates it for
-// declarations visible outside.
+// declarations visible outside, in type arguments too: Inv<Any> for
+// Inv(object { }).
 func approx(t types.Type) types.Type {
+	if n := t.NonNull(); n.K != types.Class || !n.C.Anonymous {
+		return mapTypeArgs(t, approx)
+	}
+	return approxTop(t)
+}
+
+// approxTop returns t approximated as approx does, but not in its type
+// arguments: the type of a property's delegate, Lazy<anonymous> for
+// by lazy { object { } }, whose value the property's type is.
+func approxTop(t types.Type) types.Type {
 	n := t.NonNull()
 	if n.K != types.Class || !n.C.Anonymous {
 		return t
