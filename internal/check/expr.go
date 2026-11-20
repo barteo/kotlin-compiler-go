@@ -3215,6 +3215,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// An extension property of function type, called: x.f(y).
 			fn.X = checked(fn.X, rt)
 			fn.T = c.member(fn)
+			if g := fn.Getter; g != nil && g.Ext {
+				// Its receivers, implicit, as a read of it takes them.
+				c.dslMember(fn, fn, true, g.Owner, fn.Name, func() bool { return fn.Getter == g })
+			}
 			return c.invokeValue(x, fn.T, want, sink)
 		}
 		switch {
