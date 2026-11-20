@@ -914,6 +914,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.invisibleSetter(x.P, sym)
 			return sym.Type, false
 		}
+		c.companionProtectedSetter(sym, x.P)
 		return sym.Type, true
 	case *syntax.Index:
 		// Compound assignment of an element: a[i] += x, a[i]++.
@@ -980,6 +981,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
 			c.invisibleSetter(x.P, x.Prop)
 			return t, false
+		}
+		if x.Prop.Owner != nil && namesObject(x.X) == x.Prop.Owner {
+			c.companionProtectedSetter(x.Prop, x.P)
 		}
 		// Through a projected receiver, the type that can be written
 		// differs from the one read: Nothing for Box<out T>.
