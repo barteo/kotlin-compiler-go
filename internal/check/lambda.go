@@ -3279,6 +3279,13 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 		lt := c.lambda(l, want)
 		l.T = lt
+		if tv := s.unfixedVar(pt); tv != nil && want.K == types.Invalid && l.Arrow && !l.Anon && l.Ref == nil &&
+			slices.ContainsFunc(l.Params, func(p *syntax.LambdaParam) bool { return p.Type == nil }) {
+			// As kotlinc, the variable whose value is a lambda with a
+			// parameter it can't infer can't be inferred either: T of
+			// callParam { p -> p } for a callParam(arg: T).
+			s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
 		if pt.HasVars() {
 			s.sub(lt, pt)
 		} else {
@@ -3333,13 +3340,26 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	c.stubInference(s, l, params, ft)
-	for _, q := range params {
+	errs0 := len(s.errs)
+	vars := make([]*tvar, len(params))
+	for i, q := range params {
+		if q = s.apply(q); q.K == types.TypeVar && !q.N {
+			vars[i] = s.byVar[q.Param()]
+		}
 		if !c.hasStub(s.apply(q)) {
 			s.fixVarsIn(q)
 		}
 	}
 	for i := range params {
 		params[i] = c.demandStubs(s.final(params[i]))
+		// As kotlinc, a parameter declared without a type whose variable
+		// can't be inferred is reported too: x of foo { x -> 43 } for a
+		// foo(block: (T) -> R).
+		if tv := vars[i]; tv != nil && params[i].K == types.Invalid && l.Arrow && l.Ref == nil && !ft.Flex().E && ft.Flex().Contexts() == 0 &&
+			i < len(l.Params) && l.Params[i].Type == nil &&
+			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
 	if sam == nil {
