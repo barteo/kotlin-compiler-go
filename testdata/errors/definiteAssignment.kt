@@ -52,3 +52,43 @@ fun f(c: Boolean) {
     }
     println(h) // ERROR variable 'h' must be initialized
 }
+
+// A captured val can't be initialized in a local class or in an object's
+// functions and accessors, which may run more than once; an object's init
+// block runs in place.
+fun capturedInLocalMembers() {
+    val x: Int
+    val y: Int
+    val z: Int
+    val w: Int
+    val v: Int
+    object {
+        init {
+            x = 0
+        }
+
+        fun f() {
+            y = 0 // ERROR captured values cannot be initialized because of possible reassignments
+        }
+
+        val p: Int
+            get() {
+                z = 0 // ERROR captured values cannot be initialized because of possible reassignments
+                return 1
+            }
+    }
+    println(x)
+    class Local {
+        init {
+            w = 0 // ERROR captured values cannot be initialized because of possible reassignments
+        }
+
+        fun g(): Int {
+            val own: Int
+            own = 1
+            return own + x
+        }
+    }
+    v = 1
+    println(v + Local().g())
+}
