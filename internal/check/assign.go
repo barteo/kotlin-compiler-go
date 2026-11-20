@@ -584,10 +584,14 @@ func (a *assignment) assignStmt(st *syntax.Assign, s *daState) {
 	var v *types.VarSym
 	switch t := st.Target.(type) {
 	case *syntax.Ident:
-		v = t.Sym
+		if !a.c.castThisAssigns[t] {
+			v = t.Sym
+		}
 	case *syntax.Member:
 		if _, this := t.X.(*syntax.This); this {
-			v = t.Prop
+			if !a.c.castThisAssigns[t] {
+				v = t.Prop
+			}
 		} else {
 			a.expr(t.X, s)
 		}

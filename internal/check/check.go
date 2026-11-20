@@ -387,6 +387,10 @@ type Checker struct {
 	branchSink *system
 	unitElvis  syntax.Expr    // see unitBody
 	varTarget  *syntax.Member // see propBound
+	// castThisAssigns are the assignments' targets that assign the
+	// intersection override of a property of this smart cast to a
+	// subclass (see castThisProp), which don't initialize it.
+	castThisAssigns map[syntax.Expr]bool
 	// assignTarget is the member an assignment's target is while it is
 	// checked, whose getter isn't called (see protectedGetter).
 	assignTarget *syntax.Member

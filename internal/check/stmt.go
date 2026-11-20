@@ -897,6 +897,56 @@ func (c *Checker) assignsDeferred(v *types.VarSym) bool {
 	return v.Kind == types.Prop && c.state.init && v.Owner == c.state.cls
 }
 
+// castThisAssign checks the assignment of a val of the class, in its
+// constructor's code, to target, of p, while this is smart cast to a
+// subclass that sees p with another type: this as Derived in Base<T>,
+// for a Derived : Base<String>. As kotlinc, the target is then the
+// intersection override of p and Derived's p, typed String & T, which is
+// a val that can't be reassigned and doesn't initialize p.
+func (c *Checker) castThisAssign(target syntax.Expr, p *types.VarSym) (types.Type, bool) {
+	if p.Mutable || !c.assignsDeferred(p) || p.Kind != types.Prop {
+		return types.InvalidType, false
+	}
+	t, ok := c.castThisProp(p)
+	if !ok {
+		return types.InvalidType, false
+	}
+	if c.castThisAssigns == nil {
+		c.castThisAssigns = map[syntax.Expr]bool{}
+	}
+	c.castThisAssigns[target] = true
+	c.errorf(target.Pos(), "val cannot be reassigned")
+	return t, true
+}
+
+// castThisProp returns the type of property p of the class through this
+// smart cast to an intersection whose components see it with different
+// types, the intersection of those, and whether it is one.
+func (c *Checker) castThisProp(p *types.VarSym) (types.Type, bool) {
+	t, ok := c.narrowedThis()
+	if !ok || p.Owner == nil || !t.IsIntersection() {
+		return types.InvalidType, false
+	}
+	var ts []types.Type
+	for _, o := range t.Param().Bounds {
+		if o = o.NonNull(); o.K != types.Class || !c.isSubclass(o, p.Owner) {
+			continue
+		}
+		u := c.memberSubst(o, p.Owner).Apply(p.Type)
+		if u.K == types.Invalid {
+			return types.InvalidType, false
+		}
+		if !slices.ContainsFunc(ts, func(v types.Type) bool { return c.sameType(u, v) }) {
+			ts = append(ts, u)
+		}
+	}
+	if len(ts) < 2 {
+		return types.InvalidType, false
+	}
+	r := c.intersect(ts)
+	return r, r.K != types.Invalid
+}
+
 // lvalue resolves an assignment target and returns its declared type.
 func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	switch x := x.(type) {
@@ -914,6 +964,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		c.checkTopVar(sym, x.P)
 		x.Sym = sym
 		x.T = sym.Type
+		if t, ok := c.castThisAssign(x, sym); ok {
+			return t, false
+		}
 		if !sym.Mutable && !c.assignsDeferred(sym) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return sym.Type, false
@@ -981,6 +1034,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 				c.errorf(x.P, "variable expected")
 			}
 			return types.InvalidType, false
+		}
+		if th, ok := x.X.(*syntax.This); ok && th.Recv == nil && th.Label == "" {
+			if t, ok := c.castThisAssign(x, x.Prop); ok {
+				return t, false
+			}
 		}
 		if _, this := x.X.(*syntax.This); !x.Prop.Mutable && !(this && c.assignsDeferred(x.Prop)) {
 			c.errorf(x.P, "val cannot be reassigned")
