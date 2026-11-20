@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2893 of the 3667 warnings the tests expect (78.9%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2898 of the 3667 warnings the tests expect (79.0%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -267,6 +267,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 | 6 | 0 |
 | `NON_FINAL_MEMBER_IN_OBJECT` | 7 | 7 | 0 |
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION` | 7 | 6 | 0 |
+| `SYNCHRONIZED_ON_INLINE` | 5 | 5 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
@@ -301,10 +302,10 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `OPT_IN_OVERRIDE` | 5 |
 | `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 |
 | `REDUNDANT_REPEATABLE_ANNOTATION` | 5 |
-| `SYNCHRONIZED_ON_INLINE` | 5 |
 | `DSL_MARKER_PROPAGATES_TO_MANY` | 4 |
 | `TRIM_MARGIN_BLANK_PREFIX` | 4 |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 |
-| *32 more* | |
+| `CAN_BE_VAL` | 3 |
+| *31 more* | |
 

@@ -591,3 +591,7 @@ func TestWarningsEqualityNotApplicable(t *testing.T) {
 func TestWarningsWeakerSetter(t *testing.T) {
 	checkReference(t, "testdata/weaken.kt", Options{Warnings: true})
 }
+
+func TestWarningsSynchronizedOnInline(t *testing.T) {
+	checkReference(t, "testdata/synchronized.kt", Options{Warnings: true})
+}
