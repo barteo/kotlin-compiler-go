@@ -15,7 +15,7 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4435 tests both reject, kc reports an error on the line of an expected one in 4363.
+Of the 4435 tests both reject, kc reports an error on the line of an expected one in 4366.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -77,14 +77,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21044 of 22025 expected errors (95.5%) on their lines.
+kc reports 21054 of 22025 expected errors (95.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2552 | 2423 | 129 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1370 | 121 |
-| `RETURN_TYPE_MISMATCH` | 418 | 362 | 56 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 588 | 47 |
+| `RETURN_TYPE_MISMATCH` | 418 | 372 | 46 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
 | `INVISIBLE_REFERENCE` | 525 | 502 | 23 |
 | `REDECLARATION` | 196 | 176 | 20 |
@@ -149,11 +149,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 54 | 5.5% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
-| syntax-error | 154 | 15.7% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| accepted | 54 | 5.6% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
+| syntax-error | 152 | 15.7% | `UNRESOLVED_REFERENCE` 22, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `RETURN_TYPE_MISMATCH` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 158 | 16.1% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 615 | 62.7% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 20, `RETURN_TYPE_MISMATCH` 19 |
+| nearby | 150 | 15.4% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 615 | 63.3% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 20, `RETURN_TYPE_MISMATCH` 19 |
 
 ## Errors kotlinc doesn't report
 
@@ -162,8 +162,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 202 |
-| `type mismatch: inferred type is _ but _ was expected` | 186 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
+| `type mismatch: inferred type is _ but _ was expected` | 176 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 171 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 58 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |

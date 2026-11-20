@@ -913,8 +913,13 @@ func (c *Checker) markTailIfs(e syntax.Expr) {
 // resultPos is where a lambda's result is reported: its last expression.
 func resultPos(x *syntax.Lambda) syntax.Pos {
 	if n := len(x.Body.Stmts); n > 0 {
-		if es, ok := x.Body.Stmts[n-1].(*syntax.ExprStmt); ok {
-			return es.X.Pos()
+		switch s := x.Body.Stmts[n-1].(type) {
+		case *syntax.ExprStmt:
+			return s.X.Pos()
+		case *syntax.Assign:
+			// kotlinc reports a lambda ending in an assignment, which is
+			// Unit, on the assignment.
+			return syntax.StmtPos(s)
 		}
 	}
 	return x.P
