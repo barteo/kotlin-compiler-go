@@ -198,7 +198,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if cls != nil {
 				// An object named as a function is the object: a value.
 				if obj := objectOf(cls); obj != nil {
-					c.checkClassVisible(cls, x.P)
+					c.checkClassVisible(obj, x.P) // the class, or its private companion
 					return objectValue(x, obj)
 				}
 				if obj := c.starObject(x.Name, cls); obj != nil {
@@ -2373,7 +2373,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
-			c.checkClassVisible(cls, x.P)
+			c.checkClassVisible(obj, x.P)
 			return objectValue(x, obj) // a.b.Obj, Outer.Companion, kotlin.random.Random
 		}
 	}

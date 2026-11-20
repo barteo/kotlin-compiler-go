@@ -996,6 +996,9 @@ func (c *Checker) resolveImports() {
 		}
 		// A.b imports a member of a class or an object, or a nested class.
 		if owner := c.importOwner(pkg); owner != nil {
+			// As kotlinc, the classes the path goes through are
+			// checked, not a nested class it ends with.
+			c.checkImportVisible(owner, imp.P)
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
@@ -1033,7 +1036,31 @@ func (c *Checker) resolveImports() {
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		c.importMembers(c.importOwner(imp.Path), imp)
+		owner := c.importOwner(imp.Path)
+		if owner != nil {
+			c.checkImportVisible(owner, imp.P)
+		}
+		c.importMembers(owner, imp)
+	}
+}
+
+// checkImportVisible reports an import through class cls of the program,
+// or a class it is nested in, that is private to another file or to a
+// class of another file: import p.Private.Nested, import p.C.Companion.f
+// of a private companion, import p.C.PrivateNested.*.
+func (c *Checker) checkImportVisible(cls *types.ClassSym, p syntax.Pos) {
+	k := c.invisibleOuter(cls)
+	if k == nil || k.External {
+		return
+	}
+	top := k
+	for top.Outer != nil {
+		top = top.Outer
+	}
+	// As K2, an import sees the private classes of its own file, and
+	// those nested in them.
+	if v, _ := declVisibility(k.Decl); v == syntax.Private && top.File != c.file.Class() {
+		c.checkClassVisible(cls, p)
 	}
 }
 
