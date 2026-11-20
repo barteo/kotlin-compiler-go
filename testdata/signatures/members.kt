@@ -1,6 +1,7 @@
 // Signatures of constructors of inner classes, which leave out the outer
-// instance, of overloads, extension properties and interface bodies, and
-// of collection members that override Java's (TestSignatures).
+// instance and are only written for a generic parameter or outer class,
+// of overloads, extension properties and interface bodies, and of
+// collection members that override Java's (TestSignatures).
 package r
 open class Foo
 class Box<T>(val t: T)
@@ -17,6 +18,18 @@ class Outer<O> {
         return Loc(1)
     }
 }
+class NoParams {
+    inner class Plain(val x: Foo)
+    inner class None
+    inner class Gen(val l: List<Foo>)
+    inner class Own<S>(val x: Foo)
+    inner class More(val x: Foo) {
+        constructor() : this(Foo())
+        constructor(l: List<Foo>) : this(Foo())
+        inner class Deep(val x: Int)
+    }
+}
+enum class Entries(val x: Int) { A(1) }
 class Defaults(val a: List<Foo> = emptyList(), val b: Int = 0)
 class Overloads @JvmOverloads constructor(val a: List<Foo>, val b: Int = 0)
 @JvmOverloads fun ov(a: List<Foo>, b: Int = 0) {}

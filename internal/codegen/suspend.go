@@ -399,6 +399,7 @@ func (g *gen) suspendImpl(fd *syntax.FunDecl, access uint16) bool {
 		implAccess |= cf.AccPublic
 	}
 	g.code = g.cls.NewMethod(implAccess, name, implDesc)
+	g.signFun(g.cls.LastMethod(), sym, fd, implDesc, sym.Owner.This())
 	g.code.NameLocal(g.code.AllocLocal("L"+owner+";"), "$this")
 	g.resume = &resumeCall{this: true, thisParam: true, call: func(g *gen) { invoke(g.code) }}
 	g.functionBody(fd)

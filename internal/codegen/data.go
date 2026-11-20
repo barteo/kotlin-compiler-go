@@ -91,7 +91,10 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 	if f := synthesized(cls, "copy"); f != nil {
 		ctor := ctorJVMDesc(cd.Ctor) // with a local class's captures
 		d := methodDesc(f.Params, f.Ret)
-		if f.Protected {
+		switch {
+		case f.Private:
+			access = cf.AccPrivate
+		case f.Protected:
 			access = cf.AccProtected
 		}
 		newMethod(f.JVM(), d)
@@ -127,7 +130,11 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 
 		// copy$default: an omitted argument is the property's value.
-		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
+		dflt := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
+		if f.Private {
+			dflt &^= cf.AccPublic // as a private function's
+		}
+		g.code = g.cls.NewMethod(dflt, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
 		g.code.AllocLocal(self)
 		for _, p := range f.Params {
 			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))

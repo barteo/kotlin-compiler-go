@@ -184,7 +184,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 			acc |= cf.AccFinal // as kotlinc writes them, also of open functions
 		}
 		g.code = g.cls.NewMethod(acc, f.JVM(), o.desc)
-		g.signParams(g.cls.LastMethod(), f, fd, o.desc, types.InvalidType, taken(f.Params, o.omitted))
+		g.signParams(g.cls.LastMethod(), f, fd, o.desc, types.InvalidType, taken(f.Params, o.omitted), nil)
 		g.cls.Throws(f.Throws...)
 		stubAnnotations(g.cls.LastMethod(), fd, f.Ext, taken(f.Params, o.omitted))
 		g.code.Line(fd.P.Line)
@@ -276,10 +276,16 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 	t := types.GetterType(p)
 	access := g.stubAccess()
-	if pd, ok := p.Decl.(*syntax.PropDecl); ok && pd.Visibility == syntax.Protected {
-		access = protected(access)
+	setAccess := access // the setter's: protected for a protected set too
+	if pd, ok := p.Decl.(*syntax.PropDecl); ok {
+		if pd.Visibility == syntax.Protected {
+			access = protected(access)
+		}
+		if pd.Visibility == syntax.Protected || pd.SetterVis == syntax.Protected {
+			setAccess = protected(setAccess)
+		}
 	}
-	stub := func(name, d string, param types.Type) {
+	stub := func(access uint16, name, d string, param types.Type) {
 		g.code = g.cls.NewMethod(access, name, d)
 		if param.K == types.Unit {
 			g.signAccessor(g.cls.LastMethod(), t, propRef(p), d, nil, comp)
@@ -298,9 +304,9 @@ func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
-	stub(types.GetterJVM(p), "()"+desc(t), types.UnitType)
+	stub(access, types.GetterJVM(p), "()"+desc(t), types.UnitType)
 	if p.Mutable && !p.SetterPrivate {
-		stub(types.SetterJVM(p), "("+desc(types.FieldType(p))+")V", types.FieldType(p))
+		stub(setAccess, types.SetterJVM(p), "("+desc(types.FieldType(p))+")V", types.FieldType(p))
 	}
 }
 
@@ -330,6 +336,7 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 		f := fw.Fun
 		fd := funDesc(f) // with a member extension's receiver
 		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic, f.JVM(), "("+self+fd[1:])
+		g.signInherited(c.LastMethod(), cls, fw.Of, f)
 		g.code.Local(cf.ALOAD, g.code.AllocLocal(self))
 		g.code.Checkcast(fw.Of.Name)
 		for _, pd := range cf.DescParams(fd) {
@@ -343,6 +350,37 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 	if len(fds) > 0 || len(cd.Forwarders) > 0 || annotations {
 		g.shared.impls[cls] = c
 	}
+}
+
+// signInherited gives mr, the DefaultImpls method of interface cls for
+// member f that it inherits from interface of, its generic signature: f's
+// as cls sees it, with cls's type parameters.
+func (g *gen) signInherited(mr cf.MemberRef, cls, of *types.ClassSym, f *types.FunSym) {
+	fd, _ := f.Decl.(*syntax.FunDecl)
+	g.signParams(mr, f, fd, "(L"+cls.Name+";"+funDesc(f)[1:], cls.This(), f.Params, superSubst(cls, of))
+}
+
+// superSubst maps the type parameters of class of to their arguments in
+// the supertype of cls that it is.
+func superSubst(cls, of *types.ClassSym) types.Subst {
+	seen := map[*types.ClassSym]bool{cls: true}
+	queue := []types.Type{cls.This()}
+	for len(queue) > 0 {
+		t := queue[0]
+		queue = queue[1:]
+		if t.C == of {
+			return argSubst(t)
+		}
+		t.C.Ensure()
+		s := argSubst(t)
+		for _, st := range t.C.Supers {
+			if st = s.Apply(st); st.K == types.Class && st.C != nil && !seen[st.C] {
+				seen[st.C] = true
+				queue = append(queue, st)
+			}
+		}
+	}
+	return nil
 }
 
 // implsOf returns the DefaultImpls class of interface cls, whose class is
@@ -408,7 +446,7 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 		g.code = g.cls.NewMethod(access, name, d)
 	}
 	if access&cf.AccSynthetic == 0 {
-		g.signParams(g.cls.LastMethod(), fd.Sym, fd, d, types.InvalidType, params)
+		g.signParams(g.cls.LastMethod(), fd.Sym, fd, d, types.InvalidType, params, nil)
 	}
 	stubAnnotations(g.cls.LastMethod(), fd, fd.Sym.Ext, params)
 	if fd.Sym.External && d == funDesc(fd.Sym) {
@@ -478,13 +516,8 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 			panic(err)
 		}
 		code = c.NewMethod(cf.AccPublic|cf.AccStatic|m.synthetic(), m.name, d)
-		switch {
-		case m.hidden:
-		case m.decl != nil && m.decl.Sym.Owner == cd.Sym:
-			g.signFun(c.LastMethod(), m.decl.Sym, m.decl, d, cd.Sym.This())
-		case m.accessor != nil && m.owner == cd.Sym:
-			fd, _ := m.accessor.Decl.(*syntax.FunDecl)
-			g.signFun(c.LastMethod(), m.accessor, fd, d, cd.Sym.This())
+		if !m.hidden && m.fun != nil {
+			g.signInherited(c.LastMethod(), cd.Sym, m.owner, m.fun)
 		}
 		g.code = code
 		if m.line > 0 {
@@ -587,10 +620,13 @@ type defaultBody struct {
 	// recv is the receiver of a member extension, which the method takes
 	// first.
 	recv *types.Type
+	// fun is the member, for its generic signature.
+	fun *types.FunSym
 }
 
 // of returns m as the body of member f, with f's extension receiver.
 func (m defaultBody) of(f *types.FunSym) defaultBody {
+	m.fun = f
 	if f.Ext && len(f.Contexts) == 0 {
 		m.recv = &f.Recv
 	}
@@ -616,7 +652,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			case *syntax.FunDecl:
 				if f := m.Sym; f != nil && m.Visibility != syntax.Private {
 					abstract := f.Abstract || m.Body == nil && m.ExprBody == nil
-					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, "", nil}.of(f))
+					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, "", nil, nil}.of(f))
 				}
 			case *syntax.PropDecl:
 				p := m.Sym
@@ -626,7 +662,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				get := defaultBody{name: types.GetterJVM(p), desc: "()" + desc(types.GetterType(p)), ret: types.GetterType(p), abstract: true}
 				if a := m.Getter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get", nil}.of(f)
+					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get", nil, nil}.of(f)
 				}
 				out = append(out, get)
 				if !p.Mutable {
@@ -635,7 +671,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				set := defaultBody{name: types.SetterJVM(p), desc: "(" + desc(types.FieldType(p)) + ")V", ret: types.UnitType, abstract: true}
 				if a := m.Setter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set", nil}.of(f)
+					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set", nil, nil}.of(f)
 				}
 				out = append(out, set)
 			}

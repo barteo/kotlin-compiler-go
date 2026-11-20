@@ -528,12 +528,13 @@ func (g *gen) wildcards(as []syntax.Annotation, cls *types.ClassSym) wildMode {
 // declaration fd, if any, its generic signature. this is the type of a
 // DefaultImpls method's first parameter, the interface, or invalid.
 func (g *gen) signFun(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, desc string, this types.Type) {
-	g.signParams(mr, f, fd, desc, this, f.Params)
+	g.signParams(mr, f, fd, desc, this, f.Params, nil)
 }
 
 // signParams is signFun for a method that takes some of f's parameters,
-// params, as an overload of @JvmOverloads.
-func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, desc string, this types.Type, fparams []*types.VarSym) {
+// params, as an overload of @JvmOverloads, or for one of a member that
+// this inherits, whose types sub maps to those this sees.
+func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, desc string, this types.Type, fparams []*types.VarSym, sub types.Subst) {
 	var as []syntax.Annotation
 	var recvRef, retRef *syntax.TypeRef
 	refs := map[*types.VarSym]*syntax.TypeRef{}
@@ -556,8 +557,10 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 	}
 	tps := f.TypeParams
 	var params []sigPart
+	own := 0
 	if this.K != types.Invalid {
 		params = append(params, sigPart{t: this})
+		own = 1
 		if len(this.C.TypeParams) > 0 {
 			tps = append(append([]*types.TypeParamSym(nil), this.C.TypeParams...), tps...)
 		}
@@ -585,6 +588,12 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 		for range 1 + f.Changed + f.Defaults {
 			params = append(params, sigPart{t: types.InvalidType})
 		}
+	}
+	if len(sub) > 0 {
+		for i := range params[own:] {
+			params[own+i].t = sub.Apply(params[own+i].t)
+		}
+		ret.t = sub.Apply(ret.t)
 	}
 	if s := methodSig(tps, params, ret, desc, 0, g.wildcards(as, f.Owner)); s != "" {
 		mr.SetSignature(s)
@@ -640,9 +649,10 @@ func propRef(p *types.VarSym) *syntax.TypeRef {
 
 // signCtor gives mr, the constructor f of class cls, of descriptor d, its
 // generic signature: as kotlinc's, and javac's, it leaves out an inner
-// class's outer instance and an enum's name and ordinal. A local class's
-// gets none. params are its parameters' declarations, and as its
-// annotations.
+// class's outer instance and an enum's name and ordinal. An inner class's
+// gets none if neither its parameters nor its outer instance have generic
+// types, and a local class's gets none. params are its parameters'
+// declarations, and as its annotations.
 func (g *gen) signCtor(mr cf.MemberRef, cls *types.ClassSym, f *types.FunSym, params []*syntax.Param, d string, as []syntax.Annotation) {
 	if cls.Local || cls.Anonymous || len(f.Params) != len(params) {
 		return
@@ -662,7 +672,11 @@ func (g *gen) signCtor(mr cf.MemberRef, cls *types.ClassSym, f *types.FunSym, pa
 		}
 		ps = append(ps, typedPart(p.Type, ref))
 	}
-	if s := methodSig(nil, ps, sigPart{t: types.UnitType}, d, skip, g.wildcards(as, cls)); s != "" {
+	s := methodSig(nil, ps, sigPart{t: types.UnitType}, d, skip, g.wildcards(as, cls))
+	if cls.Inner && cls.OuterParams == 0 && s == "("+strings.Join(cf.DescParams(d)[1:], "")+")V" {
+		return
+	}
+	if s != "" {
 		mr.SetSignature(s)
 	}
 }
