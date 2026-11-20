@@ -210,7 +210,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2411 of the 3652 warnings the tests expect (66.0%) on their lines, and 14 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2470 of the 3652 warnings the tests expect (67.6%) on their lines, and 14 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -246,6 +246,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 1 | 0 |
 | `INLINE_CLASS_DEPRECATED` | 26 | 26 | 0 |
+| `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 | 26 | 0 |
 | `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
 | `REDUNDANT_ELSE_IN_WHEN` | 26 | 19 | 0 |
 | `DIVISION_BY_ZERO` | 25 | 22 | 0 |
@@ -253,11 +254,14 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 | 22 | 0 |
 | `NON_TAIL_RECURSIVE_CALL` | 22 | 22 | 0 |
 | `EMPTY_RANGE` | 19 | 19 | 0 |
+| `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
+| `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 | 11 | 0 |
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
+| `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
@@ -269,7 +273,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 |:---|---:|
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
-| `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
 | `PROPERTY_HIDES_JAVA_FIELD` | 22 |
 | `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
@@ -281,12 +284,10 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 |
-| `USELESS_ELVIS_LEFT_IS_NULL` | 15 |
 | `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
 | `WRONG_INVOCATION_KIND` | 12 |
-| `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 |
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 |
@@ -297,5 +298,8 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 |
 | `REDUNDANT_NULLABLE` | 9 |
 | `REDUNDANT_OPEN_IN_INTERFACE` | 9 |
-| *57 more* | |
+| `DANGEROUS_CHARACTERS` | 8 |
+| `FORBIDDEN_IDENTITY_EQUALS_WARNING` | 8 |
+| `REDUNDANT_MODIFIER` | 8 |
+| *53 more* | |
 

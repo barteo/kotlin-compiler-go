@@ -471,3 +471,7 @@ func checkReference(t *testing.T, file string, opts Options) {
 		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
 }
+
+func TestWarningsNullOperators(t *testing.T) {
+	checkReference(t, "testdata/nullops.kt", Options{Warnings: true})
+}
