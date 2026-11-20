@@ -281,8 +281,6 @@ tests/generics/tpAsReified/GenericArrayAsReifiedArgument.kt	GenericArrayAsReifie
 tests/generics/tpAsReified/InConstructor.kt	InConstructor.kt:10	TYPE_PARAMETER_AS_REIFIED	missing-check
 tests/generics/tpAsReified/InConstructor.kt	InConstructor.kt:9	TYPE_PARAMETER_AS_REIFIED	missing-check
 tests/imports/ImportPrivateMember.kt	ImportPrivateMember.kt:36	INVISIBLE_REFERENCE	missing-check
-tests/imports/ImportPrivateMemberFromOtherFile.kt	C.kt:3	INVISIBLE_REFERENCE	missing-check
-tests/imports/ImportPrivateMemberFromOtherFile.kt	C.kt:7	INVISIBLE_REFERENCE	missing-check
 tests/imports/ImportPrivateMembersWithStar.kt	ImportPrivateMembersWithStar.kt:30	INVISIBLE_REFERENCE	missing-check
 tests/imports/NestedClassClash.kt	c.kt:4	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/imports/NestedClassClash.kt	c.kt:5	UNRESOLVED_REFERENCE	missing-check
@@ -529,11 +527,6 @@ tests/j+k/typeFromGenericWithAnnotationWithoutWrtHack.kt	Test.kt:9	INITIALIZER_T
 tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	Test.kt:16	ARGUMENT_TYPE_MISMATCH	nearby
 tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	Test.kt:23	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	Test.kt:37	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/javac/imports/PackagePrivateAndPublicNested.kt	foo.kt:10	INVISIBLE_REFERENCE	missing-check
-tests/javac/imports/PackagePrivateAndPublicNested.kt	foo.kt:11	INVISIBLE_REFERENCE	missing-check
-tests/javac/imports/PackagePrivateAndPublicNested.kt	foo.kt:4	INVISIBLE_REFERENCE	missing-check
-tests/javac/imports/PackagePrivateAndPublicNested.kt	foo.kt:7	EXPOSED_FUNCTION_RETURN_TYPE	missing-check
-tests/javac/imports/PackagePrivateAndPublicNested.kt	foo.kt:7	INVISIBLE_REFERENCE	missing-check
 tests/javac/qualifiedExpression/PackageVsClass.kt	c.kt:9	UNRESOLVED_REFERENCE	nearby
 tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt	main.kt:2	DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR	accepted
 tests/jvm/duplicateJvmSignature/functionAndProperty/trait.kt	trait.kt:2	CONFLICTING_JVM_DECLARATIONS	missing-check
