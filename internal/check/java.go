@@ -2284,6 +2284,18 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
 		})
 	}
+	if len(ms) > 0 && (strings.HasPrefix(name, "get") || strings.HasPrefix(name, "is")) {
+		// A Java class's method that overrides a Kotlin property's getter
+		// is the property's too: x.getA() is unresolved, as in Kotlin, for
+		// a Java class extending a Kotlin class with a val a. Not one that
+		// overrides a Kotlin function as well, nor a setter's override,
+		// which kotlinc resolves.
+		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+			o := f.Owner
+			return !f.Static && o != nil && o.External && o.KotlinName == "" && !o.FromKotlin && isJavaClass(o) &&
+				kotlinAccessorImplements(o, o, f) && !overridesKotlinFun(o, f)
+		})
+	}
 	if len(ms) > 0 && slices.ContainsFunc(numberConversions, func(conv [2]string) bool { return conv[1] == name }) {
 		// A Java method of Number, or of a subclass, with the Java name of
 		// one of its conversions is that conversion to Kotlin: n.intValue()

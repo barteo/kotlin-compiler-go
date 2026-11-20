@@ -460,12 +460,6 @@ tests/j+k/kjkimplicitTypesCrash.kt	test.kt:3	ACCIDENTAL_OVERRIDE	accepted
 tests/j+k/manyImplNotImplementedComplexHierarchy.kt	main.kt:6	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	missing-check
 tests/j+k/manyImplNotImplementedComplexHierarchy2.kt	main.kt:7	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	missing-check
 tests/j+k/missingTypeOfParameterInFakeOverride_2.kt	missingTypeOfParameterInFakeOverride_2.kt:5	ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED	accepted
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:10	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:12	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:14	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:2	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:4	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/overrideForMemberExtensionProp.kt	main.kt:5	UNRESOLVED_REFERENCE	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:10	RETURN_TYPE_MISMATCH	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:7	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:8	UNSAFE_CALL	missing-check
