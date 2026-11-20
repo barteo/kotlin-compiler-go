@@ -357,6 +357,7 @@ func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, typ
 
 func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
 	var syms []*types.VarSym
+	errs0 := len(c.errs)
 	// A receiver checked before keeps its local, which the this the check
 	// wrote for its members' calls refers to: see stubInference.
 	recv := x.Recv
@@ -442,6 +443,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				}
 			case w.known && i < len(params):
 				t = params[i]
+				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
+					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+				}
 			case !w.recover && ok:
 				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
 			}
@@ -452,6 +456,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		x.It = &types.VarSym{Name: "it", Type: types.InvalidType, Kind: types.Param}
 	case w.known && len(params) == 1:
 		x.It = &types.VarSym{Name: "it", Type: params[0], Kind: types.Param}
+		if params[0] == cyclicParamType && ok && len(c.errs) == errs0 {
+			c.errorf(x.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+		}
 	case w.known && len(params) > 1:
 		c.errorf(x.P, "expected %s, but 0 were declared", paramsString(params))
 		x.It = &types.VarSym{Name: "it", Type: types.InvalidType, Kind: types.Param}
@@ -1345,6 +1352,12 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 	ps := make([]types.Type, len(m.Params))
 	for i, q := range m.Params {
 		ps[i] = lambdaParam(sub, q.Type)
+		if q.Type.IsParam() && starBoundCycle(t, q.Type.Param()) {
+			// As kotlinc's CANNOT_INFER_PARAMETER_TYPE: Function1<*, *>
+			// of a Function1<A extends B, B extends A> gives its
+			// lambda no type for an A.
+			ps[i] = cyclicParamType
+		}
 	}
 	if m.Ext {
 		// A member extension: the lambda's receiver is its receiver.
@@ -1365,6 +1378,34 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 		ft = ft.WithReceiver()
 	}
 	return m, ft.WithContexts(len(ctx))
+}
+
+// cyclicParamType is the type samTarget gives a lambda's parameter for
+// which a cycle of star-projected bounds leaves none (see
+// starBoundCycle): an invalid type, which no other check makes definitely
+// non-null, for checkLambda to report.
+var cyclicParamType = types.Type{K: types.Invalid, D: true}
+
+// starBoundCycle reports whether type parameter p of class type t's
+// class is star-projected in t, and its first bound, through other
+// star-projected parameters of the class, comes back to one of them.
+func starBoundCycle(t types.Type, p *types.TypeParamSym) bool {
+	ps := t.C.TypeParams
+	if t.A == nil || t.A.Len() != len(ps) {
+		return false
+	}
+	seen := map[*types.TypeParamSym]bool{}
+	for p != nil && p.Owner == any(t.C) && p.Index < len(ps) && ps[p.Index] == p && t.A.Get(p.Index).V == types.Star {
+		if seen[p] {
+			return true
+		}
+		seen[p] = true
+		if len(p.Bounds) == 0 || !p.Bounds[0].IsParam() {
+			return false
+		}
+		p = p.Bounds[0].Param()
+	}
+	return false
 }
 
 // lambdaParam returns the type of a lambda's parameter for a parameter
