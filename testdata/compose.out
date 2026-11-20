@@ -275,6 +275,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -583,6 +585,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -891,6 +895,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -1211,6 +1217,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -1525,6 +1533,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -1838,6 +1848,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -2151,6 +2163,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -2464,6 +2478,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -2777,6 +2793,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1
@@ -3090,6 +3108,8 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "app each slot"
+  text "app deferred slot"
   text "extra app"
   text "plain"
   deco 1

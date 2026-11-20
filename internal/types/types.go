@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
@@ -765,6 +766,21 @@ func (i *InlineInfo) Defaults(n int) (*inline.Body, error) {
 		return b, err
 	}
 	return i.defaults.get(load, i.Name+"$default", "(L"+i.Owner+";"+desc[1:])
+}
+
+// ModuleSuffix returns what the JVM names of a module's internal members
+// end with: $ and its name, with the characters that aren't letters or
+// ASCII digits replaced by _, as kotlinc writes them.
+func ModuleSuffix(module string) string {
+	if module == "" {
+		module = "main"
+	}
+	return "$" + strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || '0' <= r && r <= '9' {
+			return r
+		}
+		return '_'
+	}, module)
 }
 
 // JVM returns the name of the method on the JVM. The program's functions

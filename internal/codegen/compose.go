@@ -694,18 +694,18 @@ func composeGetterDesc(p *types.VarSym, d string) string {
 
 // stableField adds the $stable field that kotlinc's Compose plugin gives
 // a public or internal class that isn't local, inner, a companion, an
-// enum, an annotation, an interface or a value class, with its
-// @StabilityInferred annotation: see stability.go. The field holds the
-// class's stability bits: 0 for a stable class, which it has from a
-// stability marker or is inferred, and else 8 or the value of the $stable
-// fields it depends on, which the static initializer assigns (see
-// stableInit). The annotation's parameters are the mask of the type
-// parameters its stability depends on, and the bit after them if it is
-// known to be stable.
+// enum, an annotation, an interface, a value class or the parcelize
+// plugin's Creator, with its @StabilityInferred annotation: see
+// stability.go. The field holds the class's stability bits: 0 for a
+// stable class, which it has from a stability marker or is inferred, and
+// else 8 or the value of the $stable fields it depends on, which the
+// static initializer assigns (see stableInit). The annotation's
+// parameters are the mask of the type parameters its stability depends
+// on, and the bit after them if it is known to be stable.
 func (g *gen) stableField(c *cf.Class, cd *syntax.ClassDecl) {
 	cls := cd.Sym
 	if !g.shared.opts.Compose || cls.Interface || cls.Annotation || cls.Entries != nil || cd.EnumEntry || cls.CompanionOf != nil ||
-		cls.Local || cls.Anonymous || cls.Inner || cls.Value || cd.Visibility == syntax.Private || cd.Visibility == syntax.Protected {
+		cls.Local || cls.Anonymous || cls.Inner || cls.Value || cd.Visibility == syntax.Private || cd.Visibility == syntax.Protected || parcelCreator(cd) {
 		return
 	}
 	c.AddField(cf.AccPublic|cf.AccStatic|cf.AccFinal, "$stable", "I")
@@ -744,6 +744,16 @@ func (g *gen) stableField(c *cf.Class, cd *syntax.ClassDecl) {
 	case hasRuntime(s):
 		g.shared.stableInits[cd] = func() { g.stableExpr(s, nil) }
 	}
+}
+
+// parcelCreator reports whether cd is the class Creator that the
+// parcelize plugin declares in a @Parcelize class.
+func parcelCreator(cd *syntax.ClassDecl) bool {
+	if !cd.Generated || cd.Name != "Creator" || cd.Sym.Outer == nil {
+		return false
+	}
+	outer, ok := cd.Sym.Outer.Decl.(*syntax.ClassDecl)
+	return ok && outer.Parcelize
 }
 
 // stableInit assigns the $stable field of class cd in its static

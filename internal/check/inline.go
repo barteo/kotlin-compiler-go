@@ -19,6 +19,7 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 			i := cl.paramIndex(k)
 			l.Once = i >= 0 && i < len(cl.f.Once) && cl.f.Once[i]
 			l.InPlace = i >= 0 && i < len(cl.f.InPlace) && cl.f.InPlace[i]
+			l.InlineArg = inlineParam(cl.f, i)
 			lambdas = append(lambdas, l)
 		}
 	}
@@ -66,6 +67,22 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 			c.markInline(l, cl.f, b, cl.paramIndex(k))
 		}
 	}
+}
+
+// inlineParam reports whether f is an inline function that inlines the
+// lambdas passed for its parameter i, as kotlinc does: a parameter of a
+// function type that isn't noinline.
+func inlineParam(f *types.FunSym, i int) bool {
+	if i < 0 || i >= len(f.Params) {
+		return false
+	}
+	if p := f.Params[i]; p.Vararg || p.Type.N || !p.Type.Flex().IsFunc() {
+		return false
+	}
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return d.Inline && i < len(d.Params) && !d.Params[i].Noinline
+	}
+	return f.Declared != nil && i < len(f.Declared.Noinline) && !f.Declared.Noinline[i]
 }
 
 // siblings records the locals that each of the lambdas passed to a call
