@@ -8304,7 +8304,7 @@ tests/smartCasts/kt30826.kt	rejects invalid	on an expected line
 tests/smartCasts/kt30927.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt3224.kt	accepts valid		
 tests/smartCasts/kt32358_1.kt	accepts valid		
-tests/smartCasts/kt32358_2.kt	rejects invalid	elsewhere	
+tests/smartCasts/kt32358_2.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt32358_3.kt	accepts valid		
 tests/smartCasts/kt3244.kt	accepts valid		
 tests/smartCasts/kt3572.kt	accepts valid		

@@ -1155,6 +1155,9 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 		// the body, is @ExperimentalContracts.
 		if m := w.o.marker(w.o.extNamed("kotlin.contracts.ExperimentalContracts")); m != nil {
 			w.require(p, []*optMarker{m})
+			for _, q := range w.c.contractCalls[d.Body] {
+				w.require(q, []*optMarker{m})
+			}
 		}
 	}
 	if d.Body != nil {

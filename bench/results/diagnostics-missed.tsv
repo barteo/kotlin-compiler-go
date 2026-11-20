@@ -1088,13 +1088,6 @@ testsWithStdLib/callableReferences/implicitTypes.kt	implicitTypes.kt:8	TYPECHECK
 testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	labeledReturns.kt:45	VAL_REASSIGNMENT	missing-check
 testsWithStdLib/contracts/controlflow/flowInlining/severalJumpOutsFromInlinedLambda.kt	severalJumpOutsFromInlinedLambda.kt:62	UNINITIALIZED_VARIABLE	missing-check
 testsWithStdLib/contracts/controlflow/flowInlining/severalJumpOutsFromInlinedLambda.kt	severalJumpOutsFromInlinedLambda.kt:63	UNINITIALIZED_VARIABLE	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:5	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:6	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:6	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:6	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:7	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:7	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/contracts/fromSource/bad/noOptIn.kt	noOptIn.kt:7	OPT_IN_USAGE_ERROR	missing-check
 testsWithStdLib/coroutines/callableReference/callableReferenceOnUnresolvedLHS.kt	callableReferenceOnUnresolvedLHS.kt:9	UNRESOLVED_REFERENCE	missing-check
 testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	extensionWithNonValuableConstraints.kt:55	ARGUMENT_TYPE_MISMATCH	nearby
 testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	extensionWithNonValuableConstraints.kt:55	ARGUMENT_TYPE_MISMATCH	nearby

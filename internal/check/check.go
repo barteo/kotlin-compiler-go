@@ -209,12 +209,16 @@ type Checker struct {
 	// contractAt are the positions of the contracts that dropContracts
 	// took out of the functions' bodies, by body, whose opt-in
 	// optInErrors checks.
-	contractAt  map[*syntax.Block]syntax.Pos
-	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps       int                     // temporaries named so far, for unique names
-	inlineCalls []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	contractAt map[*syntax.Block]syntax.Pos
+	// contractCalls are, by body, the calls of the contract's builder
+	// functions, returns, implies, callsInPlace and the like, which are
+	// @ExperimentalContracts too.
+	contractCalls map[*syntax.Block][]syntax.Pos
+	classes       []*syntax.ClassDecl     // the file's classes, nested ones too
+	aliases       []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps         int                     // temporaries named so far, for unique names
+	inlineCalls   []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls   []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym

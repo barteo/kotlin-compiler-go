@@ -477,10 +477,6 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		reflect: t.has("WITH_REFLECT"),
 		optIns:  t.values("OPT_IN"),
 	}
-	if strings.Contains(t.path, "/contracts/") {
-		// As the contracts tests' test classes do.
-		libs.optIns = append(libs.optIns, "kotlin.contracts.ExperimentalContracts")
-	}
 	cr, err := c.comp.compile(t, dir, helpers, libs)
 	if err != nil {
 		r.category, r.key, r.detail = catKc, "harness error", err.Error()
