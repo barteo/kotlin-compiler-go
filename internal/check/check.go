@@ -2619,7 +2619,16 @@ func (c *Checker) dataMembers(d *syntax.ClassDecl) {
 		}
 	}
 	if !declaresCopy(cls, len(params)) && len(params) == len(d.CtorParams) {
-		cls.Methods["copy"] = append(cls.Methods["copy"], &types.FunSym{Name: "copy", Owner: cls, Params: params, Ret: cls.This(), Resolved: true, Final: true})
+		copy := &types.FunSym{Name: "copy", Owner: cls, Params: params, Ret: cls.This(), Resolved: true, Final: true}
+		if d.Find("", "ConsistentCopyVisibility") != nil {
+			// With the constructor's visibility, if that is protected or
+			// internal: copy$module for an internal one.
+			copy.Protected = d.CtorMods.Visibility == syntax.Protected
+			if d.CtorMods.Visibility == syntax.Internal {
+				copy.Module = c.u.module // also for a @PublishedApi constructor's
+			}
+		}
+		cls.Methods["copy"] = append(cls.Methods["copy"], copy)
 	}
 }
 

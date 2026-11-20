@@ -26,7 +26,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 	}
 	self := "L" + cls.Name + ";"
 	name := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
-	var access uint16 // componentN's, with its property's visibility
+	var access uint16 // of the next method, if not public: a componentN with its property's visibility, a copy with the constructor's
 	newMethod := func(name, d string) {
 		if access == 0 {
 			access = cf.AccPublic
@@ -91,6 +91,9 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 	if f := synthesized(cls, "copy"); f != nil {
 		ctor := ctorJVMDesc(cd.Ctor) // with a local class's captures
 		d := methodDesc(f.Params, f.Ret)
+		if f.Protected {
+			access = cf.AccProtected
+		}
 		newMethod(f.JVM(), d)
 		m := g.cls.LastMethod()
 		var ps []sigPart
