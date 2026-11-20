@@ -1201,6 +1201,15 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		c.args(x, nil)
 		return types.InvalidType
 	}
+	if x.Infix {
+		// A function type's invoke isn't infix: 11 ext 11 for an ext:
+		// Int.(Int) -> Unit.
+		p := x.Fun.Pos()
+		if m, ok := x.Fun.(*syntax.Member); ok {
+			p = m.P
+		}
+		c.errorf(p, "'infix' modifier is required on 'invoke'")
+	}
 	rt := ft.NonNull()
 	if x.Recv && !rt.IsExtFunc() {
 		c.errorf(x.P, "no receiver can be passed to a value of type %s", ft)
