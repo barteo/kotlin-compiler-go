@@ -662,6 +662,15 @@ func (c *Checker) companionProtectedProp(v *types.VarSym, p syntax.Pos) {
 	c.companionProtected(v.Owner, v.Name, v.JvmStatic || v.JvmField || v.Const, p)
 }
 
+// companionProtectedSetter is companionProtected for an assignment of
+// property v, whose setter is protected.
+func (c *Checker) companionProtectedSetter(v *types.VarSym, p syntax.Pos) {
+	if v.Owner == nil || v.Owner.CompanionOf == nil || v.Kind != types.Prop || protectedProp(v) || setterVis(v) != syntax.Protected {
+		return // a protected property's use is reported as such
+	}
+	c.companionProtected(v.Owner, v.Name, v.JvmStatic || v.JvmField, p)
+}
+
 // declaresOverridden reports whether class k declares a member that f, a
 // member of a subclass of k, overrides: A's code may call b.f() on b: B
 // for B's override of A's protected f, but not that of a member A

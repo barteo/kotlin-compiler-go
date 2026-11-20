@@ -155,6 +155,39 @@ func qualifiedName(x syntax.Expr) string {
 	return ""
 }
 
+// contractBuilders are the functions of kotlin.contracts' ContractBuilder
+// and its effects that a contract's lambda calls.
+var contractBuilders = map[string]bool{"returns": true, "returnsNotNull": true, "callsInPlace": true, "holdsIn": true, "implies": true}
+
+// contractBuilderCalls records the calls of contractBuilders in contract
+// lambda l, taken out of body b, for optInErrors.
+func (c *Checker) contractBuilderCalls(b *syntax.Block, l *syntax.Lambda) {
+	syntax.Inspect(l.Body, func(n any) bool {
+		x, ok := n.(*syntax.Call)
+		if !ok {
+			return true
+		}
+		switch f := x.Fun.(type) {
+		case *syntax.Ident:
+			if contractBuilders[f.Name] && f.Name != "implies" {
+				c.addContractCall(b, f.P)
+			}
+		case *syntax.Member:
+			if x.Infix && f.Name == "implies" {
+				c.addContractCall(b, f.P)
+			}
+		}
+		return true
+	})
+}
+
+func (c *Checker) addContractCall(b *syntax.Block, p syntax.Pos) {
+	if c.contractCalls == nil {
+		c.contractCalls = map[*syntax.Block][]syntax.Pos{}
+	}
+	c.contractCalls[b] = append(c.contractCalls[b], p)
+}
+
 // dropContract removes a block's first statement if it is contract { },
 // and returns the names of the parameters it says the function calls
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
@@ -194,6 +227,7 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		c.contractAt = map[*syntax.Block]syntax.Pos{}
 	}
 	c.contractAt[b] = call.Fun.Pos()
+	c.contractBuilderCalls(b, l)
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)
 		if !ok {

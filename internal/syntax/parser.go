@@ -550,7 +550,7 @@ func (p *parser) anonFun(label string) *Lambda {
 		m := p.modifiers()
 		NoContexts(&m, "value parameters", p)
 		name := p.ident()
-		lp := &LambdaParam{P: name.Pos, Name: name.Text}
+		lp := &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted}
 		if p.at(COLON) {
 			p.next()
 			lp.Type = p.parseType()
@@ -3181,7 +3181,7 @@ func (p *parser) parseLambda() *Lambda {
 				lp.Names, lp.Types = p.destructuringNames()
 			} else {
 				name := p.ident()
-				lp = &LambdaParam{P: name.Pos, Name: name.Text}
+				lp = &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted}
 			}
 			if p.at(COLON) {
 				p.next()
@@ -3375,7 +3375,7 @@ func (p *parser) parseTry() Expr {
 		}
 		name := p.ident()
 		p.expect(COLON)
-		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType(), Annotations: as}
+		c := &Catch{P: t.Pos, Name: name.Text, Quoted: name.Quoted, Type: p.parseType(), Annotations: as}
 		if p.skipNL(); p.at(COMMA) {
 			p.next() // a trailing comma
 			p.skipNL()

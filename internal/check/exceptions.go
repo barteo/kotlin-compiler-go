@@ -121,7 +121,10 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.push()
 		c.reset(bodyVars)
 		c.scope.narrows = append(c.scope.narrows, inBody...)
-		c.scope.declare(cb.Sym)
+		if cb.Name != "_" || cb.Quoted {
+			// An unnamed catch parameter, _, declares no name.
+			c.scope.declare(cb.Sym)
+		}
 		ends = append(ends, c.watchExit(nil))
 		bt := block(cb.Body)
 		c.pop()

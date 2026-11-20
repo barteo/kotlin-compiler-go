@@ -135,6 +135,21 @@ if (gradle.parent == null) {
           .firstNotNullOfOrNull { (it as? String)?.removePrefix("-jvm-default=")?.takeIf { v -> v != it } }
         ?: "enable"
       args += listOf("-jvm-default", jvmDefault)
+      // Explicit API mode, as kotlinc's -Xexplicit-api: kotlin { explicitApi() } sets the task's
+      // explicitApiMode (an internal property, whose getter's name is mangled), and a module's
+      // free compiler arguments may give it, or -XXexplicit-return-types, too.
+      val freeArgs = (option("getFreeCompilerArgs") as List<*>?).orEmpty().filterIsInstance<String>()
+      val explicitApi = freeArgs.lastOrNull { it.startsWith("-Xexplicit-api=") }?.substringAfter('=')
+        ?: runCatching {
+          val mode = (callPrefixed(task, "getExplicitApiMode") as org.gradle.api.provider.Provider<*>?)?.orNull
+          when (mode?.toString()?.lowercase()) {
+            "strict" -> "strict"
+            "warning" -> "warning"
+            else -> null
+          }
+        }.getOrNull()
+      if (explicitApi != null) args += "-Xexplicit-api=$explicitApi"
+      freeArgs.lastOrNull { it.startsWith("-XXexplicit-return-types=") }?.let { args += it }
       // The JVM version the class files are for, the module's jvmTarget, as kotlinc's -jvm-target:
       // a library's inline functions built for a higher one are errors, as with kotlinc.
       option("getJvmTarget")?.let { call(it, "getTarget") as String }?.let { args += listOf("-jvm-target", it) }

@@ -1524,12 +1524,15 @@ func (c *Call) Name(i int) string {
 // destructuring declaration, (a, b). The checker names a destructured
 // parameter and declares its components at the start of the body.
 type LambdaParam struct {
-	P     Pos
-	Name  string
-	Names []string   // the names of a destructured parameter's components
-	Types []*TypeRef // and their types, nil where omitted
-	Type  *TypeRef   // nil: from the expected type
-	Sym   *types.VarSym
+	P    Pos
+	Name string
+	// Quoted is set on a name written in backticks: `_` is a name, which
+	// _ isn't.
+	Quoted bool
+	Names  []string   // the names of a destructured parameter's components
+	Types  []*TypeRef // and their types, nil where omitted
+	Type   *TypeRef   // nil: from the expected type
+	Sym    *types.VarSym
 }
 
 // Lambda is a lambda literal: { x, y -> body } or { body }.
@@ -1816,6 +1819,7 @@ type Try struct {
 type Catch struct {
 	P           Pos
 	Name        string
+	Quoted      bool // the name is in backticks: `_` names the exception, _ doesn't
 	Type        *TypeRef
 	Sym         *types.VarSym
 	Body        *Block

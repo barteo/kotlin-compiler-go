@@ -376,6 +376,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	read := elem()
 	et := c.value(read, noWant)
 	if et.K == types.Invalid {
+		c.unresolvedArg(arg)
 		return stmts, elem, true
 	}
 	if r := c.stub(et.Flex()); r != nil {
@@ -392,6 +393,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		probe := &syntax.Call{Args: []syntax.Expr{arg}}
 		if c.hasFun(et.NonNull(), opName, probe) && c.setFits(xt, len(idx), et, opName, probe) {
 			c.errorf(p, "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
+			c.unresolvedArg(arg)
 			return stmts, elem, true
 		}
 		call, t := c.opCall(p, checked(read, et), assignOp, []syntax.Expr{arg}, noWant)
@@ -531,6 +533,20 @@ func (c *Checker) setFits(xt types.Type, n int, et types.Type, opName string, pr
 	return false
 }
 
+// unresolvedArg checks the value v of an operator call that is ambiguous,
+// or that has no operator to call, once, as kotlinc checks an unresolved
+// call's arguments: the errors in a lambda's body are reported, even in
+// nested x[i] += { x[i] += { } }, whose check stays linear.
+func (c *Checker) unresolvedArg(v syntax.Expr) {
+	if v == nil {
+		return
+	}
+	if _, done := v.(*syntax.Checked); done {
+		return
+	}
+	c.args(&syntax.Call{Args: []syntax.Expr{v}}, nil)
+}
+
 func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 	if t.K != types.Invalid && t.K != types.Unit {
 		c.errorf(p, "function '%s' should return Unit", name)
@@ -555,6 +571,7 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 	switch {
 	case fits:
 		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
+		c.unresolvedArg(s.Value)
 		return
 	case hasAssign:
 		call, t := c.opCall(s.P, checked(s.Target, tt), assignName, []syntax.Expr{s.Value}, noWant)

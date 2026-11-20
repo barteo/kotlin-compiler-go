@@ -96,7 +96,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 	locals := map[string]bool{} // the names of the classes declared in d
 	depth := 0                  // the classes declared in d the code is in
 	protected := func(p syntax.Pos, recv syntax.Expr, owner *types.ClassSym, m *syntax.Modifiers, what, name string) {
-		if protectedAPI || owner == nil || !(m != nil && m.Visibility == syntax.Protected && publicAPIClass(owner) || m == nil && javaProtected(owner)) {
+		if protectedAPI || owner == nil || !(m != nil && (m.Visibility == syntax.Protected || m.Visibility == syntax.Public && inProtectedClass(owner)) && publicAPIClass(owner) || m == nil && javaProtected(owner)) {
 			return
 		}
 		if recv == nil && depth > 0 || recv != nil && localType(recv.Type()) {
@@ -174,6 +174,17 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 		return true
 	}
 	inspectInline(d, visit)
+}
+
+// inProtectedClass reports whether cls is protected, or nested in a
+// protected class: its public members are effectively protected.
+func inProtectedClass(cls *types.ClassSym) bool {
+	for k := cls; k != nil; k = k.Outer {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && cd.Visibility == syntax.Protected {
+			return true
+		}
+	}
+	return false
 }
 
 // inspectInline visits the code of inline function d that its copies

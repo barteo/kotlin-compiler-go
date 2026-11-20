@@ -415,6 +415,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	params := func(ps []*syntax.Param) {
 		for _, p := range ps {
+			c.noAllTarget(p.Annotations, "value parameters, only properties are allowed")
 			c.noReceiver(p.Annotations)
 			c.noParamTarget(p.Annotations)
 			c.noFileTarget(p.Annotations)
@@ -437,6 +438,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	c.jvmMemberAnnotations(d, owner)
 	switch d := d.(type) {
 	case *syntax.FunDecl:
+		c.noAllTarget(d.Annotations, "elements other than properties")
 		c.noReceiver(d.Annotations)
 		c.noParamTarget(d.Annotations)
 		c.noFileTarget(d.Annotations)
@@ -450,6 +452,11 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.onAccessor(d.Annotations)
 		c.publishedApi(&d.Modifiers)
 		c.annotations(d.Annotations, owner, propSite(owner))
+		if d.Field != nil {
+			c.noAllTarget(d.Annotations, "delegated properties")
+		} else if d.Sym != nil {
+			c.allTargets(d.Annotations, false, d.Mutable, d.Sym.HasField() || d.Lateinit || d.Const || d.BackingField != nil || d.Expect)
+		}
 		if !d.Mutable {
 			c.setOnImmutable(d.Annotations)
 		}
@@ -462,6 +469,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false, false})
 		c.repeatedSetparam(d)
 	case *syntax.TypeAliasDecl:
+		c.noAllTarget(d.Annotations, "elements other than properties")
 		c.noFileTarget(d.Annotations)
 		c.annotations(d.Annotations, owner, typealiasSite)
 		c.typeParamAnnotations(d.TypeParams, owner)
@@ -472,6 +480,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.annotationCycles(d)
 			c.projectedAnnotationParams(d)
 		}
+		c.noAllTarget(d.Annotations, "elements other than properties")
+		c.noAllTarget(d.CtorMods.Annotations, "elements other than properties")
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
 		c.noFileTarget(d.Annotations)
@@ -483,11 +493,13 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.repeatableContainer(d)
 		}
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
-		c.typeParamAnnotations(d.TypeParams, cls)
-		superSite := typeSite
-		superSite.outerThis = cls.Inner
-		for _, s := range d.Supers {
-			c.typeAnnotationsAt(cls.Outer, superSite, s.Type) // outside it, as its annotations
+		if !c.done[localHeader{d}] {
+			c.typeParamAnnotations(d.TypeParams, cls)
+			superSite := typeSite
+			superSite.outerThis = cls.Inner
+			for _, s := range d.Supers {
+				c.typeAnnotationsAt(cls.Outer, superSite, s.Type) // outside it, as its annotations
+			}
 		}
 		for _, cp := range d.CtorParams {
 			c.signatureTypeAnnotations(cls, cp.Type)
@@ -500,12 +512,18 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.publishedApi(&cp.Modifiers)
 			}
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
+			if !cp.IsProp {
+				c.noAllTarget(cp.Modifiers.Annotations, ctorParamNoProp)
+			} else {
+				c.allTargets(cp.Modifiers.Annotations, true, cp.Mutable, !cls.Annotation)
+			}
 			if cp.IsProp && !cp.Mutable {
 				c.setOnImmutable(cp.Modifiers.Annotations)
 			}
 		}
 		c.headerParams = nil
 		for _, e := range d.Entries {
+			c.noAllTarget(e.Annotations, "elements other than properties")
 			c.noFileTarget(e.Annotations)
 			c.annotations(e.Annotations, cls, enumEntrySite)
 		}
@@ -516,6 +534,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			case *syntax.InitBlock:
 				c.annotations(m.Annotations, cls, initSite)
 			case *syntax.SecondaryCtor:
+				c.noAllTarget(m.Annotations, "elements other than properties")
 				c.noReceiver(m.Annotations)
 				c.noFileTarget(m.Annotations)
 				c.publishedApi(&m.Modifiers)
@@ -524,6 +543,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 					c.headerParams = m.Sym.Params
 				}
 				for _, p := range m.Params {
+					c.noAllTarget(p.Annotations, ctorParamNoProp)
 					c.noReceiver(p.Annotations)
 					c.noParamTarget(p.Annotations)
 					c.noFileTarget(p.Annotations)
@@ -541,6 +561,47 @@ func (c *Checker) setOnImmutable(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "set" || a.Target == "setparam" {
 			c.errorf(a.P, "'@%s:' annotations could be applied only to mutable properties", a.Target)
+		}
+	}
+}
+
+// ctorParamNoProp is why @all: can't be on a constructor's parameter that
+// isn't a property.
+const ctorParamNoProp = "constructor parameters without corresponding property (consider adding val/var)"
+
+// noAllTarget reports the annotations among as with the use-site target
+// all, of a declaration that isn't a property, for the reason why
+// (INAPPLICABLE_ALL_TARGET). An accessor's are reported by onAccessor.
+func (c *Checker) noAllTarget(as []syntax.Annotation, why string) {
+	for _, a := range as {
+		if a.Target == "all" && !a.OnAccessor {
+			c.errorf(a.P, "'@all:' annotations cannot be applied to %s", why)
+		}
+	}
+}
+
+// allTargets checks the annotations among as, of a property, with the
+// use-site target all, which go to each of the property's elements that
+// their class's targets allow: its constructor parameter, if ctorParam
+// is set, the property, its field, if hasField is set, its getter, and
+// its setter's parameter, if mutable is set. One that goes to none is an
+// error (WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET), as is one, as an
+// annotation without a use-site target, for a field but not for a
+// property, of a property without a field (WRONG_ANNOTATION_TARGET).
+func (c *Checker) allTargets(as []syntax.Annotation, ctorParam, mutable, hasField bool) {
+	for _, a := range as {
+		cls := cmp.Or(a.Class, a.Source)
+		if a.Target != "all" || a.OnAccessor || cls == nil || !cls.TargetsKnown {
+			continue
+		}
+		t := cls.Targets
+		if t&types.TargetField != 0 && t&types.TargetProperty == 0 && !hasField {
+			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field or delegate'")
+			continue
+		}
+		if t&types.TargetProperty == 0 && (t&types.TargetField == 0 || !hasField) && t&types.TargetGetter == 0 &&
+			(t&types.TargetValueParameter == 0 || !ctorParam && !mutable) {
+			c.errorf(a.P, "this annotation is not applicable to target 'member property' and use-site target '@all'")
 		}
 	}
 }

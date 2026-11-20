@@ -68,8 +68,6 @@ func diagSkip(t *test) string {
 	// Directories whose test classes give kotlinc options.
 	for _, d := range []struct{ prefix, reason string }{
 		{"tests/crv", "return value checker (crv/, crvFull/)"},
-		{"tests/testsWithExplicitApi/", "explicit API mode"},
-		{"tests/testsWithExplicitReturnTypes/", "explicit API mode"},
 		{"tests/headerMode/", "header mode"},
 		{"tests/strictEquals/", "strict equality"},
 	} {
@@ -478,10 +476,6 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		stdlib:  true,
 		reflect: t.has("WITH_REFLECT"),
 		optIns:  t.values("OPT_IN"),
-	}
-	if strings.Contains(t.path, "/contracts/") {
-		// As the contracts tests' test classes do.
-		libs.optIns = append(libs.optIns, "kotlin.contracts.ExperimentalContracts")
 	}
 	cr, err := c.comp.compile(t, dir, helpers, libs)
 	if err != nil {

@@ -61,6 +61,9 @@ type Universe struct {
 	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
+	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
+	// Options.ExplicitReturnTypes.
+	explicitAPI, explicitReturnTypes APIMode
 	// noReflection is set if kotlin-reflect isn't on the class path,
 	// whose ReflectionFactoryImpl the standard library's reflection uses
 	// if it is.
@@ -210,12 +213,16 @@ type Checker struct {
 	// contractAt are the positions of the contracts that dropContracts
 	// took out of the functions' bodies, by body, whose opt-in
 	// optInErrors checks.
-	contractAt  map[*syntax.Block]syntax.Pos
-	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps       int                     // temporaries named so far, for unique names
-	inlineCalls []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	contractAt map[*syntax.Block]syntax.Pos
+	// contractCalls are, by body, the calls of the contract's builder
+	// functions, returns, implies, callsInPlace and the like, which are
+	// @ExperimentalContracts too.
+	contractCalls map[*syntax.Block][]syntax.Pos
+	classes       []*syntax.ClassDecl     // the file's classes, nested ones too
+	aliases       []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps         int                     // temporaries named so far, for unique names
+	inlineCalls   []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls   []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
@@ -412,6 +419,11 @@ type Checker struct {
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
 	frameAssigns  map[varFrame][]types.Type
+	// classFrames are the frames of object expressions and local
+	// classes, with their declarations, and nullFrames whether such a
+	// class's code assigns null to a var it captures (see varStable).
+	classFrames map[*syntax.Lambda]*syntax.ClassDecl
+	nullFrames  map[varFrame]bool
 	// siblingAssigns has, for a lambda argument, the names of the locals
 	// the call's other lambda arguments assign, which may run before it.
 	siblingAssigns map[*syntax.Lambda]map[string]bool
@@ -770,6 +782,14 @@ type Options struct {
 	// experimental checkers, which kotlinc reports only with
 	// -Xuse-fir-experimental-checkers, as REDUNDANT_INTERPOLATION_PREFIX.
 	ExperimentalWarnings bool
+	// ExplicitAPI is kotlinc's explicit API mode (-Xexplicit-api): the
+	// declarations of the program's public API must say their
+	// visibility, and their types if they are inferred.
+	ExplicitAPI APIMode
+	// ExplicitReturnTypes is kotlinc's -XXexplicit-return-types: the
+	// declarations of the program's public API must say their types if
+	// they are inferred.
+	ExplicitReturnTypes APIMode
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -864,6 +884,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			c.aliasArrayNothing(d)
 		}
 		c.checkModifiers()
+		c.checkExplicitAPI()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
 		if !opts.Signatures {
@@ -903,7 +924,8 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
-		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings, jvmTarget: max(int(opts.JVMTarget), 52)}
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
+		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))

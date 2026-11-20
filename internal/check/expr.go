@@ -1264,8 +1264,17 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		return types.InvalidType
 	}
 	if xt.IsParam() || yt.IsParam() || xt.K == types.Class && yt.K == types.Class && xt.C == yt.C {
-		// A type parameter can stand for any type, and instances of one
-		// class with different type arguments may still be equal.
+		// A type parameter can stand for any type its bounds allow, and
+		// instances of one class with different type arguments may still
+		// be equal.
+		if c.paramEqualityInapplicable(op, xt, yt) {
+			name := "=="
+			if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
+				name = "==="
+			}
+			c.errorf(p, "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+			return types.InvalidType
+		}
 		return types.AnyType.Nullable()
 	}
 	if xt.NonNull() != yt.NonNull() {
@@ -1336,6 +1345,43 @@ func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 		return false // only a warning
 	}
 	return true
+}
+
+// paramEqualityInapplicable reports whether K2 rejects comparing a value
+// of type parameter type with a value of a type that isn't one, as it
+// compares the intersection of the parameter's bounds: comparing with a
+// type that one bound rules out, such as an Int with a P : Buffered, is
+// an error. An unbounded parameter, or two parameters, can be compared,
+// and an enum with a parameter only draws a warning.
+func (c *Checker) paramEqualityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	pt, ot := xt, yt
+	if pt.K != types.TypeParam {
+		pt, ot = yt, xt
+	}
+	if pt.K != types.TypeParam || ot.IsParam() || ot.Flex().NonNull().K == types.TypeParam {
+		return false
+	}
+	if c.enumType(ot.Flex().NonNull()) {
+		// K1 only checked enums against enums: K2 warns (see
+		// enumComparisonWarning).
+		return false
+	}
+	for _, b := range pt.Param().Bounds {
+		if b.IsParam() || b.K == types.Invalid {
+			continue
+		}
+		if types.MayBeNull(pt) {
+			b = b.Nullable()
+		}
+		x, y := b.Flex().NonNull(), ot.Flex().NonNull()
+		if x == y || c.subtype(x, y) && !y.IsPrimitive() || c.subtype(y, x) && !x.IsPrimitive() || c.mayBeSame(x, y) {
+			continue
+		}
+		if c.equalityInapplicable(op, b, ot) {
+			return true
+		}
+	}
+	return false
 }
 
 // builtinForEquality reports whether t is a primitive type, String or an
@@ -3169,6 +3215,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// An extension property of function type, called: x.f(y).
 			fn.X = checked(fn.X, rt)
 			fn.T = c.member(fn)
+			if g := fn.Getter; g != nil && g.Ext {
+				// Its receivers, implicit, as a read of it takes them.
+				c.dslMember(fn, fn, true, g.Owner, fn.Name, func() bool { return fn.Getter == g })
+			}
 			return c.invokeValue(x, fn.T, want, sink)
 		}
 		switch {

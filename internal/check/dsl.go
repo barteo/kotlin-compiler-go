@@ -1,7 +1,10 @@
 package check
 
 import (
+	"cmp"
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -16,8 +19,9 @@ import (
 // written, (@M A).() -> Unit, or the typealias it's written with.
 
 // dslKey is a use for dslUse: a call or a property read, and which value
-// it takes, -1 its receiver, -2 a member extension's dispatch receiver, or
-// the index of a context argument.
+// it takes, -1 its receiver, -2 a member extension's dispatch receiver, -3
+// the receiver argument a function value is invoked with, or the index of
+// a context argument.
 type dslKey struct {
 	x syntax.Expr
 	k int
@@ -256,14 +260,23 @@ func (c *Checker) dslCall(x *syntax.Call, cl *callee) {
 
 // dslInvoke checks implicit value v, nil for the class's this, that
 // call x passes as the receiver of a function value, block() for block:
-// A.() -> Unit.
+// A.() -> Unit, or for the value of an extension property, f() for this.f.
 func (c *Checker) dslInvoke(x *syntax.Call, v *types.VarSym) {
-	id, ok := x.Fun.(*syntax.Ident)
-	if !ok || len(x.Args) == 0 {
+	var name string
+	var p syntax.Pos
+	switch fn := x.Fun.(type) {
+	case *syntax.Ident:
+		name, p = fn.Name, fn.P
+	case *syntax.Member:
+		name, p = fn.Name, fn.P // an extension property's value: f() for this.f
+	default:
+		return
+	}
+	if len(x.Args) == 0 {
 		return
 	}
 	this := x.Args[0]
-	c.dslUse(dslKey{x, -1}, v, id.Name, id.P, func() bool { return len(x.Args) > 0 && x.Args[0] == this })
+	c.dslUse(dslKey{x, -3}, v, name, p, func() bool { return len(x.Args) > 0 && x.Args[0] == this })
 }
 
 // dslProp checks the implicit receiver of x, a property read.
@@ -299,7 +312,11 @@ func (c *Checker) dslTarget(x *syntax.Member) {
 // class owner or, if ext, an extension: its receiver, and a member
 // extension's dispatch receiver.
 func (c *Checker) dslMember(x syntax.Expr, m *syntax.Member, ext bool, owner *types.ClassSym, name string, still func() bool) {
-	if th, _ := m.X.(*syntax.This); th != nil && th.Implicit {
+	recv := m.X
+	if ch, ok := recv.(*syntax.Checked); ok {
+		recv = ch.X // an extension property invoked: f() for this.f
+	}
+	if th, _ := recv.(*syntax.This); th != nil && th.Implicit {
 		c.dslUse(dslKey{x, -1}, th.Recv, name, m.P, still)
 	}
 	if !ext || owner == nil || m.Dispatch != nil {
@@ -340,10 +357,19 @@ func (c *Checker) dslErrors() {
 	if c.file.SuppressDSL {
 		return
 	}
+	// Once per use and per position, in a stable order: an invoked
+	// property's receivers and its value's receiver are uses at one place.
+	keys := slices.Collect(maps.Keys(c.dslUses))
+	slices.SortFunc(keys, func(a, b dslKey) int {
+		pa, pb := c.dslUses[a].p, c.dslUses[b].p
+		return cmp.Or(cmp.Compare(pa.Line, pb.Line), cmp.Compare(pa.Col, pb.Col), cmp.Compare(b.k, a.k), strings.Compare(c.dslUses[a].name, c.dslUses[b].name))
+	})
 	seen := map[syntax.Expr]bool{}
-	for key, u := range c.dslUses {
-		if !seen[key.x] && u.still() {
-			seen[key.x] = true
+	at := map[syntax.Pos]bool{}
+	for _, key := range keys {
+		u := c.dslUses[key]
+		if !seen[key.x] && !at[u.p] && u.still() {
+			seen[key.x], at[u.p] = true, true
 			c.errorf(u.p, "'%s' cannot be called in this context with an implicit receiver: use an explicit receiver if necessary", u.name)
 		}
 	}

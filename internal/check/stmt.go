@@ -913,6 +913,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.invisibleSetter(x.P, sym)
 			return sym.Type, false
 		}
+		c.companionProtectedSetter(sym, x.P)
 		return sym.Type, true
 	case *syntax.Index:
 		// Compound assignment of an element: a[i] += x, a[i]++.
@@ -939,6 +940,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		switch {
 		case x.Field != nil && x.Field.Constant == nil && x.Field.Mutable:
+			// Through a projected receiver, the type that can be
+			// written differs from the one read, as a property's.
+			if rt := x.X.Type(); x.Field.Owner != nil && rt.K == types.Class && rt.A != nil {
+				return c.memberSubst(rt.NonNull(), x.Field.Owner).ApplyIn(x.Field.Type), true
+			}
 			return t, true
 		case x.Field != nil:
 			c.errorf(x.P, "val cannot be reassigned")
@@ -952,7 +958,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class:
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.
-			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).Apply(x.Setter.Params[0].Type), true
+			// Through a projected receiver, Nothing where its argument
+			// is projected out, as a property's.
+			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).ApplyIn(x.Setter.Params[0].Type), true
 		case x.Getter != nil:
 			if c.extSetterProjectedOut(x) {
 				return types.NothingType, true
@@ -972,6 +980,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
 			c.invisibleSetter(x.P, x.Prop)
 			return t, false
+		}
+		if x.Prop.Owner != nil && namesObject(x.X) == x.Prop.Owner {
+			c.companionProtectedSetter(x.Prop, x.P)
 		}
 		// Through a projected receiver, the type that can be written
 		// differs from the one read: Nothing for Box<out T>.
@@ -1010,26 +1021,43 @@ func (c *Checker) extSetterProjectedOut(x *syntax.Member) bool {
 // starWrite reports value type vt that property target can't be set to
 // through a star projected receiver: an invariant argument of the
 // property's type that is the star's capture is one only Nothing fits,
-// t.v = t for var v: Tr<T> of a Tr<*> t.
+// t.v = t for var v: Tr<T> of a Tr<*> t. So for a Java field, and a Java
+// setter's parameter.
 func (c *Checker) starWrite(target syntax.Expr, vt types.Type) {
 	x, ok := target.(*syntax.Member)
-	if !ok || x.Prop == nil || x.X == nil || vt.K == types.Null {
+	if !ok || x.X == nil || vt.K == types.Null {
+		return
+	}
+	var declared types.Type
+	var owner *types.ClassSym
+	switch {
+	case x.Prop != nil:
+		declared, owner = x.Prop.Type, x.Prop.Owner
+	case x.Field != nil:
+		declared, owner = x.Field.Type, x.Field.Owner
+	case x.Getter != nil && x.Setter != nil && !x.Setter.Ext && len(x.Setter.Params) == 1:
+		declared, owner = x.Setter.Params[0].Type, x.Setter.Owner
+	default:
 		return
 	}
 	rt := x.X.Type().NonNull()
-	pt := x.Prop.Type.NonNull()
-	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || x.Prop.Owner == nil {
+	pt := declared.NonNull()
+	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || owner == nil {
 		return
 	}
-	sub := c.memberSubst(rt, x.Prop.Owner)
-	wt := sub.ApplyIn(x.Prop.Type).NonNull()
+	if pt.C.External {
+		pt.C.Ensure()
+	}
+	sub := c.memberSubst(rt, owner)
+	wt := sub.ApplyIn(declared).NonNull()
 	if wt.K != types.Class || wt.C != pt.C || wt.A == nil || wt.A.Len() != pt.A.Len() {
 		return
 	}
 	var args []types.Arg
 	for i, a := range pt.A.List {
 		w := wt.A.List[i]
-		if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
+		// A Java type's E!, but not T?.
+		if a.V == types.Inv && a.T.K == types.TypeParam && (!a.T.N || a.T.P) && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
 			if r, ok := sub[a.T.Param()]; ok && r.V == types.Star {
 				w = types.Arg{V: types.Out, T: types.NothingType}
 			}
