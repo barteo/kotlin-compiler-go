@@ -208,10 +208,9 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 		lf.Decl.Annotations = append(as, lf.Decl.Annotations...)
 		return record(l, lf, n)
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		as, m, _, hasKw := l.stmtModifiers(n)
-		if kw := child(n, psi.KindOBJECT_KEYWORD); kw.Valid() && hasKw {
-			l.fail(kw, "named object cannot be local: use an anonymous object instead")
-		}
+		// A named local object is kept: the checker reports it, as
+		// kotlinc, and checks its body.
+		as, m, _, _ := l.stmtModifiers(n)
 		lc := l.localClass(n, m)
 		lc.Annotations = append(as, lc.Annotations...)
 		return record(l, lc, n)

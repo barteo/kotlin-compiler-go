@@ -745,11 +745,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 // m.
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
 	syntax.NoContexts(&m, "classes", l)
-	switch {
-	case has(n, psi.KindOBJECT_KEYWORD):
-		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
-			ident(child(n, psi.KindIDENTIFIER)))
-	case m.Enum:
+	if m.Enum {
 		l.errorLater(l.pos(child(n, psi.KindCLASS_KEYWORD)), "local enum classes are not allowed")
 	}
 	cd := l.class(n, m)

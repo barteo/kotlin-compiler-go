@@ -184,8 +184,6 @@ tests/diagnostics/conflictingProjection.kt	conflictingProjection.kt:96	CONFLICTI
 tests/diagnostics/contextParameterOnPrimaryConstructor.kt	contextParameterOnPrimaryConstructor.kt:7	MISSING_CONSTRUCTOR_KEYWORD	syntax-error
 tests/diagnostics/cyclicConstructorDelegationCall.kt	cyclicConstructorDelegationCall.kt:13	CYCLIC_CONSTRUCTOR_DELEGATION_CALL	missing-check
 tests/diagnostics/explicitDelegationCallRequired.kt	explicitDelegationCallRequired.kt:13	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
-tests/diagnostics/localEntitytNotAllowed.kt	localEntitytNotAllowed.kt:20	LOCAL_OBJECT_NOT_ALLOWED	syntax-error
-tests/diagnostics/localEntitytNotAllowed.kt	localEntitytNotAllowed.kt:21	NESTED_CLASS_NOT_ALLOWED	syntax-error
 tests/diagnostics/nonConstValInAnnotationArgument.kt	nonConstValInAnnotationArgument.kt:9	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	missing-check
 tests/diagnostics/recursiveProblemWithSyntaxError.kt	recursiveProblemWithSyntaxError.kt:2	UNRESOLVED_REFERENCE	syntax-error
 tests/diagnostics/superNotAvailable.kt	superNotAvailable.kt:15	UNRESOLVED_REFERENCE	missing-check
@@ -433,7 +431,6 @@ tests/inline/nonLocalReturns/nonInlinedClass.kt	nonInlinedClass.kt:9	NOT_YET_SUP
 tests/inline/parenthesized.kt	parenthesized.kt:27	MULTIPLE_LABELS_ARE_FORBIDDEN	missing-check
 tests/inline/property/invoke.kt	invoke.kt:11	USAGE_IS_NOT_INLINABLE	nearby
 tests/inline/property/invoke.kt	invoke.kt:20	USAGE_IS_NOT_INLINABLE	missing-check
-tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:14	LOCAL_OBJECT_NOT_ALLOWED	syntax-error
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:8	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:9	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inline/protectedCallError.kt	main.kt:13	PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR	missing-check
