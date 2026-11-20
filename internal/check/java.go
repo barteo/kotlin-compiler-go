@@ -2604,7 +2604,7 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
-			if seen[params] || javaRemoveAt(cls, f) {
+			if seen[params] || javaRemoveAt(cls, f) || kotlinShaped(s, f) {
 				continue
 			}
 			// The program's overloads in one class are distinct even when
@@ -2660,6 +2660,36 @@ func javaRemoveAt(cls *types.ClassSym, f *types.FunSym) bool {
 	// A Kotlin class's remove(element: Int) of its own MutableList<Int>
 	// is the element's.
 	return f.Owner.External || !f.Owner.IsSubclassOf(list)
+}
+
+// kotlinShaped reports whether f, a method of Java class s, overrides a
+// member of a Kotlin supertype of s with context parameters or a receiver,
+// which its JVM method takes first: foo(String a, int b) of
+// context(a: String) fun foo(b: Int), getBar(String a) of
+// context(a: String) val bar. K2 sees the Kotlin member, which is called
+// with its context arguments and receiver, not the Java method.
+func kotlinShaped(s *types.ClassSym, f *types.FunSym) bool {
+	if f.Static || !isJavaClass(s) {
+		return false
+	}
+	fits := func(g *types.FunSym) bool {
+		return g != nil && (len(g.Contexts) > 0 || g.Ext) && g.JVM() == f.Name && jvmArity(g) == len(f.Params)
+	}
+	found := false
+	s.Supertypes(func(t *types.ClassSym) bool {
+		if t == s || isJavaClass(t) || t.KotlinName != "" {
+			return true
+		}
+		found = slices.ContainsFunc(t.Methods[f.Name], fits) || slices.ContainsFunc(t.ExtMethods[f.Name], fits)
+		for _, p := range t.Props {
+			found = found || len(p.Contexts) > 0 && types.GetterJVM(p) == f.Name && len(p.Contexts) == len(f.Params)
+		}
+		for _, gs := range t.ExtProps {
+			found = found || slices.ContainsFunc(gs, fits)
+		}
+		return !found
+	})
+	return found
 }
 
 // listInterface returns the java.util.List class among cls's supertypes,
