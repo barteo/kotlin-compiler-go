@@ -42,18 +42,26 @@ internal class KcTypeContext(
     private val outer: KcTypeContext? = null,
     /** The KaAnnotation of a type's annotation; null where types have none. */
     private val annotate: ((KcAnnotation) -> KaAnnotation)? = null,
+    /** The source file whose declarations' types are read here; null for library declarations. */
+    var file: KcFileSymbol? = null,
 ) {
     /** The type parameters the declaration this context is for declares. */
     var typeParams: List<KaTypeParameterSymbol> = emptyList()
 
     /** A context for a declaration nested in this one's. */
-    fun nested() = KcTypeContext(round, psi, this, annotate)
+    fun nested() = KcTypeContext(round, psi, this, annotate, file)
 
     private fun byName(name: Name): KaTypeParameterSymbol? =
         typeParams.firstOrNull { it.name == name } ?: outer?.byName(name)
 
-    /** The KaType of [t]. */
-    fun type(t: KcType): KaType = when (t.kind) {
+    /** The KaType of [t], which reaches [file] (see [KcFileSymbol.reached]). */
+    fun type(t: KcType): KaType {
+        file?.reach()
+        return read(t)
+    }
+
+    /** [type] for an annotation's value, which reaches [file] where it is given out. */
+    fun read(t: KcType): KaType = when (t.kind) {
         KcType.CLASS -> if (t.isFlexible) {
             KcFlexibleType(round, classType(t, false), classType(t, true, readOnly[t.classId], t.classId == "kotlin/Array"))
         } else {
@@ -100,7 +108,7 @@ internal class KcTypeContext(
     private fun args(t: KcType): List<KaTypeProjection> = t.args.map { a ->
         val at = a.type
         if (a.variance == KcDecl.STAR || at == null) KcStarProjection(round.token)
-        else KcTypeArgument(type(at), variance(a.variance), round.token)
+        else KcTypeArgument(read(at), variance(a.variance), round.token)
     }
 
     private fun parameter(t: KcType): KaTypeParameterSymbol =

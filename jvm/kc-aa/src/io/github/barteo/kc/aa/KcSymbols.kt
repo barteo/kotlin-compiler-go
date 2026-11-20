@@ -105,12 +105,29 @@ internal class KcInfo(
     fun receiver(owner: KaCallableSymbol): KaReceiverParameterSymbol? =
         decl.receiver?.let { KcReceiverParameterSymbol(this, owner, type(it)) }
 
-    val annotations: KaAnnotationList by lazy { KcAnnotationList(annotations.map { round.annotation(it) }, round.token) }
+    private val annotationList by lazy { KcAnnotationList(annotations.map { round.annotation(it) }, round.token) }
+
+    val annotations: KaAnnotationList
+        get() {
+            if (annotationList.isNotEmpty()) reach()
+            return annotationList
+        }
+
+    /** Reaches the declaration's source file, if it has one (see [KcFileSymbol.reached]). */
+    fun reach() {
+        types.file?.reach()
+    }
+
+    /** [decl], for a fact of it that reaches its file. */
+    private fun reached(): KcDecl {
+        reach()
+        return decl
+    }
 
     val name: Name get() = Name.identifier(decl.name)
 
     val visibility: KaSymbolVisibility
-        get() = when (decl.visibility) {
+        get() = when (reached().visibility) {
             KcDecl.PRIVATE -> KaSymbolVisibility.PRIVATE
             KcDecl.PROTECTED -> KaSymbolVisibility.PROTECTED
             KcDecl.INTERNAL -> KaSymbolVisibility.INTERNAL
@@ -120,7 +137,7 @@ internal class KcInfo(
         }
 
     val compilerVisibility: Visibility
-        get() = when (decl.visibility) {
+        get() = when (reached().visibility) {
             KcDecl.PRIVATE -> Visibilities.Private
             KcDecl.PROTECTED -> if (isJava) JavaVisibilities.ProtectedAndPackage else Visibilities.Protected
             KcDecl.INTERNAL -> Visibilities.Internal
@@ -142,7 +159,7 @@ internal class KcInfo(
     fun has(token: KtModifierKeywordToken) = (psi as? KtModifierListOwner)?.hasModifier(token) == true
 
     val modality: KaSymbolModality
-        get() = when (decl.modality) {
+        get() = when (reached().modality) {
             KcDecl.SEALED -> KaSymbolModality.SEALED
             KcDecl.ABSTRACT -> KaSymbolModality.ABSTRACT
             KcDecl.OPEN -> KaSymbolModality.OPEN
@@ -180,8 +197,27 @@ internal class KcPackageSymbol(val round: KcRound, override val fqName: FqName) 
 internal class KcFileSymbol(val round: KcRound, val file: KcFile, override val psi: KtFile) : StubKaFileSymbol() {
     override val token get() = round.token
     override val origin get() = KaSymbolOrigin.SOURCE
-    override val annotations: KaAnnotationList by lazy {
-        KcAnnotationList(file.annotations.map { round.annotation(it) }, round.token)
+    private val annotationList by lazy { KcAnnotationList(file.annotations.map { round.annotation(it) }, round.token) }
+    override val annotations: KaAnnotationList
+        get() {
+            if (annotationList.isNotEmpty()) reach()
+            return annotationList
+        }
+
+    /**
+     * Whether a client was given a fact of the file that kc resolved: a
+     * type, an annotation, a visibility or modality, a constant. FIR
+     * resolves a declaration to give one, which records its file's
+     * lookups; a declaration's name, kind, PSI and members take none.
+     */
+    @Volatile
+    var reached = false
+        private set
+
+    fun reach() {
+        if (reached) return
+        reached = true
+        round.reached?.invoke(this)
     }
     val key = "file:" + file.path
     override fun createPointer(): KaSymbolPointer<KaFileSymbol> = KcPointer(key)
@@ -419,6 +455,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     @OptIn(KaExperimentalApi::class)
     override val initializer: KaInitializerValue? by lazy {
         val init = (info.psi as? KtProperty)?.initializer
+        info.reach()
         when (val c = info.decl.default) {
             is KcValue.Const -> KaConstantInitializerValue(KcConstant.of(c, init), init)
             else -> init?.let(::KaNonConstantInitializerValue)
@@ -608,6 +645,7 @@ internal class KcReceiverParameterSymbol(
         val r = (info.psi as? KtCallableDeclaration)?.receiverTypeReference
         val own = info.decl.annotations.filter { it.target == "receiver" }.map { info.round.annotation(it) }
             .filter { a -> a.psi.let { it == null || PsiTreeUtil.isAncestor(r, it, false) } }
+        if (own.isNotEmpty()) info.reach()
         KcAnnotationList(own, info.round.token)
     }
     override fun createPointer(): KaSymbolPointer<KaReceiverParameterSymbol> = info.pointer()
