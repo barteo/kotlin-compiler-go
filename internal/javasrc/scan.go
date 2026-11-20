@@ -269,7 +269,11 @@ func unescape(s string) ([]uint16, error) {
 
 // docTagDeprecated reports whether doc comment text has the block tag
 // @deprecated: at the start of a line, after any leading asterisks.
+// An empty comment, /**/, isn't a doc comment.
 func docTagDeprecated(text string) bool {
+	if len(text) < len("/***/") {
+		return false
+	}
 	for _, l := range strings.Split(text[3:len(text)-2], "\n") {
 		l = strings.TrimLeft(strings.TrimSpace(l), "*")
 		if f := strings.Fields(l); len(f) > 0 && f[0] == "@deprecated" {

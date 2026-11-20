@@ -360,6 +360,8 @@ public class K {
 	public void f() {}
 	/** Not {@code @deprecated}: see @deprecated below. */
 	public void g() {}
+	/**/
+	public void h() {}
 	/** @deprecated */
 	public int x;
 	public enum E { A, /** @deprecated */ B, @Deprecated C }
@@ -382,7 +384,7 @@ public class K {
 	for _, m := range append(info.Methods, info.Fields...) {
 		got[m.Name] = m.Deprecated != nil
 	}
-	if !got["f"] || got["g"] || !got["x"] {
+	if !got["f"] || got["g"] || got["h"] || !got["x"] {
 		t.Errorf("K's members deprecated: %v", got)
 	}
 	e, err := s.Info("p/K$E")
