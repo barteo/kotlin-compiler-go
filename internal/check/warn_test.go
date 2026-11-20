@@ -523,3 +523,10 @@ func TestWarningsJDKList(t *testing.T) {
 func TestWarningsJavaField(t *testing.T) {
 	checkReference(t, "testdata/javafield.kt", Options{Warnings: true})
 }
+
+// TestWarningsSupertypeParamNames checks
+// DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES by
+// testdata/supernames.kt.
+func TestWarningsSupertypeParamNames(t *testing.T) {
+	checkReference(t, "testdata/supernames.kt", Options{Warnings: true})
+}

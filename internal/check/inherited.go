@@ -187,7 +187,8 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 	reported := map[string]bool{}
 	for _, gr := range c.inheritedFunGroups(d, false) {
 		name := gr[0].Name
-		if !mixed && slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
+		c.supertypeParamNameWarnings(d, gr)
+		if !mixed &&slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
 			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
 		}
 		var impls, classImpls, classMembers int

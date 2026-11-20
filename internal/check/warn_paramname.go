@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -46,4 +48,24 @@ func overriddenByAnother(o *types.FunSym, over []*types.FunSym) bool {
 		}
 	}
 	return false
+}
+
+// supertypeParamNameWarnings reports DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES
+// for class d, as kotlinc: the functions gr it inherits as one member
+// from several supertypes and doesn't override name one of their
+// parameters differently. A Java method among them has no stable names,
+// and then nothing is reported.
+func (c *Checker) supertypeParamNameWarnings(d *syntax.ClassDecl, gr []*types.FunSym) {
+	if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !stableParamNames(g) || len(g.Params) != len(gr[0].Params) }) {
+		return
+	}
+	for i := range gr[0].Params {
+		for _, g := range gr[1:] {
+			if a, b := gr[0].Params[i].Name, g.Params[i].Name; a != b {
+				c.warnf(d.P, "DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES", "Names '%s' and '%s' of parameter #%d conflict in the following members of supertypes: '%s' defined in '%s', '%s' defined in '%s'. This may cause problems when calling this function with named arguments.",
+					a, b, i, gr[0].Name, gr[0].Owner.DisplayName(), g.Name, g.Owner.DisplayName())
+				return
+			}
+		}
+	}
 }
