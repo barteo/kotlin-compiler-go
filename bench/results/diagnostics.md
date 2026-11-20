@@ -83,7 +83,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20793 of 22025 expected errors (94.4%) on their lines.
+kc reports 20805 of 22025 expected errors (94.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -127,7 +127,6 @@ kc reports 20793 of 22025 expected errors (94.4%) on their lines.
 | `INVISIBLE_SETTER` | 45 | 39 | 6 |
 | `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 90 | 6 |
 | `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` | 9 | 3 | 6 |
-| `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 30 | 24 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
 | `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` | 8 | 2 | 6 |
 | `WRONG_EXTENSION_FUNCTION_TYPE` | 6 | 0 | 6 |
@@ -135,7 +134,6 @@ kc reports 20793 of 22025 expected errors (94.4%) on their lines.
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `CYCLIC_CONSTRUCTOR_DELEGATION_CALL` | 28 | 23 | 5 |
 | `FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES` | 6 | 1 | 5 |
-| `LESS_VISIBLE_TYPE_ACCESS_IN_INLINE_ERROR` | 13 | 8 | 5 |
 | `OVERRIDING_FINAL_MEMBER_BY_DELEGATION` | 8 | 3 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `TYPE_PARAMETERS_NOT_ALLOWED` | 13 | 8 | 5 |
@@ -147,6 +145,8 @@ kc reports 20793 of 22025 expected errors (94.4%) on their lines.
 | `BUILDER_INFERENCE_STUB_RECEIVER` | 5 | 1 | 4 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 23 | 4 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 87 | 4 |
+| `CONFLICTING_PROJECTION` | 29 | 25 | 4 |
+| `EQUALITY_NOT_APPLICABLE` | 27 | 23 | 4 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -156,10 +156,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 76 | 6.2% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CANNOT_INFER_PARAMETER_TYPE` 5 |
-| syntax-error | 154 | 12.5% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| syntax-error | 154 | 12.6% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 165 | 13.4% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 837 | 67.9% | `UNRESOLVED_REFERENCE` 100, `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
+| nearby | 165 | 13.5% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 825 | 67.6% | `UNRESOLVED_REFERENCE` 100, `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
 
 ## Errors kotlinc doesn't report
 

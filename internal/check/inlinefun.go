@@ -520,6 +520,20 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			c.errorf(p, "public-API inline function cannot access non-public-API %s '%s'", what, name)
 		}
 	}
+	// prop checks a use at p of property v, which mustn't be private or
+	// internal, nor a member of a class that isn't public API.
+	prop := func(p syntax.Pos, v *types.VarSym) {
+		if v.Owner != nil && localType(types.ClassType(v.Owner)) {
+			return
+		}
+		report(p, "property", v.Name, varModifiers(v))
+		if v.Owner == nil || c.hasErrorAt(p, "public-API inline") {
+			return
+		}
+		if _, ok := v.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(v.Owner) {
+			c.errorf(p, "public-API inline function cannot access non-public-API property '%s'", v.Name)
+		}
+	}
 	var visit func(n any) bool
 	visit = func(n any) bool {
 		switch n := n.(type) {
@@ -528,23 +542,37 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			return false
 		case *syntax.Ident:
 			if v := n.Sym; v != nil && (v.Kind == types.Prop || v.Kind == types.Global) {
-				if v.Owner == nil || !localType(types.ClassType(v.Owner)) {
-					report(n.P, "property", v.Name, varModifiers(v))
-				}
+				prop(n.P, v)
 			}
 		case *syntax.Member:
 			if v := n.Prop; v != nil && (v.Kind == types.Prop || v.Kind == types.Global) {
-				if v.Owner == nil || !localType(types.ClassType(v.Owner)) {
-					report(n.P, "property", v.Name, varModifiers(v))
+				prop(n.P, v)
+			} else if g := n.Getter; v == nil && g != nil {
+				// An extension property's getter.
+				if pd := c.extPropOf(g); pd != nil && pd.Sym != nil {
+					prop(n.P, pd.Sym)
 				}
 			}
 		case *syntax.Call:
 			if f := n.Sym; f != nil {
 				if k := n.Ctor; k != nil {
 					// A class that isn't public API, internal or private,
-					// can't be constructed in other modules.
-					if _, ok := k.Decl.(*syntax.ClassDecl); ok && !localType(types.ClassType(k)) && !publicAPIClass(k) {
+					// can't be constructed in other modules, nor can a
+					// private or internal constructor be called there.
+					cd, ok := k.Decl.(*syntax.ClassDecl)
+					switch {
+					case !ok || localType(types.ClassType(k)):
+					case !publicAPIClass(k):
 						c.errorf(n.P, "public-API inline function cannot access non-public-API class '%s'", k.DisplayName())
+					case f.Decl != nil && !cd.Enum:
+						var m *syntax.Modifiers
+						switch fd := f.Decl.(type) {
+						case *syntax.ClassDecl:
+							m = &fd.CtorMods
+						case *syntax.SecondaryCtor:
+							m = &fd.Modifiers
+						}
+						report(n.P, "constructor", cd.Name, m)
 					}
 				} else if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
 					report(n.P, "function", f.Name, &fd.Modifiers)
@@ -563,6 +591,32 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 }
 
 // varModifiers returns the modifiers of a property of the program, or nil.
+// extPropOf returns the declaration in this file of the extension
+// property whose getter is g, or nil.
+func (c *Checker) extPropOf(g *types.FunSym) *syntax.PropDecl {
+	gd, ok := g.Decl.(*syntax.FunDecl)
+	if !ok || !g.Ext || gd.Property == "" {
+		return nil
+	}
+	var find func(ds []syntax.Decl) *syntax.PropDecl
+	find = func(ds []syntax.Decl) *syntax.PropDecl {
+		for _, d := range ds {
+			switch d := d.(type) {
+			case *syntax.PropDecl:
+				if d.Getter == gd {
+					return d
+				}
+			case *syntax.ClassDecl:
+				if pd := find(d.Members); pd != nil {
+					return pd
+				}
+			}
+		}
+		return nil
+	}
+	return find(c.file.Decls)
+}
+
 func varModifiers(v *types.VarSym) *syntax.Modifiers {
 	switch d := v.Decl.(type) {
 	case *syntax.PropDecl:
