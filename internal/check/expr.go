@@ -288,6 +288,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.Unary:
 		return c.unary(x, want)
 	case *syntax.Binary:
+		if x.Op != syntax.ELVIS && x.Op != syntax.AND && x.Op != syntax.OR {
+			// An elvis's and a condition's operands have the expected
+			// type of their own.
+			saved := c.operator
+			c.operator = x
+			defer func() { c.operator = saved }()
+		}
 		return c.binary(x, want, allowRange)
 	case *syntax.Member:
 		return c.member(x)

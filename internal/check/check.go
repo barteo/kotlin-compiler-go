@@ -182,6 +182,11 @@ type Checker struct {
 	// a reading of a call (extFuncVar): a cycle it runs into isn't
 	// reported at its references, as kotlinc reports the call instead.
 	probing int
+	// operator is the operator expression whose operands are being
+	// checked. The type an operand is checked with is a hint, as Int for
+	// x in 0..2, not a type expected of it: the operator is a call, as
+	// (0..2).contains(x) or "a".plus(x) (see tvar.wantUp).
+	operator *syntax.Binary
 	// inferFrom is one more than the count of reentries
 	// (Universe.reentries) when the inference whose declaration the
 	// checker is checking began, or 0 outside one: a reference to a declaration left Cyclic is reported

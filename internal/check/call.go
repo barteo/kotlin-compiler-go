@@ -1338,7 +1338,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
 		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 			trial := sys.clone()
+			if o := c.operator; o == nil || o.X != syntax.Expr(x) && o.Y != syntax.Expr(x) {
+				trial.expecting++
+			}
 			trial.sub(ret, want)
+			trial.expecting = 0
 			if trial.ok {
 				sys = trial
 			}

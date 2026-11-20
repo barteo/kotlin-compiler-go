@@ -2017,6 +2017,20 @@ func endsInLambda(l *syntax.Lambda) bool {
 	return ok
 }
 
+// endsInAnonFun reports whether lambda l's result is an anonymous
+// function with a block body: run { fun(): String { return "" } }.
+func endsInAnonFun(l *syntax.Lambda) bool {
+	if l.Body == nil || len(l.Body.Stmts) == 0 {
+		return false
+	}
+	es, ok := l.Body.Stmts[len(l.Body.Stmts)-1].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	f, ok := es.X.(*syntax.Lambda)
+	return ok && f.Anon && !f.AnonExpr
+}
+
 // lambdaResultOpen reports whether a pending lambda's result is a variable
 // without a known upper bound.
 func (c *Checker) lambdaResultOpen(s *system, pl pendingLambda) bool {
@@ -3399,14 +3413,29 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// against the type the parameter gives R (see the fixup below).
 	// A result that contradicts R's declared bound isn't a lower bound of
 	// R either: as kotlinc, R is within its bound, and the result is
-	// reported where it is. (Not the type expected of the call, which an
-	// overload being tried can give.)
+	// reported where it is. Nor one that contradicts an upper constraint
+	// of R from the type expected of the call: val s: String = run { { } }
+	// reports the lambda { }, not the call. (Not one from a parameter of
+	// an outer call's overload being tried, which the result rules out.)
+	// An anonymous function there with a block body is reported both
+	// where it is and, as the lower bound it still is, at the call, as
+	// kotlinc does; one with an expression body only where it is.
 	contradicts := false
 	if tv := s.unfixedVar(r); tv != nil && bt.K != types.Invalid && bt.K != types.Unit && !bt.HasVars() && !r.N {
 		for _, u := range tv.v.Bounds {
 			if u = s.apply(u); !u.HasVars() && u.K != types.Invalid && !c.subtype(bt, u) {
 				contradicts = true
 			}
+		}
+		for _, u := range tv.wantUp {
+			if u = s.apply(u); contradicts || u.HasVars() || u.K == types.Invalid || c.subtype(bt, u) {
+				continue
+			}
+			if endsInAnonFun(l) {
+				c.errorf(resultPos(l), "type mismatch: inferred type is %s but %s was expected", bt, u)
+				break
+			}
+			contradicts = true
 		}
 	}
 	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) && !contradicts {
