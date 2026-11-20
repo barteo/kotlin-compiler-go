@@ -1258,6 +1258,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	for _, op := range props {
 		p := op.p
+		c.javaFieldWarnings(cls, p, op.pos)
 		if p.Private && !op.override {
 			continue // only a field: it hides and overrides nothing
 		}

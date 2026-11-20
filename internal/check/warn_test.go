@@ -517,3 +517,9 @@ func TestWarningsJDKList(t *testing.T) {
 	}
 	checkReference(t, "testdata/jdklist.kt", Options{Warnings: true})
 }
+
+// TestWarningsJavaField checks PROPERTY_HIDES_JAVA_FIELD by
+// testdata/javafield.kt.
+func TestWarningsJavaField(t *testing.T) {
+	checkReference(t, "testdata/javafield.kt", Options{Warnings: true})
+}
