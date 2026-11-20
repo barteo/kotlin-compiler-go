@@ -171,6 +171,17 @@ func TestLibraryKey(t *testing.T) {
 	if idle > maxIdle {
 		t.Errorf("%d idle libraries, want at most %d", idle, maxIdle)
 	}
+	libraries.mu.Unlock()
+	err := Trim()
+	libraries.mu.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range libraries.list {
+		if s.refs == 0 {
+			t.Error("an idle library is open after Trim")
+		}
+	}
 }
 
 func copyFile(t *testing.T, from, to string) {

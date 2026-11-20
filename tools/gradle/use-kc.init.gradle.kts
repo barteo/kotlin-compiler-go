@@ -32,6 +32,10 @@
 //              of a daemon, for as long as the processors' jars stay the same. KSP's Gradle
 //              plugin loads them anew for every task, so every run starts on code the JVM has
 //              not compiled yet. A processor then keeps its static state between runs.
+//   KC_KSP_FORGET  1: KSP on kc keeps nothing of a module in memory for the daemon's next build.
+//              Without it, the modules whose KSP tasks ran last keep their parsed files, models
+//              and class paths, so that a build after an edit reads only what changed: gigabytes
+//              in a large project, for a second or less of such a build.
 //   KC_JDK_HOME  JDK to compile against, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:

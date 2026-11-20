@@ -186,6 +186,8 @@ Such a task keeps its processors, options and output directories. Its KSP class 
 
 KSP's Gradle plugin loads the processors' classes anew for every task of every build, so each run starts on code the JVM has not compiled yet. With `KC_KSP_KEEP=1`, KSP on kc keeps them loaded for as long as the processors' jars stay the same, and the tasks and builds of a daemon share them. A processor then keeps its static state from one run to the next.
 
+Between builds, KSP on kc keeps the parsed files, the models and the class paths of the modules whose KSP tasks ran last, so that the build after an edit parses and checks only what changed. In a large project that is gigabytes of the daemon's memory, for a second or less of such a build. With `KC_KSP_FORGET=1` a run keeps nothing for the next. Either way, the memory a run's checks leave free goes back to the system two seconds after the last KSP task of a build ends.
+
 The daemon loads the directory's `libkc.so` once and keeps it, so every build in a daemon has to name the same directory and the same file: after building kc again, restart the daemon. It is checked with the KSP Gradle plugin 2.3.12 and 2.3.13 on Linux; `jvm/kc-aa/gradle.sh` runs Moshi's, Dagger's and Room's processors this way and compares their output with stock KSP's.
 
 [bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
