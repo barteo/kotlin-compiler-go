@@ -14,6 +14,11 @@ type File struct {
 	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
+	// Dangling are the annotations of modifier lists at the top level that
+	// no declaration follows, which kotlinc resolves and checks, as the
+	// checker does, but annotate nothing. The file then has a syntax
+	// error.
+	Dangling []Annotation
 	Facade      string // JVM internal name of the class holding top-level declarations
 	// Part is set on a file annotated @file:JvmMultifileClass: the class
 	// that holds its top-level declarations, Facade__FileKt, whose
@@ -676,6 +681,9 @@ type CtorParam struct {
 type ClassDecl struct {
 	Modifiers
 	P Pos
+	// Dangling are the annotations of modifier lists in the class's body
+	// that no member follows (see File.Dangling).
+	Dangling []Annotation
 	// Generated is set on a declaration a compiler plugin of kc's
 	// declares, which the opt-in and deprecation checks skip.
 	Generated  bool

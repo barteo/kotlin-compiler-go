@@ -19,14 +19,6 @@ tests/TraitWithConstructor.kt	TraitWithConstructor.kt:8	CONSTRUCTOR_IN_INTERFACE
 tests/UnderscoreUsageInType.kt	UnderscoreUsageInType.kt:12	UNDERSCORE_USAGE_WITHOUT_BACKTICKS	missing-check
 tests/Varargs.kt	Varargs.kt:17	VARARG_OUTSIDE_PARENTHESES	missing-check
 tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt:10	WRONG_MODIFIER_CONTAINING_DECLARATION	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:10	TOO_MANY_ARGUMENTS	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:15	UNRESOLVED_REFERENCE	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:16	TOO_MANY_ARGUMENTS	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:21	UNRESOLVED_REFERENCE	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:22	TOO_MANY_ARGUMENTS	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:27	UNRESOLVED_REFERENCE	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:28	TOO_MANY_ARGUMENTS	syntax-error
-tests/annotations/DanglingMixed.kt	DanglingMixed.kt:9	UNRESOLVED_REFERENCE	syntax-error
 tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	annotationArgumentOnCompanionResolvesToInner.kt:10	UNRESOLVED_REFERENCE	missing-check
 tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	annotationArgumentScopeForNestedTypeAlias.kt:19	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	annotationArgumentScopeForNestedTypeAlias.kt:19	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	missing-check

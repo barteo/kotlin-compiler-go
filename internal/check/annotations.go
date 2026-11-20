@@ -535,6 +535,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			}
 		}
 		c.headerParams = nil
+		c.annotations(d.Dangling, cls, annotSite{kind: siteUnchecked})
 		for _, e := range d.Entries {
 			c.noAllTarget(e.Annotations, "elements other than properties")
 			c.noFileTarget(e.Annotations)
