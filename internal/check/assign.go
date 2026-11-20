@@ -181,6 +181,18 @@ func (a *assignment) inPlace(x *syntax.Call, l *syntax.Lambda, s *daState) {
 	*s = *join(append(o.returns, s)...)
 }
 
+// notInlined reports whether one of the lambdas called once that the
+// code is in isn't inlined: passed to a function that isn't inline, or
+// for a noinline or crossinline parameter.
+func (a *assignment) notInlined() bool {
+	for _, o := range a.once {
+		if !o.l.Inline || o.l.Crossinline {
+			return true
+		}
+	}
+	return false
+}
+
 // daLoop records the states at a loop's breaks and continues.
 type daLoop struct {
 	node          syntax.Stmt
@@ -385,6 +397,10 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	case a.quiet > 0 || s.dead:
 	case !v.Mutable && a.lambdas > a.depth[v]:
 		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+	case !v.Mutable && v.Kind == types.Prop && a.notInlined():
+		// The lambda's contract says it runs once, but in its own
+		// method, which can't assign the class's final field.
+		a.c.errorf(p, "initialization of captured member values must be inlined")
 	case !v.Mutable && s.maybe[v]:
 		a.c.errorf(p, "val cannot be reassigned")
 	}
