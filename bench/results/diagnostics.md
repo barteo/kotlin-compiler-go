@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2697 of the 3667 warnings the tests expect (73.5%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2710 of the 3667 warnings the tests expect (73.9%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -252,6 +252,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
 | `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
 | `SENSELESS_NULL_IN_WHEN` | 8 | 6 | 0 |
+| `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 | 6 | 0 |
+| `NON_FINAL_MEMBER_IN_OBJECT` | 7 | 7 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
@@ -288,8 +290,8 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `REDUNDANT_MODIFIER` | 8 |
 | `USELESS_CALL_ON_NOT_NULL` | 8 |
 | `JAVA_CLASS_ON_COMPANION` | 7 |
-| `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 |
-| `NON_FINAL_MEMBER_IN_OBJECT` | 7 |
 | `REDUNDANT_EXPLICIT_BACKING_FIELD` | 7 |
-| *47 more* | |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION` | 7 |
+| `UNNECESSARY_LATEINIT` | 7 |
+| *45 more* | |
 

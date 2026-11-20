@@ -537,3 +537,9 @@ func TestWarningsSupertypeParamNames(t *testing.T) {
 func TestWarningsDelegationHides(t *testing.T) {
 	checkReference(t, "testdata/delegationhides.kt", Options{Warnings: true})
 }
+
+// TestWarningsModifiers checks the warnings of modifiers that have no
+// effect or are redundant against kotlinc's of testdata/modifiers.kt.
+func TestWarningsModifiers(t *testing.T) {
+	checkReference(t, "testdata/modifiers.kt", Options{Warnings: true})
+}

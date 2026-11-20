@@ -3360,6 +3360,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
 		c.classRules(d)
+		c.openMembers(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}
