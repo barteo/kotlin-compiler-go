@@ -832,6 +832,7 @@ var kotlinTypes = map[string]bool{
 func (c *Checker) resolveImports() {
 	c.imports = map[string]*types.ClassSym{}
 	c.aliasImports = map[string]*types.AliasSym{}
+	c.conflictingImports = map[string]bool{}
 	c.funImports = map[string][]*types.FunSym{}
 	c.memberImports = map[string]memberImport{}
 	c.moreMemberImports = map[string][]memberImport{}
@@ -1029,6 +1030,7 @@ func (c *Checker) resolveImports() {
 			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
 		}
 		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
+			c.conflictingImports[alias] = true
 			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
 		}
 	}
@@ -1225,24 +1227,25 @@ func hiddenClass(cls *types.ClassSym) bool {
 }
 
 func (c *Checker) findClassifier1(name string) classifier {
-	if cls, ok := c.imports[name]; ok {
-		return classifier{cls: cls}
-	}
-	if a, ok := c.aliasImports[name]; ok {
-		return classifier{alias: a}
-	}
 	// Another file's private class or typealias is found only if nothing
 	// else is: pack1's private SomeClass doesn't hide pack2's by import
-	// pack1.*, import pack2.*.
+	// pack1.*, import pack2.*. Nor does a class deprecated with level
+	// HIDDEN, imported explicitly or not, as K2's: its use is an error.
 	var hidden classifier
 	visible := func(k classifier) bool {
-		if c.privateElsewhere(k) {
+		if c.privateElsewhere(k) || hiddenClass(k.cls) {
 			if hidden == (classifier{}) {
 				hidden = k
 			}
 			return false
 		}
 		return true
+	}
+	if cls, ok := c.imports[name]; ok && visible(classifier{cls: cls}) {
+		return classifier{cls: cls}
+	}
+	if a, ok := c.aliasImports[name]; ok {
+		return classifier{alias: a}
 	}
 	own := !c.renamedAway(c.pkg.Name, name)
 	if cls, ok := c.pkg.Classes[name]; ok && own && visible(classifier{cls: cls}) {
@@ -1263,11 +1266,11 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 	}
 	for _, owner := range c.starOwners {
-		if cls := c.nestedOf(owner, name); cls != nil {
+		if cls := c.nestedOf(owner, name); cls != nil && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
 	}
-	if cls := c.extClass(name); cls != nil {
+	if cls := c.extClass(name); cls != nil && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
 	if a := c.extAlias(name); a != nil {
@@ -1321,15 +1324,24 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 			}
 		}
 	}
+	// A class deprecated with level HIDDEN gives way to another star
+	// import's, as K2's.
+	var hidden *types.ClassSym
 	for _, r := range c.starPkgs() {
 		if c.renamedAway(r.name, name) {
 			continue
 		}
+		var cls *types.ClassSym
 		if ext.kotlin {
-			if cls := ext.pkgClassIn(r, name); cls != nil {
-				return cls
+			cls = ext.pkgClassIn(r, name)
+		} else {
+			cls = ext.classIn(r.path, r.hash, name)
+		}
+		if cls != nil && hiddenClass(cls) {
+			if hidden == nil {
+				hidden = cls
 			}
-		} else if cls := ext.classIn(r.path, r.hash, name); cls != nil {
+		} else if cls != nil {
 			return cls
 		}
 	}
@@ -1340,10 +1352,12 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 			}
 		}
 	}
-	if c.renamedAway("java.lang", name) {
-		return nil
+	if !c.renamedAway("java.lang", name) {
+		if cls := ext.classIn("java/lang", javaLangHash, name); cls != nil {
+			return cls
+		}
 	}
-	return ext.classIn("java/lang", javaLangHash, name)
+	return hidden
 }
 
 // kotlinFuns returns the Kotlin top-level functions a simple name can
@@ -1697,6 +1711,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
 			s := sub(g)
+			if g.Hidden {
+				continue // deprecated with level HIDDEN: unresolved
+			}
 			if !c.recvFits(rt, s.Apply(g.Recv)) {
 				continue // nor is its type inferred, which may be in progress
 			}

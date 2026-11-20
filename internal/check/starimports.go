@@ -118,6 +118,18 @@ func (c *Checker) starAmbiguity(name string, p syntax.Pos) bool {
 	return false
 }
 
+// ambiguousCtor reports whether two explicit imports, or two of the
+// file's star imports, give classifiers of a simple name, the nearest
+// that do, which no default import has either: K2 calls none of their
+// constructors. With import java.util.*, import some.* that both have a
+// HashMap, HashMap() is kotlin.collections.HashMap's.
+func (c *Checker) ambiguousCtor(name string) bool {
+	if c.scope != nil && c.scope.findClass(name) != nil || c.nestedClassifier(name) != (classifier{}) {
+		return false
+	}
+	return (c.conflictingImports[name] || !c.starFallback && len(c.starClassifiers(name)) > 1) && !c.defaultClassifier(name)
+}
+
 // starQualifierAmbiguity reports a simple name that qualifies a member,
 // Some.foo, and that star imports give two classifiers of: kotlinc
 // takes the one that is a value, and reports two, or none if no default

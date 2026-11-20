@@ -192,6 +192,9 @@ type Checker struct {
 	imports   map[string]*types.ClassSym // explicitly imported classes by name
 	// aliasImports are the program's explicitly imported typealiases.
 	aliasImports map[string]*types.AliasSym
+	// conflictingImports are the names that two explicit imports of
+	// classifiers give, which are ambiguous: CONFLICTING_IMPORT.
+	conflictingImports map[string]bool
 	funImports   map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
 	// memberImports are the explicitly imported members of classes and
 	// objects by name: enum entries, Java statics, objects' members, and
@@ -1170,8 +1173,8 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Outer != nil {
 		return c.innerType(ref)
 	}
-	if c.lookupTypeParam(ref.Name) == nil {
-		c.starAmbiguity(ref.Name, ref.P)
+	if c.lookupTypeParam(ref.Name) == nil && !c.starAmbiguity(ref.Name, ref.P) && c.conflictingImports[ref.Name] && c.nestedClassifier(ref.Name) == (classifier{}) {
+		c.errorf(ref.P, "overload resolution ambiguity: %s is a classifier of more than one import", ref.Name)
 	}
 	if a != nil {
 		c.u.typeUses.Store(ref, a)

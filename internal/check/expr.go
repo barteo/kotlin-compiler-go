@@ -2975,6 +2975,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				fs = gs
 			}
 		}
+		if (cls != nil || alias != nil) && len(fs) == 0 && c.ambiguousCtor(name) {
+			// import a.A.B, import a.D.B: B() is unresolved, as K2's.
+			c.errorf(fn.P, "unresolved reference: %s", name)
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		if a := alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
 			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
