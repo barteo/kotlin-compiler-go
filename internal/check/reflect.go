@@ -98,6 +98,10 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	defer func(old bool) { c.starFallback = old }(c.starFallback)
 	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
+		if ref.Nullable && !callable {
+			c.errorf(ref.P, "type in a class literal must not be nullable")
+			return types.InvalidType
+		}
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
 		}
@@ -105,6 +109,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	written := ref.Args != nil || ref.Outer != nil
+	args := ref.Args // as written, before stars are added
 	if !written && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
@@ -120,7 +125,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
 			}
 			if n > 0 {
-				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars, Nullable: ref.Nullable}
 			}
 		}
 	}
@@ -128,19 +133,51 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	c.refLHS, c.classLitLHS = callable && written, true
 	t := c.resolveType(ref)
 	c.refLHS, c.classLitLHS = old, oldLit
-	if t.K != types.Invalid && !t.IsArray() && !callable {
-		if ref.Outer != nil {
+	if t.K == types.Invalid || callable {
+		return t
+	}
+	if t.N {
+		// A?::class, or a typealias of a nullable type.
+		c.errorf(ref.P, "type in a class literal must not be nullable")
+		return types.InvalidType
+	}
+	if t.IsArray() {
+		// As kotlinc, an array's elements must be known at run time:
+		// Array<Int?> and Array<Array<Any?>?>, not Array<T> or
+		// Array<List<String>>.
+		if args != nil && !classLitArray(t) { // Array::class is fine
 			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
 			return types.InvalidType
 		}
-		for _, a := range ref.Args {
-			if a.Variance != types.Star {
-				c.errorf(a.P, "only classes are allowed on the left hand side of a class literal")
-				return types.InvalidType
-			}
-		}
+		return t
+	}
+	if ref.Outer != nil || len(args) > 0 {
+		// A<*>::class too: only A::class is.
+		c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+		return types.InvalidType
 	}
 	return t
+}
+
+// classLitArray reports whether array type t may be on the left of a class
+// literal: its element type is reified, a class without type arguments,
+// or such an array.
+func classLitArray(t types.Type) bool {
+	if t.A.Len() == 0 {
+		return true // IntArray
+	}
+	a := t.A.Get(0)
+	switch e := a.T; {
+	case a.V == types.Star:
+		return false
+	case e.K == types.TypeParam:
+		return e.Param().Reified
+	case e.IsArray():
+		return classLitArray(e)
+	case e.K == types.Class:
+		return e.A.Len() == 0
+	}
+	return true
 }
 
 // starInner returns an inner class's type with all its type arguments,

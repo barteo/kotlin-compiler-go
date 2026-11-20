@@ -9,7 +9,7 @@ fun f(s: String?, b: Box<Int>) {
     println(s::class.java) // ERROR expression in a class literal has a nullable type
     println(Box<Int>::class.java) // ERROR only classes are allowed on the left hand side of a class literal
     println(b::class.java.name)
-    println(Box<*>::class.java.name)
+    println(Box<*>::class.java.name) // ERROR only classes are allowed on the left hand side of a class literal
     println(Missing::class.java) // ERROR unresolved reference: Missing
 }
 
