@@ -107,3 +107,36 @@ fun tryJumps(flag: Boolean) {
         n = 3 // ERROR val cannot be reassigned
     }
 }
+
+// As kotlinc, this smart cast to a subclass that sees a property with
+// another type makes its assignment one of the intersection override, a
+// val that the property's initialization doesn't count: y isn't
+// initialized. Without a type that differs, it initializes it.
+open class CastBase<T> {
+    val x: Any?
+    val y: T // ERROR property must be initialized or be abstract
+    init {
+        this as CastDerived
+        x = "O"
+        this.y = "O" // ERROR val cannot be reassigned
+    }
+}
+class CastDerived : CastBase<String>()
+
+open class CastBase2<T> {
+    val y: T // ERROR property must be initialized or be abstract
+    init {
+        this as CastDerived2
+        y = "O" as T // ERROR val cannot be reassigned
+    }
+}
+class CastDerived2 : CastBase2<String>()
+
+open class CastBase3 {
+    val y: String
+    init {
+        this as CastDerived3
+        this.y = "O"
+    }
+}
+class CastDerived3 : CastBase3()

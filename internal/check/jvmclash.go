@@ -386,7 +386,7 @@ func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
 		for i := range out {
 			m := &out[i]
 			owner := m.owner()
-			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) && !atomicMismatch(&jm, m) {
+			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) && !atomicMismatch(&jm, m) && !kjkVarClash(m) {
 				overridden[i] = true
 				v := *m
 				v.via = jm.fun
@@ -405,6 +405,15 @@ func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
 		}
 	}
 	return append(kept, vias...)
+}
+
+// kjkVarClash reports whether m is an accessor of a var with a value or
+// default accessors, which a Java method overriding it isn't, to kotlinc
+// 2.4 (KT-66392): a Kotlin class inheriting both clashes, and one
+// overriding the property overrides the Java method by accident. An
+// abstract var's or a val's accessors are overridden in Java.
+func kjkVarClash(m *jvmMember) bool {
+	return m.prop != nil && m.prop.Mutable && !m.prop.Abstract && m.extProp == ""
 }
 
 // owner returns the class that declares m.

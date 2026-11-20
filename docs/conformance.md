@@ -274,10 +274,11 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `FIR2IR`. `j+k/missingTypeOfParameterInFakeOverride_1` needs a
   dependency's class missing from a later module's class path.
 
-`kjkimplicitTypesCrash` (`ACCIDENTAL_OVERRIDE`) and
-`platformTypes/comparingWithWrongNullabilityWithoutWrtHack`
-(`UPPER_BOUND_VIOLATED`) aren't quirks: `kotlinc` 2.4.21 reports their
-errors at the default language version, so they are `kc`'s to fix.
+The other two are `kc`'s own. `regressions/kt334` expects
+`java.lang.Comparable` to be a type of its own, which `kc` takes as
+`kotlin.Comparable` (see [unsupported](unsupported.md)), and
+`j+k/genericFunAndClassNullabilityInconsistency` expects an error that,
+as the test says, K2 doesn't report consistently.
 
 ## Checking the harness
 
@@ -304,27 +305,27 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,614 | |
-| rejects invalid | 4,435 | 51.5% |
+| rejects invalid | 4,445 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
-| accepts invalid | 28 | 0.3% |
+| accepts invalid | 18 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,231 of the 22,025 expected errors (96.4%) on their lines, and 2,697 of
+21,248 of the 22,025 expected errors (96.5%) on their lines, and 2,697 of
 the 3,667 expected warnings (74%), with 18 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 10 of the 28
+none. Tests with Java sources are 1,221 of the run, and 6 of the 18
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9) and unresolved names
-  (`UNRESOLVED_REFERENCE` 4); no other error is expected by more than
-  one. Some are out of reach (see above).
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 6) and unresolved names
+  (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
+  two. All but two are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.

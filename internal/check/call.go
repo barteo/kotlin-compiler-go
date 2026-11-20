@@ -1003,6 +1003,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if isCallArg(a) {
 			inner := newSystem(c)
+			for _, b := range x.Args[:i] {
+				if l, ok := b.(*syntax.Lambda); ok && untypedParams(l) {
+					inner.openLambdas = append(inner.openLambdas, l)
+				}
+			}
 			c.sink = inner
 			ts[i] = c.value(a, noWant)
 			if plain && len(inner.lambdas) == 0 && !inner.freeLits() && inner.selfInferable(ts[i]) {
@@ -1229,7 +1234,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i)})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i), false})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
@@ -1249,7 +1254,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if view, ok := c.capturable(f, best.ext, nothing); ok {
 				want = captured(view, recvParam, want)
 			}
+			n := len(c.errs)
 			c.assignable(best.ext, want, x.Fun.Pos())
+			if len(c.errs) == n {
+				c.exactRecvMismatch(x, best, ts, s)
+			}
 		})
 	}
 	if hasReified(f) {
@@ -1303,7 +1312,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		sink = nil
 	}
 	if sink != nil {
-		c.runLambdas(sys, true)
+		if c.afterOpenLambda(sink, x) && c.nestedInputs(sys) {
+			// A lambda of the call this one is an argument of, written
+			// before it, may come first (see readyFirst).
+			for i := range sys.lambdas {
+				sys.lambdas[i].deferred = true
+			}
+		} else {
+			c.runLambdas(sys, true)
+		}
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
 			sys.fixups = append(sys.fixups, func(s *system) {
 				// A safe call whose result is inferred as Unit here is an
@@ -1340,6 +1357,81 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))
+}
+
+// exactRecvArgs constrains the type arguments of extension candidate
+// cd's receiver type that are annotated @kotlin.internal.Exact to be
+// those of receiver recv's type, not their supertypes: V of
+// Map<out K, @Exact V> is Int for a Map<String, Int>, which a parameter
+// V1 : V? then bounds.
+func (c *Checker) exactRecvArgs(cd *candidate, recv, want types.Type) {
+	d, ok := cd.f.Decl.(*syntax.FunDecl)
+	if !ok || d.Recv == nil || want.K != types.Class || want.A == nil || len(d.Recv.Args) != len(want.A.List) {
+		return
+	}
+	var sup types.Type
+	for j, a := range d.Recv.Args {
+		if a.Type == nil || !a.Type.Exact {
+			continue
+		}
+		if sup.K == types.Invalid {
+			if sup, ok = c.asSuper(recv.NonNull(), want.C); !ok || sup.A == nil || len(sup.A.List) != len(want.A.List) {
+				return
+			}
+		}
+		if ra, wa := sup.A.List[j], want.A.List[j]; ra.V != types.Star && wa.V != types.Star {
+			cd.sys.sub(wa.T, ra.T)
+		}
+	}
+}
+
+// exactRecvMismatch reports, of call x of extension candidate cd, an
+// argument that a type argument of the receiver annotated @Exact (see
+// exactRecvArgs), inferred as another type, doesn't take: "string" of
+// getOrDefault(key, "string") for a Map<String, Int>'s
+// Map<out K, @Exact V>.getOrDefault(key: K, defaultValue: V1) with
+// V1 : V?. As kotlinc, the argument is reported against the bound with
+// the receiver's type argument.
+func (c *Checker) exactRecvMismatch(x *syntax.Call, cd *candidate, ts []types.Type, s *system) {
+	d, ok := cd.f.Decl.(*syntax.FunDecl)
+	want := cd.sub.ApplyIn(cd.f.Recv)
+	if !ok || d.Recv == nil || want.K != types.Class || want.A == nil || len(d.Recv.Args) != len(want.A.List) {
+		return
+	}
+	sup, ok := c.asSuper(cd.ext.NonNull(), want.C)
+	if !ok || sup.A == nil || len(sup.A.List) != len(want.A.List) {
+		return
+	}
+	exact := types.Subst{}
+	for j, a := range d.Recv.Args {
+		ra, wa := sup.A.List[j], cd.f.Recv.A.List[j]
+		if a.Type == nil || !a.Type.Exact || ra.V == types.Star || wa.T.K != types.TypeParam {
+			continue
+		}
+		if got := s.final(cd.sub.Apply(wa.T)); got.K == types.Invalid || c.sameType(got, ra.T) {
+			continue
+		}
+		exact[wa.T.Param()] = types.Arg{V: types.Inv, T: ra.T}
+	}
+	if len(exact) == 0 {
+		return
+	}
+	for i, t := range ts {
+		if i >= len(x.Args) || i >= len(cd.f.Params) {
+			break
+		}
+		p := cd.f.Params[i].Type
+		if p.K != types.TypeParam {
+			continue
+		}
+		for _, b := range p.Param().Bounds {
+			b = exact.Apply(b)
+			if !b.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cd.f.TypeParams, u.Param()) }) && !c.subtype(t, b) {
+				c.errorf(x.Args[i].Pos(), "argument type mismatch: actual type is %s but %s was expected", t, b)
+				return
+			}
+		}
+	}
 }
 
 // notPropRefs drops from match the candidates that take a property
@@ -2103,7 +2195,9 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
 	}
 	if cd.ext.K != types.Invalid {
-		cd.sys.sub(c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv))
+		recv, want := c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv)
+		cd.sys.sub(recv, want)
+		c.exactRecvArgs(cd, recv, want)
 	}
 	for i, t := range ts {
 		p := cd.params[i]

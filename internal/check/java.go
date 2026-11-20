@@ -663,7 +663,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
-				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant, Deprecated: classFileDeprecation(fd.Deprecated)}
+				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant, ConstReads: fd.KotlinReads, Deprecated: classFileDeprecation(fd.Deprecated)}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -3302,6 +3302,22 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 	}
 	x.Field = f
 	return f.Type
+}
+
+// inferSyntheticGetter infers the return type of the program's override
+// in cls of a Java getter, getName(), whose synthetic property is name:
+// as in kotlinc, a call name() that the class's property being inferred
+// gives way to tries that property's invoke first, so a getter that reads
+// the property runs into the recursion (KT-57166).
+func (c *Checker) inferSyntheticGetter(cls *types.ClassSym, name string) {
+	if r, _ := utf8.DecodeRuneInString(name); !unicode.IsLower(r) {
+		return
+	}
+	for _, f := range c.javaMethods(cls, types.GetterName(name)) {
+		if f.Owner == cls && !f.Resolved && f.Infer != nil && len(f.Params) == 0 && c.javaAccessorIn(cls, f) && !overridesKotlinFun(cls, f) {
+			ensureFun(f)
+		}
+	}
 }
 
 // javaProperty checks x.name on a Java object, which Kotlin maps to

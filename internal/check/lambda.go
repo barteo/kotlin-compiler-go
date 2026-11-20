@@ -1627,6 +1627,12 @@ func (c *Checker) argValue(arg *syntax.Expr, p types.Type, f *types.FunSym) type
 			c.samRef(l)
 			return p
 		}
+		if _, _, fn := funcParts(p); l.Ref != nil && fn {
+			// Adapted to the parameter's function type: see unitRefVar.
+			saved := c.adaptedRef
+			c.adaptedRef = l
+			defer func() { c.adaptedRef = saved }()
+		}
 	}
 	return c.value(a, p)
 }
@@ -1870,6 +1876,64 @@ type pendingLambda struct {
 	// noSAM marks one passed for a parameter of the callee's own type
 	// parameter's type, which it isn't converted for: see ownParamArg.
 	noSAM bool
+	// deferred marks a nested call's lambda that waits for a lambda
+	// written before it: see afterOpenLambda.
+	deferred bool
+}
+
+// afterOpenLambda reports whether call x, an argument whose inference
+// merges into sink, comes after a lambda argument of the call sink is
+// for whose parameters' types aren't given: takeMap({ it.f() },
+// map.mapValues { it.value }).
+func (c *Checker) afterOpenLambda(sink *system, x *syntax.Call) bool {
+	return slices.ContainsFunc(sink.openLambdas, func(l *syntax.Lambda) bool { return before(l.Pos(), x.Pos()) })
+}
+
+// nestedInputs reports whether the lambdas of s, a call's, all have
+// parameters whose types have variables of s within them but aren't
+// variables: mapValues' Map.Entry<K, V>. kotlinc fixes the variables a
+// lambda's parameters are first, in the order the lambdas are written,
+// so a lambda written before the call, of a T : Any that only the call's
+// lambda would infer, is analyzed first, with T's bound (KT-68570).
+// map's T of (T) -> R is fixed ahead of it, from its receiver.
+func (c *Checker) nestedInputs(s *system) bool {
+	if len(s.lambdas) == 0 {
+		return false
+	}
+	for _, pl := range s.lambdas {
+		ins := c.inputs(s, pl)
+		if len(ins) == 0 {
+			return false
+		}
+		for _, p := range ins {
+			if p = s.apply(p); p.K == types.TypeVar || !p.HasVars() && !p.HasParams() {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// boundFirst reports whether lambda pl, of s, takes a parameter of a
+// variable that kotlinc would fix before deferred lambdas run: one whose
+// lower bounds are variables only lambdas infer, R of mapValues' result,
+// with a proper upper bound that isn't Any?.
+func (c *Checker) boundFirst(s *system, pl pendingLambda) bool {
+	for _, p := range c.inputs(s, pl) {
+		tv := s.unfixedVar(p)
+		if tv == nil || slices.ContainsFunc(tv.lower, func(l types.Type) bool {
+			// Nor one of a variable, as V of filter's Map<K, V>, that is
+			// inferred without the lambdas.
+			lv := s.unfixedVar(l)
+			return lv == nil || slices.ContainsFunc(lv.lower, s.proper)
+		}) {
+			continue
+		}
+		if slices.ContainsFunc(append(slices.Clip(tv.upper), tv.v.Bounds...), func(u types.Type) bool { return s.proper(u) && !(u.K == types.Any && u.N) }) {
+			return true
+		}
+	}
+	return false
 }
 
 // inputs returns the parameter types a lambda will be checked with.
@@ -1971,10 +2035,13 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		if !readyOnly {
 			c.fixRelated(s, pl)
 		}
-		saved := c.scope
+		saved, savedRef := c.scope, c.adaptedRef
 		c.scope = pl.scope
+		if _, _, fn := funcParts(pl.p); fn && pl.l.Ref != nil {
+			c.adaptedRef = pl.l // see unitRefVar
+		}
 		c.postponedLambda(s, pl.l, p, pl.noSAM)
-		c.scope = saved
+		c.scope, c.adaptedRef = saved, savedRef
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && shape.K != types.Invalid && s.unfixedVar(shape) == nil {
 			// The lambda's type is below the variable too, as K2's
 			// argument constraint: K of select(id { B() }, id { C() })

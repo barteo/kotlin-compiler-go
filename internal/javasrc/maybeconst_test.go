@@ -36,6 +36,9 @@ public class C {
 		if fd.MaybeConstant != want[fd.Name] {
 			t.Errorf("%s: MaybeConstant = %v", fd.Name, fd.MaybeConstant)
 		}
+		if want[fd.Name] && (len(fd.KotlinReads) != 1 || fd.KotlinReads[0] != "p/MainKt.FOO") {
+			t.Errorf("%s: KotlinReads = %v, want [p/MainKt.FOO]", fd.Name, fd.KotlinReads)
+		}
 		if fd.Name == "ONE" && fd.Constant == nil {
 			t.Errorf("ONE is not a constant")
 		}

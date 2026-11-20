@@ -311,7 +311,17 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 		}
 	case types.Int, types.Long, types.Double, types.Bool, types.Char, types.Float, types.Byte, types.Short, types.String:
 		if jc := c.jvmClass(t); jc != nil {
-			return c.asSuper1(types.ClassType(jc), target, depth+1)
+			r, ok := c.asSuper1(types.ClassType(jc), target, depth+1)
+			if ok && r.K == types.Class && (r.C.Name == "kotlin/Comparable" || r.C.Name == "java/lang/Comparable") && r.A.Len() == 1 {
+				// Kotlin declares Int : Comparable<Int>, whose argument,
+				// unlike java.lang.Integer's Comparable<Integer>, isn't
+				// a platform type: Int? isn't within the bound
+				// Comparable<in U!>! of a Java method's U.
+				if a := r.A.List[0]; a.T.P && a.T.NonNull() == t {
+					r = types.GenericType(r.C, []types.Arg{{V: a.V, T: t}})
+				}
+			}
+			return r, ok
 		}
 	}
 	return types.InvalidType, false
@@ -533,6 +543,13 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 		case b.P:
 			return b, true // T and T! give T!, which isn't checked for null
 		}
+		return a, true
+	}
+	if a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && a.N == b.N && a.P == b.P && c.sameType(a, b) {
+		// Of instances whose arguments differ only in their flexibility,
+		// as K2's common supertype, the first: MutableList<J> of
+		// MutableList<J> and MutableList<J!>, but MutableList<J!> of
+		// MutableList<J!> and MutableList<J>.
 		return a, true
 	}
 	if t, ok := c.stubJoin(a, b); ok {

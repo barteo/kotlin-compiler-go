@@ -300,7 +300,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   infers some combinations of lambdas `kc` can't. Of K2's ordering,
   `kc` runs the lambdas whose parameter types are known first, and a
   lambda that returns a lambda for a function type whose inputs aren't
-  known yet last. A lambda that declares
+  known yet last. As in K2, a lambda written before a nested call whose
+  own lambda takes a type with variables in it (`mapValues`'
+  `Map.Entry<K, V>`) runs first when only that lambda's result would
+  infer its parameter's variable, which then is its declared bound. A
+  lambda that declares
   all its parameters' types is checked on its own only when its
   variable has no function type among its bounds.
 - The branches of an `if` or `when` aren't K2's synthetic call: a
@@ -412,14 +416,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   (`@A T` where `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants.
-- Some Java interop errors aren't reported: a `const val` cycle through
-  a Java `static final` field, explicit type arguments that break the
-  nullability of a Java type parameter's bound, a Kotlin member that
-  accidentally overrides a Java subclass's method through an
-  inferred type (`ACCIDENTAL_OVERRIDE`), and the recursion of a
-  synthetic property read in its own overriding getter. A common
-  supertype of a platform type and `Nothing` keeps the platform type's
-  flexibility, where K2 keeps its non-flexible bound.
 
 **Classes and members**
 

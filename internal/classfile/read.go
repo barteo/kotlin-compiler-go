@@ -130,6 +130,10 @@ type Member struct {
 	// source without a Constant only because its initializer reads a
 	// Kotlin class's field: kotlinc may find it constant.
 	MaybeConstant bool
+	// KotlinReads are, with MaybeConstant, the Kotlin classes' fields
+	// that the initializer reads, as Class.field of the class's internal
+	// name.
+	KotlinReads []string
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
 	// Annotations are the descriptors of the member's annotations, kept
