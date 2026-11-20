@@ -2785,6 +2785,8 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				if c.invokable(p.Type) {
 					return c.invoke(x, want, sink)
 				}
+			} else if p != nil {
+				c.inferSyntheticGetter(c.cls, name)
 			}
 			if c.thisExtension(name, x) {
 				// An extension function called on this: apply { } is

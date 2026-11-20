@@ -3304,6 +3304,22 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 	return f.Type
 }
 
+// inferSyntheticGetter infers the return type of the program's override
+// in cls of a Java getter, getName(), whose synthetic property is name:
+// as in kotlinc, a call name() that the class's property being inferred
+// gives way to tries that property's invoke first, so a getter that reads
+// the property runs into the recursion (KT-57166).
+func (c *Checker) inferSyntheticGetter(cls *types.ClassSym, name string) {
+	if r, _ := utf8.DecodeRuneInString(name); !unicode.IsLower(r) {
+		return
+	}
+	for _, f := range c.javaMethods(cls, types.GetterName(name)) {
+		if f.Owner == cls && !f.Resolved && f.Infer != nil && len(f.Params) == 0 && c.javaAccessorIn(cls, f) && !overridesKotlinFun(cls, f) {
+			ensureFun(f)
+		}
+	}
+}
+
 // javaProperty checks x.name on a Java object, which Kotlin maps to
 // getName() (or isName() for names starting with "is") and setName(v).
 func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, bool) {
