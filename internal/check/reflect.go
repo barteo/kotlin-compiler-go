@@ -492,10 +492,6 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if !ok {
 			return nil, types.InvalidType, false
 		}
-		if f != nil && f.Ext && f.Owner != nil && !f.Owner.External {
-			c.errorf(p, "%s: a reference to an extension declared in a class is not allowed", refString(r))
-			return nil, types.InvalidType, false
-		}
 		if f != nil {
 			fps := ps
 			sub := c.memberSubst(recvType, f.Owner)
@@ -615,6 +611,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				sink.merge(tail)
 			}
 			if len(c.errs) == n {
+				if c.memberExtRef(x) {
+					return nil, types.InvalidType, false
+				}
 				c.refContexts(x, p)
 			}
 			return ps, rt, ok
@@ -622,6 +621,37 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		c.errs = c.errs[:n]
 	}
 	return nil, types.InvalidType, false
+}
+
+// memberExtRef reports, if the checked body of reference x calls or reads
+// an extension declared in a class or an object, that a callable
+// reference can't name one, as kotlinc: String::ext for an Obj's
+// String.ext, B::ext and b::ext for a member extension of B's.
+func (c *Checker) memberExtRef(x *syntax.Lambda) bool {
+	if len(x.Body.Stmts) != 1 {
+		return false
+	}
+	s, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	inClass := func(f *types.FunSym) bool {
+		return f != nil && f.Ext && f.Owner != nil && !f.Owner.External
+	}
+	var bad bool
+	switch e := s.X.(type) {
+	case *syntax.Call:
+		m, _ := e.Fun.(*syntax.Member)
+		bad = !e.Invoke && (inClass(e.Sym) || m != nil && m.Dispatch != nil)
+	case *syntax.Member:
+		bad = e.Dispatch != nil || inClass(e.Getter)
+	case *syntax.Ident:
+		bad = inClass(e.Getter)
+	}
+	if bad {
+		c.errorf(x.P, "%s: a reference to an extension declared in a class is not allowed", refString(x.Ref))
+	}
+	return bad
 }
 
 // refRecvType returns the receiver type of unbound reference r, C of
@@ -1096,7 +1126,7 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 	get := lambdaOf(f.params, &syntax.ExprStmt{X: f.body()})
 	x.Arrow, x.Params, x.Body, x.Captures, x.This = true, get.Params, get.Body, nil, false
 	ps, rt, ok := c.checkLambda1(x, lambdaWant{params: f.params, known: true, ret: noWant})
-	if !ok || rt.K == types.Invalid || c.refContexts(x, p) {
+	if !ok || rt.K == types.Invalid || c.memberExtRef(x) || c.refContexts(x, p) {
 		return ps, rt, false
 	}
 	k := &syntax.KProp{Bound: bound}
