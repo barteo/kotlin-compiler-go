@@ -162,7 +162,7 @@ class K { tailrec fun Int.t6(): Int = (this - 1).t6() }
 @Suppress("x")
 tailrec
 fun t7(n: Int) {}
-`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NO_TAIL_CALLS_FOUND", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
+`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NON_TAIL_RECURSIVE_CALL", "4:NO_TAIL_CALLS_FOUND", "5:NON_TAIL_RECURSIVE_CALL", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {
@@ -312,6 +312,83 @@ func TestWarningsIdentity(t *testing.T) {
 	checkReference(t, "testdata/identity.kt", Options{Warnings: true})
 }
 
+// TestWarningsAtomic checks the warnings of compare-and-set calls on
+// atomic references of primitives and value classes against those of
+// testdata/atomic.kt.
+func TestWarningsAtomic(t *testing.T) {
+	checkReference(t, "testdata/atomic.kt", Options{Warnings: true})
+}
+
+// TestWarningsTailrec checks the warnings of tailrec functions' calls of
+// themselves against those of testdata/tailrec.kt.
+func TestWarningsTailrec(t *testing.T) {
+	checkReference(t, "testdata/tailrec.kt", Options{Warnings: true})
+}
+
+// TestWarningsOverrideDeprecation checks the warnings of overrides of
+// deprecated members against those of testdata/overridedepr.kt.
+func TestWarningsOverrideDeprecation(t *testing.T) {
+	checkReference(t, "testdata/overridedepr.kt", Options{Warnings: true})
+}
+
+// TestWarningsDeadClass checks the warnings of the code of classes that
+// their initialization can't run against those kotlinc reports with
+// -Wextra of testdata/deadclass.kt, and that there are none without it.
+func TestWarningsDeadClass(t *testing.T) {
+	checkReference(t, "testdata/deadclass.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/deadclass.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":UNREACHABLE_CODE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
+// TestWarningsInlineClass checks the warnings of the deprecated inline
+// classes against those of testdata/inlineclass.kt.
+func TestWarningsInlineClass(t *testing.T) {
+	checkReference(t, "testdata/inlineclass.kt", Options{Warnings: true})
+}
+
+// TestWarningsMisplacedConstraints checks the warnings of type
+// parameters' bounds declared both with them and in a where clause
+// against those of testdata/misplaced.kt.
+func TestWarningsMisplacedConstraints(t *testing.T) {
+	checkReference(t, "testdata/misplaced.kt", Options{Warnings: true})
+}
+
+// TestWarningsReflection checks the warnings of uses of kotlin.reflect
+// that need kotlin-reflect, which the tests' class path hasn't, against
+// those of testdata/reflect.kt.
+func TestWarningsReflection(t *testing.T) {
+	checkReference(t, "testdata/reflect.kt", Options{Warnings: true})
+}
+
+// TestWarningsConversions checks the warnings of redundant conversions
+// and of == of arrays against those of testdata/conversions.kt.
+func TestWarningsConversions(t *testing.T) {
+	checkReference(t, "testdata/conversions.kt", Options{Warnings: true})
+}
+
+// TestWarningsEmptyRange checks the warnings of empty ranges against
+// those kotlinc reports with -Wextra of testdata/emptyrange.kt, and that
+// there are none without it.
+func TestWarningsEmptyRange(t *testing.T) {
+	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/emptyrange.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":EMPTY_RANGE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {
@@ -393,4 +470,8 @@ func checkReference(t *testing.T, file string, opts Options) {
 	if got := slices.Compact(checkWarningsWith(t, string(b), opts)); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
+}
+
+func TestWarningsNullOperators(t *testing.T) {
+	checkReference(t, "testdata/nullops.kt", Options{Warnings: true})
 }

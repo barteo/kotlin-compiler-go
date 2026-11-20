@@ -1136,6 +1136,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.peekPastNL() == COLON {
 			p.op()
 			tp.Bounds = []*TypeRef{p.parseType()}
+			tp.DeclBound = true
 		}
 		ps = append(ps, tp)
 		p.skipNL()
@@ -1519,6 +1520,7 @@ func (p *parser) whereClause(tps []*TypeParam) {
 		p.expect(COLON)
 		p.skipNL()
 		tp.Bounds = append(tp.Bounds, p.parseType())
+		tp.WhereBound = true
 		if p.peekPastNL() != COMMA {
 			return
 		}
