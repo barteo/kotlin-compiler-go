@@ -684,15 +684,6 @@ tests/j+k/overrideForMemberExtensionProp.kt	main.kt:14	UNRESOLVED_REFERENCE	miss
 tests/j+k/overrideForMemberExtensionProp.kt	main.kt:2	UNRESOLVED_REFERENCE	missing-check
 tests/j+k/overrideForMemberExtensionProp.kt	main.kt:4	UNRESOLVED_REFERENCE	missing-check
 tests/j+k/overrideForMemberExtensionProp.kt	main.kt:5	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:11	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:12	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:13	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:18	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:19	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:20	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:25	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:26	UNRESOLVED_REFERENCE	missing-check
-tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	main.kt:27	UNRESOLVED_REFERENCE	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:10	RETURN_TYPE_MISMATCH	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:7	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:8	UNSAFE_CALL	missing-check

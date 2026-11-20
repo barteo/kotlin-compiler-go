@@ -3279,7 +3279,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// overrides of them.
 		// isX() is the getter of isX whatever its result, as Rx's
 		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(f) {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
 			x.Getter = f
 		}
 	}
@@ -3288,14 +3288,14 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// boolean isX().
 		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
 		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
-			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
 				x.Getter, setterName = f, "set"+alt[3:]
 			}
 		}
 	}
 	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
 		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
-			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
 				x.Getter, setterName = f, acronymAccessor("set", x.Name)
 			}
 		}
@@ -3414,21 +3414,43 @@ func (c *Checker) javaAccessorIn(cls *types.ClassSym, f *types.FunSym) bool {
 	return found
 }
 
-// overridesKotlinFun reports whether Java method f overrides a function
-// of a Kotlin class, which, as in K2 (KT-63067), makes it no property's
-// getter: a Java getX() overriding a Kotlin fun getX() is called as such.
-func overridesKotlinFun(f *types.FunSym) bool {
-	if f.Owner == nil || !isJavaClass(f.Owner) || f.Static {
+// overridesKotlinFun reports whether method f overrides functions of
+// Kotlin classes only: as in K2 (KT-63067, KT-63076), a getter whose
+// overridden declarations all go back to Kotlin functions, a Java getX()
+// overriding a Kotlin fun getX() and a Kotlin override of that, is no
+// property's getter. One that goes back to a Java method, also through
+// a Kotlin override or beside a Kotlin function, is.
+//
+// The declarations are those of the classes of cls, the receiver's class,
+// which may implement a Java interface beside a Kotlin superclass's
+// function.
+func overridesKotlinFun(cls *types.ClassSym, f *types.FunSym) bool {
+	if f.Owner == nil || f.Static || cls == nil {
 		return false
 	}
-	found := false
-	f.Owner.Supertypes(func(s *types.ClassSym) bool {
-		kotlin := !s.External || s.FromKotlin || s.KProps != nil
-		found = s != f.Owner && kotlin && s.Java == nil &&
-			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
-		return !found
+	declares := func(s *types.ClassSym) bool {
+		return slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+	}
+	var decls []*types.ClassSym
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if declares(s) {
+			decls = append(decls, s)
+		}
+		return true
 	})
-	return found
+	kotlinRoot, javaRoot := false, false
+	for _, s := range decls {
+		root := !slices.ContainsFunc(decls, func(t *types.ClassSym) bool { return t != s && s.IsSubclassOf(t) })
+		if !root {
+			continue
+		}
+		if (!s.External || s.FromKotlin || s.KProps != nil) && s.Java == nil {
+			kotlinRoot = true
+		} else {
+			javaRoot = true
+		}
+	}
+	return kotlinRoot && !javaRoot
 }
 
 // acronymAccessor returns the name of the Java accessor, with prefix get
