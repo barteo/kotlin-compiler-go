@@ -377,7 +377,7 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for
-  use-site targets on expressions, nor across a typealias's expansion
+  use-site targets on expressions other than `@all:`, nor across a typealias's expansion
   (`@A T` where `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants.

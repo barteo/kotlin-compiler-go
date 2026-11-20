@@ -157,6 +157,15 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 		if cls.Targets&site.targets == 0 {
 			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
 		}
+	case a.Target == "all":
+		// A property's are checked by allTargets, and the other
+		// declarations' by noAllTarget.
+		switch site.kind {
+		case siteType:
+			c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@all'", site.name)
+		case siteExpr:
+			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
+		}
 	default:
 		want, ok := useSiteTargets[a.Target]
 		if !ok || !c.useSiteApplies(a.Target, site) {
