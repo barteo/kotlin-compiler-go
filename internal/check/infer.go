@@ -1427,6 +1427,20 @@ func (s *system) hasLower(t types.Type) bool {
 	})
 }
 
+// hasUpper reports whether type t is a variable with a proper upper
+// bound other than Any?, as a lambda's explicit parameter type gives
+// the T of a (T) -> Unit.
+func (s *system) hasUpper(t types.Type) bool {
+	if !s.isVar(t) {
+		return false
+	}
+	tv := s.byVar[s.apply(t).Param()]
+	return slices.ContainsFunc(tv.upper, func(b types.Type) bool {
+		b = s.apply(b)
+		return s.proper(b) && !(b.K == types.Any && b.N)
+	})
+}
+
 // fixable reports whether fix finds a value for tv in its bounds.
 func (s *system) fixable(tv *tvar) bool {
 	if len(tv.lits) > 0 || tv.star || slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper) {

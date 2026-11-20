@@ -1168,7 +1168,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if !fd.Override {
 			continue
 		}
-		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && !slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) {
+		c.paramNameWarnings(fd, over)
+		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && (!slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) ||
+			c.deprecatedOverrideOfHidden(f) != "") {
 			c.overrideDeprecation(fd.P)
 		}
 		if f.Suspend && rawSuspendRet(f.Ret) {
@@ -1256,6 +1258,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	for _, op := range props {
 		p := op.p
+		c.javaFieldWarnings(cls, p, op.pos)
 		if p.Private && !op.override {
 			continue // only a field: it hides and overrides nothing
 		}

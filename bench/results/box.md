@@ -2,11 +2,11 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 904 are skipped and 6576 run. 6576 pass (100.0%).
+Of 7480 test files, 905 are skipped and 6575 run. 6575 pass (100.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6576 | 100.0% |
+| pass | 6575 | 100.0% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 0 | 0.0% |
 | crash | 0 | 0.0% |
@@ -37,6 +37,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | `ALLOW_KOTLIN_PACKAGE` | 2 | `annotations/intrinsicConstEvaluationInSources.kt`, `package/packageLocalClassNotImportedWithDefaultImport.kt` |
 | `ASSERTIONS_MODE` | 2 | `assert/alwaysDisable.kt`, `assert/alwaysEnable.kt` |
 | `TARGET_BACKEND: WASM_JS` | 1 | `casts/wasmCastMessagesWasmJs.kt` |
+| `needs a JDK before 21` | 1 | `extensionFunctions/kt475.kt` |
 
 ## By directory
 
@@ -69,7 +70,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | casts | 68 | 68 | 0 | 0 | 0 | 0 | 0 |
 | diagnostics | 60 | 60 | 0 | 0 | 0 | 0 | 0 |
 | dataClasses | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
-| extensionFunctions | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
+| extensionFunctions | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | annotations | 51 | 51 | 0 | 0 | 0 | 0 | 0 |

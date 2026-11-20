@@ -83,6 +83,16 @@ func (c *Checker) annotatedExpr(x syntax.Expr) {
 	c.annotatedNode(x, site)
 }
 
+// javaAnnotationReplacements are the Java annotations that kotlinc
+// deems deprecated on Kotlin declarations (DEPRECATED_JAVA_ANNOTATION),
+// by class, and the Kotlin annotations that replace them.
+var javaAnnotationReplacements = map[string]string{
+	"java/lang/Deprecated":            "kotlin.Deprecated",
+	"java/lang/annotation/Target":     "kotlin.annotation.Target",
+	"java/lang/annotation/Retention":  "kotlin.annotation.Retention",
+	"java/lang/annotation/Documented": "kotlin.annotation.MustBeDocumented",
+}
+
 // checkAnnotations is annotations, or localAnnotations if local is set.
 func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite, local bool) {
 	seen := map[repeatKey]bool{}
@@ -102,6 +112,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		if rec := c.u.rec; rec != nil {
 			rec.Annotation(c.file, a, cls)
+		}
+		if k := javaAnnotationReplacements[cls.Name]; k != "" && cls.External {
+			c.warnf(a.P, "DEPRECATED_JAVA_ANNOTATION", "This annotation is deprecated in Kotlin. Use '@%s' instead.", k)
 		}
 		if cls.Retention != types.NoRetention {
 			applied = append(applied, appliedAnnotation{a, cls})

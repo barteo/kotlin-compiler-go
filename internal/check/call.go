@@ -1077,12 +1077,32 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 		if len(maximal) > 1 {
+			// As K2, a candidate that takes its arguments without varargs
+			// or defaults, or one that isn't generic, is chosen before
+			// conversions to Kotlin fun interfaces are counted:
+			// bar(x: MyAction<String>) over bar(name: String = "",
+			// x: String.() -> Unit), bar(x: MyRunnable) over
+			// bar<T>(x: suspend () -> T).
+			if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
+				maximal = maximal[i : i+1]
+			} else if ng := c.nonGenericMaximal(maximal, x.Args); len(ng) == 1 {
+				maximal = ng
+			}
+		}
+		if len(maximal) > 1 {
 			// Of equally specific ones, which a conversion to a Kotlin fun
 			// interface makes (see funInterfaceView), those converting
 			// fewer arguments: foo(f: () -> Unit) for foo { }, not
 			// foo(r: KRunnable).
 			if fewer, ok := fewestConversions(maximal, x.Args); ok {
 				maximal = fewer
+			}
+		}
+		if len(maximal) == 0 {
+			// Generics are discriminated before SAM conversions:
+			// bar(x: MyRunnable) over bar<T>(x: suspend () -> T).
+			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
+				maximal = ng
 			}
 		}
 		if len(maximal) == 0 {

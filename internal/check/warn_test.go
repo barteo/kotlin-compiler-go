@@ -256,7 +256,7 @@ fun <T> h(a: Any, t: T?) {
     t as T
 }
 `)
-	want := "11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
+	want := "10:UNCHECKED_CAST,11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
 	if strings.Join(got, ",") != want {
 		t.Errorf("got %v, want %s", got, want)
 	}
@@ -474,4 +474,66 @@ func checkReference(t *testing.T, file string, opts Options) {
 
 func TestWarningsNullOperators(t *testing.T) {
 	checkReference(t, "testdata/nullops.kt", Options{Warnings: true})
+}
+
+// TestWarningsDeprecation checks the DEPRECATION warnings of
+// testdata/deprecation.kt.
+func TestWarningsDeprecation(t *testing.T) {
+	checkReference(t, "testdata/deprecation.kt", Options{Warnings: true})
+}
+
+// TestWarningsNullCast checks the elvis, cast, safe call and null
+// condition warnings of testdata/nullcast.kt.
+func TestWarningsNullCast(t *testing.T) {
+	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
+}
+
+// TestWarningsParamName checks the PARAMETER_NAME_CHANGED_ON_OVERRIDE
+// warnings of testdata/paramname.kt.
+func TestWarningsParamName(t *testing.T) {
+	checkReference(t, "testdata/paramname.kt", Options{Warnings: true})
+}
+
+// TestWarningsJavaAnnotations checks the DEPRECATED_JAVA_ANNOTATION
+// warnings of testdata/javaannotations.kt.
+func TestWarningsJavaAnnotations(t *testing.T) {
+	checkReference(t, "testdata/javaannotations.kt", Options{Warnings: true})
+}
+
+// TestWarningsJDKList checks the deprecations of the JDK 21 members of
+// the collection interfaces that K2 hides, by testdata/jdklist.kt, with a
+// JDK that has them.
+func TestWarningsJDKList(t *testing.T) {
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cp.Has("java/util/SequencedCollection") {
+		t.Skip("the JDK is older than 21")
+	}
+	checkReference(t, "testdata/jdklist.kt", Options{Warnings: true})
+}
+
+// TestWarningsJavaField checks PROPERTY_HIDES_JAVA_FIELD by
+// testdata/javafield.kt.
+func TestWarningsJavaField(t *testing.T) {
+	checkReference(t, "testdata/javafield.kt", Options{Warnings: true})
+}
+
+// TestWarningsSupertypeParamNames checks
+// DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES by
+// testdata/supernames.kt.
+func TestWarningsSupertypeParamNames(t *testing.T) {
+	checkReference(t, "testdata/supernames.kt", Options{Warnings: true})
+}
+
+// TestWarningsDelegationHides checks
+// DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE by
+// testdata/delegationhides.kt.
+func TestWarningsDelegationHides(t *testing.T) {
+	checkReference(t, "testdata/delegationhides.kt", Options{Warnings: true})
 }

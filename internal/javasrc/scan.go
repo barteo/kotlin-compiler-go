@@ -25,6 +25,10 @@ type token struct {
 	text string
 	line int
 	col  int
+	// docDeprecated is set on the first token after a doc comment with
+	// the tag @deprecated, which deprecates the declaration in Kotlin as
+	// @Deprecated does.
+	docDeprecated bool
 }
 
 // scan splits Java source into tokens, without comments. Operators are
@@ -35,6 +39,7 @@ func scan(src string) ([]token, error) {
 	var toks []token
 	line, lineStart := 1, 0
 	i := 0
+	docDeprecated := false
 	for i < len(src) {
 		c := src[i]
 		switch {
@@ -56,6 +61,9 @@ func scan(src string) ([]token, error) {
 				return nil, fmt.Errorf("%d:%d: unterminated comment", line, i-lineStart+1)
 			}
 			text := src[i : i+2+end+2]
+			if strings.HasPrefix(text, "/**") && docTagDeprecated(text) {
+				docDeprecated = true
+			}
 			if n := strings.Count(text, "\n"); n > 0 {
 				line += n
 				lineStart = i + strings.LastIndexByte(text, '\n') + 1
@@ -63,7 +71,8 @@ func scan(src string) ([]token, error) {
 			i += len(text)
 			continue
 		}
-		tok := token{line: line, col: i - lineStart + 1}
+		tok := token{line: line, col: i - lineStart + 1, docDeprecated: docDeprecated}
+		docDeprecated = false
 		start := i
 		r, size := utf8.DecodeRuneInString(src[i:])
 		switch {
@@ -256,4 +265,20 @@ func unescape(s string) ([]uint16, error) {
 		}
 	}
 	return units, nil
+}
+
+// docTagDeprecated reports whether doc comment text has the block tag
+// @deprecated: at the start of a line, after any leading asterisks.
+// An empty comment, /**/, isn't a doc comment.
+func docTagDeprecated(text string) bool {
+	if len(text) < len("/***/") {
+		return false
+	}
+	for _, l := range strings.Split(text[3:len(text)-2], "\n") {
+		l = strings.TrimLeft(strings.TrimSpace(l), "*")
+		if f := strings.Fields(l); len(f) > 0 && f[0] == "@deprecated" {
+			return true
+		}
+	}
+	return false
 }

@@ -42,6 +42,9 @@ type Modifiers struct {
 	Default     bool   // an interface's default method
 	Sealed      bool   // a sealed class or interface, not a non-sealed one
 	Annotations []*Annotation
+	// DocDeprecated is set when a doc comment's @deprecated tag
+	// deprecates the declaration.
+	DocDeprecated bool
 }
 
 // Annotation is an annotation, with its arguments' tokens only as names:
@@ -66,6 +69,8 @@ type Class struct {
 	Fields     []*Field
 	Methods    []*Method
 	Constants  []string // an enum's
+	// ConstantMods are the annotations of Constants, by index.
+	ConstantMods []Modifiers
 	// ConstantBodies is set on an enum whose constants have class bodies,
 	// which subclass it.
 	ConstantBodies bool
@@ -293,6 +298,7 @@ var modifierFlags = map[string]uint16{
 // follows has.
 func (p *parser) modifiers() Modifiers {
 	var m Modifiers
+	m.DocDeprecated = p.tok().docDeprecated
 	for {
 		t := p.tok()
 		switch {
@@ -546,11 +552,12 @@ func (p *parser) classBody(c *Class) {
 	p.expect("{")
 	if c.Kind == KindEnum {
 		for {
-			p.modifiers()
+			mods := p.modifiers()
 			if p.tok().kind != tIdent {
 				break
 			}
 			c.Constants = append(c.Constants, p.ident())
+			c.ConstantMods = append(c.ConstantMods, mods)
 			if p.is("(") {
 				p.skipBalanced()
 			}
