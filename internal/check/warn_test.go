@@ -595,3 +595,7 @@ func TestWarningsWeakerSetter(t *testing.T) {
 func TestWarningsSynchronizedOnInline(t *testing.T) {
 	checkReference(t, "testdata/synchronized.kt", Options{Warnings: true})
 }
+
+func TestWarningsJavaClassOnCompanion(t *testing.T) {
+	checkReference(t, "testdata/javaclass.kt", Options{Warnings: true})
+}

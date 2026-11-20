@@ -52,6 +52,7 @@ func (c *Checker) localWarnings() {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
+			c.javaClassOnCompanion(n)
 			if !callees[n] {
 				c.reflectionWarning(n, nil)
 			}
