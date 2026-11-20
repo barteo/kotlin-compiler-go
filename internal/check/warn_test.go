@@ -573,3 +573,9 @@ func TestWarningsExprBodyReturn(t *testing.T) {
 func TestWarningsContextualShadowing(t *testing.T) {
 	checkReference(t, "testdata/ctxshadow.kt", Options{Warnings: true})
 }
+
+// TestWarningsRedundantVisibility checks REDUNDANT_VISIBILITY_MODIFIER,
+// with -Wextra, against kotlinc's warnings of testdata/visibility.kt.
+func TestWarningsRedundantVisibility(t *testing.T) {
+	checkReference(t, "testdata/visibility.kt", Options{Warnings: true, ExtraWarnings: true})
+}
