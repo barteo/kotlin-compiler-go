@@ -2,11 +2,11 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 905 are skipped and 6575 run. 6575 pass (100.0%).
+Of 7480 test files, 904 are skipped and 6576 run. 6576 pass (100.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6575 | 100.0% |
+| pass | 6576 | 100.0% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 0 | 0.0% |
 | crash | 0 | 0.0% |
@@ -23,7 +23,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 564 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
+| `LANGUAGE` | 563 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
 | `TARGET_BACKEND: WASM` | 122 | `casts/kt73931.kt`, `casts/wasmCastMessages.kt` |
 | `IGNORE_BACKEND: JVM_IR` | 52 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
 | `TARGET_BACKEND: JS_IR, JS_IR_ES6` | 36 | `builtins/stringTemplateWithValueOf.kt`, `casts/functions/isFunKSmallJS.kt` |
@@ -52,7 +52,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | controlStructures | 158 | 158 | 0 | 0 | 0 | 0 | 0 |
 | delegatedProperty | 151 | 151 | 0 | 0 | 0 | 0 | 0 |
 | bridges | 140 | 140 | 0 | 0 | 0 | 0 | 0 |
-| inline | 132 | 132 | 0 | 0 | 0 | 0 | 0 |
+| inline | 133 | 133 | 0 | 0 | 0 | 0 | 0 |
 | properties | 124 | 124 | 0 | 0 | 0 | 0 | 0 |
 | classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
 | objects | 116 | 116 | 0 | 0 | 0 | 0 | 0 |

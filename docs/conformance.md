@@ -140,8 +140,9 @@ follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+PCLAEnhancementsIn21`, `+PrioritizedEnumEntries`,
 `+ProperIeee754Comparisons`,
 `+RefinedVarargConversionRulesForCallableReferences`,
-`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`)
-doesn't count.
+`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`,
+and the features new in Kotlin 2.4, which `kotlin24Features` in
+`bench/conformance/testfile.go` lists) doesn't count.
 
 | Category | What happened |
 |:---|:---|

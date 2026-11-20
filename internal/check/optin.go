@@ -1011,6 +1011,11 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 			continue
 		}
 		w.push(e.Annotations)
+		if e.Body == nil && e.Call != nil && e.Call.Sym != nil {
+			// The entry calls the enum's constructor, as kotlinc's
+			// CheckOptInOnPureEnumEntries checks without arguments too.
+			w.require(e.P, w.ctorMarkers(e.Call.Sym))
+		}
 		if e.Call != nil {
 			for _, a := range e.Call.Args {
 				w.node(a)
@@ -1032,6 +1037,10 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 			w.fun(m, d.Sym)
 		case *syntax.PropDecl:
 			w.prop(m, d.Sym)
+		case *syntax.ClassDecl:
+			if !m.EnumEntry {
+				w.decl(m)
+			} // an entry's body, which the entries walk with its annotations
 		default:
 			w.decl(m)
 		}

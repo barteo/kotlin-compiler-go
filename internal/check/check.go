@@ -348,6 +348,9 @@ type Checker struct {
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// headerParams are the parameters of the constructor whose
+	// parameters' annotations are checked: their arguments see them.
+	headerParams []*types.VarSym
 	// localClasses are the file's local classes' capture frames.
 	localClasses map[*types.ClassSym]localClassFrame
 	// tailBlock is a branch whose last statement, a call, is checked with
@@ -1128,6 +1131,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		t := c.expandAlias(a, ref)
 		if !c.noBoundChecks {
 			c.arrayNothingRef(ref, t)
+		}
+		if t.K == types.Class && isMissingDep(t.C) {
+			// As K2's ForbidTypeAliasWithMissingDependencyType.
+			name := missingName(t.C)
+			if s := t.String(); strings.IndexAny(s, "<?") >= 0 {
+				name += s[strings.IndexAny(s, "<?"):] // its arguments and ?
+			}
+			c.errorf(ref.P, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", name)
 		}
 		return t
 	}
@@ -3278,6 +3289,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 			}
 		}
 		c.classAssignment(d)
+		c.initBeforeDecl(d)
 	}
 }
 

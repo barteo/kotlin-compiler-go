@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	typeSite      = annotSite{siteType, types.TargetType, "type usage", false, false}
-	typeBoundSite = annotSite{siteType, types.TargetType, "type usage", true, false}
-	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter", false, false}
+	typeSite      = annotSite{siteType, types.TargetType, "type usage", false, false, false}
+	typeBoundSite = annotSite{siteType, types.TargetType, "type usage", true, false, false}
+	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter", false, false, false}
 )
 
 // typeAnnot is an annotated type, with the class it's written in.
@@ -49,7 +49,7 @@ func (c *Checker) typeAnnotations() {
 			continue
 		}
 		c.state = state{}
-		c.checkAnnotations(typeUseAnnotations(t.ref.Annotations), t.owner, typeSite, false)
+		c.checkTypeUseAnnotations(t.ref.Annotations, t.owner, typeSite)
 	}
 	c.typeAnnots = nil
 	c.state, c.lookupCls = saved, savedCls
@@ -72,7 +72,7 @@ func (c *Checker) typeAnnotationsAt(owner *types.ClassSym, site annotSite, refs 
 		}
 		if len(ref.Annotations) > 0 {
 			if _, done := c.u.typeAnnotsDone.LoadOrStore(ref, true); !done {
-				c.checkAnnotations(typeUseAnnotations(ref.Annotations), owner, site, false)
+				c.checkTypeUseAnnotations(ref.Annotations, owner, site)
 			}
 		}
 		for _, a := range ref.Args {
@@ -88,6 +88,21 @@ func (c *Checker) typeAnnotationsAt(owner *types.ClassSym, site annotSite, refs 
 func (c *Checker) paramTypeAnnotations(owner *types.ClassSym, ps []*syntax.Param) {
 	for _, p := range ps {
 		c.signatureTypeAnnotations(owner, p.Type)
+	}
+}
+
+// checkTypeUseAnnotations checks the annotations as of a type, those
+// typeUseAnnotations keeps, which get the classes they resolve to, for
+// the type's metadata.
+func (c *Checker) checkTypeUseAnnotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite) {
+	kept := typeUseAnnotations(as)
+	c.checkAnnotations(kept, owner, site, false)
+	j := 0
+	for i := range as {
+		if j < len(kept) && as[i].P == kept[j].P {
+			as[i].Class = kept[j].Class
+			j++
+		}
 	}
 }
 
