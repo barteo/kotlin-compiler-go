@@ -1086,9 +1086,70 @@ func (c *Checker) invoke(x *syntax.Call, want types.Type, sink *system) types.Ty
 	return c.invokeValue(x, c.value(x.Fun, noWant), want, sink)
 }
 
+// failedSyntheticInit reports whether v is a local variable without a
+// written type, initialized with an if, a when, a try or a !!, kotlinc's
+// synthetic calls, whose values all failed to resolve or to be inferred:
+// kotlinc gives it an error type. (A callable reference that doesn't
+// resolve, on its own, doesn't.)
+func failedSyntheticInit(v *types.VarSym) bool {
+	if v == nil || v.Kind != types.Local {
+		return false
+	}
+	s, ok := v.Decl.(*syntax.VarStmt)
+	if !ok || s.Type != nil || s.Init == nil {
+		return false
+	}
+	switch x := s.Init.(type) {
+	case *syntax.If:
+		return x.Else != nil && failedBlock(x.Then) && failedBlock(x.Else)
+	case *syntax.When:
+		for _, b := range x.Branches {
+			if !failedBlock(b.Body) {
+				return false
+			}
+		}
+		return len(x.Branches) > 0
+	case *syntax.Try:
+		for _, ct := range x.Catches {
+			if !failedBlock(ct.Body) {
+				return false
+			}
+		}
+		return failedBlock(x.Body)
+	case *syntax.NotNull:
+		return failedType(x.X.Type())
+	}
+	return false
+}
+
+// failedBlock reports whether block b's value failed: see failedType.
+func failedBlock(b *syntax.Block) bool {
+	return b != nil && len(b.Stmts) > 0 && failedType(b.T)
+}
+
+// failedType reports whether t is the type of a value that failed to
+// resolve or to be inferred: an error type, or the function type that
+// returns one, which kc gives a callable reference that doesn't resolve.
+func failedType(t types.Type) bool {
+	if t.K == types.Invalid {
+		return true
+	}
+	return t.IsFunc() && t.A.Get(t.A.Len()-1).T.K == types.Invalid
+}
+
 // invokeValue checks a call of x.Fun, already checked to have type ft.
 func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system) types.Type {
 	ft = c.fixedStub(ft) // a builder's variable, fixed on demand
+	if id, ok := x.Fun.(*syntax.Ident); ok && len(c.lambdas) == 0 && failedSyntheticInit(id.Sym) {
+		// As kotlinc, a local variable initialized with an if, a when,
+		// a try or a !! whose values all failed has an error type, with
+		// no invoke to call: its name is unresolved. (Not in a lambda,
+		// where kotlinc's builder inference can still infer the values
+		// kc fails to.)
+		c.errorf(id.P, "unresolved reference: %s", id.Name)
+		c.args(x, nil)
+		return types.InvalidType
+	}
 	if ft.K == types.Invalid {
 		c.args(x, nil)
 		return ft
