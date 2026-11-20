@@ -2,12 +2,12 @@
 
 The diagnostics tests of JetBrains/kotlin v2.4.21 for the JVM (`compiler/testData/diagnostics/`: tests/, testsWithStdLib/, testsWithJvmBackend/, testsWithAnyBackend/), each compiled by kc. A test's markup marks the diagnostics kotlinc reports, and its `RUN_PIPELINE_TILL` says whether kotlinc stops with errors in the frontend (`FRONTEND`, `FIR2IR`) or goes on to the backend (`BACKEND`). `bench/kotlin-tests.sh diagnostics` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 10827 test files, 2234 are skipped and 8593 run.
+Of 10827 test files, 2213 are skipped and 8614 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4409 | 51.3% |
-| accepts valid | 4146 | 48.2% |
+| rejects invalid | 4426 | 51.4% |
+| accepts valid | 4150 | 48.2% |
 | accepts invalid | 37 | 0.4% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
@@ -15,7 +15,7 @@ Of 10827 test files, 2234 are skipped and 8593 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4409 tests both reject, kc reports an error on the line of an expected one in 4336.
+Of the 4426 tests both reject, kc reports an error on the line of an expected one in 4353.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -34,7 +34,6 @@ Tests for other platforms, that need language features off by default or compile
 | `API_VERSION` | 53 | `tests/deprecated/deprecatedSinceKotlin/error.kt`, `tests/deprecated/deprecatedSinceKotlin/hidden.kt` |
 | `ALLOW_KOTLIN_PACKAGE` | 47 | `tests/annotations/requireKotlin.kt`, `tests/crvDisabled/oldMustUse.kt` |
 | `JDK_KIND` | 27 | `tests/errorProneAtomicArrayPrimitivesAllJavaMethods.kt`, `tests/identityComparisonOnJavaValueBasedClassesWarning.kt` |
-| `explicit API mode` | 21 | `tests/testsWithExplicitApi/annotations.kt`, `tests/testsWithExplicitApi/classes.kt` |
 | `IGNORE_FIR_DIAGNOSTICS` | 18 | `tests/jvm/contextParameters/kt59590WithContextParameters.kt`, `tests/jvm/duplicateJvmSignature/accidentalOverrides/overridesNothing.kt` |
 | `header mode` | 9 | `tests/headerMode/anonymousObjects.kt`, `tests/headerMode/classDeclaration.kt` |
 | `multiplatform` | 3 | `tests/multiplatform/errorProneAtomicArrayArgumentsInKMP.kt`, `tests/multiplatform/errorProneAtomicReferenceArgumentsInKMP.kt` |
@@ -84,7 +83,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20625 of 21964 expected errors (93.9%) on their lines.
+kc reports 20702 of 22025 expected errors (94.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -105,7 +104,6 @@ kc reports 20625 of 21964 expected errors (93.9%) on their lines.
 | `WRONG_ANNOTATION_TARGET` | 403 | 387 | 16 |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 20 | 15 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 413 | 15 |
-| `NO_EXPLICIT_VISIBILITY_IN_API_MODE` | 16 | 1 | 15 |
 | `VAL_REASSIGNMENT` | 231 | 217 | 14 |
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 21 | 13 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 212 | 12 |
@@ -148,6 +146,7 @@ kc reports 20625 of 21964 expected errors (93.9%) on their lines.
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
 | `UNEXPECTED_TRAILING_LAMBDA_ON_A_NEW_LINE` | 14 | 9 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
+| `UNSAFE_CALL` | 525 | 520 | 5 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -157,10 +156,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 76 | 5.7% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CANNOT_INFER_PARAMETER_TYPE` 5 |
-| syntax-error | 154 | 11.5% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| syntax-error | 154 | 11.6% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 166 | 12.4% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 943 | 70.4% | `UNRESOLVED_REFERENCE` 121, `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
+| nearby | 166 | 12.5% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 927 | 70.1% | `UNRESOLVED_REFERENCE` 121, `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
 
 ## Errors kotlinc doesn't report
 

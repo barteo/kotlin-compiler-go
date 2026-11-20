@@ -208,8 +208,11 @@ Four things differ from the test infrastructure:
   outside the infrastructure. A test that adds them stops in the
   frontend even when valid, so only its marks count.
 - **Directory options.** Directories whose test classes give `kotlinc`
-  options (the return value checker in `crv/`, explicit API mode, header
-  mode, strict equality) are skipped, as are tests
+  options are compiled with them where `kc` has them (explicit API mode in
+  `testsWithExplicitApi/`, explicit return types in
+  `testsWithExplicitReturnTypes/`, as for the `EXPLICIT_API_MODE`
+  directive), and skipped where it doesn't (the return value checker in
+  `crv/`, header mode, strict equality), as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 - **Switched-off backend errors.** A test that switches off

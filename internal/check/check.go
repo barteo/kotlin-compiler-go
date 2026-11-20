@@ -61,6 +61,9 @@ type Universe struct {
 	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
+	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
+	// Options.ExplicitReturnTypes.
+	explicitAPI, explicitReturnTypes APIMode
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -766,6 +769,14 @@ type Options struct {
 	// experimental checkers, which kotlinc reports only with
 	// -Xuse-fir-experimental-checkers, as REDUNDANT_INTERPOLATION_PREFIX.
 	ExperimentalWarnings bool
+	// ExplicitAPI is kotlinc's explicit API mode (-Xexplicit-api): the
+	// declarations of the program's public API must say their
+	// visibility, and their types if they are inferred.
+	ExplicitAPI APIMode
+	// ExplicitReturnTypes is kotlinc's -XXexplicit-return-types: the
+	// declarations of the program's public API must say their types if
+	// they are inferred.
+	ExplicitReturnTypes APIMode
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -860,6 +871,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			c.aliasArrayNothing(d)
 		}
 		c.checkModifiers()
+		c.checkExplicitAPI()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
 		if !opts.Signatures {
@@ -899,7 +911,8 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
-		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings, jvmTarget: max(int(opts.JVMTarget), 52)}
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
+		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {

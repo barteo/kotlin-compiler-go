@@ -68,8 +68,6 @@ func diagSkip(t *test) string {
 	// Directories whose test classes give kotlinc options.
 	for _, d := range []struct{ prefix, reason string }{
 		{"tests/crv", "return value checker (crv/, crvFull/)"},
-		{"tests/testsWithExplicitApi/", "explicit API mode"},
-		{"tests/testsWithExplicitReturnTypes/", "explicit API mode"},
 		{"tests/headerMode/", "header mode"},
 		{"tests/strictEquals/", "strict equality"},
 	} {

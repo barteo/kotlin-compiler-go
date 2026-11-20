@@ -8874,27 +8874,27 @@ tests/testWithModifiedMockJdk/newStringMethods.kt	skip	JDK_KIND
 tests/testWithModifiedMockJdk/notConsideredGetter.kt	skip	JDK_KIND	
 tests/testWithModifiedMockJdk/notConsideredMethod.kt	skip	JDK_KIND	
 tests/testWithModifiedMockJdk/throwableConstructor.kt	skip	JDK_KIND	
-tests/testsWithExplicitApi/annotations.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/classes.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/companionObject.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/constructors.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/inlineClasses.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/interfaces.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/kt56505.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/localFunctions.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/mustBeEffectivelyPublic.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/noErrorsForMemebersInsideInternalDeclaration.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/properties.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/publishedApi.kt	skip	explicit API mode	
-tests/testsWithExplicitApi/toplevel.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/classes.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/extensions.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/interfaces.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/kt56505.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/mustBeEffectivelyPublic.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/noErrorsForMemebersInsideInternalDeclaration.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/publishedApi.kt	skip	explicit API mode	
-tests/testsWithExplicitReturnTypes/toplevel.kt	skip	explicit API mode	
+tests/testsWithExplicitApi/annotations.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/classes.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/companionObject.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/constructors.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/inlineClasses.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/interfaces.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/kt56505.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/localFunctions.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/mustBeEffectivelyPublic.kt	accepts valid		
+tests/testsWithExplicitApi/noErrorsForMemebersInsideInternalDeclaration.kt	accepts valid		
+tests/testsWithExplicitApi/properties.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/publishedApi.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitApi/toplevel.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/classes.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/extensions.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/interfaces.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/kt56505.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/mustBeEffectivelyPublic.kt	accepts valid		
+tests/testsWithExplicitReturnTypes/noErrorsForMemebersInsideInternalDeclaration.kt	accepts valid		
+tests/testsWithExplicitReturnTypes/publishedApi.kt	rejects invalid	on an expected line	
+tests/testsWithExplicitReturnTypes/toplevel.kt	rejects invalid	on an expected line	
 tests/testsWithJava17/fullValueClasses/javaRecord.kt	skip	LANGUAGE	
 tests/testsWithJava17/jvmRecord/diagnostics.kt	skip	API_VERSION	
 tests/testsWithJava17/jvmRecord/explicitSuperConstructorCall.kt	rejects invalid	on an expected line	

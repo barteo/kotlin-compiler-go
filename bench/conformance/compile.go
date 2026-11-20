@@ -134,6 +134,7 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if mode := jvmDefaultMode(t, m); mode != "" {
 			args = append(args, "-jvm-default="+mode)
 		}
+		args = append(args, explicitAPIFlags(t, m)...)
 		if target := moduleDirective(t, m, "JVM_TARGET"); target != "" {
 			args = append(args, "-jvm-target", target)
 		}
@@ -415,6 +416,27 @@ func checkerFlags(t *test, m *module) []string {
 	}
 	if has("WITH_EXPERIMENTAL_CHECKERS") {
 		flags = append(flags, "-Xuse-fir-experimental-checkers")
+	}
+	return flags
+}
+
+// explicitAPIFlags returns the flags of the explicit API mode
+// (-Xexplicit-api) and the explicit return types mode
+// (-XXexplicit-return-types) that module m is compiled with, as kotlinc's
+// options for both compilers: the EXPLICIT_API_MODE directive's, or strict
+// for the tests of testsWithExplicitApi and testsWithExplicitReturnTypes,
+// whose test classes set them.
+func explicitAPIFlags(t *test, m *module) []string {
+	api := strings.ToLower(moduleDirective(t, m, "EXPLICIT_API_MODE"))
+	if strings.HasPrefix(t.path, "tests/testsWithExplicitApi/") {
+		api = "strict"
+	}
+	var flags []string
+	if api != "" {
+		flags = append(flags, "-Xexplicit-api="+api)
+	}
+	if strings.HasPrefix(t.path, "tests/testsWithExplicitReturnTypes/") {
+		flags = append(flags, "-XXexplicit-return-types=strict")
 	}
 	return flags
 }
