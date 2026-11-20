@@ -3,6 +3,7 @@ package check
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -362,10 +363,28 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 		}
 		for _, arg := range byParam[j] {
 			elems := arg.elems
+			if v.Vararg && arg.name == "" && arg.array && val.Array {
+				// [a, b] in a vararg's place is one element, an array:
+				// @A([""]) of vararg s: String, unlike @A(*[""]).
+				c.errorf(arg.pos, "argument type mismatch: actual type is %s but %s was expected", types.ArrayOf(elem), elem)
+				ok = false
+				continue
+			}
+			if sp, spread := firstSpread(elems); spread && !v.Vararg {
+				c.errorf(sp.P, "the spread operator (*foo) can only be applied in a vararg position")
+				ok = false
+				continue
+			}
 			if val.Array && !arg.array && (!v.Vararg || arg.name != "") && len(elems) == 1 {
 				// arrayOf(a, b) or [a, b] for an array parameter, or a
 				// vararg one by name: ReplaceWith(imports = ["a.b"])
 				if inner, ok := syntax.ArrayElems(elems[0]); ok {
+					if got := arrayFactoryType(elems[0]); got.K != types.Invalid && got.C != t.C && t.K != types.Invalid {
+						// intArrayOf() for a vararg of Strings
+						c.errorf(elems[0].Pos(), "argument type mismatch: actual type is %s but %s was expected", got, t)
+						ok = false
+						continue
+					}
 					elems = inner
 				} else if _, spread := elems[0].(*syntax.Spread); !spread {
 					if v.Vararg {
@@ -391,6 +410,46 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 		values = append(values, val)
 	}
 	return values, ok
+}
+
+// firstSpread returns elems' element that spreads an array, *[a, b], if
+// it is its only one.
+func firstSpread(elems []syntax.Expr) (*syntax.Spread, bool) {
+	if len(elems) != 1 {
+		return nil, false
+	}
+	sp, ok := elems[0].(*syntax.Spread)
+	return sp, ok
+}
+
+// arrayFactoryType returns the class of the array that x, a call of
+// arrayOf, emptyArray or a primitive or unsigned array's factory such as
+// intArrayOf, creates, as a type to report, or Invalid for a collection
+// literal, whose class is the expected one's.
+func arrayFactoryType(x syntax.Expr) types.Type {
+	call, ok := x.(*syntax.Call)
+	if !ok || call.Literal {
+		return types.InvalidType
+	}
+	var name string
+	switch f := call.Fun.(type) {
+	case *syntax.Ident:
+		name = f.Name
+	case *syntax.Member:
+		name = f.Name
+	}
+	switch name {
+	case "arrayOf", "emptyArray":
+		return types.ClassType(types.ArrayClass)
+	}
+	// intArrayOf makes an IntArray. An unsigned array's, uintArrayOf,
+	// isn't one of these classes.
+	if name != "" {
+		if cls := types.ArrayByName(strings.ToUpper(name[:1]) + strings.TrimSuffix(name[1:], "Of")); cls != nil {
+			return types.ClassType(cls)
+		}
+	}
+	return types.InvalidType
 }
 
 // literalAnnotations checks the elements of a collection literal, the
