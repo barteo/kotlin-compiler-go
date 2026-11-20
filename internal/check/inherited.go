@@ -244,7 +244,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 		impl := -1
 		for i, g := range gr {
 			ensureFun(g)
-			rets[i] = c.overrideSubst(this, gr[0], g).Apply(g.Ret)
+			rets[i] = c.overrideSubst(this, gr[0], g).Apply(c.inheritedRetNullability(g))
 			if !g.Abstract && impls == 1 {
 				impl = i
 			}
@@ -586,4 +586,32 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 			c.errorf(d.P, "the type of property '%s', which delegation implements, isn't a subtype of the types of the properties it overrides", p.Name)
 		}
 	}
+}
+
+// inheritedRetNullability returns the result type of function g: as in
+// Kotlin, a Java method's of a platform type is nullable if a Java
+// method it overrides is annotated @Nullable there, JUnknownImpl's foo()
+// of JNullBase's @Nullable foo().
+func (c *Checker) inheritedRetNullability(g *types.FunSym) types.Type {
+	r := g.Ret
+	if !r.P || g.Static || g.Owner == nil || !isJavaClass(g.Owner) {
+		return r
+	}
+	g.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == g.Owner || !isJavaClass(s) {
+			return true
+		}
+		for _, h := range s.Methods[g.Name] {
+			if h.Static || h.Private || len(h.Params) != len(g.Params) || jvmDesc(h) != jvmDesc(g) {
+				continue
+			}
+			ensureFun(h)
+			if !h.Ret.P && h.Ret.N && h.Ret.K != types.Invalid {
+				r.P = false
+				return false
+			}
+		}
+		return true
+	})
+	return r
 }
