@@ -49,3 +49,10 @@ fun exactReceiver(o: ExactOut<Int>) {
     o.orDefault(1)
     o.orDefault("string") // ERROR argument type mismatch: actual type is String but Int? was expected
 }
+
+// A type parameter in scope is an input as any type: has(1) of an
+// Inv<T> infers Any, neither T nor Int.
+fun <T> params(inv: Inv<T>, t: T) {
+    inv.has(t)
+    inv.has(1) // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
+}

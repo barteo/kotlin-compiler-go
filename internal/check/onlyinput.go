@@ -15,9 +15,11 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 // types are.
 //
 // kc checks a variable only when each of its constraints is a type
-// without variables, type parameters, star projections (which stand for
-// captured types, which kc doesn't have); it leaves the others be. A
-// platform type is compared as K2 compares flexible types.
+// without variables, star projections (which stand for captured types,
+// which kc doesn't have) or type parameters other than those in scope at
+// the call, as T of c.contains(1) in fun <T> f(c: Collection<T>); it
+// leaves the others be. A platform type is compared as K2 compares
+// flexible types.
 
 // onlyInputOK reports whether val, inferred for tv, is the type of one of
 // its constraints, or kc can't tell.
@@ -53,7 +55,7 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 				continue // its literals, passed on to tv's (see fix)
 			}
 			t = s.apply(t)
-			if t.K == types.Invalid || t.HasVars() || t.HasParams() || t.Has(hasStar) || t.K == types.Nothing && !t.N {
+			if t.K == types.Invalid || t.HasVars() || t.Has(hasStar) || t.Has(s.outOfScope) || t.K == types.Nothing && !t.N {
 				return true
 			}
 			inputs = append(inputs, t)
@@ -68,4 +70,11 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 		}
 	}
 	return false
+}
+
+// outOfScope reports whether t is a type parameter that isn't in scope
+// at the call, as one that stands for a captured type, P of a Foo<*>'s
+// Map<P, Any?>, or an intersection type.
+func (s *system) outOfScope(t types.Type) bool {
+	return t.IsParam() && s.c.lookupTypeParam(t.Param().Name) != t.Param()
 }
