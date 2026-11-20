@@ -347,6 +347,19 @@ func TestWarningsDeadClass(t *testing.T) {
 	}
 }
 
+// TestWarningsInlineClass checks the warnings of the deprecated inline
+// classes against those of testdata/inlineclass.kt.
+func TestWarningsInlineClass(t *testing.T) {
+	checkReference(t, "testdata/inlineclass.kt", Options{Warnings: true})
+}
+
+// TestWarningsMisplacedConstraints checks the warnings of type
+// parameters' bounds declared both with them and in a where clause
+// against those of testdata/misplaced.kt.
+func TestWarningsMisplacedConstraints(t *testing.T) {
+	checkReference(t, "testdata/misplaced.kt", Options{Warnings: true})
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {
