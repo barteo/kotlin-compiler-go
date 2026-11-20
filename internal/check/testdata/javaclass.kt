@@ -42,7 +42,7 @@ val o0 = O.javaClass
 val e0 = E.ENTRY.javaClass
 val int0 = Int.javaClass // JAVA_CLASS_ON_COMPANION
 val int1 = Int.Companion.javaClass
-val string0 = kotlin.String.javaClass // JAVA_CLASS_ON_COMPANION
+val string0 = String.javaClass // JAVA_CLASS_ON_COMPANION
 val g0 = G.javaClass // JAVA_CLASS_ON_COMPANION
 @Suppress("JAVA_CLASS_ON_COMPANION")
 val s0 = A.javaClass
