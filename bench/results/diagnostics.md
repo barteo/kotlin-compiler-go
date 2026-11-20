@@ -194,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2772 of the 3667 warnings the tests expect (75.6%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2781 of the 3667 warnings the tests expect (75.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -253,6 +253,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
 | `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
 | `DUPLICATE_BRANCH_CONDITION_IN_WHEN` | 9 | 9 | 0 |
+| `REDUNDANT_NULLABLE` | 9 | 9 | 0 |
 | `REDUNDANT_OPEN_IN_INTERFACE` | 9 | 9 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
 | `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
@@ -286,7 +287,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
 | `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 |
 | `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 |
-| `REDUNDANT_NULLABLE` | 9 |
 | `DANGEROUS_CHARACTERS` | 8 |
 | `FORBIDDEN_IDENTITY_EQUALS_WARNING` | 8 |
 | `USELESS_CALL_ON_NOT_NULL` | 8 |
@@ -300,5 +300,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` | 5 |
 | `OPT_IN_OVERRIDE` | 5 |
 | `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 |
-| *38 more* | |
+| `REDUNDANT_REPEATABLE_ANNOTATION` | 5 |
+| *37 more* | |
 

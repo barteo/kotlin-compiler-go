@@ -538,7 +538,7 @@ func (p *parser) anonFun(label string) *Lambda {
 			l.AnonRecv = p.parseType()
 		}()
 		if p.at(SAFE_DOT) {
-			l.AnonRecv.Nullable = true // ?. is one token
+			p.safeDot(l.AnonRecv, p.i) // ?. is one token
 			p.next()
 		} else {
 			p.expect(DOT)
@@ -965,9 +965,7 @@ func (p *parser) parseType() *TypeRef {
 		ref.Args = p.parseTypeArgs()
 	}
 	ref = p.innerTypeChain(ref)
-	if p.quests() {
-		ref.Nullable = true
-	}
+	p.quests(ref)
 	if p.at(AMP) && !noIntersection {
 		// A definitely non-nullable type, T & Any, which the checker
 		// checks.
@@ -976,7 +974,7 @@ func (p *parser) parseType() *TypeRef {
 	}
 	if p.at(SAFE_DOT) && p.toks[p.i+1].Kind == LPAREN {
 		// A nullable receiver, R?.(A) -> T: ?. is one token.
-		ref.Nullable = true
+		p.safeDot(ref, p.i)
 		p.toks[p.i].Kind = DOT
 	}
 	if p.at(DOT) && p.toks[p.i+1].Kind == LPAREN {
@@ -992,16 +990,31 @@ func (p *parser) parseType() *TypeRef {
 	return ref
 }
 
-// quests skips the ? after a type, reporting whether there was one. A
-// type can have more, T??, which kotlinc warns are redundant.
-func (p *parser) quests() bool {
-	if !p.at(QUEST) {
-		return false
+// safeDot makes ref nullable by the ? of token i, a ?.: R?.f, or R??.f
+// whose second ? is redundant.
+func (p *parser) safeDot(ref *TypeRef, i int) {
+	switch pos := p.toks[i].Pos; {
+	case ref.Quest == Pos{}:
+		ref.Quest = pos
+	case p.toks[i-1].Kind == QUEST && ref.Redundant == Pos{}:
+		ref.Redundant = pos
 	}
-	for p.at(QUEST) {
+	ref.Nullable = true
+}
+
+// quests skips the ? after type ref, which makes it nullable. A type
+// can have more, T??, which kotlinc warns are redundant.
+func (p *parser) quests(ref *TypeRef) {
+	for n := 0; p.at(QUEST); n++ {
+		switch {
+		case ref.Quest == Pos{}:
+			ref.Quest = p.tok().Pos
+		case n > 0 && ref.Redundant == Pos{}:
+			ref.Redundant = p.tok().Pos
+		}
+		ref.Nullable = true
 		p.next()
 	}
-	return true
 }
 
 // parseParenType parses a function type, (A, B) -> R, or a type in
@@ -1034,12 +1047,10 @@ func (p *parser) parseParenType() *TypeRef {
 		p.unexpected("'->'")
 	}
 	t := params[0]
-	if p.quests() {
-		t.Nullable = true
-	}
+	p.quests(t)
 	if p.at(SAFE_DOT) && p.toks[p.i+1].Kind == LPAREN {
 		// A nullable receiver in parentheses, (A)?.(B) -> R.
-		t.Nullable = true
+		p.safeDot(t, p.i)
 		p.toks[p.i].Kind = DOT
 	}
 	if p.at(DOT) && p.toks[p.i+1].Kind == LPAREN {
@@ -1442,7 +1453,7 @@ func (p *parser) receiver(fun bool) (*TypeRef, []Annotation) {
 	}
 	p.next()
 	if kind == SAFE_DOT {
-		ref.Nullable = true // ?. is one token
+		p.safeDot(ref, dot) // ?. is one token
 	}
 	return ref, as
 }

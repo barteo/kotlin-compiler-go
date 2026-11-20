@@ -107,6 +107,9 @@ type TypeRef struct {
 	Name     string     // may be qualified: java.util.Random
 	Args     []*TypeArg // as written; nil if there are none
 	Nullable bool
+	// Quest is the position of a nullable type's ?, and Redundant that of
+	// a second one, T??, which kotlinc warns of.
+	Quest, Redundant Pos
 	// Known is set on a type of a declaration the checker writes: the
 	// type, which needs no resolving.
 	Known *types.Type

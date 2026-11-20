@@ -555,3 +555,9 @@ func TestWarningsDuplicateConditions(t *testing.T) {
 func TestWarningsRedundantSpread(t *testing.T) {
 	checkReference(t, "testdata/spread.kt", Options{Warnings: true})
 }
+
+// TestWarningsRedundantNullable checks REDUNDANT_NULLABLE against
+// testdata/nullable.kt.
+func TestWarningsRedundantNullable(t *testing.T) {
+	checkReference(t, "testdata/nullable.kt", Options{Warnings: true})
+}
