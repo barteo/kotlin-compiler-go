@@ -296,7 +296,7 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
 	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
 		e := l.s.Node(l.errorIDs[i])
-		if l.inBody(e, n) || l.recoverable(e) || l.recovering && l.inBlock(e, n) {
+		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n)) {
 			continue
 		}
 		l.failSyntax(e)
@@ -410,6 +410,17 @@ func unclosedTypeArgs(t psi.NodeRef) psi.NodeRef {
 func (l *lowerer) inBlock(e, n psi.NodeRef) bool {
 	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
 		if p.NumericKind() == psi.KindBLOCK {
+			return true
+		}
+	}
+	return false
+}
+
+// inWhenEntry reports whether e is inside a WHEN_ENTRY strictly under n,
+// which when lowers on its own when recovering.
+func (l *lowerer) inWhenEntry(e, n psi.NodeRef) bool {
+	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if p.NumericKind() == psi.KindWHEN_ENTRY {
 			return true
 		}
 	}

@@ -77,7 +77,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21210 of 22025 expected errors (96.3%) on their lines.
+kc reports 21215 of 22025 expected errors (96.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -107,7 +107,6 @@ kc reports 21210 of 22025 expected errors (96.3%) on their lines.
 | `TOO_MANY_ARGUMENTS` | 118 | 112 | 6 |
 | `VAL_REASSIGNMENT` | 231 | 225 | 6 |
 | `WRONG_EXTENSION_FUNCTION_TYPE` | 6 | 0 | 6 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 157 | 6 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `CYCLIC_CONSTRUCTOR_DELEGATION_CALL` | 28 | 23 | 5 |
 | `OVERRIDING_FINAL_MEMBER_BY_DELEGATION` | 8 | 3 | 5 |
@@ -117,18 +116,18 @@ kc reports 21210 of 22025 expected errors (96.3%) on their lines.
 | `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
 | `UPPER_BOUND_VIOLATED` | 125 | 120 | 5 |
 | `BUILDER_INFERENCE_STUB_RECEIVER` | 5 | 1 | 4 |
-| `CANNOT_CHECK_FOR_ERASED` | 27 | 23 | 4 |
 | `CONFLICTING_PROJECTION` | 29 | 25 | 4 |
 | `INAPPLICABLE_LATEINIT_MODIFIER` | 61 | 57 | 4 |
 | `JVM_STATIC_ON_CONST_OR_JVM_FIELD` | 6 | 2 | 4 |
 | `MULTIPLE_LABELS_ARE_FORBIDDEN` | 17 | 13 | 4 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 21 | 4 |
-| `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 22 | 4 |
 | `OPT_IN_USAGE_ERROR` | 102 | 98 | 4 |
 | `REDECLARATION` | 196 | 192 | 4 |
 | `TYPE_PARAMETER_AS_REIFIED` | 19 | 15 | 4 |
 | `UNSAFE_CALL` | 525 | 521 | 4 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 159 | 4 |
 | `ANNOTATION_ARGUMENT_KCLASS_LITERAL_OF_TYPE_PARAMETER_ERROR` | 6 | 3 | 3 |
+| `CANNOT_CHECK_FOR_ERASED` | 27 | 24 | 3 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 88 | 3 |
 | `CONFLICTING_INHERITED_MEMBERS` | 15 | 12 | 3 |
 | `CONFLICTING_OVERLOADS` | 734 | 731 | 3 |
@@ -141,6 +140,7 @@ kc reports 21210 of 22025 expected errors (96.3%) on their lines.
 | `MEMBER_PROJECTED_OUT` | 50 | 47 | 3 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
 | `NONE_APPLICABLE` | 150 | 147 | 3 |
+| `NON_LOCAL_RETURN_NOT_ALLOWED` | 25 | 22 | 3 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -149,11 +149,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 54 | 6.6% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
-| syntax-error | 93 | 11.4% | `UNRESOLVED_REFERENCE` 14, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `TOO_MANY_ARGUMENTS` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4 |
+| accepted | 54 | 6.7% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
+| syntax-error | 88 | 10.9% | `UNRESOLVED_REFERENCE` 14, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `TOO_MANY_ARGUMENTS` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 130 | 16.0% | `ARGUMENT_TYPE_MISMATCH` 25, `UNRESOLVED_REFERENCE` 24, `RETURN_TYPE_MISMATCH` 21, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 538 | 66.0% | `ARGUMENT_TYPE_MISMATCH` 77, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 35, `RETURN_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 15 |
+| missing-check | 538 | 66.4% | `ARGUMENT_TYPE_MISMATCH` 77, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 35, `RETURN_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 15 |
 
 ## Errors kotlinc doesn't report
 

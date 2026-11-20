@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -993,40 +994,81 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 		if e.NumericKind() != psi.KindWHEN_ENTRY {
 			continue
 		}
-		br := &syntax.WhenBranch{P: l.pos(e), Else: has(e, psi.KindELSE_KEYWORD)}
-		for _, c := range kids(e) {
-			var wc syntax.WhenCond
-			switch c.NumericKind() {
-			case psi.KindWHEN_CONDITION_IN_RANGE:
-				wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
-				wc.NotIn = !wc.In
-				wc.X = l.confusingCond(w, exprChild(c))
-			case psi.KindWHEN_CONDITION_IS_PATTERN:
-				kw := first(c)
-				wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
-				wc.P = l.pos(kw)
-				wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
-			case psi.KindWHEN_CONDITION_EXPRESSION:
-				wc.X = l.confusingCond(w, exprChild(c))
-			case psi.KindWHEN_ENTRY_GUARD:
-				br.Guard = l.expr(exprChild(c))
-				continue
-			default:
-				continue
-			}
-			br.Conds = append(br.Conds, wc)
+		var br *syntax.WhenBranch
+		if !l.recovering {
+			br = l.whenEntry(w, e)
+		} else if !l.attempt(func() {
+			l.syntaxError(e)
+			br = l.whenEntry(w, e)
+		}) {
+			br = l.placeholderEntry(e)
 		}
-		body := exprAfter(e, psi.KindARROW)
-		if !body.Valid() {
-			l.failAt(l.end(e), "expected an expression")
-		}
-		br.Body = l.bodyOf(body)
 		w.Branches = append(w.Branches, record(l, br, e))
 	}
 	if !has(n, psi.KindRBRACE) {
 		l.missingBrace(n)
 	}
 	return w
+}
+
+// whenEntry lowers WHEN_ENTRY e of when w.
+func (l *lowerer) whenEntry(w *syntax.When, e psi.NodeRef) *syntax.WhenBranch {
+	br := &syntax.WhenBranch{P: l.pos(e), Else: has(e, psi.KindELSE_KEYWORD)}
+	for _, c := range kids(e) {
+		var wc syntax.WhenCond
+		switch c.NumericKind() {
+		case psi.KindWHEN_CONDITION_IN_RANGE:
+			wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
+			wc.NotIn = !wc.In
+			wc.X = l.confusingCond(w, exprChild(c))
+		case psi.KindWHEN_CONDITION_IS_PATTERN:
+			kw := first(c)
+			wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
+			wc.P = l.pos(kw)
+			wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
+		case psi.KindWHEN_CONDITION_EXPRESSION:
+			wc.X = l.confusingCond(w, exprChild(c))
+		case psi.KindWHEN_ENTRY_GUARD:
+			br.Guard = l.expr(exprChild(c))
+			continue
+		default:
+			continue
+		}
+		br.Conds = append(br.Conds, wc)
+	}
+	body := exprAfter(e, psi.KindARROW)
+	if !body.Valid() {
+		l.failAt(l.end(e), "expected an expression")
+	}
+	br.Body = l.bodyOf(body)
+	return br
+}
+
+// placeholderEntry returns the branch to keep, when recovering, for
+// WHEN_ENTRY e that has a syntax error: its condition and its value have
+// an invalid type, so that they report nothing of their own, and the when
+// keeps its other branches.
+func (l *lowerer) placeholderEntry(e psi.NodeRef) *syntax.WhenBranch {
+	p := l.pos(e)
+	invalid := func() syntax.Expr {
+		x := &syntax.As{X: &syntax.NullLit{}, Ref: &syntax.TypeRef{P: p, Known: &types.InvalidType}}
+		x.X.(*syntax.NullLit).P = p
+		x.P = p
+		return x
+	}
+	// An else branch is kept as one only last, where it is valid.
+	last := true
+	for n := next(e); n.Valid(); n = next(n) {
+		if n.NumericKind() == psi.KindWHEN_ENTRY {
+			last = false
+		}
+	}
+	br := &syntax.WhenBranch{P: p, Else: has(e, psi.KindELSE_KEYWORD) && last}
+	if !br.Else {
+		br.Conds = []syntax.WhenCond{{X: invalid()}}
+	}
+	br.Body = &syntax.Block{P: p, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: invalid()}}}
+	return br
 }
 
 func (l *lowerer) try(n psi.NodeRef) syntax.Expr {

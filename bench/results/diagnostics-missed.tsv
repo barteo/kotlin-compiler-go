@@ -71,7 +71,6 @@ tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt	ambiguity
 tests/callableReference/generic/argumentAndReturnExpectedType.kt	argumentAndReturnExpectedType.kt:19	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/callableReference/resolve/withExtFun.kt	withExtFun.kt:18	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/callableReference/resolve/withExtFun.kt	withExtFun.kt:25	OVERLOAD_RESOLUTION_AMBIGUITY	nearby
-tests/cast/WhenErasedDisallowFromAny.kt	WhenErasedDisallowFromAny.kt:4	CANNOT_CHECK_FOR_ERASED	syntax-error
 tests/cast/bare/FromErrorType.kt	FromErrorType.kt:7	NO_TYPE_ARGUMENTS_ON_RHS	missing-check
 tests/cfg/flowFromTwoInplaceLambdas.kt	flowFromTwoInplaceLambdas.kt:80	UNINITIALIZED_VARIABLE	missing-check
 tests/checkers/notUselessCast_2.kt	notUselessCast_2.kt:21	RETURN_TYPE_MISMATCH	missing-check
@@ -233,10 +232,6 @@ tests/functionLiterals/return/kt66534.kt	main.kt:97	NULL_FOR_NONNULL_TYPE	nearby
 tests/functionTypeInitializerTypeMismatch.kt	functionTypeInitializerTypeMismatch.kt:23	INITIALIZER_TYPE_MISMATCH	nearby
 tests/functionTypeInitializerTypeMismatch.kt	functionTypeInitializerTypeMismatch.kt:55	RETURN_TYPE_MISMATCH	missing-check
 tests/functionTypeInitializerTypeMismatch.kt	functionTypeInitializerTypeMismatch.kt:59	ASSIGNMENT_TYPE_MISMATCH	nearby
-tests/generics/RawTypeInIsPattern.kt	RawTypeInIsPattern.kt:10	NO_TYPE_ARGUMENTS_ON_RHS	syntax-error
-tests/generics/RawTypeInIsPattern.kt	RawTypeInIsPattern.kt:4	WRONG_NUMBER_OF_TYPE_ARGUMENTS	syntax-error
-tests/generics/RawTypeInIsPattern.kt	RawTypeInIsPattern.kt:5	NO_TYPE_ARGUMENTS_ON_RHS	syntax-error
-tests/generics/RawTypeInIsPattern.kt	RawTypeInIsPattern.kt:9	WRONG_NUMBER_OF_TYPE_ARGUMENTS	syntax-error
 tests/generics/capturedParameters/uncheckedCast.kt	uncheckedCast.kt:34	CANNOT_CHECK_FOR_ERASED	missing-check
 tests/generics/capturedParameters/uncheckedCast.kt	uncheckedCast.kt:39	NO_TYPE_ARGUMENTS_ON_RHS	missing-check
 tests/generics/genericsInType.kt	genericsInType.kt:37	NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY	missing-check
