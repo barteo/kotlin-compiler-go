@@ -3356,10 +3356,8 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		x.Getter, x.Setter = kp.Getter, kp.Setter
 		return c.memberSubst(rt, kp.Getter.Owner).Apply(kp.Getter.Ret), true
 	}
-	// Kotlin decapitalizes the name of getTypeName(): typeName. A
-	// capitalized name, as TypeName, names a class, not the getter.
 	// Nor is a name that can't start a Java identifier, as `1` of get1().
-	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) || !unicode.IsLetter(r) && r != '_' && r != '$' {
+	if r, _ := utf8.DecodeRuneInString(x.Name); !unicode.IsLetter(r) && r != '_' && r != '$' {
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
@@ -3389,29 +3387,43 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// deprecatedOverrideOfHidden).
 		return types.InvalidType, false
 	}
-	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
-		// Only Java methods are seen as properties, and the program's
-		// overrides of them.
-		// isX() is the getter of isX whatever its result, as Rx's
-		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-			x.Getter = f
-		}
-	}
-	if x.Getter == nil && !special && getterName == x.Name {
-		// isX of getIsX(), whose setter is setIsX(), when there is no
-		// boolean isX().
-		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
-		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
-			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-				x.Getter, setterName = f, "set"+alt[3:]
+	getter := func(name string) *types.FunSym {
+		var g *types.FunSym
+		for _, f := range c.accessible(cls, c.javaMethods(cls, name)) {
+			// Only Java methods are seen as properties, and the program's
+			// overrides of them; not generic ones, nor an annotation's
+			// elements, but by their own names (see annotElem).
+			// isX() is the getter of isX whatever its result, as Rx's
+			// Maybe.isEmpty(), a Single<Boolean>.
+			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
+				!overridesKotlinFun(cls, f) && (special || f.Owner == nil || !isAnnotationClass(f.Owner)) {
+				g = f
 			}
 		}
+		return g
 	}
-	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
-		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
-			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-				x.Getter, setterName = f, acronymAccessor("set", x.Name)
+	if special {
+		x.Getter = getter(getterName)
+	} else {
+		// K2's getters of a property, getUrl() and getURL() of url, of
+		// which two are ambiguous.
+		var found []*types.FunSym
+		for _, name := range javaGetterNames(x.Name) {
+			if g := getter(name); g != nil {
+				found = append(found, g)
+			}
+		}
+		if len(found) > 1 {
+			c.errorf(x.P, "overload resolution ambiguity: %s is the property of %s() and %s()", x.Name, found[0].Name, found[1].Name)
+			return types.InvalidType, true
+		}
+		if len(found) == 1 {
+			// The setter of getX() or isX() is setX().
+			x.Getter = found[0]
+			if g := x.Getter.Name; strings.HasPrefix(g, "get") {
+				setterName = "set" + g[3:]
+			} else {
+				setterName = "set" + g[2:]
 			}
 		}
 	}
@@ -3568,19 +3580,102 @@ func overridesKotlinFun(cls *types.ClassSym, f *types.FunSym) bool {
 	return kotlinRoot && !javaRoot
 }
 
-// acronymAccessor returns the name of the Java accessor, with prefix get
-// or set, of property p if p starts with an acronym, which Kotlin
-// decapitalizes as a whole: getFD() is fd, getURLConnection()
-// urlConnection. It returns "" for other names.
-func acronymAccessor(prefix, p string) string {
-	i := strings.IndexFunc(p, unicode.IsUpper)
-	if i < 0 {
-		i = len(p)
+// javaGetterNames returns the names of the Java methods that are getters
+// of a property named p, as K2's possibleGetMethodNames: isX() of isX,
+// getUrl() or getURL() of url, whose name, decapitalized back, is p.
+// getURL() isn't uRL's, nor getКУ() кУ's: only ASCII letters change
+// case.
+func javaGetterNames(p string) []string {
+	var names []string
+	if startsWithIs(p) {
+		names = append(names, p)
 	}
-	if i < 2 {
-		return ""
+	c1 := capitalizeASCII(p)
+	names = append(names, "get"+c1)
+	if c2 := capitalizeFirstWordASCII(p); c2 != c1 {
+		names = append(names, "get"+c2)
 	}
-	return prefix + strings.ToUpper(p[:i]) + p[i:]
+	return slices.DeleteFunc(names, func(n string) bool { return javaPropertyName(n) != p })
+}
+
+// javaPropertyName returns the name of the property whose getter is the
+// method named m, as K2's propertyNameByGetMethodName, or "": url of
+// getURL(), htmlFile of getHTMLFile(), isX of isX().
+func javaPropertyName(m string) string {
+	if strings.HasPrefix(m, "get") && len(m) > 3 && !isLowerASCII(m[3]) {
+		return decapitalizeSmartASCII(m[3:])
+	}
+	if startsWithIs(m) {
+		return m
+	}
+	return ""
+}
+
+// startsWithIs reports whether s is is followed by a character that
+// isn't an ASCII lower-case letter: isEmpty, as JvmAbi's.
+func startsWithIs(s string) bool {
+	return len(s) > 2 && strings.HasPrefix(s, "is") && !isLowerASCII(s[2])
+}
+
+func isLowerASCII(b byte) bool { return 'a' <= b && b <= 'z' }
+func isUpperASCII(b byte) bool { return 'A' <= b && b <= 'Z' }
+
+func capitalizeASCII(s string) string {
+	if s != "" && isLowerASCII(s[0]) {
+		return string(s[0]-'a'+'A') + s[1:]
+	}
+	return s
+}
+
+// capitalizeFirstWordASCII upper-cases the ASCII letters of the first
+// word of s, up to the first character after the first that isn't an
+// ASCII lower-case letter: URL of url, HTMLFile of htmlFile.
+func capitalizeFirstWordASCII(s string) string {
+	i := 1
+	for i < len(s) && isLowerASCII(s[i]) {
+		i++
+	}
+	return upperASCII(s[:i]) + s[i:]
+}
+
+// decapitalizeSmartASCII lower-cases the ASCII letters of the first word
+// of s, an acronym as a whole: url of URL, htmlFile of HTMLFile, as K2's
+// decapitalizeSmartForCompiler(asciiOnly = true).
+func decapitalizeSmartASCII(s string) string {
+	if s == "" || !isUpperASCII(s[0]) {
+		return s
+	}
+	if len(s) == 1 || !isUpperASCII(s[1]) {
+		return string(s[0]-'A'+'a') + s[1:]
+	}
+	i := 0
+	for i < len(s) && isUpperASCII(s[i]) {
+		i++
+	}
+	if i == len(s) {
+		return lowerASCII(s)
+	}
+	return lowerASCII(s[:i-1]) + s[i-1:]
+}
+
+func upperASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isLowerASCII(c) {
+			b[i] = c - 'a' + 'A'
+		}
+	}
+	return string(b)
+}
+
+func lowerASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isUpperASCII(c) {
+			b[i] = c - 'A' + 'a'
+		}
+	}
+	return string(b)
 }
 
 // numberConversions are kotlin.Number's functions and the methods of
