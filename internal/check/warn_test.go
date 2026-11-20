@@ -494,6 +494,12 @@ func TestWarningsParamName(t *testing.T) {
 	checkReference(t, "testdata/paramname.kt", Options{Warnings: true})
 }
 
+// TestWarningsJavaAnnotations checks the DEPRECATED_JAVA_ANNOTATION
+// warnings of testdata/javaannotations.kt.
+func TestWarningsJavaAnnotations(t *testing.T) {
+	checkReference(t, "testdata/javaannotations.kt", Options{Warnings: true})
+}
+
 // TestWarningsJDKList checks the deprecations of the JDK 21 members of
 // the collection interfaces that K2 hides, by testdata/jdklist.kt, with a
 // JDK that has them.
