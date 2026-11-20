@@ -94,7 +94,12 @@ func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 		return
 	}
 	ft := c.resolveType(bf.Type)
-	if !c.fieldNarrows(ft, sym.Type, bf.P) {
+	if !c.fieldNarrows(ft, sym.Type, d.P) {
+		if ft.K != types.Invalid && ft != sym.Type {
+			// Reported: its initializer is still checked with the type
+			// written, as kotlinc does.
+			sym.FieldT = &ft
+		}
 		return
 	}
 	sym.FieldT = &ft
@@ -102,6 +107,7 @@ func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 
 // fieldNarrows reports whether a backing field of type ft narrows a
 // property of type t, and reports it if it can't hold t's values.
+// It is reported at p, the property, as kotlinc does.
 func (c *Checker) fieldNarrows(ft, t types.Type, p syntax.Pos) bool {
 	switch {
 	case ft.K == types.Invalid || t.K == types.Invalid:
@@ -123,10 +129,10 @@ func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
 	sym.InProgress = true
 	saved, trial := c.state, c.trial
 	c.trial = c.trialOf(owner)
-	t := c.fieldInit(d, owner, sym.Type)
+	t := c.fieldInit(d, owner, sym.Type, false)
 	c.state, c.trial = saved, trial
 	sym.InProgress, sym.Resolved = false, true
-	if c.fieldNarrows(t, sym.Type, d.BackingField.P) {
+	if c.fieldNarrows(t, sym.Type, d.P) {
 		sym.FieldT = &t
 	}
 }
@@ -141,12 +147,14 @@ func (c *Checker) checkBackingField(d *syntax.PropDecl, cls *types.ClassSym) {
 	if ft := d.Sym.FieldT; ft != nil {
 		want = *ft
 	}
-	c.fieldInit(d, cls, want)
+	c.fieldInit(d, cls, want, true)
 }
 
 // fieldInit checks the initializer of property d's backing field, which
-// has the type want if known, and returns its type.
-func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.Type) types.Type {
+// has the type want if known, and returns its type. Unless assign, its
+// type isn't checked against want: an inferred field's type that the
+// property's doesn't take is reported as such (fieldNarrows).
+func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.Type, assign bool) types.Type {
 	c.done[d] = true
 	c.onUndo(func() { delete(c.done, d) })
 	c.state = state{scope: &scope{}, cls: cls, this: newThis(cls), init: cls != nil, declName: d.Name}
@@ -157,7 +165,9 @@ func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.
 	c.inAnon(cls)
 	init := d.BackingField.Init
 	t := c.value(init, want)
-	c.assignable(t, want, init.Pos())
+	if assign {
+		c.assignable(t, want, init.Pos())
+	}
 	if cls == nil {
 		c.uninitializedTop(d, init)
 	}

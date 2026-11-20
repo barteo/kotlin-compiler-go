@@ -21,8 +21,8 @@ class A {
     val w: Any
         field: String = 1 // ERROR type mismatch
 
-    val s: String
-        field: Any = 1 // ERROR must be a subtype of the property's
+    val s: String // ERROR must be a subtype of the property's
+        field: Any = 1
 
     val e // ERROR the type of a property with an explicit backing field must be written
         field = 1
