@@ -126,7 +126,10 @@ its first module) into `-jvm-default` and `-jvm-target`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
-Java sources, or modules with `dependsOn`. A `LANGUAGE` that
+Java sources, or modules with `dependsOn`, and the one test that
+compiles only against a JDK before 21 (`extensionFunctions/kt475`:
+there `array.last = "5"` assigns the synthetic `val` of JDK 21's
+`ArrayList.getLast()`, which `kotlinc` rejects too). A `LANGUAGE` that
 only sets features as Kotlin 2.4 has them by default, or as `kc`
 follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+AllowReifiedTypeInCatchClause`,
@@ -293,10 +296,9 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,576 | |
+| run (of 7,480) | 6,575 | |
 | pass | 6,575 | 100% |
-| check error | 1 | |
-| parse/unsupported, crash, codegen error, timeout | 0 | |
+| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
@@ -323,12 +325,7 @@ largest groups are:
   type mismatches (`ARGUMENT_TYPE_MISMATCH` 9) and unresolved names
   (`UNRESOLVED_REFERENCE` 4); no other error is expected by more than
   one. Some are out of reach (see above).
-- **Rejects valid**: none. The one box test rejected,
-  `extensionFunctions/kt475`, is rejected by `kotlinc` too on JDK 21,
-  which the harness runs on: its `array.last = "5"` assigns the
-  synthetic `val` of JDK 21's `ArrayList.getLast()`, which takes
-  precedence over the test's extension `var`. The test is from before
-  JDK 21.
+- **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 

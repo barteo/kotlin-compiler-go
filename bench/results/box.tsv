@@ -2824,7 +2824,7 @@ extensionFunctions/kt3298.kt	pass
 extensionFunctions/kt3646.kt	pass		
 extensionFunctions/kt3969.kt	pass		
 extensionFunctions/kt4228.kt	pass		
-extensionFunctions/kt475.kt	check error	val cannot be reassigned	kt475.kt:8: val cannot be reassigned
+extensionFunctions/kt475.kt	skip	needs a JDK before 21	
 extensionFunctions/kt5467.kt	pass		
 extensionFunctions/kt606.kt	pass		
 extensionFunctions/kt865.kt	pass		
