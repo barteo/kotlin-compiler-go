@@ -360,6 +360,35 @@ func TestWarningsMisplacedConstraints(t *testing.T) {
 	checkReference(t, "testdata/misplaced.kt", Options{Warnings: true})
 }
 
+// TestWarningsReflection checks the warnings of uses of kotlin.reflect
+// that need kotlin-reflect, which the tests' class path hasn't, against
+// those of testdata/reflect.kt.
+func TestWarningsReflection(t *testing.T) {
+	checkReference(t, "testdata/reflect.kt", Options{Warnings: true})
+}
+
+// TestWarningsConversions checks the warnings of redundant conversions
+// and of == of arrays against those of testdata/conversions.kt.
+func TestWarningsConversions(t *testing.T) {
+	checkReference(t, "testdata/conversions.kt", Options{Warnings: true})
+}
+
+// TestWarningsEmptyRange checks the warnings of empty ranges against
+// those kotlinc reports with -Wextra of testdata/emptyrange.kt, and that
+// there are none without it.
+func TestWarningsEmptyRange(t *testing.T) {
+	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/emptyrange.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":EMPTY_RANGE") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
 // TestWarningsUnused checks the warnings of unused expressions against
 // those kotlinc reports of testdata/unused.kt.
 func TestWarningsUnused(t *testing.T) {

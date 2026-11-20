@@ -27,6 +27,10 @@ func (c *Checker) localWarnings() {
 			c.classDeadCode(d, deadClasses)
 		}
 	}
+	callees := map[*syntax.Member]bool{} // the members called, which reflectionWarning judges with the call
+	// refCalls are the calls that callable references are lambdas of, as
+	// s.toString() of s::toString, which aren't written.
+	refCalls := map[*syntax.Call]bool{}
 	walkCode(c.file.Decls, func(n any) bool {
 		c.unusedNode(u, n)
 		c.divisionWarning(n)
@@ -39,19 +43,45 @@ func (c *Checker) localWarnings() {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
+			if !callees[n] {
+				c.reflectionWarning(n, nil)
+			}
 			if n.Safe && n.X != nil {
 				if t := n.X.Type(); definitelyNonNull(t) {
 					c.warnf(n.P, "UNNECESSARY_SAFE_CALL", "unnecessary safe call on a non-null receiver of type '%s'", t)
 				}
 			}
 		case *syntax.Binary:
+			c.arrayEqualityWarning(n)
+			if c.u.extraWarnings || c.u.experimentalWarnings {
+				c.emptyRangeWarning(n)
+			}
 			c.binaryWarnings(n)
 			c.enumComparisonWarning(n)
 			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
 				c.identityWarnings(n)
 			}
+		case *syntax.Lambda:
+			if n.Ref != nil {
+				syntax.Inspect(n.Body, func(m any) bool {
+					if x, ok := m.(*syntax.Call); ok {
+						refCalls[x] = true
+					}
+					return true
+				})
+			}
 		case *syntax.Call:
 			c.atomicWarnings(n)
+			if !refCalls[n] {
+				c.conversionWarning(n)
+			}
+			if c.u.extraWarnings || c.u.experimentalWarnings {
+				c.emptyRangeWarning(n)
+			}
+			if m, ok := n.Fun.(*syntax.Member); ok && !n.Invoke {
+				callees[m] = true
+				c.reflectionWarning(m, n)
+			}
 		case *syntax.ObjectExpr:
 			if deadClasses != nil {
 				c.classDeadCode(n.Decl, deadClasses)

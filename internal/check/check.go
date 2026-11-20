@@ -61,6 +61,10 @@ type Universe struct {
 	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
+	// noReflection is set if kotlin-reflect isn't on the class path,
+	// whose ReflectionFactoryImpl the standard library's reflection uses
+	// if it is.
+	noReflection bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -887,6 +891,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
+	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
