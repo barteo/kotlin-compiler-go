@@ -25,9 +25,11 @@
 # with KC_VARIANTS=debug, which names no variant of these modules, KSP
 # stays stock. Then, with KC_KSP_KEEP=1, two builds of each project: the
 # first loads the processors of its four class paths or finds those the
-# other project loaded, and the second finds all four kept. Last, with
+# other project loaded, and the second finds all four kept. Then, with
 # KC_KSP_FORGET=1, two builds of each project, whose four runs each keep
-# nothing for the next.
+# nothing for the next. Last, with a component in project 1 that Dagger
+# finds no binding for: the build fails and reports Dagger's error once,
+# both when stock KSP runs after kc and under KC_STRICT=1.
 #
 # Environment:
 #	GRADLE  the gradle command (default gradle)
@@ -225,6 +227,22 @@ for k in 1 2; do
 	done
 done
 echo "forget: the runs keep nothing for the next, same output"
+
+cat > "$work/project1/dagger/src/main/kotlin/Unbound.kt" <<-EOF
+	@dagger.Component
+	interface Unbound {
+	    fun runnable(): Runnable
+	}
+EOF
+for strict in 0 1; do
+	if KC_KSP=$ksp KC_STRICT=$strict g 1 -I "$init"; then
+		echo "gradle.sh: a build with a processor's error passes: $log" >&2
+		exit 1
+	fi
+	got=$(grep -c 'Dagger/MissingBinding' "$log" || true)
+	[ "$got" = 1 ] || { echo "gradle.sh: KC_STRICT=$strict: the processor's error is reported $got times, not once: $log" >&2; exit 1; }
+done
+echo "errors: a processor's error fails the build, reported once"
 
 mine=$(comm -13 <(sort <<< "$before") <(daemons | sort))
 [ "$(wc -w <<< "$mine")" -le 1 ] || { echo "gradle.sh: the builds ran in daemons" $mine >&2; exit 1; }

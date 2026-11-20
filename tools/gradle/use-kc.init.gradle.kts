@@ -25,8 +25,11 @@
 //              the directory's loader and KSP API jars and, from the task's own, KSP's
 //              configuration classes, the Kotlin standard library and kotlinx.coroutines. The
 //              processors see those jars only. Unless KC_STRICT=1, a task whose run on kc fails
-//              runs stock KSP in its place, and the build log says so. A daemon's builds must
-//              name one directory with one libkc.so: after an upgrade of kc, restart the daemon.
+//              runs stock KSP in its place, and the build log says so. When the processors'
+//              own errors fail the run on kc, the log has them once: stock KSP's if it fails
+//              too, and otherwise kc's, after a line that says stock KSP reported none. A
+//              daemon's builds must name one directory with one libkc.so: after an upgrade of
+//              kc, restart the daemon.
 //              Checked with the KSP Gradle plugin 2.3.12 and 2.3.13.
 //   KC_KSP_KEEP  1: KSP on kc keeps the processors' classes loaded between the tasks and builds
 //              of a daemon, for as long as the processors' jars stay the same. KSP's Gradle
