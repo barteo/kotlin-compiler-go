@@ -87,7 +87,7 @@ stubbed=(
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
 	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol symbols.KaBackingFieldSymbol
-	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol
+	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol symbols.KaAnonymousObjectSymbol
 	symbols.KaContextParameterSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
@@ -250,7 +250,7 @@ slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.be
 	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString members:f.Table:equals,get,remove,containsKey,putAll members:f.Names:contains,remove,toString,addAll members:f.Both:run decls:java.util.AbstractMap decls:java.util.AbstractList assign:f.Assign sealed:f.Shape
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
-	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets a.OnField a.FieldOrFun a.Anywhere)
+	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets entries:b.E entries:b.Level entries:b.Step a.OnField a.FieldOrFun a.Anywhere)
 rm -rf "$out/test-classes" "$out/slice"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn "$here/test/PrintAnnotated.kt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \

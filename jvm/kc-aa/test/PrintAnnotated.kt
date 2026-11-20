@@ -22,6 +22,9 @@
 //	                       a type alias's type, and the declaration it expands to
 //	annots:a.b.C           the annotations, with use-site targets, of C's
 //	                       constructor parameters, properties and accessors
+//	entries:a.b.C          enum class C's entries: the number of declarations,
+//	                       getAllFunctions and getAllProperties with parent
+//	                       and overridee
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.isConstructor
@@ -43,7 +46,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
                 val mode = name.substringBefore(':', "")
-                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm", "annots")) {
+                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm", "annots", "entries")) {
                     mode(resolver, mode, name.removePrefix("$mode:"), name)
                     continue
                 }
@@ -120,6 +123,21 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
                         }
                         out += "$tag: ${m.origin} ${m.simpleName.asString()} in " +
                             "${m.parentDeclaration?.qualifiedName?.asString()}$overridee; as member $asMember"
+                    }
+                }
+                "entries" -> for (e in cls(resolver, arg).declarations) {
+                    if (e !is KSClassDeclaration || e.classKind != ClassKind.ENUM_ENTRY) continue
+                    val entry = "$tag: ${e.simpleName.asString()}"
+                    out += "$entry: ${e.declarations.count()} declarations"
+                    for (m in e.getAllFunctions() + e.getAllProperties()) {
+                        val overridee = when (m) {
+                            is KSFunctionDeclaration -> m.findOverridee()
+                            is KSPropertyDeclaration -> m.findOverridee()
+                            else -> null
+                        }?.let { " overrides ${it.qualifiedName?.asString()}" } ?: ""
+                        // KSP throws on the return type of the initializer's constructor.
+                        val text = runCatching { describe(m) }.getOrElse { it.javaClass.simpleName }
+                        out += "$entry: ${m.simpleName.asString()}: ${m.origin} $text in ${m.parentDeclaration?.qualifiedName?.asString()}$overridee"
                     }
                 }
                 "assign" -> {

@@ -316,7 +316,10 @@ internal class KcRound(
         val out = ArrayList<KaDeclarationSymbol>()
         sources.filterTo(out) { it is KaCallableSymbol }
         lib?.decls?.filterTo(out) { it is KaCallableSymbol }
-        sources.filterTo(out) { it !is KaCallableSymbol }
+        // One classifier for each ID, the one the ID names: an expect class shares its actual declaration's.
+        sources.filter { it !is KaCallableSymbol }.mapTo(LinkedHashSet()) { d ->
+            (d as? KaClassLikeSymbol)?.classId?.let { classes[it] ?: typeAliases[it] } ?: d
+        }.let(out::addAll)
         // FIR lists them in the order of the fastutil set the CLI Java file
         // manager collects their names in (knownClassNamesInPackage).
         val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
@@ -453,8 +456,16 @@ internal class KcRound(
         is KcSyntheticSetterSymbol -> directlyOverridden(s.property)
         is KcSyntheticPropertySymbol -> members(s.owner).overridden[s].orEmpty()
         is KcRenamedFunctionSymbol -> members(s.owner).overridden[s].orEmpty()
-        is KcFunctionSymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
-        is KcPropertySymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
+        is KcFunctionSymbol -> declaredOverridden(s, s.info.parent)
+        is KcPropertySymbol -> declaredOverridden(s, s.info.parent)
+        else -> emptyList()
+    }
+
+    /** What [s], declared in [parent], overrides: in an enum entry's initializer, members of the enum class. */
+    private fun declaredOverridden(s: KaCallableSymbol, parent: KaSymbol?): List<KaCallableSymbol> = when (parent) {
+        is KcClassSymbol -> members(parent).overridden[s].orEmpty()
+        is KcEnumEntryInitializerSymbol ->
+            (parent.entry.info.parent as? KcClassSymbol)?.let { KcMemberBuilder(this, it).overriddenBy(s) }.orEmpty()
         else -> emptyList()
     }
 
@@ -775,7 +786,11 @@ internal class KcRound(
                 val id = d.classId
                 val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && id.isNotEmpty()) { { classFilePsi(id) } } else null
                 val c = register(KcClassSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
-                c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
+                c.classId?.let {
+                    if (origin != KaSymbolOrigin.SOURCE) libraryClasses[it] = c
+                    // An expect class and its actual one share their ID, which names the first of them, as in FIR.
+                    else classes.putIfAbsent(it, c)
+                }
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
@@ -784,7 +799,13 @@ internal class KcRound(
             }
             KcDecl.ENUM_ENTRY -> {
                 val psi = psiOf<KtEnumEntry>(d) ?: javaPsi(d, parent)
-                register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                val e = register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                if (d.members.isNotEmpty()) {
+                    val init = KcEnumEntryInitializerSymbol(e)
+                    e.initializerSymbol = init
+                    init.members = decls(d.members, init, "$key/body")
+                }
+                e
             }
             KcDecl.FUNCTION -> scoped { ctx ->
                 val psi = psiOf<KtNamedFunction>(d) ?: javaPsi(d, parent)
@@ -836,10 +857,10 @@ internal class KcRound(
          * The members FIR generates for source data class, data object or
          * value class [d] that it doesn't declare itself: equals, hashCode
          * and toString, which are in its member scope but not among its
-         * declarations.
+         * declarations. An expect class has none.
          */
         fun generated(d: KcDecl, c: KcClassSymbol, key: String): List<KaCallableSymbol> {
-            if (origin != KaSymbolOrigin.SOURCE || !d.isData && !d.has(KcDecl.VALUE)) return emptyList()
+            if (origin != KaSymbolOrigin.SOURCE || !d.isData && !d.has(KcDecl.VALUE) || d.has(KcDecl.EXPECT)) return emptyList()
             fun type(id: String, nullable: Boolean = false) = KcType(KcType.CLASS, id, if (nullable) 1 else 0, 0, "", 0, emptyList())
             fun fn(name: String, ret: String, flags: Long, params: List<KcDecl>) = KcDecl(KcDecl.FUNCTION, name, 0, "",
                 KcDecl.PUBLIC, KcDecl.OPEN, flags, 0, type(ret), null, emptyList(), emptyList(), emptyList(), emptyList(), params, emptyList())
