@@ -140,8 +140,9 @@ follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+PCLAEnhancementsIn21`, `+PrioritizedEnumEntries`,
 `+ProperIeee754Comparisons`,
 `+RefinedVarargConversionRulesForCallableReferences`,
-`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`)
-doesn't count.
+`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`,
+and the features new in Kotlin 2.4, which `kotlin24Features` in
+`bench/conformance/testfile.go` lists) doesn't count.
 
 | Category | What happened |
 |:---|:---|
@@ -298,7 +299,7 @@ Kotlin 2.4.21's tests on `kc`:
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,281 of the 21,714 expected errors (93%) on their lines, and 1,490 of
+20,432 of the 21,714 expected errors (94%) on their lines, and 1,490 of
 the 3,652 expected warnings (41%), with 8 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 13 of the 37
 that *accept invalid* code. The reports break the failures down; the

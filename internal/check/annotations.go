@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -89,6 +90,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 	defer func() { c.repeatedWithContainer(applied) }()
 	for i := range as {
 		a := &as[i]
+		if local && site.kind == siteLocal {
+			c.localUseSite(a, site)
+		}
 		if a.Name == "" {
 			continue // @[A B]
 		}
@@ -183,6 +187,11 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		saved, savedLookup := c.state, c.lookupCls
 		c.state = state{scope: &scope{}, staticCls: owner}
+		if site.header && site.kind != siteCtor {
+			for _, p := range c.headerParams {
+				c.scope.declare(p)
+			}
+		}
 		if this := annotationThis(owner, site); this != nil {
 			c.cls, c.this, c.staticCls = this, newThis(this), nil
 			c.inAnon(this) // an inner or local class's outer receivers
@@ -407,6 +416,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	params := func(ps []*syntax.Param) {
 		for _, p := range ps {
 			c.noReceiver(p.Annotations)
+			c.noParamTarget(p.Annotations)
+			c.noFileTarget(p.Annotations)
 			c.annotations(p.Annotations, owner, paramSite)
 		}
 	}
@@ -427,23 +438,31 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
+		c.noParamTarget(d.Annotations)
+		c.noFileTarget(d.Annotations)
 		c.publishedApi(&d.Modifiers)
 		fun(d, funSite(owner))
 		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
+		c.noParamTarget(d.Annotations)
+		c.noFileTarget(d.Annotations)
+		c.onAccessor(d.Annotations)
 		c.publishedApi(&d.Modifiers)
 		c.annotations(d.Annotations, owner, propSite(owner))
 		if !d.Mutable {
 			c.setOnImmutable(d.Annotations)
 		}
+		c.fieldless(d)
 		c.annotations(d.RecvAnnotations, owner, annotSite{})
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
-		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false, false})
-		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false})
+		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false, false, false})
+		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false, false, false})
+		c.repeatedSetparam(d)
 	case *syntax.TypeAliasDecl:
+		c.noFileTarget(d.Annotations)
 		c.annotations(d.Annotations, owner, typealiasSite)
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Type)
@@ -455,6 +474,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
+		c.noFileTarget(d.Annotations)
+		c.noFileTarget(d.CtorMods.Annotations)
 		c.publishedApi(&d.Modifiers)
 		c.publishedApi(&d.CtorMods)
 		c.annotations(d.Annotations, cls, classSite(d))
@@ -471,8 +492,10 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		for _, cp := range d.CtorParams {
 			c.signatureTypeAnnotations(cls, cp.Type)
 		}
+		c.headerParams = cls.CtorParams
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
+			c.noFileTarget(cp.Modifiers.Annotations)
 			if cp.IsProp {
 				c.publishedApi(&cp.Modifiers)
 			}
@@ -481,7 +504,9 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.setOnImmutable(cp.Modifiers.Annotations)
 			}
 		}
+		c.headerParams = nil
 		for _, e := range d.Entries {
+			c.noFileTarget(e.Annotations)
 			c.annotations(e.Annotations, cls, enumEntrySite)
 		}
 		for _, m := range d.Members {
@@ -492,12 +517,19 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.annotations(m.Annotations, cls, initSite)
 			case *syntax.SecondaryCtor:
 				c.noReceiver(m.Annotations)
+				c.noFileTarget(m.Annotations)
 				c.publishedApi(&m.Modifiers)
 				c.annotations(m.Annotations, cls, ctorSite)
+				if m.Sym != nil {
+					c.headerParams = m.Sym.Params
+				}
 				for _, p := range m.Params {
 					c.noReceiver(p.Annotations)
-					c.annotations(p.Annotations, cls, paramSite)
+					c.noParamTarget(p.Annotations)
+					c.noFileTarget(p.Annotations)
+					c.annotations(p.Annotations, cls, inHeader(paramSite))
 				}
+				c.headerParams = nil
 			}
 		}
 	}
@@ -519,6 +551,116 @@ func (c *Checker) noReceiver(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "receiver" {
 			c.errorf(a.P, "this annotation is not applicable to target 'declaration' and use-site target '@receiver'")
+		}
+	}
+}
+
+// noParamTarget reports the annotations among as with the use-site
+// target param, of a declaration other than a primary constructor's
+// parameter (INAPPLICABLE_PARAM_TARGET).
+func (c *Checker) noParamTarget(as []syntax.Annotation) {
+	for _, a := range as {
+		if a.Target == "param" {
+			c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+		}
+	}
+}
+
+// noFileTarget reports the annotations among as with the use-site target
+// file, of a declaration rather than the file: written after its package
+// directive or another annotation (INAPPLICABLE_FILE_TARGET).
+func (c *Checker) noFileTarget(as []syntax.Annotation) {
+	for _, a := range as {
+		if a.Target == "file" {
+			c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+		}
+	}
+}
+
+// onAccessor reports the annotations among a property's annotations as
+// that have a use-site target but are written on an accessor, @get:A
+// get(): kotlinc takes them as the accessor's, which has no use-site
+// targets (INAPPLICABLE_TARGET_ON_PROPERTY).
+func (c *Checker) onAccessor(as []syntax.Annotation) {
+	for _, a := range as {
+		if !a.OnAccessor {
+			continue
+		}
+		switch a.Target {
+		case "get", "set", "property", "setparam":
+			c.errorf(a.P, "'@%s:' annotations could be applied only to property declarations", a.Target)
+		case "param":
+			c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+		case "file":
+			c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+		default:
+			c.errorf(a.P, "this annotation is not applicable to target 'getter' and use-site target '@%s'", a.Target)
+		}
+	}
+}
+
+// localUseSite reports annotation a, of a local variable or a catch
+// block's parameter, if it has a use-site target: kotlinc reports all of
+// them there but @delegate:.
+func (c *Checker) localUseSite(a *syntax.Annotation, site annotSite) {
+	switch a.Target {
+	case "", "delegate":
+	case "get", "set", "property", "setparam":
+		c.errorf(a.P, "'@%s:' annotations could be applied only to property declarations", a.Target)
+	case "param":
+		c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+	case "file":
+		c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+	case "all":
+		c.errorf(a.P, "'@all:' annotations cannot be applied to local properties, only member or top-level properties are allowed")
+	default:
+		c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@%s'", site.name, a.Target)
+	}
+}
+
+// fieldless reports the annotations of property d with the use-site
+// target field when it has no backing field: a delegated property's
+// (INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD), or one whose
+// accessors don't use one (WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET).
+func (c *Checker) fieldless(d *syntax.PropDecl) {
+	if d.Sym == nil || d.Expect || d.BackingField != nil || d.Lateinit || d.Const {
+		return
+	}
+	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
+	if ext {
+		return
+	}
+	for _, a := range d.Annotations {
+		if a.Target != "field" {
+			continue
+		}
+		switch {
+		case d.Field != nil:
+			c.errorf(a.P, "'@field:' annotations could be applied only to properties with backing fields")
+		case !d.Sym.HasField():
+			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field or delegate' and use-site target '@field'")
+		}
+	}
+}
+
+// repeatedSetparam reports an annotation @setparam:A of property d whose
+// setter's parameter is annotated with A too, unless A is repeatable
+// (REPEATED_ANNOTATION, on the property's).
+func (c *Checker) repeatedSetparam(d *syntax.PropDecl) {
+	if d.Setter == nil || len(d.Setter.Params) == 0 {
+		return
+	}
+	on := d.Setter.Params[0].Annotations
+	for _, a := range d.Annotations {
+		cls := cmp.Or(a.Class, a.Source)
+		if a.Target != "setparam" || cls == nil || repeatable(cls) {
+			continue
+		}
+		for _, b := range on {
+			if b.Target == "" && cmp.Or(b.Class, b.Source) == cls {
+				c.errorf(a.P, "this annotation is not repeatable")
+				break
+			}
 		}
 	}
 }

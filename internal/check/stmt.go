@@ -479,7 +479,8 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			s.Body.Stmts = append([]syntax.Stmt{d}, s.Body.Stmts...)
 		}
 		elem := types.IntType
-		if t := c.rangeExpr(s.Range); t.K != types.Range {
+		// A builder's variable is fixed on demand (see fixedStub).
+		if t := c.fixedStub(c.rangeExpr(s.Range)); t.K != types.Range {
 			elem = c.forIterator(s, t)
 		} else {
 			elem = t.RangeElem()

@@ -377,11 +377,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for
-  use-site targets on local declarations and expressions (`@field:` on a
-  local variable), nor across a typealias's expansion (`@A T` where
-  `typealias T = @A Int`). The arguments of a
+  use-site targets on expressions, nor across a typealias's expansion
+  (`@A T` where `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
-  constants, nor are annotations on setter parameters, `set(@A v)`.
+  constants.
 
 **Classes and members**
 
@@ -426,6 +425,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`
   boxes both values and calls `equals` rather than `equals-impl0`.
+- `@JvmExposeBoxed` is checked as `kotlinc` checks it, but `kc` doesn't
+  write the boxed overloads it asks for: Java sees only the mangled or
+  unboxed declarations.
 - A property delegated to a final property or a property reference keeps
   the delegate in a field; `kotlinc` reads it each time through
   `getX$delegate`. A local delegated property's accessors are inlined
