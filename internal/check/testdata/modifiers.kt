@@ -30,3 +30,19 @@ fun local() {
     class L { open fun f() {} } // NON_FINAL_MEMBER_IN_FINAL_CLASS
     val o = object { open fun f() {} } // NON_FINAL_MEMBER_IN_FINAL_CLASS
 }
+interface J {
+    open fun a() // REDUNDANT_OPEN_IN_INTERFACE
+    open fun b() {}
+    open val c: Int // REDUNDANT_OPEN_IN_INTERFACE
+    open val d: Int get() = 1
+    open var e: Int // REDUNDANT_OPEN_IN_INTERFACE
+    abstract fun f()
+    open abstract fun g() // REDUNDANT_MODIFIER
+    @Suppress("REDUNDANT_OPEN_IN_INTERFACE")
+    open fun h()
+    public open fun i() // REDUNDANT_OPEN_IN_INTERFACE
+}
+open abstract class A1 { abstract open fun x() } // REDUNDANT_MODIFIER
+abstract sealed class S1 // REDUNDANT_MODIFIER
+sealed abstract class S2 // REDUNDANT_MODIFIER
+abstract class A2 { open abstract val p: Int } // REDUNDANT_MODIFIER

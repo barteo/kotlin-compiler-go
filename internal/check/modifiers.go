@@ -202,6 +202,7 @@ func (m *modChecker) errorf(p syntax.Pos, format string, args ...any) {
 // targets, inside one whose targets are parent. skip lists modifiers
 // whose target and containing declaration aren't checked.
 func (m *modChecker) mods(written []syntax.Mod, targets, parent tgt, isClass bool, skip ...string) {
+	m.c.redundantModifiers(written)
 	reported := map[int]bool{}
 	for i, w := range written {
 		for j := 0; j < i; j++ {
