@@ -55,7 +55,8 @@ func (c *Checker) localWarnings() {
 				c.reflectionWarning(n, nil)
 			}
 			if n.Safe && n.X != nil {
-				if t := n.X.Type(); definitelyNonNull(t) {
+				// As for ?:, a receiver of type Nothing too.
+				if t := n.X.Type(); definitelyNonNull(t) || t.K == types.Nothing && !t.N {
 					c.warnf(n.P, "UNNECESSARY_SAFE_CALL", "unnecessary safe call on a non-null receiver of type '%s'", t)
 				}
 			}
@@ -106,6 +107,7 @@ func (c *Checker) localWarnings() {
 			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
 		case *syntax.When:
 			c.whenIsWarnings(n)
+			c.whenNullWarnings(n)
 			c.redundantElseWarning(n)
 			c.whenEnumWarnings(n)
 		case *syntax.Block:
@@ -162,8 +164,8 @@ func isNullLit(e syntax.Expr) bool {
 	return ok
 }
 
-// lambdaLike reports whether x is a lambda or a callable reference,
-// which kotlinc resolves as an argument of !! or ?: and doesn't warn of.
+// lambdaLike reports whether x is a lambda, which kotlinc resolves as
+// an argument of !! and doesn't warn of (it does for ?:).
 func lambdaLike(x syntax.Expr) bool {
 	_, ok := x.(*syntax.Lambda)
 	return ok
@@ -209,12 +211,11 @@ func (c *Checker) binaryWarnings(x *syntax.Binary) {
 		if _, ok := other.(*syntax.NullLit); ok || other == nil {
 			return
 		}
-		if definitelyNonNull(other.Type()) {
-			result := "false"
-			if x.Op == syntax.NE || x.Op == syntax.NOT_EQ_EQ {
-				result = "true"
-			}
-			c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%s'", result)
+		eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
+		// Of a value that can't be null, or of type Nothing? and so
+		// always null.
+		if t := other.Type(); definitelyNonNull(t) || t.K == types.Null {
+			c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", eq == (t.K == types.Null))
 		}
 	case syntax.ELVIS:
 		if x.X == nil {
@@ -228,7 +229,7 @@ func (c *Checker) binaryWarnings(x *syntax.Binary) {
 		}
 		// A left operand of type Nothing never gives a value: kotlinc
 		// warns of the elvis too.
-		if t := x.X.Type(); (definitelyNonNull(t) || t.K == types.Nothing && !t.N) && !c.maybeNull[x] && !lambdaLike(x.X) {
+		if t := x.X.Type(); (definitelyNonNull(t) || t.K == types.Nothing && !t.N) && !c.maybeNull[x] {
 			c.warnf(x.P, "USELESS_ELVIS", "elvis operator (?:) always returns the left operand of non-nullable type '%s'", t)
 			return
 		}
@@ -247,15 +248,21 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		return
 	}
 	switch e := x.X.(type) {
-	case *syntax.Lambda, *syntax.NullLit:
+	case *syntax.Lambda:
 		// A cast that gives a lambda or a reference its type changes
 		// what it is.
 		return
+	case *syntax.NullLit:
+		// null as T? gives null its type, except null as Nothing?.
+		if x.Target.K == types.Null {
+			c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+		}
+		return
 	case *syntax.IntLit:
 		// An integer literal takes the type it's cast to, 1 as Long,
-		// unless written as a Long (1L), which kotlinc reports as
+		// unless written as a Long (1L, 1UL), which kotlinc reports as
 		// useless. 1 as Int is INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL.
-		if !e.Long || e.Unsigned || e.Val != int64(int32(e.Val)) {
+		if !e.Long || !e.Unsigned && e.Val != int64(int32(e.Val)) {
 			return
 		}
 	case *syntax.Call:
@@ -307,12 +314,15 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 				return
 			}
 		}
-	case target.K == types.Class && target.A != nil && !target.IsFunc():
+	case target.K == types.Class && target.A != nil:
 		if !argsTellMore(target) {
 			return
 		}
 		switch {
 		case t.K == types.Any && !ownParams(target):
+		case target.IsFunc() && t.IsFunc() && t.C == target.C && !t.N && !lambdaLike(unchecked(x.X)):
+			// (Int) -> Number as (Any) -> Int: the JVM checks only
+			// that it's a Function1.
 		case t.K == types.Class && t.C != nil && starArgsOnly(t) && target.C.IsSubclassOf(t.C):
 		default:
 			return

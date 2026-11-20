@@ -114,6 +114,7 @@ func Inspect(node any, f func(any) bool) {
 			for _, c := range b.Conds {
 				inspectExpr(c.X, f)
 			}
+			inspectExpr(b.Guard, f)
 			Inspect(b.Body, f)
 		}
 	case *Is:

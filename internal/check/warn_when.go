@@ -51,3 +51,32 @@ func (c *Checker) redundantElseWarning(x *syntax.When) {
 		}
 	}
 }
+
+// whenNullWarnings reports a null condition of when x that never or
+// always holds: SENSELESS_NULL_IN_WHEN if the subject can't be null,
+// SENSELESS_COMPARISON if it's of type Nothing? and so always null.
+func (c *Checker) whenNullWarnings(x *syntax.When) {
+	if x.Subject == nil {
+		return
+	}
+	t := x.Subject.Type()
+	if x.SubjType != nil {
+		if x.SubjSym == nil {
+			return
+		}
+		t = x.SubjSym.Type
+	}
+	for _, br := range x.Branches {
+		for _, cond := range br.Conds {
+			if cond.Is || cond.NotIs || cond.In || cond.NotIn || !isNullLit(cond.X) {
+				continue
+			}
+			switch {
+			case definitelyNonNull(t):
+				c.warnf(cond.X.Pos(), "SENSELESS_NULL_IN_WHEN", "Expression under 'when' is never equal to null.")
+			case t.K == types.Null:
+				c.warnf(cond.X.Pos(), "SENSELESS_COMPARISON", "condition is always 'true'")
+			}
+		}
+	}
+}

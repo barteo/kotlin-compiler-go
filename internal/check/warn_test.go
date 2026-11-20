@@ -256,7 +256,7 @@ fun <T> h(a: Any, t: T?) {
     t as T
 }
 `)
-	want := "11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
+	want := "10:UNCHECKED_CAST,11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
 	if strings.Join(got, ",") != want {
 		t.Errorf("got %v, want %s", got, want)
 	}
@@ -480,6 +480,12 @@ func TestWarningsNullOperators(t *testing.T) {
 // testdata/deprecation.kt.
 func TestWarningsDeprecation(t *testing.T) {
 	checkReference(t, "testdata/deprecation.kt", Options{Warnings: true})
+}
+
+// TestWarningsNullCast checks the elvis, cast, safe call and null
+// condition warnings of testdata/nullcast.kt.
+func TestWarningsNullCast(t *testing.T) {
+	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
 }
 
 // TestWarningsJDKList checks the deprecations of the JDK 21 members of

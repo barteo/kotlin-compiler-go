@@ -32,10 +32,10 @@ func (c *Checker) whenIsWarnings(x *syntax.When) {
 			// that always holds makes it exhaustive; with a !is one, the
 			// branches before it must.
 			last := i == len(x.Branches)-1 && len(x.Branches) > 1 && len(br.Conds) == 1
-			if br.Guard != nil || last && cond.NotIs && c.coveredWhens[x] {
+			if last && cond.NotIs && c.coveredWhens[x] {
 				continue
 			}
-			last = last && cond.Is
+			last = last && cond.Is && br.Guard == nil
 			c.isWarnings(cond, cond.P, cond.Target, cond.NotIs, last)
 		}
 	}
