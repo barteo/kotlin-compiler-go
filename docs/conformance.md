@@ -263,10 +263,18 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   is `kotlinc`'s view of a source root directory. Given the `.java`
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
-- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
-  `kjkimplicitTypesCrash` and
-  `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
-  older language version (their `latestLV` variants expect no error).
+- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser.
+- **The FIR2IR tests that mark no error**:
+  `nullableTypes/nullAssertOnTypeWithNullableUpperBound` and
+  `safeCallOnTypeWithNullableUpperBound` are valid to the frontend, and
+  `kotlinc`'s JVM backend crashes on them, which is why they stop at
+  `FIR2IR`. `j+k/missingTypeOfParameterInFakeOverride_1` needs a
+  dependency's class missing from a later module's class path.
+
+`kjkimplicitTypesCrash` (`ACCIDENTAL_OVERRIDE`) and
+`platformTypes/comparingWithWrongNullabilityWithoutWrtHack`
+(`UPPER_BOUND_VIOLATED`) aren't quirks: `kotlinc` 2.4.21 reports their
+errors at the default language version, so they are `kc`'s to fix.
 
 ## Checking the harness
 
@@ -286,36 +294,41 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,576 | |
-| pass | 6,576 | 100% |
-| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
+| pass | 6,575 | 100% |
+| check error | 1 | |
+| parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,614 | |
-| rejects invalid | 4,427 | 51.4% |
+| rejects invalid | 4,434 | 51.5% |
 | accepts valid | 4,150 | 48.2% |
-| accepts invalid | 36 | 0.4% |
+| accepts invalid | 29 | 0.3% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,890 of the 22,025 expected errors (95%) on their lines, and 2,482 of
-the 3,667 expected warnings (68%), with 14 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 13 of the 36
+20,915 of the 22,025 expected errors (95%) on their lines, and 2,697 of
+the 3,667 expected warnings (74%), with 18 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 10 of the 29
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9), unresolved names
-  (`UNRESOLVED_REFERENCE` 6), and callable references whose types
-  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2). Some are out of
-  reach (see above).
-- **Rejects valid**: none, and no box test is rejected.
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9) and unresolved names
+  (`UNRESOLVED_REFERENCE` 4); no other error is expected by more than
+  one. Some are out of reach (see above).
+- **Rejects valid**: none. The one box test rejected,
+  `extensionFunctions/kt475`, is rejected by `kotlinc` too on JDK 21,
+  which the harness runs on: its `array.last = "5"` assigns the
+  synthetic `val` of JDK 21's `ArrayList.getLast()`, which takes
+  precedence over the test's extension `var`. The test is from before
+  JDK 21.
 - **Crashes**: none. The harness error is a test that declares
   `java.util.Date`, which `javac` compiles only with `--patch-module`.
 

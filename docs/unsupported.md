@@ -10,28 +10,48 @@ own tests.
 
 ## The language
 
-- Warnings: `kc` reports only `DEPRECATION`,
-  `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
+- Warnings: `kc` reports only `DEPRECATION`, `OVERRIDE_DEPRECATION`,
+  `TYPEALIAS_EXPANSION_DEPRECATION`, `DEPRECATED_JAVA_ANNOTATION`,
+  `INLINE_CLASS_DEPRECATED`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
-  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON`,
-  `USELESS_ELVIS`, `OVERRIDE_BY_INLINE`, `NOTHING_TO_INLINE`,
-  `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
+  `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION`,
+  `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE`, `USELESS_CAST`,
+  `UNCHECKED_CAST`, `SENSELESS_COMPARISON`, `SENSELESS_NULL_IN_WHEN`,
+  `USELESS_ELVIS`, `USELESS_ELVIS_LEFT_IS_NULL`,
+  `USELESS_ELVIS_RIGHT_IS_NULL`, `OVERRIDE_BY_INLINE`,
+  `NOTHING_TO_INLINE`, `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
+  `MISPLACED_TYPE_PARAMETER_CONSTRAINTS`,
   `PLATFORM_CLASS_MAPPED_TO_KOTLIN`, `NO_TAIL_CALLS_FOUND`,
+  `NON_TAIL_RECURSIVE_CALL`, `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED`,
   `USELESS_IS_CHECK`, `IMPOSSIBLE_IS_CHECK_WARNING`,
   `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`, `CAST_NEVER_SUCCEEDS`,
   `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL`,
   `SAFE_CAST_RELYING_ON_NULL`, `UNSAFE_CAST_RELYING_ON_NULL`,
   `DEPRECATED_IDENTITY_EQUALS`, `IMPLICIT_BOXING_IN_IDENTITY_EQUALS`,
+  `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS`,
+  `REDUNDANT_CALL_OF_CONVERSION_METHOD`, `EMPTY_RANGE`,
   `UNUSED_EXPRESSION`, `UNUSED_LAMBDA_EXPRESSION`,
   `EXTENSION_SHADOWED_BY_MEMBER`,
   `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE`,
-  `DIVISION_BY_ZERO`, `REDUNDANT_ELSE_IN_WHEN` and
-  `INCOMPATIBLE_ENUM_COMPARISON`, and those only where the types make
-  them certain, so that `-Werror` doesn't reject what `kotlinc`
-  compiles: the null checks never of a platform type, a type parameter
+  `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
+  `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES`,
+  `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE`,
+  `PROPERTY_HIDES_JAVA_FIELD`, `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY`,
+  `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY`,
+  `NO_REFLECTION_IN_CLASS_PATH`, `DIVISION_BY_ZERO`,
+  `REDUNDANT_ELSE_IN_WHEN`, `INCOMPATIBLE_ENUM_COMPARISON` and, in
+  explicit API warning mode, `NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING`
+  and `NO_EXPLICIT_RETURN_TYPE_IN_API_MODE_WARNING`; and those only
+  where the types make them certain, so that `-Werror` doesn't reject
+  what `kotlinc` compiles: the null checks never of a platform type, a type parameter
   or a type it couldn't resolve, and `UNCHECKED_CAST` only of a cast to
-  a type parameter that isn't reified, or to a generic type from `Any`
-  or a star-projected supertype. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is
+  a type parameter that isn't reified, to a generic type from `Any`
+  or a star-projected supertype, or to a function type from another of
+  its class. Parameter names are compared only where they are stable,
+  of the program's and Kotlin libraries' functions, not Java methods,
+  and `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
+  `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` only of the program's
+  Kotlin members. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is
   reported where the Java class is named, not through a typealias or an
   inferred type, and `NO_TAIL_CALLS_FOUND` not where a recursive call in
   tail position may be a tail call to `kotlinc`, as one on another
@@ -69,8 +89,8 @@ own tests.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` are checked, the class path's read from its class files
   and metadata. Markers and deprecations with level `WARNING` (Java's
-  `@Deprecated` among them) give the warnings `OPT_IN_USAGE` and
-  `DEPRECATION`. `@DeprecatedSinceKotlin` and
+  `@Deprecated` and a Java source's javadoc `@deprecated` among them)
+  give the warnings `OPT_IN_USAGE` and `DEPRECATION`. `@DeprecatedSinceKotlin` and
   `@SinceKotlin` are read as if their versions were reached: `kc` acts
   as the newest API version, as `kotlinc` does by default, and has no
   `-api-version`. A class path's typealias opts in to nothing, as the
@@ -384,6 +404,14 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   (`@A T` where `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants.
+- Some Java interop errors aren't reported: a `const val` cycle through
+  a Java `static final` field, explicit type arguments that break the
+  nullability of a Java type parameter's bound, a Kotlin member that
+  accidentally overrides a Java subclass's method through an
+  inferred type (`ACCIDENTAL_OVERRIDE`), and the recursion of a
+  synthetic property read in its own overriding getter. A common
+  supertype of a platform type and `Nothing` keeps the platform type's
+  flexibility, where K2 keeps its non-flexible bound.
 
 **Classes and members**
 

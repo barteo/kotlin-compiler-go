@@ -643,7 +643,7 @@ tests/callResolution/eagerLambdaAnalysis/multipleLambdaArgumentsSkipGroups.kt	sk
 tests/callResolution/eagerLambdaAnalysis/multipleLambdaArgumentsUnitCoercion.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/potentiallyMeaningfulCaseWithContracts.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/samAndLambda.kt	skip	LANGUAGE	
-tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:21: UNRESOLVED_REFERENCE
+tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt	rejects invalid	on an expected line	
 tests/callResolution/eagerLambdaAnalysis/samVsFunctionTypeAndLessPreciseExtension.kt	accepts valid		
 tests/callResolution/eagerLambdaAnalysis/samVsFunctionTypeAndLessPreciseOtherParameter.kt	accepts valid		
 tests/callResolution/eagerLambdaAnalysis/samVsKProperty.kt	accepts valid		
@@ -654,7 +654,7 @@ tests/callResolution/eagerLambdaAnalysis/sumOfCase.kt	skip	LANGUAGE
 tests/callResolution/eagerLambdaAnalysis/suspendAndNotSuspend.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/suspendAndSam.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/suspendAndSamWithAnonymFun.kt	skip	LANGUAGE	
-tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt	accepts invalid	ILLEGAL_SUSPEND_FUNCTION_CALL	suspendFunctionTypeVsRunnable.kt:27: ILLEGAL_SUSPEND_FUNCTION_CALL
+tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt	rejects invalid	on an expected line	
 tests/callResolution/eagerLambdaAnalysis/throwableJavaSam.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/typeParameterReturnTypeVsList.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/typeVariableInvariantReturnTypeFeatureDisabled.kt	skip	LANGUAGE	
@@ -686,7 +686,7 @@ tests/callResolution/uselessMultipleBounds.kt	accepts valid
 tests/callableReference/adapted/adaptationByExpectTypeOutsideCall.kt	rejects invalid	on an expected line	
 tests/callableReference/adapted/adaptationInWhenWithMapOf.kt	accepts valid		
 tests/callableReference/adapted/adaptationToOverridenWithoutDefault.kt	accepts valid		
-tests/callableReference/adapted/noKFunctionForAdaptation.kt	accepts invalid	ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE; INITIALIZER_TYPE_MISMATCH	noKFunctionForAdaptation.kt:6: ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE
+tests/callableReference/adapted/noKFunctionForAdaptation.kt	rejects invalid	on an expected line	
 tests/callableReference/adapted/simpleAdaptationOutsideOfCall.kt	accepts valid		
 tests/callableReference/bareType.kt	skip	LANGUAGE	
 tests/callableReference/bound/classVsStarImportedCompanion.kt	accepts valid		
@@ -2546,7 +2546,7 @@ tests/delegatedProperty/inference/noExpectedTypeForSupertypeConstraint.kt	reject
 tests/delegatedProperty/inference/notNullAssertionInLocalDelegated.kt	accepts valid		
 tests/delegatedProperty/inference/nothingTypeThisRef.kt	accepts valid		
 tests/delegatedProperty/inference/provideDelegateFixationResultContainsOtherInnerVariable.kt	accepts valid		
-tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt	accepts invalid	DELEGATE_SPECIAL_FUNCTION_MISSING	provideDelegateReturningOuterTypeVariable.kt:11: DELEGATE_SPECIAL_FUNCTION_MISSING
+tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/inference/provideDelegateUsesOuterCS.kt	accepts valid		
 tests/delegatedProperty/inference/resultTypeOfLambdaForConventionMethods.kt	accepts valid		
 tests/delegatedProperty/inference/successfulProvideDelegateLeadsToRedGetValue.kt	rejects invalid	on an expected line	
@@ -5481,7 +5481,7 @@ tests/j+k/sam/withDefaultMethods.kt	accepts valid
 tests/j+k/samByProjectedType/genericInReturnType.kt	rejects invalid	on an expected line	
 tests/j+k/samByProjectedType/genericInValueParameter.kt	accepts valid		
 tests/j+k/samByProjectedType/genericSuperWildcard.kt	accepts valid		
-tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE	main.kt:2: CANNOT_INFER_PARAMETER_TYPE
+tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	rejects invalid	on an expected line	
 tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	rejects invalid	on an expected line	
 tests/j+k/samByProjectedType/starProjectionComplexUpperBound.kt	accepts valid		
 tests/j+k/samInConstructorWithGenerics.kt	accepts valid		
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=42293 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/032e5525-7dca-5786-93c2-3d97e913aa2e/scratchpad/work/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35883 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -6868,7 +6868,7 @@ tests/override/clashesOnInheritance/inconsistentTypeParameterValuesHandleAllSupe
 tests/override/clashesOnInheritance/inconsistentTypeParameterValuesOnAnonymousObject.kt	rejects invalid	on an expected line	
 tests/override/clashesOnInheritance/intersectionReturnTypeMismatchSubsumed.kt	accepts valid		
 tests/override/clashesOnInheritance/kt13355.kt	rejects invalid	on an expected line	
-tests/override/clashesOnInheritance/kt13355viaJava.kt	accepts invalid	RETURN_TYPE_MISMATCH_ON_INHERITANCE	K.kt:3: RETURN_TYPE_MISMATCH_ON_INHERITANCE
+tests/override/clashesOnInheritance/kt13355viaJava.kt	rejects invalid	on an expected line	
 tests/override/clashesOnInheritance/kt68546.kt	accepts valid		
 tests/override/clashesOnInheritance/kt68626.kt	accepts valid		
 tests/override/clashesOnInheritance/kt9550.kt	rejects invalid	on an expected line	
@@ -8315,7 +8315,7 @@ tests/smartCasts/kt39000.kt	accepts valid
 tests/smartCasts/kt3993.kt	accepts valid		
 tests/smartCasts/kt45814.kt	accepts valid		
 tests/smartCasts/kt50788.kt	accepts valid		
-tests/smartCasts/kt50875.kt	accepts invalid	UNRESOLVED_REFERENCE	kt50875.kt:17: UNRESOLVED_REFERENCE
+tests/smartCasts/kt50875.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt51460.kt	accepts valid		
 tests/smartCasts/kt5427.kt	accepts valid		
 tests/smartCasts/kt5455.kt	accepts valid		

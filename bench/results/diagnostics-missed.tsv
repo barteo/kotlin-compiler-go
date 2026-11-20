@@ -85,13 +85,6 @@ tests/annotations/withUseSiteTarget/repeatable.kt	repeatable.kt:65	INAPPLICABLE_
 tests/argumentTypeMismatchVsTooManyArgs.kt	argumentTypeMismatchVsTooManyArgs.kt:8	TOO_MANY_ARGUMENTS	missing-check
 tests/assigningAssignments.kt	assigningAssignments.kt:8	NO_SET_METHOD	syntax-error
 tests/breakLoopsBug4.kt	breakLoopsBug4.kt:6	CYCLIC_INHERITANCE_HIERARCHY	missing-check
-tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt	main.kt:21	UNRESOLVED_REFERENCE	accepted
-tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt	suspendFunctionTypeVsRunnable.kt:27	ILLEGAL_SUSPEND_FUNCTION_CALL	accepted
-tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt	suspendFunctionTypeVsRunnable.kt:32	ILLEGAL_SUSPEND_FUNCTION_CALL	accepted
-tests/callableReference/adapted/noKFunctionForAdaptation.kt	noKFunctionForAdaptation.kt:11	ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE	accepted
-tests/callableReference/adapted/noKFunctionForAdaptation.kt	noKFunctionForAdaptation.kt:6	ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE	accepted
-tests/callableReference/adapted/noKFunctionForAdaptation.kt	noKFunctionForAdaptation.kt:7	INITIALIZER_TYPE_MISMATCH	accepted
-tests/callableReference/adapted/noKFunctionForAdaptation.kt	noKFunctionForAdaptation.kt:9	INITIALIZER_TYPE_MISMATCH	accepted
 tests/callableReference/bound/reservedExpressionSyntax.kt	reservedExpressionSyntax.kt:29	EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS	syntax-error
 tests/callableReference/function/abstractClassConstructors.kt	abstractClassConstructors.kt:11	CALLABLE_REFERENCE_TO_ANNOTATION_CONSTRUCTOR	missing-check
 tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt	ambiguityTopLevelVsTopLevelGeneric.kt:8	CANNOT_INFER_PARAMETER_TYPE	accepted
@@ -210,8 +203,6 @@ tests/cyclicHierarchy/withTypeAlias2.kt	withTypeAlias2.kt:14	RECURSIVE_TYPEALIAS
 tests/dataClasses/missingDependencyInSupertype.kt	missingDependencyInSupertype.kt:5	MISSING_DEPENDENCY_SUPERCLASS	missing-check
 tests/dataClasses/repeatedProperties.kt	repeatedProperties.kt:6	REDECLARATION	syntax-error
 tests/declarationChecks/kClassInSignature.kt	kClassInSignature.kt:14	NULLABLE_TYPE_IN_CLASS_LITERAL_LHS	syntax-error
-tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt	provideDelegateReturningOuterTypeVariable.kt:11	DELEGATE_SPECIAL_FUNCTION_MISSING	accepted
-tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt	provideDelegateReturningOuterTypeVariable.kt:19	DELEGATE_SPECIAL_FUNCTION_MISSING	accepted
 tests/delegatedProperty/kt48546.kt	kt48546.kt:16	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
 tests/delegatedProperty/kt48546.kt	kt48546.kt:22	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
 tests/delegatedProperty/kt48546.kt	kt48546.kt:26	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	nearby
@@ -232,7 +223,6 @@ tests/delegation/kt48546.kt	kt48546.kt:7	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROB
 tests/delegation/kt49477.kt	kt49477.kt:30	INAPPLICABLE_CANDIDATE	missing-check
 tests/dependentContext.kt	dependentContext.kt:24	UNSAFE_CALL	missing-check
 tests/dependentContext.kt	dependentContext.kt:26	UNSAFE_CALL	missing-check
-tests/deprecated/deprecatedPropertyInheritance.kt	deprecatedPropertyInheritance.kt:102	DEPRECATION_ERROR	missing-check
 tests/deprecated/deprecatedPropertyInheritance.kt	deprecatedPropertyInheritance.kt:111	UNRESOLVED_REFERENCE	missing-check
 tests/deprecated/deprecatedPropertyInheritance.kt	deprecatedPropertyInheritance.kt:135	UNRESOLVED_REFERENCE	missing-check
 tests/deprecated/hiddenPropertyAccessors.kt	hiddenPropertyAccessors.kt:36	UNRESOLVED_REFERENCE	missing-check
@@ -675,10 +665,6 @@ tests/j+k/sam/enhancedSamConstructor.kt	main.kt:10	RETURN_TYPE_MISMATCH	missing-
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:7	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:8	UNSAFE_CALL	missing-check
 tests/j+k/sam/enhancedSamConstructor.kt	main.kt:9	NULL_FOR_NONNULL_TYPE	missing-check
-tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	main.kt:14	CANNOT_INFER_PARAMETER_TYPE	accepted
-tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	main.kt:14	CANNOT_INFER_PARAMETER_TYPE	accepted
-tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	main.kt:2	CANNOT_INFER_PARAMETER_TYPE	accepted
-tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt	main.kt:8	CANNOT_INFER_PARAMETER_TYPE	accepted
 tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	main.kt:3	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	main.kt:8	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/j+k/syntheticPropertyOverridden2.kt	DeserializedClassDescriptor.kt:17	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	accepted
@@ -777,8 +763,6 @@ tests/overload/disambiguateByFailedAbstractClassCheck.kt	test.kt:11	OVERLOAD_RES
 tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited.kt:11	CONFLICTING_INHERITED_MEMBERS	missing-check
 tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited.kt:12	CONFLICTING_INHERITED_MEMBERS	missing-check
 tests/override/clashesOnInheritance/conflictingInherited.kt	conflictingInherited.kt:31	CONFLICTING_INHERITED_MEMBERS	missing-check
-tests/override/clashesOnInheritance/kt13355viaJava.kt	K.kt:3	RETURN_TYPE_MISMATCH_ON_INHERITANCE	accepted
-tests/override/clashesOnInheritance/kt13355viaJava.kt	K.kt:9	RETURN_TYPE_MISMATCH_ON_INHERITANCE	accepted
 tests/overrides/suspendMismatchOnOverride.kt	suspendMismatchOnOverride.kt:50	SUSPEND_OVERRIDDEN_BY_NON_SUSPEND	missing-check
 tests/platformTypes/commonSupertype/withNothing.kt	k.kt:12	UNRESOLVED_REFERENCE_WRONG_RECEIVER	accepted
 tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt	comparingWithWrongNullabilityWithoutWrtHack.kt:8	ARGUMENT_TYPE_MISMATCH	accepted
@@ -904,8 +888,6 @@ tests/smartCasts/castchecks/castInTryWithJump.kt	castInTryWithJump.kt:100	CANNOT
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:17	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:28	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/smartCasts/intersectionScope/flexibleTypes.kt	main.kt:43	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
-tests/smartCasts/kt50875.kt	kt50875.kt:17	UNRESOLVED_REFERENCE	accepted
-tests/smartCasts/kt50875.kt	kt50875.kt:20	UNRESOLVED_REFERENCE	accepted
 tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	lambdaArgumentWithBoundWithoutType.kt:19	RETURN_TYPE_MISMATCH	nearby
 tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	lambdaArgumentWithBoundWithoutType.kt:25	RETURN_TYPE_MISMATCH	nearby
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlace.kt	lambdaWithCallInPlace.kt:363	SMARTCAST_IMPOSSIBLE	missing-check
@@ -964,15 +946,8 @@ tests/syntheticSet.kt	test.kt:62	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/targetedBuiltIns/getOrDefault.kt	getOrDefault.kt:14	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/targetedBuiltIns/getOrDefault.kt	getOrDefault.kt:19	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/targetedBuiltIns/getOrDefault.kt	getOrDefault.kt:9	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/testsWithJava17/newListMethods.kt	newListMethods.kt:10	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava17/newListMethods.kt	newListMethods.kt:13	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/hiddenInDeclaringMethods.kt	hiddenInDeclaringMethods.kt:34	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/hiddenInDeclaringMethods.kt	hiddenInDeclaringMethods.kt:41	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/hiddenInDeclaringMethods.kt	hiddenInDeclaringMethods.kt:42	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/implementationsForSequencedCollection.kt	implementationsForSequencedCollection.kt:29	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/implementationsForSequencedCollection.kt	implementationsForSequencedCollection.kt:32	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/newListMethods.kt	newListMethods.kt:47	UNRESOLVED_REFERENCE	missing-check
-tests/testsWithJava21/newListMethods.kt	newListMethods.kt:50	UNRESOLVED_REFERENCE	missing-check
+tests/testsWithJava17/newListMethods.kt	newListMethods.kt:25	FUNCTION_CALL_EXPECTED	missing-check
+tests/testsWithJava17/newListMethods.kt	newListMethods.kt:28	FUNCTION_CALL_EXPECTED	missing-check
 tests/thisAndSuper/Super.kt	Super.kt:55	NOT_A_SUPERTYPE	syntax-error
 tests/typeAliasWithTypeArguments.kt	typeAliasWithTypeArguments.kt:14	CONSTRUCTOR_IN_INTERFACE	missing-check
 tests/typeAliasWithTypeArguments.kt	typeAliasWithTypeArguments.kt:78	MEMBER_PROJECTED_OUT	missing-check

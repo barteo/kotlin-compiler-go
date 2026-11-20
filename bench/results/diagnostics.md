@@ -6,16 +6,16 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4427 | 51.4% |
+| rejects invalid | 4434 | 51.5% |
 | accepts valid | 4150 | 48.2% |
-| accepts invalid | 36 | 0.4% |
+| accepts invalid | 29 | 0.3% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4427 tests both reject, kc reports an error on the line of an expected one in 4355.
+Of the 4434 tests both reject, kc reports an error on the line of an expected one in 4362.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -48,26 +48,22 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `ARGUMENT_TYPE_MISMATCH` | 9 | 8 | `tests/collectionLiterals/kt82964.kt`, `tests/j+k/collectionOverrides/containsAll.kt` |
-| `UNRESOLVED_REFERENCE` | 6 | 4 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/inference/kt68570.kt` |
+| `UNRESOLVED_REFERENCE` | 4 | 2 | `tests/inference/kt68570.kt`, `tests/j+k/differentFilename.kt` |
 | `(no error marked)` | 3 | 3 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
-| `CANNOT_INFER_PARAMETER_TYPE` | 2 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 2 | 1 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `testsWithStdLib/functionX.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ACCIDENTAL_OVERRIDE` | 1 | 1 | `tests/j+k/kjkimplicitTypesCrash.kt` |
-| `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 1 | 0 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt` |
 | `ASSIGNMENT_TYPE_MISMATCH` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
+| `CANNOT_INFER_PARAMETER_TYPE` | 1 | 1 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt` |
 | `CONDITION_TYPE_MISMATCH` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 1 | 1 | `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
-| `DELEGATE_SPECIAL_FUNCTION_MISSING` | 1 | 1 | `tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt` |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `ILLEGAL_SUSPEND_FUNCTION_CALL` | 1 | 1 | `tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt` |
+| `INITIALIZER_TYPE_MISMATCH` | 1 | 1 | `testsWithStdLib/functionX.kt` |
 | `MEMBER_PROJECTED_OUT` | 1 | 1 | `tests/typealias/starProjection.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 1 | 0 | `tests/j+k/differentFilename.kt` |
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
 | `NOTHING_TO_OVERRIDE` | 1 | 1 | `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
-| `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 1 | 1 | `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
 | `SYNTAX` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 1 | 1 | `tests/j+k/syntheticPropertyOverridden2.kt` |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 1 | 1 | `tests/platformTypes/commonSupertype/withNothing.kt` |
@@ -82,22 +78,22 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20890 of 22025 expected errors (94.8%) on their lines.
+kc reports 20915 of 22025 expected errors (95.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2552 | 2411 | 141 |
+| `UNRESOLVED_REFERENCE` | 2552 | 2423 | 129 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1370 | 121 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 168 | 83 |
 | `RETURN_TYPE_MISMATCH` | 418 | 362 | 56 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 584 | 51 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 588 | 47 |
 | `INVISIBLE_REFERENCE` | 525 | 487 | 38 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
 | `REDECLARATION` | 196 | 176 | 20 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 143 | 16 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 413 | 15 |
 | `VAL_REASSIGNMENT` | 231 | 217 | 14 |
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 21 | 13 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 415 | 13 |
 | `SMARTCAST_IMPOSSIBLE` | 183 | 170 | 13 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 115 | 12 |
 | `INFIX_MODIFIER_REQUIRED` | 46 | 34 | 12 |
@@ -154,11 +150,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 72 | 6.3% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CANNOT_INFER_PARAMETER_TYPE` 5 |
-| syntax-error | 154 | 13.6% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
+| accepted | 55 | 5.0% | `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 7, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `CONST_VAL_WITH_NON_CONST_INITIALIZER` 2 |
+| syntax-error | 154 | 13.9% | `UNRESOLVED_REFERENCE` 22, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6, `TOO_MANY_ARGUMENTS` 6, `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` 6 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 160 | 14.1% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
-| missing-check | 749 | 66.0% | `UNRESOLVED_REFERENCE` 82, `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
+| nearby | 160 | 14.4% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 25, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 6 |
+| missing-check | 741 | 66.8% | `ARGUMENT_TYPE_MISMATCH` 79, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `UNRESOLVED_REFERENCE` 73, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 35 |
 
 ## Errors kotlinc doesn't report
 
@@ -208,38 +204,38 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2482 of the 3667 warnings the tests expect (67.7%) on their lines, and 14 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 2697 of the 3667 warnings the tests expect (73.5%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 287 | 0 |
-| `DEPRECATION` | 203 | 115 | 3 |
+| `DEPRECATION` | 203 | 197 | 7 |
 | `UNREACHABLE_CODE` | 158 | 131 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 122 | 0 |
-| `USELESS_IS_CHECK` | 127 | 112 | 0 |
+| `USELESS_IS_CHECK` | 127 | 114 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 99 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 87 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
-| `SENSELESS_COMPARISON` | 91 | 64 | 1 |
-| `USELESS_CAST` | 91 | 58 | 2 |
-| `UNNECESSARY_SAFE_CALL` | 90 | 78 | 1 |
-| `UNCHECKED_CAST` | 88 | 40 | 1 |
+| `SENSELESS_COMPARISON` | 91 | 72 | 1 |
+| `USELESS_CAST` | 91 | 68 | 2 |
+| `UNNECESSARY_SAFE_CALL` | 90 | 79 | 1 |
+| `UNCHECKED_CAST` | 88 | 45 | 1 |
 | `OPT_IN_USAGE` | 83 | 63 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 42 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 45 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
-| `USELESS_ELVIS` | 44 | 27 | 0 |
+| `USELESS_ELVIS` | 44 | 40 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 8 | 0 |
-| `OVERRIDE_DEPRECATION` | 30 | 22 | 0 |
+| `OVERRIDE_DEPRECATION` | 30 | 30 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
 | `OVERRIDE_BY_INLINE` | 28 | 28 | 0 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
@@ -251,7 +247,12 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 | 22 | 2 |
 | `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 | 22 | 0 |
 | `NON_TAIL_RECURSIVE_CALL` | 22 | 22 | 0 |
+| `PROPERTY_HIDES_JAVA_FIELD` | 22 | 22 | 0 |
 | `EMPTY_RANGE` | 19 | 19 | 0 |
+| `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 | 18 | 0 |
+| `DEPRECATED_JAVA_ANNOTATION` | 16 | 16 | 0 |
+| `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 | 12 | 0 |
+| `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 9 | 0 |
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 5 | 0 |
@@ -260,6 +261,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 9 | 0 |
 | `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
 | `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
+| `SENSELESS_NULL_IN_WHEN` | 8 | 6 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
@@ -272,16 +274,11 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 |
-| `PROPERTY_HIDES_JAVA_FIELD` | 22 |
 | `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
 | `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
-| `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 |
-| `DEPRECATED_JAVA_ANNOTATION` | 16 |
-| `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
-| `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 |
 | `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 |
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 |
@@ -299,5 +296,10 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `DANGEROUS_CHARACTERS` | 8 |
 | `FORBIDDEN_IDENTITY_EQUALS_WARNING` | 8 |
 | `REDUNDANT_MODIFIER` | 8 |
-| *53 more* | |
+| `USELESS_CALL_ON_NOT_NULL` | 8 |
+| `JAVA_CLASS_ON_COMPANION` | 7 |
+| `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 |
+| `NON_FINAL_MEMBER_IN_OBJECT` | 7 |
+| `REDUNDANT_EXPLICIT_BACKING_FIELD` | 7 |
+| *47 more* | |
 
