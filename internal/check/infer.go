@@ -1448,6 +1448,19 @@ func (s *system) selfInferable(t types.Type) bool {
 	return trial.ok && len(trial.errs) == 0 && trial.proper(t)
 }
 
+// upperOnly reports whether t has an unfixed variable of s that nothing
+// bounds from below, which only its upper bounds would fix: T of
+// <T : Marker> get(key): T.
+func (s *system) upperOnly(t types.Type) bool {
+	return s.apply(t).Has(func(u types.Type) bool {
+		if u.K != types.TypeVar {
+			return false
+		}
+		tv := s.byVar[u.Param()]
+		return tv != nil && !tv.fixed && len(tv.lower) == 0 && len(tv.lits) == 0 && !tv.star && !tv.proj
+	})
+}
+
 // isVar reports whether t is an unfixed variable of s, or its nullable.
 func (s *system) isVar(t types.Type) bool {
 	t = s.apply(t)

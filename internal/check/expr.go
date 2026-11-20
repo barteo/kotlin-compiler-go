@@ -3975,7 +3975,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.push()
 	c.scope.narrows = whenTrue
 	exits = append(exits, c.watchExit(vars))
-	thenT := c.branch(x.Then, want, valueUsed, &pending)
+	thenT := c.ifBranch(x.Then, want, valueUsed, sink == nil, &pending)
 	c.pop()
 	if x.Else == nil {
 		exits = append(exits, c.startExit(vars, whenFalse))
@@ -3991,7 +3991,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.push()
 	c.scope.narrows = whenFalse
 	exits = append(exits, c.watchExit(vars))
-	elseT := c.branch(x.Else, lambdaBranchWant(x.Else, thenT, want, valueUsed), valueUsed, &pending)
+	elseT := c.ifBranch(x.Else, lambdaBranchWant(x.Else, thenT, want, valueUsed), valueUsed, sink == nil, &pending)
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
@@ -4088,6 +4088,18 @@ type pendingBranch struct {
 // if (c) build { yield(x) } else build {}, also unused. It is then seen as
 // Nothing, which the join ignores, until completeBranches.
 func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pending *[]pendingBranch) types.Type {
+	return c.ifBranch(b, want, valueUsed, false, pending)
+}
+
+// ifBranch checks a branch of an if, a when or a try, as branch. With
+// together, which the branches' own inference (not a call's they are an
+// argument of) sets, a used branch's call whose variables only their
+// upper bounds would fix is left incomplete too: K2's synthetic call
+// fixes the result's variable first, from the other branches' types, and
+// then the call's below it, as T of <T : Marker> get(key) in
+// if (c) get(key, T::class.java) else get(key) is the other branch's T,
+// not Marker.
+func (c *Checker) ifBranch(b *syntax.Block, want types.Type, valueUsed, together bool, pending *[]pendingBranch) types.Type {
 	if c.lambdaSink && valueUsed && want.K == types.Invalid && len(b.Stmts) == 1 {
 		// A lambda of an if or a when that is a call's argument is, as
 		// K2's synthetic call's, postponed with the call's: { -> } of
@@ -4148,7 +4160,7 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 	if len(inner.vars) == 0 && len(inner.fixups) == 0 {
 		return bt
 	}
-	if len(inner.lambdas) == 0 && inner.selfInferable(t) {
+	if len(inner.lambdas) == 0 && inner.selfInferable(t) && !(together && valueUsed && !want.HasVars() && inner.upperOnly(t)) {
 		inner.finish()
 		if !valueUsed {
 			return bt
@@ -4582,7 +4594,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
 		npending := len(pending)
-		bt := c.branch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, &pending)
+		bt := c.ifBranch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, sink == nil, &pending)
 		funcBranch = firstFuncBranch(funcBranch, bt)
 		bts = append(bts, bt)
 		c.pop()
