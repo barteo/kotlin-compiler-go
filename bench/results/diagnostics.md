@@ -153,15 +153,14 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `unresolved reference: _` | 193 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 153 |
 | `type mismatch: inferred type is _ but _ was expected` | 139 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 58 |
 | `unresolved or unsupported type: _` | 29 |
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `no function '_' takes n arguments` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
-| `operator '_' cannot be applied to Any?` | 14 |
 | `expected n parameter of type _ but n were declared` | 13 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
 | `expected parameter of type _` | 12 |
@@ -181,6 +180,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
 | `missing return statement in function '_'` | 7 |
+| `multiple labels are forbidden` | 7 |
 | *111 more* | |
 
 ## Unsupported features

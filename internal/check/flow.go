@@ -501,21 +501,27 @@ func (c *Checker) hasDependents(v *types.VarSym) bool {
 }
 
 // loopVars returns the vars of watchedVars(nodes...) whose narrowing a
-// loop over nodes drops, and a function to call after the loop. It keeps
-// those smart cast to a non-null number or Char that the nodes only
-// increment and decrement, or, if declared as its nullable type, also
-// assign with op=, whose results, which assign checks, keep the type.
-func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
+// loop over nodes drops, those of them whose aliases it keeps at its
+// start (see resetEntry), and a function to call after the loop. It keeps
+// those smart cast to a non-null number, Char or String that the nodes
+// only increment, decrement or assign with op=, as K2 does, whose loops
+// drop the smart casts of the locals they assign with = only. The
+// results, which assign checks, must keep the type.
+func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, []*types.VarSym, func()) {
 	vars := c.watchedVars(nodes...)
-	for _, v := range vars {
-		c.unalias(v) // even those it keeps: x++ gives x another value
-	}
 	out := vars[:0:0]
+	var aliased []*types.VarSym
 	var kept []*types.VarSym
 	var old []types.Type
 	var had []bool
 	for _, v := range vars {
-		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char || !onlyIncDec(v.Name, nodes, v.Type.NonNull() == t) {
+		incDec := onlyIncDec(v.Name, nodes)
+		if incDec {
+			aliased = append(aliased, v)
+		} else {
+			c.unalias(v)
+		}
+		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char && t != types.StringType || !incDec {
 			out = append(out, v)
 		} else {
 			if c.loopKept == nil {
@@ -527,7 +533,7 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
 			c.loopKept[v] = t
 		}
 	}
-	return out, func() {
+	return out, aliased, func() {
 		for i, v := range kept {
 			if had[i] {
 				c.loopKept[v] = old[i]
@@ -539,9 +545,9 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
 }
 
 // onlyIncDec reports whether every assignment of the local name in nodes
-// is a ++, a -- or, if opAssign, an op=, outside lambdas, local functions
-// and classes, and object expressions.
-func onlyIncDec(name string, nodes []any, opAssign bool) bool {
+// is a ++, a -- or an op=, outside lambdas, local functions and classes,
+// and object expressions.
+func onlyIncDec(name string, nodes []any) bool {
 	ok := true
 	for _, node := range nodes {
 		if b, isBlock := node.(*syntax.Block); node == nil || isBlock && b == nil {
@@ -555,7 +561,7 @@ func onlyIncDec(name string, nodes []any, opAssign bool) bool {
 				}
 				return false
 			case *syntax.Assign:
-				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && (n.Op == syntax.ASSIGN || !opAssign) {
+				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && n.Op == syntax.ASSIGN {
 					ok = false
 				}
 			}
@@ -611,6 +617,32 @@ func (c *Checker) reset(vars []*types.VarSym) {
 		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: v.Type})
 		c.dropMembers(v)
 		c.unalias(v)
+	}
+}
+
+// stableConds returns the smart casts of a Boolean val's condition (see
+// condVal) that hold where it is read: not those of a local var that code
+// nested here may assign.
+func (c *Checker) stableConds(ns []narrow) []narrow {
+	if !slices.ContainsFunc(ns, func(n narrow) bool { return n.recv == nil && isVar(n.sym) }) {
+		return ns
+	}
+	return slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool {
+		return n.recv == nil && isVar(n.sym) && !c.varStable(n.sym, types.Type{})
+	})
+}
+
+// resetEntry is reset at the start of a loop, but keeps the aliases of
+// the vars of aliased, which the loop only increments, decrements or
+// assigns with op=: K2's loops drop those of the locals they assign with
+// = only, so y += "" in the loop doesn't end y = x at its start.
+func (c *Checker) resetEntry(vars, aliased []*types.VarSym) {
+	for _, v := range vars {
+		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: v.Type})
+		c.dropMembers(v)
+		if !slices.Contains(aliased, v) {
+			c.unalias(v)
+		}
 	}
 }
 
@@ -691,6 +723,12 @@ func (c *Checker) unalias(v *types.VarSym) {
 	delete(c.implied, v)
 	for u, ns := range c.implied {
 		c.implied[u] = slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool { return of(n.recv, n.sym) })
+	}
+	// A Boolean val's condition on v (see condVal) no longer holds.
+	for u, ns := range c.conds {
+		if slices.ContainsFunc(ns[0], func(n narrow) bool { return of(n.recv, n.sym) }) || slices.ContainsFunc(ns[1], func(n narrow) bool { return of(n.recv, n.sym) }) {
+			delete(c.conds, u)
+		}
 	}
 }
 

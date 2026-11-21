@@ -499,9 +499,9 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			}
 			s.Type = nil
 		}
-		vars, unkeep := c.loopVars(s.Body)
+		vars, aliased, unkeep := c.loopVars(s.Body)
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
 		c.scope.shadow(s.Sym)
 		c.scope.declare(s.Sym)
@@ -524,12 +524,12 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 func (c *Checker) while(s *syntax.While) types.Type {
 	loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
 	// The vars the loop assigns lose their narrowing in it and after it.
-	vars, unkeep := c.loopVars(s.Cond, s.Body)
+	vars, aliased, unkeep := c.loopVars(s.Cond, s.Body)
 	var exits []flowState
 	if s.Do {
 		// The condition sees the body's declarations.
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		c.loops = append(c.loops, loop)
 		s.Body.T = c.stmts(s.Body, noWant, false)
 		if len(loop.flow.continues) > 0 {
@@ -560,7 +560,7 @@ func (c *Checker) while(s *syntax.While) types.Type {
 	} else {
 		pre := c.loopEntry(vars)
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
 		whenTrue, whenFalse := c.narrowing(s.Cond)
@@ -737,13 +737,14 @@ func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
 }
 
 // condVal records the smart casts that v, a Boolean val of value x,
-// being true or false implies: x's, of vals.
+// being true or false implies: x's, of vals, and of local vars that are
+// stable, as in K2, until they are assigned (see unalias).
 func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 	whenTrue, whenFalse := c.narrowing(x)
 	stable := func(ns []narrow) []narrow {
 		var out []narrow
 		for _, k := range ns {
-			if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
+			if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) || k.recv == nil && isVar(k.sym) && c.aliasable(k) {
 				out = append(out, k)
 			}
 		}

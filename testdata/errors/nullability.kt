@@ -88,10 +88,12 @@ fun loopSmartCasts(): Int {
             fun clear() { k = null }
         }
     }
+    // A loop that only assigns a with op= keeps its smart cast, as K2's
+    // loops drop those of the locals they assign with = only.
     var a: Any = 1
     if (a is Int) {
         do {
-            a += 1 // ERROR operator '+=' cannot be applied to Any
+            a += 1
         } while (a != 10)
     }
     var m: Int? = 1
