@@ -3325,7 +3325,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				c.errorf(x.P, "'operator' modifier is required on '%s': operator '%s' is imported as '%s'", fn.Name, x.Sym.Name, fn.Name)
 			}
 			if isArrayFactory(x.Builtin) {
-				c.reified(x, t)
+				c.reified(x, t, sink)
 			}
 		}
 		if fn.Safe {

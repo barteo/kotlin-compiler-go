@@ -545,20 +545,43 @@ func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax
 		if t.K == types.Invalid || t.IsIntersection() {
 			return true
 		}
-		rc := c.classOf(t.NonNull())
-		if rc == nil {
+		return c.protectedViaClass(owner, f, c.classOf(t.NonNull()))
+	}
+}
+
+// protectedViaClass is protectedVia1 for a receiver of class rc, nil if
+// it isn't known.
+func (c *Checker) protectedViaClass(owner *types.ClassSym, f *types.FunSym, rc *types.ClassSym) bool {
+	if rc == nil {
+		return true
+	}
+	for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
+		if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
 			return true
 		}
-		for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
-			if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
-				return true
-			}
-			if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
-				return true
-			}
+		if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
+			return true
 		}
+	}
+	return false
+}
+
+// protectedSetterVia reports whether the code may assign property p,
+// whose setter is protected, on receiver x, by the rule of protectedVia.
+// As kotlinc's, it goes by the declared type of a smart cast x, if it's
+// not nullable: x.y = 1 in if (x is Derived) is an error for x: Base,
+// but not for x: Base?.
+func (c *Checker) protectedSetterVia(p *types.VarSym, x syntax.Expr) bool {
+	if !c.protectedVia(p.Owner, x) {
 		return false
 	}
+	if x == nil {
+		return true
+	}
+	if d, ok := c.smartCastFrom(x, x.Type()); ok && !d.N && p.Owner != nil && p.Owner.CompanionOf == nil && !p.Owner.Object && !c.javaPackage(p.Owner) {
+		return c.protectedViaClass(p.Owner, nil, c.classOf(d.NonNull()))
+	}
+	return true
 }
 
 // strictProtectedVia reports whether the code may use a protected member

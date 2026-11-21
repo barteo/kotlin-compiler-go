@@ -884,8 +884,13 @@ type ClassSym struct {
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
 	Interface         bool
 	Abstract          bool // an abstract class or an interface: it can't be instantiated
-	Final             bool // can't be subclassed
-	Private           bool // not public
+	// InvisibleMembers are the internal members of a class of another
+	// module, which code can't see but subclasses inherit: by function
+	// name and parameter count, or "prop " and a property's name, whether
+	// the class declares them abstract.
+	InvisibleMembers map[string]bool
+	Final            bool // can't be subclassed
+	Private          bool // not public
 	// PackagePrivate is set, with Private, on a Java class of package
 	// visibility, which only code in its package sees, as its
 	// package-private members.

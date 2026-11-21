@@ -1891,7 +1891,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		}
 	}
 	if p.at(LPAREN) {
-		cd.HasPrimary = true
+		cd.HasPrimary, cd.WrittenPrimary = true, true
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()
@@ -3214,10 +3214,20 @@ func (p *parser) parsePrimary() Expr {
 			return p.anonFun(t.Text)
 		}
 		// l@ x: a label on any other expression has no effect, as nothing
-		// can jump to it.
+		// can jump to it, but on a lambda in parentheses or with
+		// annotations, l@ ({ ... }), l@ @A { ... }, it is the lambda's.
+		// Of several, l1@ l2@ x, the innermost is, and the others are
+		// errors, as kotlinc's MULTIPLE_LABELS_ARE_FORBIDDEN.
 		p.next()
 		p.skipNL()
-		return p.parsePrefix()
+		if p.at(LABEL) {
+			p.errorLater(t.Pos, "multiple labels are forbidden")
+		}
+		x := p.parsePrefix()
+		if l, ok := x.(*Lambda); ok && l.Label == "" {
+			l.Label = t.Text
+		}
+		return x
 	}
 	p.unexpected("expression")
 	return nil

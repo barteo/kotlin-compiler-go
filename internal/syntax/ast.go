@@ -759,6 +759,9 @@ type ClassDecl struct {
 	// in its header, or the implicit one of a class without secondary
 	// constructors.
 	HasPrimary bool
+	// WrittenPrimary is set if the class's header declares a primary
+	// constructor's parameter list, if an empty one: interface I().
+	WrittenPrimary bool
 	// Parcelize is set by the checker on a class annotated @Parcelize, to
 	// which it adds the parcelize plugin's members: its static field
 	// CREATOR holds an instance of its class Creator.

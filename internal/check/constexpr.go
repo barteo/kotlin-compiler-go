@@ -256,8 +256,8 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 		return nil
 	case *syntax.Binary:
 		switch x.Op {
-		case syntax.RANGE, syntax.RANGE_LT, syntax.ELVIS:
-			return x
+		case syntax.RANGE, syntax.RANGE_LT, syntax.ELVIS, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			return x // 1 === 2 isn't evaluated either
 		}
 		// "1" + MyEnum.A, A::class == B::class
 		if !constType(x.X.Type()) || !constType(x.Y.Type()) {
@@ -291,6 +291,11 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 	case *syntax.ClassLit:
 		if x.Bound || x.Class.IsParam() {
 			return x // v::class, T::class
+		}
+		for t := x.Class; t.K == types.Class && t.C == types.ArrayClass; {
+			if t = types.ArrayElem(t); t.IsParam() {
+				return x // Array<T>::class, also of a reified T
+			}
 		}
 		return nil
 	case *syntax.Spread:

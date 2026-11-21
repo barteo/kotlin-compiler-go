@@ -1263,6 +1263,20 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	if hasReified(f) {
 		sys.fixups = append(sys.fixups, func(s *system) { c.reifiedArgs(x, f, best.sub, s) })
+	} else if f.Name == "<init>" && slices.ContainsFunc(best.tparams, func(tp *types.TypeParamSym) bool { return tp.Reified }) {
+		// A class's reified type parameter is an error, but its
+		// constructor's calls are still checked as an inline function's.
+		sys.fixups = append(sys.fixups, func(s *system) {
+			for i, tp := range best.tparams {
+				if t := s.final(best.sub.Apply(types.ParamType(tp))); tp.Reified && t.IsParam() && !t.Param().Reified {
+					p := x.P
+					if len(x.TypeArgs) == len(best.tparams) {
+						p = x.TypeArgs[i].P
+					}
+					c.errorf(p, "cannot use '%s' as reified type parameter", t.Param().Name)
+				}
+			}
+		})
 	}
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })

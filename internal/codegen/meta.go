@@ -606,8 +606,11 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		mod = kmeta.Open
 	}
 	vis := visibility(mods.Visibility)
-	if p.InheritsProtected {
+	switch {
+	case p.InheritsProtected:
 		vis = kmeta.Protected // an override of a protected property
+	case p.Module != "" && vis == kmeta.Public:
+		vis = kmeta.Internal // an override of an internal one, mangled as it is
 	}
 	// hasAnnotations: annotations of the declaration, as kotlinc sets it,
 	// @JvmField's on the field among them, but not its accessors' and

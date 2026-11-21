@@ -454,6 +454,12 @@ func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst,
 			c.errorf(written[i].P, "cannot use definitely-non-nullable type as a reified type argument")
 		case tp.Reified && t.IsParam() && !t.Param().Reified:
 			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
+		case tp.Reified && erasedArrayElem(t) != nil:
+			p := pos
+			if len(written) == len(f.TypeParams) {
+				p = written[i].P
+			}
+			c.errorf(p, "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(t).Name)
 		case tp.Reified && s != nil && s.captured(sub[tp]):
 			c.errorf(pos, "cannot use captured type as reified type parameter")
 		case tp.Reified && t.K == types.Nothing && !t.N:

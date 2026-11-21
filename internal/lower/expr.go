@@ -207,8 +207,14 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 			l.prov[f] = x.ID()
 			return f
 		}
-		// A label on another expression has no effect.
-		return l.expr(x)
+		// A label on another expression has no effect, but on a lambda in
+		// parentheses or with annotations, l@ ({ ... }), it is the
+		// lambda's.
+		e := l.expr(x)
+		if lam, ok := e.(*syntax.Lambda); ok && lam.Label == "" {
+			lam.Label = name
+		}
+		return e
 	case psi.KindANNOTATED_EXPRESSION:
 		if l.hoisted[n.ID()] {
 			// A statement's annotations, lowered with the statement.

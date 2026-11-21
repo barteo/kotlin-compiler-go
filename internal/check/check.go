@@ -1437,11 +1437,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
-		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
-			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
-		} else if a.Variance != types.Inv && a.Variance == ps[i].Var {
-			c.redundantProjection(a.P)
-		}
+		c.projection(a, ps[i], cls)
 	}
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
@@ -2117,6 +2113,9 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "an abstract function cannot have a body")
 	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
+	case owner != nil && owner.Interface && bodyless && !d.Abstract && d.Visibility == syntax.Private:
+		// Abstract, as it has no body, but no class can implement it.
+		c.errorf(modPos(d.Written, "private", d.P), "private function '%s' in an interface must have a body", d.Name)
 	}
 	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
@@ -2351,6 +2350,20 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		default:
 			sym.JvmStatic = true
 		}
+	} else if owner == nil || !owner.Object || owner.Anonymous {
+		// @get:JvmStatic, or @JvmStatic on an accessor.
+		as := []*syntax.Annotation{d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")}
+		for _, g := range []*syntax.FunDecl{d.Getter, d.Setter} {
+			if g != nil {
+				as = append(as, g.Find("", "JvmStatic"))
+			}
+		}
+		for _, a := range as {
+			if a != nil {
+				c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+				break
+			}
+		}
 	}
 	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
 		p := d.AccessorP
@@ -2367,8 +2380,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
-		if sym.JvmField && sym.JvmStatic {
-			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
+		// Also through a typealias of JvmStatic.
+		if a := c.findAnnotation(d.Annotations, "", "JvmStatic", "kotlin/jvm/JvmStatic"); a != nil && owner.Object && !owner.Anonymous && (sym.JvmField || d.Const) {
+			c.errorf(a.P, "'@JvmStatic' annotation is useless for const or '@JvmField' properties")
 		}
 
 	}
@@ -2395,8 +2409,16 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
-		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
+		if sym.Abstract && d.Mutable && d.Field == nil {
+			c.errorf(d.P, "'lateinit' modifier is not allowed on abstract properties")
+		} else {
+			c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
+		}
 		sym.Lateinit = true
+	}
+	if owner != nil && owner.Interface && d.Visibility == syntax.Private && !d.Abstract && d.Init == nil && d.Getter == nil && d.Field == nil {
+		// Abstract, as it has no value, but no class can implement it.
+		c.errorf(modPos(d.Written, "private", d.P), "abstract property in an interface cannot be private")
 	}
 	switch {
 	case d.Abstract && ext:
@@ -2564,7 +2586,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		}
 		cls.Props = append(cls.Props, p)
 	}
-	if d.Interface && len(d.CtorParams) > 0 {
+	if d.Interface && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "an interface may not have a constructor")
 	}
 	if d.Object && len(d.CtorParams) > 0 {
@@ -2573,6 +2595,9 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	for _, cp := range d.CtorParams {
 		if cp.Const && cp.IsProp {
 			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
+		if cp.Lateinit && cp.IsProp {
+			c.errorf(modPos(cp.Written, "lateinit", cp.P), "'lateinit' modifier is not allowed on primary constructor parameters")
 		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
@@ -3465,6 +3490,9 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 			case *syntax.PropDecl:
 				c.checkProp(m, d.Sym)
 			case *syntax.InitBlock:
+				if d.Interface {
+					c.errorf(m.P, "anonymous initializers are not allowed in interfaces")
+				}
 				c.state = state{scope: c.ctorScope(d.Sym), cls: d.Sym, this: newThis(d.Sym), tparams: d.Sym.TypeParams, init: true}
 				c.inAnon(d.Sym)
 				c.block(m.Body, noWant, false)

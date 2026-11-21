@@ -203,10 +203,12 @@ func (c *Checker) jvmFieldApplicable(d *syntax.PropDecl, owner *types.ClassSym) 
 	switch {
 	case d.Field != nil:
 		inapplicable("cannot be applied to a delegated property")
-	case d.Abstract || owner != nil && owner.Interface:
-		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
-	case d.Sym != nil && !d.Sym.HasField():
-		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+	case d.Abstract || owner != nil && owner.Interface || d.Sym != nil && !d.Sym.HasField():
+		if a.Target != "" {
+			// Without one, it's reported as any annotation of fields is
+			// on a property without one, by annotationTarget.
+			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+		}
 	case d.Const:
 		inapplicable("cannot be applied to a const property")
 	case d.Lateinit:

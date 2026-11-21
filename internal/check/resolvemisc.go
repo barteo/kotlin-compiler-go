@@ -24,14 +24,21 @@ func (c *Checker) unitAlias(name string) bool {
 // name and annotated @ExtensionFunctionType, as a function type with a
 // receiver, its first parameter: @ExtensionFunctionType Function1<T,
 // Unit> is T.() -> Unit.
+//
+// The annotation, also through a typealias of it, on a type other than a
+// function type with a parameter is an error, as kotlinc's
+// WRONG_EXTENSION_FUNCTION_TYPE.
 func (c *Checker) extFuncAnnotated(ref *syntax.TypeRef, t types.Type) types.Type {
-	if ref.Ret != nil || !t.IsFunc() || t.IsExtFunc() || t.A.Len() < 2 {
+	if len(ref.Annotations) == 0 || t.K == types.Invalid {
 		return t
 	}
-	for i := range ref.Annotations {
-		if a := &ref.Annotations[i]; a.Target == "" && a.Is("ExtensionFunctionType") {
-			return t.WithReceiver()
-		}
+	a := c.findAnnotation(ref.Annotations, "", "ExtensionFunctionType", "kotlin/ExtensionFunctionType")
+	switch {
+	case a == nil:
+	case !t.IsFunc() || t.A.Len() < 2:
+		c.errorf(a.P, "'@ExtensionFunctionType' is only allowed on function types with at least one parameter")
+	case ref.Ret == nil && !t.IsExtFunc():
+		return t.WithReceiver()
 	}
 	return t
 }
