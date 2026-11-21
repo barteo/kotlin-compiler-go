@@ -305,7 +305,11 @@ type Checker struct {
 	// blockJumps are the blocks with a statement that always jumps, and
 	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
-	// deadBlocks are the blocks in code reported as unreachable.
+	// deadClasses are the local classes and object expressions in code
+	// reported unreachable, which classDeadCode doesn't judge.
+	deadClasses map[*syntax.ClassDecl]bool
+	// deadBlocks are the blocks in code reported as unreachable, and the
+	// bodies of callable references' lambdas, which aren't written.
 	deadBlocks map[*syntax.Block]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to

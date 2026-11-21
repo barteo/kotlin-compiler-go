@@ -83,6 +83,9 @@ func (c *Checker) localWarnings() {
 				uselessVarargs(c, n)
 			}
 			if n.Ref != nil {
+				if n.Body != nil {
+					c.markBlockDead(n.Body) // not written: unreachableWarnings skips it
+				}
 				syntax.Inspect(n.Body, func(m any) bool {
 					if x, ok := m.(*syntax.Call); ok {
 						refCalls[x] = true
