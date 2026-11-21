@@ -2288,11 +2288,23 @@ func (c *Checker) safeInvoke(x *syntax.Call, fn *syntax.Member, want types.Type,
 	m.P = fn.P
 	inner := &syntax.Call{Fun: m, Args: x.Args, Names: x.Names}
 	inner.P = x.P
+	// A builder's variable, fixed for the member (see fixedStub), is the
+	// lambda's parameter's type.
+	return c.safeLet(x, fn, checked(fn.X, c.fixedStub(fn.X.Type())), r, inner, want, sink)
+}
+
+// safeLet checks the safe call x, fn?.name(...), as recv?.let { r -> inner },
+// which evaluates inner, and its arguments, only if recv isn't null. The
+// rewrite of x is undone with a trial's changes: recv's type may hold a
+// builder's variable that the re-check fixes.
+func (c *Checker) safeLet(x *syntax.Call, fn *syntax.Member, recv syntax.Expr, r *syntax.Ident, inner *syntax.Call, want types.Type, sink *system) types.Type {
 	lam := &syntax.Lambda{Arrow: true, Params: []*syntax.LambdaParam{{P: r.P, Name: r.Name}},
 		Body: &syntax.Block{P: x.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}}
 	lam.P = x.P
-	let := &syntax.Member{X: checked(fn.X, fn.X.Type()), Name: "let", Safe: true}
+	let := &syntax.Member{X: recv, Name: "let", Safe: true}
 	let.P = fn.P
+	fun, args, names := x.Fun, x.Args, x.Names
+	c.onUndo(func() { x.Fun, x.Args, x.Names = fun, args, names })
 	x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 	return c.call(x, want, sink)
 }
@@ -3160,13 +3172,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			if x.Names != nil {
 				inner.Names = append([]string{""}, x.Names...)
 			}
-			lam := &syntax.Lambda{Arrow: true, Params: []*syntax.LambdaParam{{P: r.P, Name: r.Name}},
-				Body: &syntax.Block{P: x.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}}
-			lam.P = x.P
-			let := &syntax.Member{X: fn.X, Name: "let", Safe: true}
-			let.P = fn.P
-			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
-			return c.call(x, want, sink)
+			return c.safeLet(x, fn, fn.X, r, inner, want, sink)
 		}
 		if _, ok := c.extFuncVar(fn.Name); (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
@@ -3257,13 +3263,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				m.P = fn.P
 				inner := &syntax.Call{Fun: m, Args: x.Args, Names: x.Names}
 				inner.P = x.P
-				lam := &syntax.Lambda{Arrow: true, Params: []*syntax.LambdaParam{{P: r.P, Name: r.Name}},
-					Body: &syntax.Block{P: x.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}}
-				lam.P = x.P
-				let := &syntax.Member{X: checked(fn.X, fn.X.Type()), Name: "let", Safe: true}
-				let.P = fn.P
-				x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
-				return c.call(x, want, sink)
+				// A builder's variable, fixed for the member (see
+				// fixedStub), is the lambda's parameter's type.
+				return c.safeLet(x, fn, checked(fn.X, c.fixedStub(fn.X.Type())), r, inner, want, sink)
 			} else if n != nil {
 				fn.T = rt
 				if alias != nil && !c.aliasOuterFits(alias, n, rt) {

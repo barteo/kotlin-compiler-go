@@ -153,7 +153,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved reference: _` | 191 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 92 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 77 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
@@ -180,7 +180,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
-| *109 more* | |
+| *108 more* | |
 
 ## Unsupported features
 
