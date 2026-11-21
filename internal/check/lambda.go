@@ -2448,13 +2448,34 @@ func (c *Checker) stubVars(s *system, params []types.Type, vars []*types.TypePar
 	for _, p := range params {
 		s.apply(p).Has(func(u types.Type) bool {
 			tv := s.unfixedVar(u.NonNull())
-			if tv != nil && !slices.ContainsFunc(tv.lower, s.proper) && !slices.ContainsFunc(tv.upper, s.proper) && len(tv.lits) == 0 && c.stubs[tv.v] == nil && !slices.Contains(vars, tv.v) {
+			if tv != nil && !s.properBelow(tv, nil) && !slices.ContainsFunc(tv.upper, s.proper) && c.stubs[tv.v] == nil && !slices.Contains(vars, tv.v) {
 				vars = append(vars, tv.v)
 			}
 			return false
 		})
 	}
 	return vars
+}
+
+// properBelow reports whether a proper type bounds tv from below, or a
+// literal, directly or through the variables below it: as in K2, which
+// fixes such a variable before it checks a lambda that takes it, T of
+// Comparator.comparingInt { it.length } passed for sort's Comparator<in
+// T'>, whose T' a List<String> gives String, isn't a builder's.
+func (s *system) properBelow(tv *tvar, seen map[*tvar]bool) bool {
+	if len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper) {
+		return true
+	}
+	if seen == nil {
+		seen = map[*tvar]bool{}
+	}
+	seen[tv] = true
+	for _, l := range tv.lower {
+		if w := s.unfixedVar(l.Flex().NonNull()); w != nil && !seen[w] && s.properBelow(w, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // boundVars returns vars with the unfixed variables of s in params that
@@ -2711,7 +2732,37 @@ func (c *Checker) joinRun(s *system) *stubRun {
 			}
 		}
 	}
-	return nil
+	// As in K2, whose PCLA postpones a call in a builder's lambda that it
+	// can't infer on its own into the builder's constraint system, a call
+	// whose variable nothing gives a type yet joins the innermost run: the
+	// calls after it may. otvOwner.createDerivativeTypeVariable() makes a
+	// TypeVariableOwner<PNT> that pntvOwner.constrain(ScopeOwner()) gives
+	// PNT.
+	if len(s.lambdas) == 0 && !c.probingRuns && s.uninferable() {
+		for _, run := range c.stubs {
+			if r == nil || run.depth > r.depth {
+				r = run
+			}
+		}
+	}
+	return r
+}
+
+// uninferable reports whether completing s, a call's system without
+// lambdas, leaves one of its variables uninferred.
+func (s *system) uninferable() bool {
+	if !slices.ContainsFunc(s.vars, func(tv *tvar) bool { return !tv.fixed }) {
+		return false
+	}
+	t := s.clone()
+	n := len(t.errs)
+	t.fixups = nil
+	s.c.probingRuns = true
+	defer func() { s.c.probingRuns = false }()
+	t.complete()
+	return slices.ContainsFunc(t.errs[n:], func(e inferError) bool {
+		return strings.HasPrefix(e.msg, "cannot infer type for type parameter")
+	})
 }
 
 // join adds s, a call's system, to r: its unfixed variables are stubs
@@ -2761,6 +2812,16 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	saved := c.stubs
 	c.stubs = nil
 	defer func() { c.stubs = saved }()
+	trial, useful := r.build(saved)
+	r.fix(trial)
+	return trial, useful
+}
+
+// build returns a copy of r's system with the joined calls' systems and
+// the constraints of r that say something added, its variables unfixed,
+// and those constraints. stubs are the runs' variables, which c.stubs
+// doesn't have while it runs (see fixAll).
+func (r *stubRun) build(saved map[*types.TypeParamSym]*stubRun) (*system, [][2]types.Type) {
 	trial := r.s.clone()
 	for _, j := range r.joined {
 		if !j.ok {
@@ -2857,6 +2918,12 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	trial.forks = append(trial.forks, r.forks...)
 	trial.wholeForks = true
 	trial.resolveForks()
+	return trial, useful
+}
+
+// fix fixes r's variables in trial, a system of build's, and those of the
+// joined calls that can be fixed then.
+func (r *stubRun) fix(trial *system) {
 	for _, v := range r.vars {
 		trial.fixVarsIn(types.VarType(v))
 	}
@@ -2883,7 +2950,6 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 			}
 		}
 	}
-	return trial, useful
 }
 
 // project returns the constraints useful, which trial solves, on r's own
@@ -2936,6 +3002,9 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	}
 	v := types.VarType(t.Flex().Param())
 	r := c.stubs[v.Param()]
+	if !r.demandable(v.Param()) {
+		return t
+	}
 	_, trial, ok := r.solve()
 	if !ok {
 		return t
@@ -2959,6 +3028,49 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		val = val.NonNull() // x!!, or x after x != null, of a T & Any
 	}
 	return val
+}
+
+// demandable reports whether variable v of r can be fixed on demand, as
+// K2's PCLA fixes one for a member of a value of its type: one with a
+// constraint by a proper type, other than a declared bound, or with a
+// variable below it that can be, which is fixed first, as K2 fixes the
+// variables it depends on, or with a bound that is a type of other
+// variables, which K2 semi-fixes it to. One that is only below another, PNT <: OT,
+// can't be, though OT can: pntvOwner.provide().function() leaves function
+// unresolved (KT-72030).
+func (r *stubRun) demandable(v *types.TypeParamSym) bool {
+	c := r.s.c
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	trial, _ := r.build(saved)
+	seen := map[*tvar]bool{}
+	var walk func(tv *tvar) bool
+	walk = func(tv *tvar) bool {
+		if seen[tv] {
+			return false
+		}
+		seen[tv] = true
+		declared := func(u types.Type) bool {
+			return slices.Contains(tv.declUp, u) || slices.Contains(tv.boundUp, u)
+		}
+		if len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, trial.proper) ||
+			slices.ContainsFunc(tv.upper, func(u types.Type) bool { return trial.proper(u) && !declared(u) }) {
+			return true
+		}
+		for _, l := range tv.lower {
+			if w := trial.unfixedVar(l); w != nil && walk(w) {
+				return true
+			}
+		}
+		// K2 semi-fixes one with a bound that is a type of other
+		// variables to it: Box<PNTv> <: OTv fixes OTv to Box<PNTv> for
+		// otvOwner.provide().unbox(), and PNTv <: Box<OTv> PNTv.
+		semi := func(b types.Type) bool { return trial.unfixedVar(b.NonNull()) == nil && b.HasVars() && !declared(b) }
+		return slices.ContainsFunc(tv.lower, semi) || slices.ContainsFunc(tv.upper, semi)
+	}
+	tv := trial.byVar[v]
+	return tv == nil || tv.fixed || walk(tv)
 }
 
 // demandStubs returns t, a parameter type of a lambda of a call in a

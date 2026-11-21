@@ -4444,9 +4444,9 @@ tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepEquivalent.kt	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSubtype.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSupertype.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowEquivalent.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSubtypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSupertype.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowEquivalent.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/InnerDeclarationScope.kt	rejects invalid	on an expected line	

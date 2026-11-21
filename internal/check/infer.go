@@ -938,7 +938,18 @@ func (s *system) fix(tv *tvar) {
 		_, hinted := s.stubHint(tv)
 		declOnly = !hinted && len(s.c.stubs) == 0 && len(stubs) == 0 && len(upperStubs) == 0 && len(s.lambdas) == 0
 	}
+	hint, hinted := s.stubHint(tv)
+	hinted = hinted && len(s.c.stubs) == 0 && len(tv.lits) == 0 && !hint.HasVars() &&
+		!slices.ContainsFunc(lowers, func(l types.Type) bool { return !c.subtype(l, hint) }) &&
+		!slices.ContainsFunc(uppers, func(u types.Type) bool { return !c.subtype(hint, u) })
 	switch {
+	case hinted && len(lowers) > 0:
+		// As in K2, which infers a call in a builder's lambda with the
+		// builder's variables once, the value they were inferred with,
+		// which its bounds now agree with: PNT of
+		// createDerivativeTypeVariable(otvOwner.provideContainer()) is
+		// CST(ScopeOwner, Interloper), not OTv's Interloper alone.
+		val = hint
 	case declOnly:
 		// Only its declared bounds: R of <T : A, R : T> in a call that
 		// gives neither.

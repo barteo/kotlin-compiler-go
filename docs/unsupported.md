@@ -267,24 +267,30 @@ own tests.
   fixation on demand, `kc` fixes a builder's variable for a member of a
   value of its type and for a nested call's lambda that takes the
   variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
-  not one in a type argument. A call's variable that captures an `out`
-  projection of a builder's variable is reported as uninferred, as K2
-  reports it, but kc infers its other captures of builders' variables,
-  which K2 may not. An `if` or `when` whose branches mention a builder's
-  variable joins them into its inference. A branch's generic call that
-  only the builder's variable, not yet bounded, gives a type to, as
-  `removeLast()` before `add(42)` in the other branch, takes the other
-  branches' join as its bound, as K2's fixation of the join's variable
-  first does; K2's own order of fixation isn't modeled otherwise, but
-  for KT-58232: a builder call returned by the one-branch `when` a
-  lambda ends with can't infer its variables, which are `Nothing`. A
-  builder's lambda that casts its receiver to a star-projected subtype,
-  `this as DerivedBuildee<*>`, infers the variable as `Unit`, where K2
-  infers a captured type. Of the errors a call adds to K2's shared
-  constraint system, only one shape is carried to the calls after it: a
-  generic extension called on an unresolved receiver with the lambda's
-  `this`, `Unresolved().bar(this)`, after which the extension calls on
-  the builder's receiver are inapplicable.
+  not one in a type argument. As in K2, it fixes one with a constraint
+  by a proper type, directly or through the variables below it, and
+  semi-fixes one bounded by a type of other variables (`Box<PNTv> <:
+  OTv`), but not one only below another variable (KT-72030); a call
+  whose variable nothing gives a type yet,
+  `createDerivativeTypeVariable()`, is inferred with the builder's
+  variables. A call's variable that captures an `out` projection of a
+  builder's variable is reported as uninferred, as K2 reports it, but kc
+  infers its other captures of builders' variables, which K2 may not. An
+  `if` or `when` whose branches mention a builder's variable joins them
+  into its inference. A branch's generic call that only the builder's
+  variable, not yet bounded, gives a type to, as `removeLast()` before
+  `add(42)` in the other branch, takes the other branches' join as its
+  bound, as K2's fixation of the join's variable first does; K2's own
+  order of fixation isn't modeled otherwise, but for KT-58232: a builder
+  call returned by the one-branch `when` a lambda ends with can't infer
+  its variables, which are `Nothing`. A builder's lambda that casts its
+  receiver to a star-projected subtype, `this as DerivedBuildee<*>`,
+  infers the variable as `Unit`, where K2 infers a captured type. Of the
+  errors a call adds to K2's shared constraint system, only one shape is
+  carried to the calls after it: a generic extension called on an
+  unresolved receiver with the lambda's `this`,
+  `Unresolved().bar(this)`, after which the extension calls on the
+  builder's receiver are inapplicable.
 
 ## Without the standard library
 

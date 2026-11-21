@@ -443,6 +443,9 @@ type Checker struct {
 	// that nothing gave a type where their members were used (see
 	// stubReceivers).
 	stubRecvAt map[syntax.Pos]bool
+	// probingRuns is set while system.uninferable completes a copy of a
+	// call's system, which joins no run.
+	probingRuns bool
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
