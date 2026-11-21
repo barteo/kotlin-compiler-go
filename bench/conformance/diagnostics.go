@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/barteo/kotlin-compiler-go/internal/check"
 )
 
 // The categories of a diagnostics test's result, besides skip, crash and
@@ -392,11 +394,23 @@ func writeStray(name string, rs []*result, dts []*diagTest) error {
 func (dt *diagTest) stray() []diag {
 	var ds []diag
 	for _, d := range dt.kc {
-		if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) {
+		if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) && !dt.switchedOff(d) {
 			ds = append(ds, d)
 		}
 	}
 	return ds
+}
+
+// switchedOff reports whether d, an error of kc's, is of an error the
+// test's DIAGNOSTICS directive switches off: kotlinc reports it too, but
+// the markup leaves it out.
+func (dt *diagTest) switchedOff(d diag) bool {
+	for name := range dt.off {
+		if check.IsNamed(d.msg, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
@@ -552,6 +566,7 @@ var backendMessages = map[string]string{
 	"CONFLICTING_JVM_DECLARATIONS":           "platform declaration clash",
 	"CONFLICTING_INHERITED_JVM_DECLARATIONS": "inherited platform declarations clash",
 	"ACCIDENTAL_OVERRIDE":                    "accidental override",
+	"DUPLICATE_CLASS_NAMES":                  "duplicate JVM class name",
 }
 
 // dropOffBackendErrors returns kc's errors without those of the JVM
@@ -737,7 +752,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 	fmt.Fprintln(&sb)
 	reportMissCauses(&sb, missed, totalExp-totalHit)
 
-	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
+	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
 	type kc struct {
 		key string
 		n   int

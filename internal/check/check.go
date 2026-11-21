@@ -928,10 +928,30 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = append(errs, c.errs...)
 		warns = append(warns, c.warns...)
 	}
+	errs = dropBackendErrors(errs)
 	if opts.Warnings {
 		errs = append(errs, warns...)
 	}
 	return errs, nil
+}
+
+// backendErrorPrefixes start the messages of the errors that kotlinc's
+// JVM backend reports (JvmBackendErrors): CONFLICTING_JVM_DECLARATIONS,
+// CONFLICTING_INHERITED_JVM_DECLARATIONS, ACCIDENTAL_OVERRIDE and
+// DUPLICATE_CLASS_NAMES.
+var backendErrorPrefixes = []string{"platform declaration clash", "inherited platform declarations clash", "accidental override", "duplicate JVM class name"}
+
+// dropBackendErrors returns a module's errors without those of kotlinc's
+// JVM backend if there are others: kotlinc doesn't run its backend on a
+// module its frontend reports errors in.
+func dropBackendErrors(errs []*syntax.Error) []*syntax.Error {
+	backend := func(e *syntax.Error) bool {
+		return slices.ContainsFunc(backendErrorPrefixes, func(p string) bool { return strings.HasPrefix(e.Msg, p) })
+	}
+	if !slices.ContainsFunc(errs, func(e *syntax.Error) bool { return e.Severity == syntax.SevError && !backend(e) }) {
+		return errs
+	}
+	return slices.DeleteFunc(errs, backend)
 }
 
 // signatures declares the files' declarations and resolves their
@@ -2528,12 +2548,18 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		d.Ctor = ctor
 		cls.Ctor = ctor
 	}
+	local := d.Local || d.Anonymous
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
 		if prev := cls.Prop(p.Name); prev != nil {
 			if d, ok := p.Decl.(*syntax.PropDecl); ok && (altProp(prev, d) || hiddenFinalProp(prev, d)) {
 				addAlt(prev, p)
 			} else {
 				c.errorf(pos, "conflicting declarations: %s", p.Name)
+				if pd, ok := prev.Decl.(*syntax.PropDecl); ok && local && !c.hasErrorAt(pd.P, "conflicting declarations") {
+					// And the first, as kotlinc; conflicts does that for
+					// the other classes' (see propRedeclarations).
+					c.errorf(pd.P, "conflicting declarations: %s", p.Name)
+				}
 			}
 		}
 		cls.Props = append(cls.Props, p)

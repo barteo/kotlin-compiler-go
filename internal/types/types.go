@@ -874,6 +874,11 @@ type ClassSym struct {
 	// FromKotlin is set on a class of the class path that Kotlin
 	// compiled, read from its metadata.
 	FromKotlin bool
+	// ArityOf is set on a stand-in for the class path's class of its
+	// name, ArityOf, in a type of another module's class file that gives
+	// that name another number of type arguments: a class of neither's
+	// types.
+	ArityOf *ClassSym
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)

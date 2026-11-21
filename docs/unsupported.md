@@ -144,8 +144,11 @@ own tests.
   K2. A class of the program's Java sources doesn't: the class path's
   signatures still name the class path's class of its name.
 - Two classes of one name on the class path, from different modules,
-  are one class, the first; a signature that names the other with
-  other type arguments isn't reported.
+  are one class, the first, as in K2. A type in the other module's class
+  files with another number of type arguments is a type of neither, so
+  `A<Int>` isn't the first module's `A`. kc reads those type arguments only
+  from Kotlin metadata, not from Java generic signatures: a Java class's
+  method that names the other class keeps the first class.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
   its variables unfixed and then again with them fixed. A call in a
   nested builder that combines both builders' variables, as

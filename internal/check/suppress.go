@@ -70,6 +70,15 @@ func init() {
 	}
 }
 
+// IsNamed reports whether msg, one of kc's error messages, is of the
+// error kotlinc names name, as far as suppressible tells them apart. The
+// conformance harness uses it for the errors a test's directives switch
+// off.
+func IsNamed(msg, name string) bool {
+	re, ok := suppressible[name]
+	return ok && re.MatchString(msg)
+}
+
 // suppressRange is the code of a declaration, statement or expression
 // whose @Suppress names diagnostics, from its first annotation to its
 // last line.

@@ -1,17 +1,5 @@
 // Errors of the checks added while checking kotlinpoet.
 
-class Writer {
-    fun emit(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
-    fun emit(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
-}
-
-fun top(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
-fun top(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
-
-@JvmName("topNumbers")
-fun top2(xs: java.util.ArrayList<Int>) {}
-fun top2(xs: java.util.ArrayList<String>) {}
-
 interface A {
     fun f(): Int = 1
 }
@@ -47,3 +35,7 @@ fun mixed() {
 fun branches(): Int = if (true) 1 else "two" // ERROR type mismatch: inferred type is String but Int was expected
 
 fun noBody(): Int // ERROR function 'noBody' must have a body
+
+// An unresolved receiver isn't left out of the signature.
+fun Nope.unknownRecv(x: Int) {} // ERROR unresolved
+fun unknownRecv(x: Int) {}

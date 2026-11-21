@@ -81,6 +81,7 @@ func conflicts(checkers []*Checker) {
 			ovs = c.propOverloads(ovs, c.file.Decls, nil)
 		}
 		contextualShadowing(ovs, false)
+		aliasedPropConflicts(ovs)
 	}
 	for _, c := range checkers {
 		for _, d := range c.classes {
@@ -110,7 +111,9 @@ func conflicts(checkers []*Checker) {
 			overloadConflicts(ovs, reported)
 			redeclarations(decls, reported)
 			c.inheritedConflicts(d, reported)
-			contextualShadowing(c.propOverloads(ovs, d.Members, d), true)
+			props := c.propOverloads(nil, d.Members, d)
+			contextualShadowing(append(ovs, props...), true)
+			aliasedPropConflicts(props)
 		}
 	}
 	classNames(checkers)
@@ -238,6 +241,54 @@ func sameSignature(a, b *overload) bool {
 	return ok
 }
 
+// mutuallySpecific reports whether overloads a and b are each at least
+// as specific as the other, which K2 also takes for conflicting
+// overloads (FirDeclarationOverloadabilityHelper): a call that one takes
+// the other takes too, whatever their type parameters' bounds, as fun
+// <A> f(arg: A?) and fun <B> f(arg: B), or fun <T> f(x: Inv<T>) and fun
+// <T> f(x: Inv<out T>), if they have as many type parameters.
+func mutuallySpecific(a, b *overload) bool {
+	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.ctx) != len(b.ctx) || len(a.params) != len(b.params) || a.vararg != b.vararg || a.c != b.c && a.c.u != b.c.u {
+		return false
+	}
+	return a.c.overloadMoreSpecific(a, b) && a.c.overloadMoreSpecific(b, a)
+}
+
+// overloadMoreSpecific reports whether g takes what f takes: f's
+// receiver, context parameters and parameters, with f's type parameters
+// kept and g's inferred within their bounds.
+func (c *Checker) overloadMoreSpecific(f, g *overload) bool {
+	all := slices.Concat(f.ctx, f.params)
+	if f.recv != nil {
+		all = append(all, *f.recv)
+	}
+	all = append(all, slices.Concat(g.ctx, g.params)...)
+	if g.recv != nil {
+		all = append(all, *g.recv)
+	}
+	if slices.ContainsFunc(all, func(t types.Type) bool { return t.K == types.Invalid }) {
+		return false
+	}
+	sys := newSystem(c)
+	sub := sys.fresh(g.tparams, nil, syntax.Pos{})
+	for _, p := range g.tparams {
+		v := sub[p].T
+		for _, b := range v.Param().Bounds {
+			sys.sub(v, b)
+		}
+	}
+	for i := range f.ctx {
+		sys.sub(f.ctx[i], sub.ApplyIn(g.ctx[i]))
+	}
+	for i := range f.params {
+		sys.sub(f.params[i], sub.ApplyIn(g.params[i]))
+	}
+	if f.recv != nil {
+		sys.sub(*f.recv, sub.ApplyIn(*g.recv))
+	}
+	return sys.ok
+}
+
 // signatureMatch is sameSignature, but of context parameters only if
 // ctx, which also returns the substitution of b's type parameters by
 // a's.
@@ -317,7 +368,7 @@ func overloadConflicts(ovs []overload, reported map[any]bool) {
 				a.c != b.c && (a.private && b.private || a.main && b.main),
 				(a.hidden || b.hidden) && !a.open && !b.open,
 				a.low != b.low,
-				!sameSignature(a, b):
+				!sameSignature(a, b) && !mutuallySpecific(a, b):
 				continue
 			}
 			for _, o := range []*overload{a, b} {
@@ -618,9 +669,10 @@ func (c *Checker) inheritedConflicts(d *syntax.ClassDecl, reported map[any]bool)
 	if d.Sym.Super == nil && len(d.Sym.Interfaces) == 0 {
 		return
 	}
+	c.inheritedTypeParamConflicts(d)
 	for _, m := range d.Members {
 		fd, ok := m.(*syntax.FunDecl)
-		if !ok || fd.Sym == nil || fd.Override || fd.Expect || reported[fd] || fd.Sym.Hidden || fd.Hidden() {
+		if !ok || fd.Sym == nil || fd.Expect || reported[fd] || fd.Sym.Hidden || fd.Hidden() {
 			continue
 		}
 		a := funOverload(c, fd.Sym, fd.P, fd)
@@ -646,6 +698,61 @@ func (c *Checker) inheritedConflicts(d *syntax.ClassDecl, reported map[any]bool)
 			}
 			return true
 		})
+	}
+}
+
+// inheritedTypeParamConflicts reports class d if it inherits two
+// functions of a name that take the same parameters but as many type
+// parameters, which kotlinc reports as CONFLICTING_INHERITED_MEMBERS:
+// fun a(arg: Int) of A and fun <T> a(arg: Int) of B in interface C : A,
+// B. The class's own functions of the name take their place.
+func (c *Checker) inheritedTypeParamConflicts(d *syntax.ClassDecl) {
+	type inherited struct {
+		g *types.FunSym
+		o overload
+	}
+	byName := map[string][]inherited{}
+	var names []string
+	d.Sym.Supertypes(func(s *types.ClassSym) bool {
+		if s == d.Sym || s.External || len(s.TypeParams) > 0 {
+			return true
+		}
+		for name, gs := range s.Methods {
+			if len(d.Sym.Methods[name]) > 0 {
+				continue
+			}
+			for _, g := range gs {
+				if g.Private || g.Hidden || g.Static || g.Name == "<init>" {
+					continue
+				}
+				o := funOverload(c, g, d.P, g)
+				if mentionsParams(&o) {
+					continue
+				}
+				if byName[name] == nil {
+					names = append(names, name)
+				}
+				byName[name] = append(byName[name], inherited{g, o})
+			}
+		}
+		return true
+	})
+	slices.Sort(names) // the Methods maps' order isn't
+	for _, name := range names {
+		gs := byName[name]
+	pairs:
+		for i := range gs {
+			for j := i + 1; j < len(gs); j++ {
+				a, b := &gs[i], &gs[j]
+				if a.g.Owner == b.g.Owner || len(a.g.TypeParams) == len(b.g.TypeParams) || !sameTypes(&a.o, &b.o) {
+					continue
+				}
+				if !c.hasErrorAt(d.P, classKind(d.Sym)+" inherits conflicting members") {
+					c.errorf(d.P, "%s inherits conflicting members '%s': functions that take the same parameters but not as many type parameters", classKind(d.Sym), name)
+				}
+				break pairs
+			}
+		}
 	}
 }
 
@@ -686,4 +793,50 @@ func sameTypes(a, b *overload) bool {
 		}
 	}
 	return true
+}
+
+// aliasedPropConflicts reports the properties of one scope, ovs, that
+// kotlinc's frontend reports as redeclarations but kc's declarations let
+// be: those declared beside each other because their context
+// parameters' types differ as written (see altProp) but are the same
+// types, as through a typealias, context(c: A) val p and context(c:
+// AAlias) val p, or with type parameters of other names or bounds, and
+// extension properties, which are declared apart. They conflict as
+// functions do: by the same signature (sameSignature) or, as in K2,
+// each being as specific as the other (mutuallySpecific). Hidden ones
+// don't, whose accessors may clash only on the JVM.
+func aliasedPropConflicts(ovs []overload) {
+	for i := range ovs {
+		// A generic property's type parameters, which an extension's
+		// overload has already.
+		if o := &ovs[i]; o.recv == nil && len(o.tparams) == 0 {
+			if d, ok := o.decl.(*syntax.PropDecl); ok && d.Sym != nil && d.Sym.Getter != nil {
+				o.tparams = d.Sym.Getter.TypeParams
+			}
+		}
+	}
+	for i := range ovs {
+		a := &ovs[i]
+		ad, ok := a.decl.(*syntax.PropDecl)
+		if !ok || !a.prop || ad.Sym == nil || a.hidden || a.recv == nil && ad.Sym.Alt == nil {
+			continue
+		}
+		for j := range ovs {
+			b := &ovs[j]
+			bd, ok := b.decl.(*syntax.PropDecl)
+			if j == i || !ok || !b.prop || b.name != a.name || bd.Sym == nil || b.hidden || (a.recv == nil) != (b.recv == nil) ||
+				a.c != b.c && (a.private || b.private) ||
+				a.recv == nil && !slices.Contains(slices.Collect(altProps(ad.Sym)), bd.Sym) || !sameSignature(a, b) && !mutuallySpecific(a, b) {
+				continue
+			}
+			// The alt chain runs from the later property to the earlier,
+			// so report both of the pair here.
+			for _, o := range []*overload{a, b} {
+				if !o.c.hasErrorAt(o.pos, "conflicting declarations") {
+					o.c.errorf(o.pos, "conflicting declarations: %s", o.name)
+				}
+			}
+			break
+		}
+	}
 }

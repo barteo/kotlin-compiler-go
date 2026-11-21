@@ -717,7 +717,11 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if cls == nil {
 		return types.InvalidType, false
 	}
-	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
+	raw := kt.Raw || kt.Upper != nil && kt.Upper.Raw
+	if !raw {
+		cls = t.arityMismatch(cls, kt)
+	}
+	if len(kt.Args) == 0 || raw {
 		// A non-generic class, or a raw Java type.
 		return nullable(types.ClassType(cls)), true
 	}
@@ -756,6 +760,42 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		r = r.WithContexts(kt.Contexts)
 	}
 	return nullable(r), true
+}
+
+// arityMismatch returns cls, the class kt names, or a stand-in of its name
+// if kt gives it another number of type arguments than it has: kt is of a
+// class file of another module that has a class of that name, which the
+// class path's first one hides (see classpath.Duplicated). K2 finds one
+// class of a name too, and a type of it with the other module's arguments
+// is a subtype of neither its types nor others: A<Int> isn't A. But a type
+// of a class without type parameters is one of its own name with any
+// arguments (see subtype1).
+func (t *classTable) arityMismatch(cls *types.ClassSym, kt *kmeta.Type) *types.ClassSym {
+	if t.cp == nil || cls.Missing || !t.cp.Duplicated(cls.Name) {
+		return cls
+	}
+	n := len(kt.Args)
+	for o := kt.Outer; o != nil; o = o.Outer {
+		n += len(o.Args)
+	}
+	cls.Ensure()
+	if len(cls.TypeParams) == n {
+		return cls
+	}
+	key := "mismatch:" + cls.Name + "/" + strconv.Itoa(n)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c, ok := t.m[key]; ok {
+		return c
+	}
+	c := types.NewExternal(cls.Name, func(*types.ClassSym) {})
+	c.Ensure()
+	c.Interface, c.ArityOf = cls.Interface, cls
+	for i := range n {
+		c.TypeParams = append(c.TypeParams, &types.TypeParamSym{Name: "T" + strconv.Itoa(i), Index: i, Owner: c, Library: true})
+	}
+	t.m[key] = c
+	return c
 }
 
 // suspendType maps a suspend function type, which metadata writes as the

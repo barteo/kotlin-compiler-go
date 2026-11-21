@@ -623,7 +623,8 @@ func checkErrors(t *testing.T, srcs []string, err error) {
 
 // TestLibraryErrors checks diagnostics about a library's declarations,
 // which kc reads from class files: testdata/liberrors/X/lib/ is compiled
-// first (its Java files by javac), then X/use/ against it, with
+// first (its Java files by javac), and X/lib2/, if there is one, as a
+// second library module after it, then X/use/ against them, with
 // "// ERROR <substring>" comments as in TestErrors. A first line
 // "// kotlinc: <flags>" of either's first file gives its flags.
 func TestLibraryErrors(t *testing.T) {
@@ -634,26 +635,33 @@ func TestLibraryErrors(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/liberrors/*")
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			libOut := t.TempDir()
-			libSrcs, _ := filepath.Glob(filepath.Join(dir, "lib", "*.kt"))
-			javas, _ := filepath.Glob(filepath.Join(dir, "lib", "*.java"))
-			libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: "lib"}
-			flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
-			if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
-				t.Fatalf("compile library: %v", err)
-			}
-			if len(javas) > 0 {
-				javac, err := exec.LookPath("javac")
-				if err != nil {
-					t.Skip("javac not found on PATH")
+			cp := []string{lib}
+			for _, name := range []string{"lib", "lib2"} {
+				libSrcs, _ := filepath.Glob(filepath.Join(dir, name, "*.kt"))
+				if len(libSrcs) == 0 && name != "lib" {
+					continue
 				}
-				args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
-				if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
-					t.Fatalf("javac: %v\n%s", err, out)
+				libOut := t.TempDir()
+				javas, _ := filepath.Glob(filepath.Join(dir, name, "*.java"))
+				libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: name}
+				flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
+				if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
+					t.Fatalf("compile %s: %v", name, err)
 				}
+				if len(javas) > 0 {
+					javac, err := exec.LookPath("javac")
+					if err != nil {
+						t.Skip("javac not found on PATH")
+					}
+					args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
+					if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+						t.Fatalf("javac: %v\n%s", err, out)
+					}
+				}
+				cp = append(cp, libOut)
 			}
 			srcs, _ := filepath.Glob(filepath.Join(dir, "use", "*.kt"))
-			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: []string{lib, libOut}}
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: cp}
 			flagOptions(&opts, kotlincFlags(srcs[0]))
 			checkErrors(t, srcs, Compile(srcs, opts))
 		})

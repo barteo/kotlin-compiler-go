@@ -1878,7 +1878,14 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	case *syntax.Ident:
 		if x.Member == nil && x.Sym != nil {
 			if n, ok := c.conds[x.Sym]; ok {
-				return n[0], n[1]
+				return c.stableConds(n[0]), c.stableConds(n[1])
+			}
+			// A local that holds the value of a Boolean val (see alias),
+			// as b of val a = x != null; var b = a, says what it says.
+			for _, p := range c.sameAs[flowKey{sym: x.Sym}] {
+				if n, ok := c.conds[p.sym]; ok && p.recv == nil && (!isVar(x.Sym) || c.varStable(x.Sym, types.Type{})) {
+					return c.stableConds(n[0]), c.stableConds(n[1])
+				}
 			}
 		}
 	case *syntax.Is:

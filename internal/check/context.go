@@ -538,8 +538,8 @@ func (c *Checker) contextAccess(x syntax.Expr, f *types.FunSym, m *syntax.Member
 // altProp reports whether property d can be declared beside prev, the
 // property of its name and owner declared before, and those of the name
 // declared beside it (see VarSym.Alt): if the sets of their context
-// parameters' types differ, as written, or, if one is hidden, their
-// order, and so their accessors' JVM descriptors.
+// parameters' types differ, as written, or one is hidden, as kotlinc's
+// frontend lets it be (their accessors may still clash on the JVM).
 func altProp(prev *types.VarSym, d *syntax.PropDecl) bool {
 	ctx := contextTypes(d)
 	for q := range altProps(prev) {
@@ -549,7 +549,7 @@ func altProp(prev *types.VarSym, d *syntax.PropDecl) bool {
 			// Not a constructor's, which has none.
 			qctx, hidden = contextTypes(pd), hidden || pd.Hidden()
 		}
-		if slices.Equal(qctx, ctx) || !hidden && slices.Equal(sorted(qctx), sorted(ctx)) {
+		if !hidden && slices.Equal(sorted(qctx), sorted(ctx)) {
 			return false
 		}
 	}
@@ -614,6 +614,10 @@ func typeKey(b *strings.Builder, t *syntax.TypeRef) {
 	}
 	if t.Nullable {
 		b.WriteByte('?')
+	}
+	if t.And != nil {
+		b.WriteString("&")
+		typeKey(b, t.And)
 	}
 }
 
