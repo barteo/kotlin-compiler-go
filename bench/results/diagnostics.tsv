@@ -4454,13 +4454,13 @@ tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	r
 tests/inference/pcla/fixationOnDemand/miscellaneous/NestedIndependentPCLACall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/PCLACandidateShape.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/ResolutionToMemberOverExtension.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/DefinitelyNonNullTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/FlexibleTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/NullableTypeVariable.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAccess.kt	rejects invalid	on an expected line	

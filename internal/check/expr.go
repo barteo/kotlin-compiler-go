@@ -2355,6 +2355,32 @@ func signedIntLit(x syntax.Expr) bool {
 	return false
 }
 
+// capturedStub reports whether x, of type t, a builder's variable, is the
+// value of a member whose type is a type parameter of its class that the
+// receiver's type projects: provide(): CT of a TypeVariableOwner<OT, out
+// OT>. K2's type is then a captured type, whose members don't fix the
+// variable (KT-71843, KT-71845), though their supertype is the variable.
+func (c *Checker) capturedStub(x syntax.Expr, t types.Type) bool {
+	call, ok := unchecked(x).(*syntax.Call)
+	if !ok || call.Sym == nil || c.stub(t.Flex().NonNull()) == nil {
+		return false
+	}
+	m, ok := call.Fun.(*syntax.Member)
+	if !ok || m.X == nil || call.Sym.Owner == nil {
+		return false
+	}
+	ret := call.Sym.Ret.Flex().NonNull()
+	if !ret.IsParam() {
+		return false
+	}
+	i := slices.Index(call.Sym.Owner.TypeParams, ret.Param())
+	if i < 0 {
+		return false
+	}
+	sup, ok := c.asSuper(m.X.Type().Flex().NonNull(), call.Sym.Owner)
+	return ok && sup.A != nil && i < sup.A.Len() && sup.A.List[i].V != types.Inv
+}
+
 // callReceiver checks the receiver of a member call, expecting want. A
 // nullable receiver can be called without ?. if extensions for nullable
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
@@ -2362,7 +2388,10 @@ func signedIntLit(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
-	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
+	t := c.declaredIfNull(fn.X, vt)
+	if !c.capturedStub(fn.X, t) {
+		t = c.fixedStub(t)
+	}
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
