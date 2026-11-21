@@ -45,6 +45,9 @@ type entry struct {
 type Path struct {
 	classes  map[string]entry // internal name -> where to read it
 	packages map[string]bool  // internal package names, e.g. java/util
+	// dups are the names of classes more than one entry of the class
+	// path has, of which the first is read: see Duplicated.
+	dups map[string]bool
 	// resources are the Kotlin metadata files, by path in the jar. A path
 	// can appear in several jars: modules are often named alike (common,
 	// or the empty module files of umbrella artifacts), so every copy is
@@ -155,6 +158,10 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 
 func (p *Path) add(name string, e entry) {
 	if _, dup := p.classes[name]; dup {
+		if p.dups == nil {
+			p.dups = map[string]bool{}
+		}
+		p.dups[name] = true
 		return
 	}
 	p.classes[name] = e
@@ -163,6 +170,17 @@ func (p *Path) add(name string, e entry) {
 	} else {
 		p.packages[""] = true
 	}
+}
+
+// Duplicated reports whether more than one entry of the class path has
+// the class name, as two modules that each declare a class of a name: the
+// first entry's is the class, and a signature of the other's may name it
+// with other type arguments.
+func (p *Path) Duplicated(name string) bool {
+	if p.dups[name] {
+		return true
+	}
+	return p.base != nil && p.base.Duplicated(name)
 }
 
 // AddSource adds a class that a source file of the module declares, as a

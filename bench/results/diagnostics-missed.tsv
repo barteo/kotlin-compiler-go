@@ -439,10 +439,6 @@ tests/modifiers/primaryConstructorMissingKeyword.kt	primaryConstructorMissingKey
 tests/modifiers/privateInInterface.kt	privateInInterface.kt:10	PRIVATE_FUNCTION_WITH_NO_BODY	missing-check
 tests/modifiers/privateInInterface.kt	privateInInterface.kt:3	PRIVATE_PROPERTY_IN_INTERFACE	missing-check
 tests/multimodule/FluctuatingTypeInference.kt	foo.kt:9	INITIALIZER_TYPE_MISMATCH	nearby
-tests/multimodule/duplicateClass/differentGenericArgumentsReversed.kt	b.kt:5	ARGUMENT_TYPE_MISMATCH	accepted
-tests/multimodule/duplicateClass/genericSuperClass.kt	b.kt:5	ARGUMENT_TYPE_MISMATCH	accepted
-tests/multimodule/duplicateClass/genericSuperClass.kt	b.kt:6	ARGUMENT_TYPE_MISMATCH	accepted
-tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt	x.kt:6	NOTHING_TO_OVERRIDE	accepted
 tests/multimodule/hiddenClass/deprecatedHiddenMultipleClasses.kt	oneExplicitImportOtherStars.kt:7	UNRESOLVED_REFERENCE	missing-check
 tests/multimodule/hiddenClass/deprecatedHiddenMultipleClasses.kt	severalStarImports.kt:6	UNRESOLVED_REFERENCE	missing-check
 tests/nestedTypeAliases/innerRHSInGeneric.kt	innerRHSInGeneric.kt:42	RETURN_TYPE_MISMATCH	syntax-error

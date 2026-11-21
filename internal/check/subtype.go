@@ -111,6 +111,13 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	case types.Any:
 		return true
 	case types.Class:
+		if t.K == types.Class && t.C == u.C.ArityOf && len(t.C.TypeParams) == 0 {
+			// A class without type parameters, as one of another
+			// module's of its name with some: K2 compares the arguments
+			// of the class it finds, none, and not those of the
+			// supertypes of a subclass.
+			return true
+		}
 		if u.A == nil {
 			// A non-generic class: no arguments to compare.
 			var tc *types.ClassSym

@@ -6023,11 +6023,11 @@ tests/multimodule/dependencyModule.kt	rejects invalid	on an expected line
 tests/multimodule/dependsOnModule.kt	skip	LANGUAGE	
 tests/multimodule/duplicateClass/collectionMethodStub.kt	skip	ALLOW_KOTLIN_PACKAGE	
 tests/multimodule/duplicateClass/differentGenericArguments.kt	accepts valid		
-tests/multimodule/duplicateClass/differentGenericArgumentsReversed.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	b.kt:5: ARGUMENT_TYPE_MISMATCH
+tests/multimodule/duplicateClass/differentGenericArgumentsReversed.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/duplicateClass.kt	accepts valid		
 tests/multimodule/duplicateClass/duplicateNestedClasses.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/duplicateSuperClass.kt	accepts valid		
-tests/multimodule/duplicateClass/genericSuperClass.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	b.kt:5: ARGUMENT_TYPE_MISMATCH
+tests/multimodule/duplicateClass/genericSuperClass.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateClass/inTheSameModuleWithUsage.kt	accepts valid		
 tests/multimodule/duplicateClass/inTheSameModuleWithUsageNoTypeAnnotation.kt	accepts valid		
 tests/multimodule/duplicateClass/members.kt	rejects invalid	on an expected line	
@@ -6060,7 +6060,7 @@ tests/multimodule/duplicateMethod/sinceKotlin.kt	skip	API_VERSION
 tests/multimodule/duplicateMethod/substitutedGenericInParams.kt	accepts valid		
 tests/multimodule/duplicateSuper/differentSuperTraits.kt	accepts valid		
 tests/multimodule/duplicateSuper/sameSuperTrait.kt	accepts valid		
-tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt	accepts invalid	NOTHING_TO_OVERRIDE	x.kt:6: NOTHING_TO_OVERRIDE
+tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateSuper/sameSuperTraitGenerics.kt	accepts valid		
 tests/multimodule/friendModule.kt	rejects invalid	on an expected line	
 tests/multimodule/friendModulePrivate.kt	rejects invalid	on an expected line	

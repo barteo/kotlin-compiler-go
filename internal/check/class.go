@@ -849,10 +849,12 @@ func invArray(t types.Type) types.Type {
 // sameBounds reports whether the type parameters of methods f and g,
 // whose types sameParams maps by fs and gs, have the same upper bounds,
 // in any order: functions that differ only in them are overloads, as
-// with kotlinc, not overrides. Only the program's declarations are
-// compared, whose bounds are as written.
+// with kotlinc, not overrides. Only the program's declarations and Kotlin
+// classes' members of the class path are compared, whose bounds are as
+// written; a Java method's are not what Kotlin sees.
 func (c *Checker) sameBounds(fs, gs types.Subst, f, g *types.FunSym) bool {
-	if f.Decl == nil || g.Decl == nil {
+	asWritten := func(f *types.FunSym) bool { return f.Decl != nil || f.Owner != nil && f.Owner.FromKotlin }
+	if !asWritten(f) || !asWritten(g) {
 		return true
 	}
 	for i, p := range f.TypeParams {
