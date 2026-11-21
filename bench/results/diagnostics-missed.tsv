@@ -385,6 +385,11 @@ tests/j+k/collectionOverrides/containsAll.kt	main.kt:28	ARGUMENT_TYPE_MISMATCH	a
 tests/j+k/collectionOverrides/containsAll.kt	main.kt:31	ARGUMENT_TYPE_MISMATCH	accepted
 tests/j+k/collectionOverrides/containsAndOverload.kt	main.kt:2	ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE	missing-check
 tests/j+k/collectionOverrides/irrelevantImplMutableList.kt	X.kt:8	ARGUMENT_TYPE_MISMATCH	missing-check
+tests/j+k/differentFilename.kt	main.kt:2	MISSING_DEPENDENCY_CLASS	accepted
+tests/j+k/differentFilename.kt	main.kt:2	UNRESOLVED_REFERENCE	accepted
+tests/j+k/differentFilename.kt	main.kt:3	MISSING_DEPENDENCY_CLASS	accepted
+tests/j+k/differentFilename.kt	main.kt:3	UNRESOLVED_REFERENCE	accepted
+tests/j+k/differentFilename.kt	main.kt:5	UNRESOLVED_REFERENCE	accepted
 tests/j+k/genericConstructor/classTypeParameterInferredFromArgument.kt	main.kt:3	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/j+k/genericConstructor/innerClass.kt	main.kt:5	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/j+k/genericFunAndClassNullabilityInconsistency.kt	Test.kt:5	ARGUMENT_TYPE_MISMATCH	accepted
@@ -462,6 +467,7 @@ tests/privateInFile/visibility.kt	file2.kt:5	INVISIBLE_REFERENCE	missing-check
 tests/problems/emptySelectorInQualifiedExpression.kt	emptySelectorInQualifiedExpression.kt:28	UNRESOLVED_REFERENCE	syntax-error
 tests/problems/invalidCode.kt	c.kt:3	UNRESOLVED_IMPORT	syntax-error
 tests/problems/invalidCode.kt	c.kt:5	UNRESOLVED_IMPORT	syntax-error
+tests/problems/multipleJavaClassesInOneFile.kt	main.kt:5	UNRESOLVED_REFERENCE	accepted
 tests/propertyOfFinalClassSmartcastEdgeCases.kt	Kotlin.kt:37	CANNOT_CHECK_FOR_ERASED	nearby
 tests/redeclarations/DuplicateParameterNamesInFunctionType.kt	DuplicateParameterNamesInFunctionType.kt:10	DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE	missing-check
 tests/redeclarations/DuplicateParameterNamesInFunctionType.kt	DuplicateParameterNamesInFunctionType.kt:6	DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE	missing-check

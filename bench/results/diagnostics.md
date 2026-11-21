@@ -6,16 +6,16 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4450 | 51.7% |
+| rejects invalid | 4448 | 51.6% |
 | accepts valid | 4150 | 48.2% |
-| accepts invalid | 13 | 0.2% |
+| accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4450 tests both reject, kc reports an error on the line of an expected one in 4395.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4393.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -49,14 +49,15 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 |:---|---:|---:|:---|
 | `ARGUMENT_TYPE_MISMATCH` | 4 | 4 | `tests/j+k/collectionOverrides/containsAll.kt`, `tests/j+k/genericFunAndClassNullabilityInconsistency.kt` |
 | `(no error marked)` | 3 | 3 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
+| `UNRESOLVED_REFERENCE` | 3 | 1 | `tests/j+k/differentFilename.kt`, `tests/problems/multipleJavaClassesInOneFile.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `CONDITION_TYPE_MISMATCH` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `MEMBER_PROJECTED_OUT` | 1 | 1 | `tests/typealias/starProjection.kt` |
+| `MISSING_DEPENDENCY_CLASS` | 1 | 0 | `tests/j+k/differentFilename.kt` |
 | `SYNTAX` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `UNRESOLVED_REFERENCE` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 
 ## Rejects valid
 
@@ -66,12 +67,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21358 of 22025 expected errors (97.0%) on their lines.
+kc reports 21352 of 22025 expected errors (96.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1397 | 94 |
-| `UNRESOLVED_REFERENCE` | 2552 | 2480 | 72 |
+| `UNRESOLVED_REFERENCE` | 2552 | 2476 | 76 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 596 | 39 |
 | `RETURN_TYPE_MISMATCH` | 418 | 399 | 19 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 69 | 18 |
@@ -138,11 +139,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 28 | 4.2% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2, `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` 1 |
-| syntax-error | 78 | 11.7% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 5.1% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 78 | 11.6% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 96 | 14.4% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 465 | 69.7% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 43, `CANNOT_INFER_PARAMETER_TYPE` 30, `INVISIBLE_REFERENCE` 14, `OVERLOAD_RESOLUTION_AMBIGUITY` 13 |
+| nearby | 96 | 14.3% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 465 | 69.1% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 43, `CANNOT_INFER_PARAMETER_TYPE` 30, `INVISIBLE_REFERENCE` 14, `OVERLOAD_RESOLUTION_AMBIGUITY` 13 |
 
 ## Errors kotlinc doesn't report
 

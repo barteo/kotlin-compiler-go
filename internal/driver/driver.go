@@ -614,11 +614,6 @@ func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside)
 	set := javasrc.NewSet(files)
 	set.Outside = outside
 	for _, name := range set.Names() {
-		if set.Misplaced(name) {
-			// Not a class Kotlin sees: one its Java sources' signatures
-			// name is missing (MISSING_DEPENDENCY_CLASS).
-			continue
-		}
 		cp.AddSource(name, sync.OnceValues(func() (*cf.Info, error) { return set.Info(name) }))
 	}
 	return set

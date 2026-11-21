@@ -242,7 +242,10 @@ sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
 
-Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
+Some *accepts invalid* tests are out of `kc`'s reach, and stay so.
+`kotlinc` compiles them under the harness too (see the self-check
+below), except for the quirk and the FIR2IR tests and
+`missingTypeOfParameterInFakeOverride_2`:
 
 - **A class path without the standard library**: the two
   `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
@@ -253,13 +256,6 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `Map<*, *>` the library's `get` extension resolves.
 - **A directive `kc` doesn't model**: `PROGRESSIVE_MODE`
   (`dataClassInternalConstructorUsageWillBecomeInaccessible`).
-- **The backend's analysis of inlined library bodies**: the calls in
-  `jvm/typeOf/suspendType` that reach `typeOf` through another reified
-  function.
-- **Two classes with the same name in two modules**: the three
-  `multimodule/duplicate*` tests and
-  `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
-  its name alone.
 - **Java source roots**: `j+k/differentFilename` and
   `problems/multipleJavaClassesInOneFile`. They expect a Java file's
   classes other than the one it is named after to be unresolved. That
@@ -271,8 +267,12 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `nullableTypes/nullAssertOnTypeWithNullableUpperBound` and
   `safeCallOnTypeWithNullableUpperBound` are valid to the frontend, and
   `kotlinc`'s JVM backend crashes on them, which is why they stop at
-  `FIR2IR`. `j+k/missingTypeOfParameterInFakeOverride_1` needs a
-  dependency's class missing from a later module's class path.
+  `FIR2IR`.
+- **A dependency's dependency off the class path**:
+  `j+k/missingTypeOfParameterInFakeOverride_1` and `_2` need a class of
+  a module that a later module doesn't depend on to be missing from
+  that module's class path. `kc`, like the harness, puts every earlier
+  module on it.
 
 The other two are `kc`'s own. `regressions/kt334` expects
 `java.lang.Comparable` to be a type of its own, which `kc` takes as
@@ -305,25 +305,25 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,614 | |
-| rejects invalid | 4,445 | 51.6% |
+| rejects invalid | 4,448 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
-| accepts invalid | 18 | 0.2% |
+| accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,341 of the 22,025 expected errors (96.9%) on their lines, and 2,921 of
-the 3,667 expected warnings (79.7%), with 18 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 6 of the 18
+21,352 of the 22,025 expected errors (96.9%) on their lines, and 3,093 of
+the 3,667 expected warnings (84.3%), with 18 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 6 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 6) and unresolved names
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 4) and unresolved names
   (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
   two. All but two are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.

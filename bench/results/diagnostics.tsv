@@ -5299,7 +5299,7 @@ tests/j+k/deprecations/forMixedOverride.kt	accepts valid
 tests/j+k/deprecations/forOverrides.kt	accepts valid		
 tests/j+k/deprecations/hiddenJavaClass.kt	accepts valid		
 tests/j+k/deprecations/javaWithHiddenDeprecation.kt	rejects invalid	on an expected line	
-tests/j+k/differentFilename.kt	rejects invalid	on an expected line	
+tests/j+k/differentFilename.kt	accepts invalid	MISSING_DEPENDENCY_CLASS; UNRESOLVED_REFERENCE	main.kt:2: MISSING_DEPENDENCY_CLASS
 tests/j+k/enumGetOrdinal.kt	accepts valid		
 tests/j+k/exceptionMessage.kt	accepts valid		
 tests/j+k/exceptionToStringOverride.kt	accepts valid		
@@ -7251,7 +7251,7 @@ tests/problems/kt6415.kt	accepts valid
 tests/problems/kt645.kt	accepts valid		
 tests/problems/kt6651.kt	accepts valid		
 tests/problems/kt68590.kt	rejects invalid	on an expected line	
-tests/problems/multipleJavaClassesInOneFile.kt	rejects invalid	on an expected line	
+tests/problems/multipleJavaClassesInOneFile.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:5: UNRESOLVED_REFERENCE
 tests/problems/objectDerivedFromInnerClass.kt	rejects invalid	on an expected line	
 tests/problems/primaryConstructorParameterWithoutReturnType.kt	rejects invalid	on an expected line	
 tests/problems/questionableSmartCast.kt	accepts valid		

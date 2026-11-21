@@ -310,15 +310,13 @@ public class JavaSrc<T> extends Base implements Runnable {
     static class Nested { void inside(long l) {} }
     public enum Mode { ON, OFF }
 }
+
+class Base {}
+class Orphan extends Gone implements Runnable { public void run() {} }
+abstract class Mixed implements Runnable, Lost, Comparable<String> {}
 `
-	// Kotlin finds a top-level Java class only in the file named after it,
-	// as kotlinc does.
-	base := "package j;\n\nclass Base {}\n"
-	orphan := "package j;\n\nclass Orphan extends Gone implements Runnable { public void run() {} }\n"
-	mixed := "package j;\n\nabstract class Mixed implements Runnable, Lost, Comparable<String> {}\n"
 	kotlin := "package j\ninternal class UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
-	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}, {Path: "j/Base.java", Text: &base},
-		{Path: "j/Orphan.java", Text: &orphan}, {Path: "j/Mixed.java", Text: &mixed}}
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
 	s := Open(withJDK(t))
 	defer s.Close()
 	m, err := s.Update(context.Background(), sources)
@@ -611,8 +609,6 @@ func TestJavaSelfBound(t *testing.T) {
 public class Node<T> implements Comparable<Node<T>> {
     public int compareTo(Node<T> other) { return 0; }
 }
-`
-	bag := `package j;
 
 class Bag<T> implements Comparable<Bag<T>> {
     public int compareTo(Bag<T> other) { return 0; }
@@ -620,7 +616,7 @@ class Bag<T> implements Comparable<Bag<T>> {
 }
 `
 	kotlin := "package j\nprivate fun f(n: Node<String>, b: Bag<String>) = n.compareTo(n) + b.compareTo(b)\n"
-	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Node.java", Text: &java}, {Path: "j/Bag.java", Text: &bag}}
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Node.java", Text: &java}}
 	s := Open(withJDK(t))
 	defer s.Close()
 	m, err := s.Update(context.Background(), sources)
