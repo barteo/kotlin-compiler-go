@@ -2396,7 +2396,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 				stateErrs = append(stateErrs, e)
 			}
 		}
-		if ok || !ambiguous {
+		if ok || !ambiguous || len(group) == 1 {
 			continue
 		}
 		for _, v := range r.extra[ne:] {

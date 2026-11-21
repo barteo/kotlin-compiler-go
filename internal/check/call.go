@@ -1147,6 +1147,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 					maximal = append(maximal, cd)
 				}
 			}
+			if slices.ContainsFunc(match, func(cd *candidate) bool { return cd.ext.K != types.Invalid && len(cd.tparams) > 0 }) {
+				// Not of generic extensions, whose own variables the stub
+				// bounds: K2 finds fooExt(inv) ambiguous for Controller<T1>'s
+				// fooExt(vararg T1) and Controller<T2>'s fooExt(Inv<T2>).
+				maximal = nil
+			}
 			if len(maximal) != 1 {
 				maximal = nil
 			}
