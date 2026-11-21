@@ -3489,6 +3489,29 @@ func (c *Checker) stub(t types.Type) *stubRun {
 	return c.stubs[t.Param()]
 }
 
+// stubIn returns the run of the first variable stubInference is
+// inferring that t mentions, if any.
+func (c *Checker) stubIn(t types.Type) *stubRun {
+	var r *stubRun
+	if len(c.stubs) > 0 {
+		t.Has(func(u types.Type) bool {
+			r = c.stub(u)
+			return r != nil
+		})
+	}
+	return r
+}
+
+// withoutStubs returns f's result with no variable treated as a stub: a
+// subtype check then adds no constraint, and a stub fits only types that
+// any type does.
+func (c *Checker) withoutStubs(f func() bool) bool {
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	return f()
+}
+
 // hasStub reports whether t mentions a variable that stubInference is
 // inferring.
 func (c *Checker) hasStub(t types.Type) bool {

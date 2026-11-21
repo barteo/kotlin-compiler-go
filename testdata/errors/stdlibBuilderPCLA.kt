@@ -16,6 +16,7 @@ fun lambdaInput(x: List<String>) = buildList {
 class TargetType
 
 interface TypeSource {
+    fun produceBuildee(): Buildee<TargetType>
     fun produce(): TargetType
 }
 
@@ -35,6 +36,15 @@ fun anonymousObject() {
     build { // ERROR cannot infer type for type parameter 'PTV'
         object : TypeSource {
             override fun produce() = get()
+            override fun produceBuildee() = Buildee<TargetType>()
+        }
+    }
+    // A member whose return type a builder's variable is an argument of
+    // doesn't fit, as the stub's type doesn't in K2.
+    build { // ERROR cannot infer type for type parameter 'PTV'
+        object : TypeSource {
+            override fun produce() = TargetType()
+            override fun produceBuildee() = this@build // ERROR return type of 'produceBuildee' is not a subtype
         }
     }
 }

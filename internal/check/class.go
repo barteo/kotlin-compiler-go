@@ -1235,6 +1235,16 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				continue
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
+			if r := c.stubIn(f.Ret); r != nil && c.stub(f.Ret.Flex().NonNull()) == nil && !ret.HasVars() && !c.withoutStubs(func() bool { return c.overrideRetFits(f.Ret, ret) }) {
+				// An inferred return type of a builder's variable, = this@build
+				// for a Buildee<PTV>: as in K2, the override's check gives
+				// the variable nothing, and its stub type doesn't fit. K2
+				// lets = get() for PTV itself pass.
+				if c.trial != nil {
+					r.recvs = append(r.recvs, stubRecv{p: fd.P, msg: fmt.Sprintf("return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())})
+				}
+				continue
+			}
 			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.overrideRetFits(f.Ret, ret) {
 				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}

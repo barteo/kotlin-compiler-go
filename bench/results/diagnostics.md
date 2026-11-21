@@ -66,7 +66,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21552 of 22026 expected errors (97.8%) on their lines.
+kc reports 21553 of 22026 expected errors (97.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -141,8 +141,8 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | accepted | 34 | 7.2% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
 | syntax-error | 74 | 15.6% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 58 | 12.2% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 308 | 65.0% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 33, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| nearby | 58 | 12.3% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 307 | 64.9% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 33, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
