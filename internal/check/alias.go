@@ -249,6 +249,20 @@ func projectionRedundant(t types.Type, p *types.TypeParamSym, v types.Variance) 
 }
 
 // redundantProjection warns of a use-site projection that repeats the
+
+// projection checks the projection of type argument a for type parameter
+// p of class cls: in or out against the other variance conflicts, and the
+// same one is redundant.
+func (c *Checker) projection(a *syntax.TypeArg, p *types.TypeParamSym, cls *types.ClassSym) {
+	switch {
+	case a.Variance == types.Inv || a.Variance == types.Star:
+	case p.Var != types.Inv && a.Variance != p.Var:
+		c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+	case a.Variance == p.Var:
+		c.redundantProjection(a.P)
+	}
+}
+
 // declared variance of its type parameter, as kotlinc does.
 func (c *Checker) redundantProjection(p syntax.Pos) {
 	c.warnf(p, "REDUNDANT_PROJECTION", "projection is redundant: the corresponding type parameter has the same variance")

@@ -1891,7 +1891,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		}
 	}
 	if p.at(LPAREN) {
-		cd.HasPrimary = true
+		cd.HasPrimary, cd.WrittenPrimary = true, true
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()

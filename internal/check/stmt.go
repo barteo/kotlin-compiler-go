@@ -643,6 +643,9 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	defer func() { c.declName = saved }()
 	if s.Delegate != nil {
+		if s.Lateinit {
+			c.lateinitChecks(s.LateinitP, s.Mutable, false, true, types.InvalidType)
+		}
 		c.localDelegate(s)
 		return
 	}
@@ -1046,7 +1049,8 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
 		}
-		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
+		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) ||
+			!protectedMember(x.Prop) && x.Prop.Kind == types.Prop && setterVis(x.Prop) == syntax.Protected && !c.protectedSetterVia(x.Prop, x.X) {
 			c.invisibleSetter(x.P, x.Prop)
 			return t, false
 		}

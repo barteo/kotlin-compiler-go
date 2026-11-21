@@ -278,12 +278,13 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	inner := c.refLHS
 	c.refLHS = false
 	defer func() { c.refLHS = inner }()
-	for _, a := range ref.Args {
+	for i, a := range ref.Args {
 		arg := types.Arg{V: a.Variance}
 		if a.Variance != types.Star {
 			if arg.T = c.resolveType(a.Type); arg.T.K == types.Invalid {
 				return arg.T
 			}
+			c.projection(a, cls.TypeParams[i], cls)
 		}
 		args = append(args, arg)
 	}

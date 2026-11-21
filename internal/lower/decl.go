@@ -475,7 +475,7 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
 		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
 		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
-			cd.HasPrimary = true
+			cd.HasPrimary, cd.WrittenPrimary = true, true
 			cd.CtorParams = l.ctorParams(ps)
 		}
 	}

@@ -395,10 +395,15 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 				ok = false
 				continue
 			}
+			var array syntax.Pos // that of arrayOf(a, b) or [a, b], whose elements these are
+			if arg.array && !v.Vararg && val.Array {
+				array = arg.pos
+			}
 			if val.Array && !arg.array && (!v.Vararg || arg.name != "") && len(elems) == 1 {
 				// arrayOf(a, b) or [a, b] for an array parameter, or a
 				// vararg one by name: ReplaceWith(imports = ["a.b"])
 				if inner, ok := syntax.ArrayElems(elems[0]); ok {
+					array = elems[0].Pos()
 					if got := arrayFactoryType(elems[0]); got.K != types.Invalid && got.C != t.C && t.K != types.Invalid {
 						// intArrayOf() for a vararg of Strings
 						c.errorf(elems[0].Pos(), "argument type mismatch: actual type is %s but %s was expected", got, t)
@@ -418,10 +423,26 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 			if val.Array {
 				elems = syntax.FlattenSpreads(elems) // *arrayOf(a, b)
 			}
+			nonConst := false
 			for _, x := range elems {
+				n := len(c.errs)
 				e, eok := c.annotationElem(x, elem)
 				ok = ok && eok
 				val.Elems = append(val.Elems, e)
+				for _, err := range c.errs[n:] {
+					if err.Msg == nonConstArgMsg {
+						// Of KClasses, only a class literal's, T::class,
+						// not ""::class or a val's, which kotlinc
+						// reports as not being class literals.
+						lit, isLit := c.nonConst(x).(*syntax.ClassLit)
+						kclass := elem.K == types.Class && elem.C.Name == "kotlin/reflect/KClass"
+						nonConst = nonConst || isLit && !lit.Bound || !isLit && !kclass
+					}
+				}
+			}
+			if nonConst && array.Line > 0 {
+				// As kotlinc, the array isn't constant either.
+				c.errorf(array, "only 'const val' can be used in constant expressions")
 			}
 			if ok && arg.array && targs != nil && !v.Vararg && val.Array {
 				ok = c.literalAnnotations(cls, targs, v.Type, elems, arg.pos)
@@ -627,11 +648,15 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	c.assignable(c.value(x, t), t, x.Pos())
 	if len(c.errs) == before {
 		if bad := c.nonConst(x); bad != nil {
-			c.errorf(bad.Pos(), "annotation argument must be a compile-time constant")
+			c.errorf(bad.Pos(), nonConstArgMsg)
 		}
 	}
 	return syntax.AnnotationElem{X: x}, len(c.errs) == before
 }
+
+// nonConstArgMsg is the error of an annotation's argument that isn't a
+// constant.
+const nonConstArgMsg = "annotation argument must be a compile-time constant"
 
 // declAnnotations checks the annotations of declaration d, in class owner
 // (nil at top level), and of its parameters, accessors and members.
@@ -675,11 +700,18 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.noFileTarget(d.Annotations)
 		c.onAccessor(d.Annotations)
 		c.publishedApi(&d.Modifiers)
-		c.annotations(d.Annotations, owner, propSite(owner))
+		site := propSite(owner)
+		hasField := d.Sym != nil && (d.Sym.HasField() || d.Lateinit || d.Const || d.BackingField != nil || d.Expect)
+		if d.Sym != nil && !hasField && !externalAccessors(d) {
+			// Its annotations go to the property, as it has no field.
+			site.targets &^= types.TargetField
+			site.name = "member property without backing field or delegate"
+		}
+		c.annotations(d.Annotations, owner, site)
 		if d.Field != nil {
 			c.noAllTarget(d.Annotations, "delegated properties")
 		} else if d.Sym != nil {
-			c.allTargets(d.Annotations, false, d.Mutable, d.Sym.HasField() || d.Lateinit || d.Const || d.BackingField != nil || d.Expect)
+			c.allTargets(d.Annotations, false, d.Mutable, hasField)
 		}
 		if !d.Mutable {
 			c.setOnImmutable(d.Annotations)
@@ -912,8 +944,7 @@ func (c *Checker) fieldless(d *syntax.PropDecl) {
 	if d.Sym == nil || d.Expect || d.BackingField != nil || d.Lateinit || d.Const {
 		return
 	}
-	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
-	if ext {
+	if externalAccessors(d) {
 		return
 	}
 	for _, a := range d.Annotations {
@@ -927,6 +958,12 @@ func (c *Checker) fieldless(d *syntax.PropDecl) {
 			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field or delegate' and use-site target '@field'")
 		}
 	}
+}
+
+// externalAccessors reports whether property d has an external accessor,
+// whose field is the native code's business.
+func externalAccessors(d *syntax.PropDecl) bool {
+	return d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 }
 
 // repeatedSetparam reports an annotation @setparam:A of property d whose

@@ -256,8 +256,8 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 		return nil
 	case *syntax.Binary:
 		switch x.Op {
-		case syntax.RANGE, syntax.RANGE_LT, syntax.ELVIS:
-			return x
+		case syntax.RANGE, syntax.RANGE_LT, syntax.ELVIS, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			return x // 1 === 2 isn't evaluated either
 		}
 		// "1" + MyEnum.A, A::class == B::class
 		if !constType(x.X.Type()) || !constType(x.Y.Type()) {

@@ -376,6 +376,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Targets = types.JavaTargets(info.JavaTargets)
 			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
 		}
+		if cls.Name == "java/lang/Deprecated" {
+			// kotlinc reads it as kotlin.Deprecated, which applies to
+			// properties: without a field, as val x get() = 1.
+			cls.Targets |= types.TargetProperty
+		}
 		cls.TargetsKnown = known
 		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
 	}

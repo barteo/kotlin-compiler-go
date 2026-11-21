@@ -67,20 +67,19 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21394 of 22025 expected errors (97.1%) on their lines.
+kc reports 21438 of 22025 expected errors (97.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1397 | 94 |
 | `UNRESOLVED_REFERENCE` | 2552 | 2476 | 76 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 596 | 39 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
 | `RETURN_TYPE_MISMATCH` | 418 | 399 | 19 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 69 | 18 |
 | `INVISIBLE_REFERENCE` | 525 | 508 | 17 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 145 | 14 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 237 | 14 |
 | `SMARTCAST_IMPOSSIBLE` | 183 | 170 | 13 |
-| `WRONG_ANNOTATION_TARGET` | 403 | 392 | 11 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 145 | 10 |
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 119 | 8 |
@@ -89,9 +88,6 @@ kc reports 21394 of 22025 expected errors (97.1%) on their lines.
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 107 | 7 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 245 | 6 |
-| `INVISIBLE_SETTER` | 45 | 39 | 6 |
-| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 90 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
@@ -99,8 +95,6 @@ kc reports 21394 of 22025 expected errors (97.1%) on their lines.
 | `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
 | `VAL_REASSIGNMENT` | 231 | 226 | 5 |
 | `BUILDER_INFERENCE_STUB_RECEIVER` | 5 | 1 | 4 |
-| `CONFLICTING_PROJECTION` | 29 | 25 | 4 |
-| `INAPPLICABLE_LATEINIT_MODIFIER` | 61 | 57 | 4 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 21 | 4 |
 | `OPT_IN_USAGE_ERROR` | 102 | 98 | 4 |
 | `UPPER_BOUND_VIOLATED` | 125 | 121 | 4 |
@@ -108,7 +102,6 @@ kc reports 21394 of 22025 expected errors (97.1%) on their lines.
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 221 | 3 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 24 | 3 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 88 | 3 |
-| `CONSTRUCTOR_IN_INTERFACE` | 13 | 10 | 3 |
 | `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
 | `INCONSISTENT_BACKING_FIELD_TYPE` | 18 | 15 | 3 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 11 | 3 |
@@ -122,7 +115,6 @@ kc reports 21394 of 22025 expected errors (97.1%) on their lines.
 | `UNSAFE_CALL` | 525 | 522 | 3 |
 | `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
-| `ANONYMOUS_INITIALIZER_IN_INTERFACE` | 4 | 2 | 2 |
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 32 | 2 |
 | `CONTEXT_PARAMETERS_WITH_BACKING_FIELD` | 2 | 0 | 2 |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 43 | 2 |
@@ -131,6 +123,14 @@ kc reports 21394 of 22025 expected errors (97.1%) on their lines.
 | `ILLEGAL_ESCAPE` | 20 | 18 | 2 |
 | `ILLEGAL_INLINE_PARAMETER_MODIFIER` | 8 | 6 | 2 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
+| `INAPPLICABLE_FILE_TARGET` | 11 | 9 | 2 |
+| `INNER_CLASS_CONSTRUCTOR_NO_RECEIVER` | 34 | 32 | 2 |
+| `INVALID_IF_AS_EXPRESSION` | 46 | 44 | 2 |
+| `ITERATOR_MISSING` | 10 | 8 | 2 |
+| `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 7 | 5 | 2 |
+| `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 35 | 33 | 2 |
+| `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
+| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 94 | 2 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -139,11 +139,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 5.4% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 77 | 12.2% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 5.8% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 76 | 12.9% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 96 | 15.2% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 424 | 67.2% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 43, `CANNOT_INFER_PARAMETER_TYPE` 30, `INVISIBLE_REFERENCE` 14, `OVERLOAD_RESOLUTION_AMBIGUITY` 13 |
+| nearby | 96 | 16.4% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 381 | 64.9% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 43, `CANNOT_INFER_PARAMETER_TYPE` 28, `INVISIBLE_REFERENCE` 14, `OVERLOAD_RESOLUTION_AMBIGUITY` 13 |
 
 ## Errors kotlinc doesn't report
 
@@ -193,7 +193,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3093 of the 3667 warnings the tests expect (84.3%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3095 of the 3667 warnings the tests expect (84.4%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -219,7 +219,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
 | `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 45 | 0 |
-| `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
+| `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
 | `USELESS_ELVIS` | 44 | 40 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
