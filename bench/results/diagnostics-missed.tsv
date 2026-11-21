@@ -178,12 +178,6 @@ tests/inference/pcla/csForks/relatedToOuter.kt	relatedToOuter.kt:28	ARGUMENT_TYP
 tests/inference/pcla/csForks/relatedToOuter.kt	relatedToOuter.kt:48	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	BasicErrors.kt:4	BUILDER_INFERENCE_STUB_RECEIVER	missing-check
 tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	BasicErrors.kt:9	BUILDER_INFERENCE_STUB_RECEIVER	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:112	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:114	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:16	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:18	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:87	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	NestedDependentPCLACall.kt:89	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	ContravariantTypeVariableCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	CovariantTypeVariableCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	TypeVariableStarCapture.kt:10	UNRESOLVED_REFERENCE	nearby

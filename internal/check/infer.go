@@ -1521,7 +1521,15 @@ func (s *system) owns(t types.Type) bool {
 
 // known reports whether each unfixed variable in t has a known bound, so
 // that it can be fixed.
-func (s *system) known(t types.Type) bool {
+func (s *system) known(t types.Type) bool { return s.knownBy(t, false) }
+
+// knownBesidesAny is known, but an upper bound Any?, as an expected type
+// Any? gives, doesn't make a variable known: K2 doesn't add T <: Any?, and
+// a builder's lambda then infers T, nestedPCLA(...) { } returned by a
+// lambda of type (...) -> Any?.
+func (s *system) knownBesidesAny(t types.Type) bool { return s.knownBy(t, true) }
+
+func (s *system) knownBy(t types.Type, besidesAny bool) bool {
 	return !s.apply(t).Has(func(u types.Type) bool {
 		if u.K != types.TypeVar {
 			return false
@@ -1530,8 +1538,11 @@ func (s *system) known(t types.Type) bool {
 		if tv == nil || tv.fixed || len(tv.lits) > 0 {
 			return false
 		}
-		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
-			if s.proper(b) {
+		if slices.ContainsFunc(tv.lower, s.proper) {
+			return false
+		}
+		for _, b := range tv.upper {
+			if s.proper(b) && !(besidesAny && b.K == types.Any && b.N) {
 				return false
 			}
 		}

@@ -272,7 +272,11 @@ own tests.
   captured type of a projection stands for (KT-71843, KT-71845). As in K2, it fixes one with a constraint
   by a proper type, directly or through the variables below it, and
   semi-fixes one bounded by a type of other variables (`Box<PNTv> <:
-  OTv`), but not one only below another variable (KT-72030), nor any in
+  OTv`); a nested builder's variable fixes the outer builders' below it
+  first, and an outer builder's sees the bounds the nested builder being
+  checked gives it. An expected type `Any?` doesn't fix a builder's
+  variable before its lambda, as K2 doesn't add `T <: Any?`. It fixes
+  none only below another variable (KT-72030), nor any in
   an increment or decrement (KT-71778); a bare type in an `is` or `as`
   fixes the subject's; a call whose variable nothing gives a type yet,
   `createDerivativeTypeVariable()`, is inferred with the builder's

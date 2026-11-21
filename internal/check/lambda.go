@@ -2448,7 +2448,12 @@ func (c *Checker) stubVars(s *system, params []types.Type, vars []*types.TypePar
 	for _, p := range params {
 		s.apply(p).Has(func(u types.Type) bool {
 			tv := s.unfixedVar(u.NonNull())
-			if tv != nil && !s.properBelow(tv, nil) && !slices.ContainsFunc(tv.upper, s.proper) && c.stubs[tv.v] == nil && !slices.Contains(vars, tv.v) {
+			// T <: Any?, as an expected type Any? gives, says nothing: K2
+			// doesn't add it.
+			properAbove := func() bool {
+				return slices.ContainsFunc(tv.upper, func(u types.Type) bool { return s.proper(u) && !(u.K == types.Any && u.N) })
+			}
+			if tv != nil && !s.properBelow(tv, nil) && !properAbove() && c.stubs[tv.v] == nil && !slices.Contains(vars, tv.v) {
 				vars = append(vars, tv.v)
 			}
 			return false
@@ -2837,7 +2842,7 @@ func (r *stubRun) build(saved map[*types.TypeParamSym]*stubRun) (*system, [][2]t
 	// as in K2's one system for nested builders: its run's system and
 	// constraints join the copy, though r fixes only its own.
 	var outers []*stubRun
-	for _, v := range r.extra {
+	for _, v := range slices.Concat(r.vars, r.extra) {
 		tv := trial.byVar[v]
 		if tv == nil {
 			continue
@@ -2862,7 +2867,48 @@ func (r *stubRun) build(saved map[*types.TypeParamSym]*stubRun) (*system, [][2]t
 			}
 		}
 	}
-	for _, q := range outers {
+	// So is an inner builder's stub that is bounded by one of r's, whose
+	// run, being checked, has it: SOTv <: FOTv, from
+	// nestedPCLA(fotvOwner.provideAnchor()) for an Anchor<in SOT>, and
+	// ScopeOwner <: SOTv fix FOTv to ScopeOwner.
+	mine := func(u types.Type) bool { return u.K == types.TypeVar && slices.Contains(r.vars, u.Param()) }
+	var inners []*stubRun
+	for _, q := range saved {
+		if q.depth <= r.depth || len(q.vars) == 0 || slices.Contains(inners, q) || slices.Contains(outers, q) {
+			continue
+		}
+		if slices.ContainsFunc(q.vars, func(w *types.TypeParamSym) bool {
+			tv := q.s.byVar[w]
+			return tv != nil && (slices.ContainsFunc(tv.lower, func(b types.Type) bool { return b.Has(mine) }) ||
+				slices.ContainsFunc(tv.upper, func(b types.Type) bool { return b.Has(mine) }))
+		}) {
+			inners = append(inners, q)
+		}
+	}
+	slices.SortFunc(inners, func(a, b *stubRun) int { return a.depth - b.depth })
+	for _, q := range inners {
+		if trial.byVar[q.vars[0]] != nil {
+			continue
+		}
+		trial.merge(q.s.clone())
+		for _, w := range q.vars {
+			tv, t := trial.byVar[w], types.VarType(w)
+			if tv == nil {
+				continue
+			}
+			for _, l := range tv.lower {
+				if x := trial.unfixedVar(l); x != nil && x != tv && !l.N {
+					trial.addUpper(x, t)
+				}
+			}
+			for _, u := range tv.upper {
+				if x := trial.unfixedVar(u); x != nil && x != tv {
+					trial.addLower(x, t)
+				}
+			}
+		}
+	}
+	for _, q := range slices.Concat(outers, inners) {
 		for _, k := range q.cons {
 			if k[0] != k[1] && trial.owns(k[0]) && trial.owns(k[1]) && !(k[1].K == types.Any && k[1].N) {
 				trial.sub(k[0], k[1])
@@ -3033,6 +3079,17 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
 	r.demanded = true
+	// The variables of outer builders below it are fixed first, as K2
+	// fixes the variables one depends on: FOTv <: SOTv, from
+	// nestedPCLA(fotvOwner.provide()), and ScopeOwner <: FOTv fix FOTv
+	// to ScopeOwner for sotvOwner.provide().function().
+	if tv := trial.byVar[v.Param()]; tv != nil {
+		for _, l := range tv.lower {
+			if q := c.stub(l.Flex().NonNull()); q != nil && q != r && q.depth < r.depth {
+				c.fixedStub(l.Flex().NonNull())
+			}
+		}
+	}
 	switch {
 	case t.P:
 		// A Java member's E!, as MutableList's get(0) in buildList {
@@ -3474,7 +3531,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
 	c.stubRelated(s, params)
 	for _, q := range params {
-		if s.known(q) && s.apply(q).HasVars() && !c.hasStub(s.apply(q)) {
+		if s.knownBesidesAny(q) && s.apply(q).HasVars() && !c.hasStub(s.apply(q)) {
 			s.fixVarsIn(q)
 		}
 	}
