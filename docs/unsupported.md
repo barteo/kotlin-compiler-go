@@ -253,35 +253,47 @@ own tests.
   method that names the other class keeps the first class.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
   its variables unfixed and then again with them fixed. An error in the
-  first check doesn't stop the inference, as in K2, but only two kinds
-  of its errors are kept where the second finds none, as K2 reports them
-  from the state where the code is: a member of a receiver whose type
-  nothing gives yet, `BUILDER_INFERENCE_STUB_RECEIVER`, or unresolved if
-  no function of its name may be called (kc doesn't look for extension
-  properties of the name), and a lambda's parameter whose type nothing
-  gives yet. A call in a nested builder that combines both builders'
-  variables, as `select(this@outer.get(), get())`, is inferred with the
-  inner builder's first, the outer one's in the system but left unfixed,
-  and again with the outer one's. A fork of the constraint system over a
+  first check doesn't stop the inference, as in K2, and an ambiguous
+  call in it adds nothing but keeps the other calls' constraints. Only
+  some of its errors are kept where the second finds none, as K2 reports
+  them from the state where the code is: a member of a receiver whose
+  type nothing gives yet, `BUILDER_INFERENCE_STUB_RECEIVER` (also an
+  extension of a type parameter on one with only variables below it), or
+  unresolved if no function of its name may be called (kc doesn't look
+  for extension properties of the name); a lambda's parameter whose type
+  nothing gives yet; `x is C<A>` on such a value; `x++` on one with
+  bounds; an override whose inferred return type has the variable as an
+  argument; and an overload that a lambda's result can't choose because
+  its parameter has only builders' variables below it, more than one,
+  with no type yet. A call whose fork contradicts what the calls before
+  it gave the builder's variable doesn't join its constraints. A call in
+  a nested builder that combines both builders' variables, as
+  `select(this@outer.get(), get())`, is inferred with the inner
+  builder's first, the outer one's in the system but left unfixed, and
+  again with the outer one's. A fork of the constraint system over a
   builder's variables waits for its lambda's constraints. Of K2's
   fixation on demand, `kc` fixes a builder's variable for a member of a
   value of its type, or of a smart cast of one, an intersection with it,
-  including a safe call's, and for a nested call's lambda that takes the
-  variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
-  not one in a type argument. Unlike K2, it also fixes one that a
-  captured type of a projection stands for (KT-71843, KT-71845). As in
-  K2, it fixes one with a constraint by a proper type, directly or
-  through the variables below it, and semi-fixes one bounded by a type
-  of other variables (`Box<PNTv> <: OTv`), also where the others can't
-  be fixed yet (`In<E>` for `F` of `id(prop).call("")`); an element's
-  compound assignment, `x[i] += v`, fixes the receiver's; a nested
-  builder's variable fixes the outer builders' below it first, and an
-  outer builder's sees the bounds the nested builder being checked gives
-  it. An expected type `Any?` doesn't fix a builder's variable before
-  its lambda, as K2 doesn't add `T <: Any?`. It fixes none only below
-  another variable (KT-72030), nor any in an increment or decrement
-  (KT-71778); a bare type in an `is` or `as` fixes the subject's; a call
-  whose variable nothing gives a type yet,
+  including a safe call's and an assignment's to a var of its type, and
+  for a nested call's lambda that takes the variable itself as a
+  parameter, `it` of `flatMap { }` in `buildList`, not one in a type
+  argument. As K2 doesn't, it fixes none that the value of a member
+  typed by a projected type parameter stands for, which K2's captured
+  type does (KT-71843, KT-71845). As in K2, it fixes one with a
+  constraint by a proper type, directly or through the variables below
+  it, and semi-fixes one bounded by a type of other variables
+  (`Box<PNTv> <: OTv`), also where the others can't be fixed yet
+  (`In<E>` for `F` of `id(prop).call("")`); an element's compound
+  assignment, `x[i] += v`, fixes the receiver's; a nested builder's
+  variable fixes the outer builders' below it first, where they have a
+  proper type below them, and an outer builder's sees the bounds the
+  nested builder being checked gives it. A variable with only bounds
+  from above isn't fixed for a nested call's lambda: the lambda's
+  parameter takes their value. An expected type `Any?` doesn't fix a
+  builder's variable before its lambda, as K2 doesn't add `T <: Any?`.
+  It fixes none only below another variable (KT-72030), nor any in an
+  increment or decrement (KT-71778); a bare type in an `is` or `as`
+  fixes the subject's; a call whose variable nothing gives a type yet,
   `createDerivativeTypeVariable()`, is inferred with the builder's
   variables. A call's variable that captures an `out` projection of a
   builder's variable is reported as uninferred, as K2 reports it, but kc
@@ -300,7 +312,10 @@ own tests.
   carried to the calls after it: a generic extension called on an
   unresolved receiver with the lambda's `this`,
   `Unresolved().bar(this)`, after which the extension calls on the
-  builder's receiver are inapplicable.
+  builder's receiver are inapplicable. K2's error types from a variable
+  it can't infer are reported where kc's are only for an explicit `this`
+  passed as an argument, not for a later call's type argument
+  (`checkExactType<Buildee<T>>(buildee)`).
 
 ## Without the standard library
 
