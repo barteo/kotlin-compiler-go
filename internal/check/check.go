@@ -3908,12 +3908,13 @@ func usesField(a *syntax.FunDecl) bool {
 	return found
 }
 
-// untypedGetter reports whether d is the getter of a property with neither
-// a written type nor an initializer. As in K2, its field is unresolved: the
-// property's type comes from the getter.
-func untypedGetter(p *types.VarSym, d *syntax.FunDecl) bool {
+// noField reports whether field is unresolved in accessor d of property p,
+// as in K2: p has context parameters, which rule out a field, or d is the
+// getter p's type comes from, as p has neither a written type nor an
+// initializer.
+func noField(p *types.VarSym, d *syntax.FunDecl) bool {
 	pd, ok := p.Decl.(*syntax.PropDecl)
-	return ok && pd.Getter == d && pd.Type == nil && pd.Init == nil
+	return ok && (len(pd.Contexts) > 0 || pd.Getter == d && pd.Type == nil && pd.Init == nil)
 }
 
 // setterParamType checks the type written on a setter's parameter, set(v:
@@ -3956,7 +3957,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	sym := d.Sym
 	s := &scope{}
-	if p := d.AccessorOf; p != nil && p.HasField() && !untypedGetter(p, d) {
+	if p := d.AccessorOf; p != nil && p.HasField() && !noField(p, d) {
 		// An accessor's field is its property's backing field.
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}

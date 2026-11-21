@@ -93,10 +93,12 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			return types.ClassType(x.Object) // an object, already resolved
 		}
 		if x.Name == "entries" && c.u.ext.kotlin {
-			// As in Kotlin, an enum's entries in its own code come before
-			// the scopes around it, as an outer object's entries, but
-			// not its own members, nor a local or a parameter.
-			if cls := c.firstEnclosing(); cls != nil && cls.Entries != nil && !cls.External && !c.hasCallable(cls, x.Name) {
+			// As in Kotlin, an enum's entries in its own code, and its
+			// nested classes', come before the scopes around it, as an
+			// outer object's entries or a top-level entries, but not the
+			// members of the classes in between, nor a local or a
+			// parameter.
+			if cls := c.entriesEnum(); cls != nil {
 				if sym, _, _, ok := c.lookupVar(x.Name); !ok || sym.Kind != types.Local && sym.Kind != types.Param {
 					m := &syntax.Member{X: &syntax.Ident{Name: cls.Name}, Name: x.Name}
 					m.P = x.P
@@ -1847,7 +1849,11 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		case syntax.AND:
 			// The right side ran if a && b is true: its x!! smart-cast x.
 			// The right side's smart casts build on the left's: x is Int?
-			// && x != null makes x an Int.
+			// && x != null makes x an Int. As in K2, the right side of
+			// false && b, which never runs, smart-casts nothing.
+			if lit, ok := x.X.(*syntax.BoolLit); ok && !lit.Val {
+				return nil, nil
+			}
 			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = t1
@@ -1857,6 +1863,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
 		case syntax.OR:
+			if isTrue(x.X) {
+				return nil, nil // as false && b
+			}
 			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = f1

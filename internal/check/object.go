@@ -364,6 +364,21 @@ func (c *Checker) enumInScope() *types.ClassSym {
 	return nil
 }
 
+// entriesEnum returns the enum class whose entries the code's entries is:
+// that of the innermost enum the code is in, unless it or a class in
+// between has a member entries.
+func (c *Checker) entriesEnum() *types.ClassSym {
+	for k := c.firstEnclosing(); k != nil; k = c.nextEnclosing(k) {
+		if c.hasCallable(k, "entries") {
+			return nil
+		}
+		if k.Entries != nil && !k.External {
+			return k
+		}
+	}
+	return nil
+}
+
 // enumEntries checks E.entries, the list of an enum's entries, which needs
 // the standard library: a static getter returning EnumEntries<E>.
 func (c *Checker) enumEntries(x *syntax.Member, cls *types.ClassSym) types.Type {
