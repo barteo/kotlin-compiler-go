@@ -66,6 +66,9 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	if found != v {
 		return false
 	}
+	if t.K != types.Invalid && !c.frameAllows(v, t, depth) {
+		return false
+	}
 	depth = c.pastInPlace(depth, v.Name)
 	if depth == c.scope.depth {
 		if t.K == types.Invalid {
@@ -683,7 +686,16 @@ func (c *Checker) aliasable(k narrow) bool {
 	if !base.Mutable {
 		return true
 	}
-	return isVar(base) && len(c.nestedAssigns[base]) == 0 && c.varStable(base, types.Type{})
+	return isVar(base) && c.varUntouched(base)
+}
+
+// varUntouched reports whether no code that may run while the code here
+// does assigns local v, a val or a var: as K2 has it, of a var that a
+// lambda assigns, whatever the type, the code knows nothing but its
+// positive smart casts (see varStable), not the values it isn't, nor the
+// smart casts of its properties.
+func (c *Checker) varUntouched(v *types.VarSym) bool {
+	return !isVar(v) || len(c.nestedAssigns[v]) == 0 && c.varStable(v, types.Type{})
 }
 
 // alias records that local v holds the value of k, as after val v = x,
@@ -1124,7 +1136,7 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 		return narrow{sym: sym, t: c.scope.narrowedMember(nil, sym, t)}, true
 	}
 	recv := c.narrowSym(m.X)
-	if recv == nil {
+	if recv == nil || !c.varUntouched(recv) {
 		return narrow{}, false
 	}
 	return narrow{recv: recv, sym: sym, t: c.scope.narrowedMember(recv, sym, t)}, true
@@ -1565,4 +1577,93 @@ func (c *Checker) elvisNarrowing(x *syntax.Binary) (whenTrue, whenFalse []narrow
 		return nil, append(f[:len(f):len(f)], n...)
 	}
 	return append(t[:len(t):len(t)], n...), nil
+}
+
+// frameName is a frame's node and the name of a local var it assigns.
+type frameName struct {
+	node any
+	name string
+}
+
+// assignChecked records that assignment a of a local var, checked,
+// assigns it a value of type t.
+func (c *Checker) assignChecked(a *syntax.Assign, t types.Type) {
+	if c.assignTypes == nil {
+		c.assignTypes = map[*syntax.Assign]types.Type{}
+	}
+	c.assignTypes[a] = t
+	c.onUndo(func() { delete(c.assignTypes, a) })
+}
+
+// frameAllows reports whether a smart cast to t of local var v, declared
+// at scope depth depth, holds in the frames entered since, as K2's
+// FirLocalVariableAssignmentAnalyzer has it. Of the outermost one,
+// unless it is the only one and runs in place, every assignment of v,
+// nested ones included, may come between the check and the read: a
+// frame that doesn't run in place may run while it runs, and the lambdas
+// of a call aren't checked in order. So each must have been checked
+// already and assign v a value of type t: as in K2, a later one, whose
+// type the code doesn't know yet, is unstable whatever it assigns.
+// x++ isn't an assignment here, as in K2.
+func (c *Checker) frameAllows(v *types.VarSym, t types.Type, depth int) bool {
+	n := c.scope.depth - depth
+	if n <= 0 || depth >= len(c.lambdas) {
+		return true
+	}
+	f := c.lambdas[depth]
+	if n == 1 && (f.InPlace || f.Inline && !f.Crossinline) {
+		return true
+	}
+	var node any = f
+	if f.Body == nil {
+		if d, ok := c.classFrames[f]; ok {
+			node = d
+		} else if node = c.frameNodes[f]; node == nil {
+			return true
+		}
+	}
+	for _, a := range c.assignsIn(node, v.Name) {
+		at, ok := c.assignTypes[a]
+		if !ok || !c.subtype(at, t) {
+			return false
+		}
+	}
+	return true
+}
+
+// assignsIn returns the assignments of local name in node, a frame's
+// lambda, local function or class, but in the blocks after a
+// declaration of another local of the name, which shadows it.
+func (c *Checker) assignsIn(node any, name string) []*syntax.Assign {
+	key := frameName{node, name}
+	if as, ok := c.frameMemo[key]; ok {
+		return as
+	}
+	var as []*syntax.Assign
+	var walk func(node any)
+	walk = func(node any) {
+		inspect(node, func(n any) bool {
+			if b, ok := n.(*syntax.Block); ok && b != nil && n != node {
+				for _, st := range b.Stmts {
+					walk(st)
+					if slices.Contains(declaredNames(st), name) {
+						break
+					}
+				}
+				return false
+			}
+			if a, ok := n.(*syntax.Assign); ok {
+				if id, ok := a.Target.(*syntax.Ident); ok && id.Name == name {
+					as = append(as, a)
+				}
+			}
+			return true
+		})
+	}
+	walk(node)
+	if c.frameMemo == nil {
+		c.frameMemo = map[frameName][]*syntax.Assign{}
+	}
+	c.frameMemo[key] = as
+	return as
 }

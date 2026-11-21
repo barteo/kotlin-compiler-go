@@ -246,8 +246,7 @@ those of the last module are only read.
 
 Some *accepts invalid* tests are out of `kc`'s reach, and stay so.
 `kotlinc` compiles them under the harness too (see the self-check
-below), except for the quirk and the FIR2IR tests and
-`missingTypeOfParameterInFakeOverride_2`:
+below), except for the quirk and the FIR2IR tests:
 
 - **A class path without the standard library**: the two
   `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
@@ -271,10 +270,18 @@ below), except for the quirk and the FIR2IR tests and
   `kotlinc`'s JVM backend crashes on them, which is why they stop at
   `FIR2IR`.
 - **A dependency's dependency off the class path**:
-  `j+k/missingTypeOfParameterInFakeOverride_1` and `_2` need a class of
-  a module that a later module doesn't depend on to be missing from
-  that module's class path. `kc`, like the harness, puts every earlier
-  module on it.
+  `j+k/missingTypeOfParameterInFakeOverride_1` marks no error, and
+  `kotlinc` stops it at the frontend only because its backend can't
+  generate the fake override whose parameter type is missing. The
+  harness puts only the modules a module names on its class path, not
+  their dependencies, as the test does, and the frontend accepts it.
+  (Its sibling `_2`, where the missing type keeps a Java method from
+  being implemented, `kc` rejects.)
+- **A JDK class declared again in a library**:
+  `jvm/classpath/classFromJdkInLibrary` declares `java.util.Date` in a
+  Java library, which `javac` compiles with `--patch-module`, and
+  expects its new method to be unresolved. Given the library's class
+  files on the class path, `kotlinc` resolves it too, as `kc` does.
 
 The other two are `kc`'s own. `regressions/kt334` expects
 `java.lang.Comparable` to be a type of its own, which `kc` takes as
@@ -307,17 +314,16 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,614 | |
-| rejects invalid | 4,448 | 51.6% |
+| rejects invalid | 4,449 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
 | accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
-| harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,438 of the 22,025 expected errors (97.3%) on their lines, and 3,093 of
-the 3,667 expected warnings (84.3%), with 18 warnings on lines that expect
+21,475 of the 22,026 expected errors (97.5%) on their lines, and 3,095 of
+the 3,667 expected warnings (84.4%), with 18 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 6 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
@@ -326,11 +332,10 @@ largest groups are:
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
   type mismatches (`ARGUMENT_TYPE_MISMATCH` 4) and unresolved names
-  (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
+  (`UNRESOLVED_REFERENCE` 4); no other error is expected by more than
   two. All but two are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.
-- **Crashes**: none. The harness error is a test that declares
-  `java.util.Date`, which `javac` compiles only with `--patch-module`.
+- **Crashes**: none, and no harness errors.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

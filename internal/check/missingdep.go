@@ -29,8 +29,25 @@ const missingKey = "\x00missing:"
 // nil if the class path has the class or there is none. The class is
 // Missing, and has no supertypes or members.
 func (t *classTable) missingClass(id string, n int) *types.ClassSym {
+	return t.missing(id, internalName(id), n)
+}
+
+// javaMissingClass returns the class that stands for a class a Java
+// class file's descriptor names, by its internal name, that the class
+// path doesn't have, or nil. As in K2, which can't tell a nested class
+// from a top-level one by a name with a $ whose outer class it lacks,
+// that is a top-level class of the name: a/b/C$Some isn't the class
+// a/b/C.Some that Kotlin metadata names, so a Kotlin override that
+// takes the nested class doesn't implement a Java method that takes it.
+func (t *classTable) javaMissingClass(name string) *types.ClassSym {
+	return t.missing(name, name, 0)
+}
+
+// missing returns the stand-in for the class of Kotlin class id id and
+// internal name name, with n type parameters; stand-ins of different
+// ids are different classes, even of one internal name.
+func (t *classTable) missing(id, name string, n int) *types.ClassSym {
 	t = t.root()
-	name := internalName(id)
 	// Object, Any to Kotlin, is a builtin: never a missing dependency,
 	// even on a class path without the JDK's classes.
 	if t.cp == nil || name == "" || name == "java/lang/Object" || strings.HasPrefix(name, "kotlin/") || t.cp.Has(name) {
@@ -39,7 +56,7 @@ func (t *classTable) missingClass(id string, n int) *types.ClassSym {
 	if src := t.sources.Load(); src != nil && (*src)(name) != nil {
 		return nil
 	}
-	key := missingKey + name + "/" + strconv.Itoa(n)
+	key := missingKey + id + "/" + strconv.Itoa(n)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if c, ok := t.m[key]; ok {

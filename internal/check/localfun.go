@@ -101,6 +101,10 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	frame := &syntax.Lambda{}
 	frame.P = d.P
 	s.Frame = frame
+	if c.frameNodes == nil {
+		c.frameNodes = map[*syntax.Lambda]any{}
+	}
+	c.frameNodes[frame] = s
 	c.lambdas = append(c.lambdas[:len(c.lambdas):len(c.lambdas)], frame)
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], &lambdaResult{})
 	c.base = len(c.lambdas)

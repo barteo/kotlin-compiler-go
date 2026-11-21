@@ -826,8 +826,16 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		} else {
 			c.scope.narrows = whenFalse
 		}
+		base := len(c.scope.narrows)
 		yt := c.value(x.Y, types.BoolType)
+		added := slices.Clone(c.scope.narrows[min(base, len(c.scope.narrows)):])
 		c.pop()
+		// The right side may not run: what it assigns, as an in-place
+		// lambda's r = null in q || r.also { r = null }!!, ends the
+		// smart casts that don't hold of its values too.
+		n := len(c.scope.narrows)
+		c.scope.narrows = append(c.scope.narrows, added...)
+		c.mayNotRun(n, nil)
 		c.wantBool(x.Y)
 		if yt.K == types.Nothing {
 			// a && throw E(), a || return: the code after it sees a false,
@@ -1914,9 +1922,13 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		var others *coverage
 		if x.Target.K == types.Class && !types.MayBeNull(x.Target) {
 			not = c.excluding(nil, k, &coverage{classes: []*types.ClassSym{x.Target.C}})
-			if k.t.NonNull().K == types.Class {
+			// Not of a check that makes an intersection, A & B for
+			// an A checked to be a B: as in K2, a when over it must
+			// cover A's or B's sealed subclasses, whichever of the two
+			// it covers, without the ones of A's that aren't B's.
+			if st := k.t.NonNull(); st.K == types.Class && x.Target.C.IsSubclassOf(st.C) {
 				others = &coverage{}
-				otherSubclasses(k.t.NonNull().C, x.Target.C, others)
+				otherSubclasses(st.C, x.Target.C, others)
 			}
 		}
 		key := k
@@ -4732,7 +4744,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if hasSubj && x.SubjVar == "" {
 		// Nor values the subject is known not to be: E.A after
 		// if (e == E.A) return.
-		if not := c.scope.excluded(subj.recv, subj.sym); not != nil {
+		base := subj.sym
+		if subj.recv != nil {
+			base = subj.recv
+		}
+		if not := c.scope.excluded(subj.recv, subj.sym); not != nil && (base == nil || c.varUntouched(base)) {
 			cov.merge(not)
 		}
 	}

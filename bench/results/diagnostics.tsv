@@ -5380,7 +5380,7 @@ tests/j+k/manyImplNotImplementedComplexHierarchy.kt	rejects invalid	on an expect
 tests/j+k/manyImplNotImplementedComplexHierarchy2.kt	rejects invalid	on an expected line	
 tests/j+k/matchers.kt	accepts valid		
 tests/j+k/missingTypeOfParameterInFakeOverride_1.kt	accepts invalid	(no error marked)	
-tests/j+k/missingTypeOfParameterInFakeOverride_2.kt	accepts invalid	ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED	missingTypeOfParameterInFakeOverride_2.kt:5: ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED
+tests/j+k/missingTypeOfParameterInFakeOverride_2.kt	rejects invalid	on an expected line	
 tests/j+k/mutableIterator.kt	accepts valid		
 tests/j+k/nullForOptionalOf.kt	rejects invalid	on an expected line	
 tests/j+k/nullForOptionalOrElse.kt	accepts valid		
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=33601 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock /tmp/claude-0/-workspace-kotlin-compiler-go/3ea4a09d-1a5a-572f-974f-3f823db264df/scratchpad/tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	accepts invalid	UNRESOLVED_REFERENCE	source.kt:4: UNRESOLVED_REFERENCE
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -9374,7 +9374,7 @@ tests/visibility/packagePrivateStaticInterfaceMethod.kt	rejects invalid	on an ex
 tests/visibility/packagePrivateStaticViaInternal.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticViaTypeAlias.kt	accepts valid		
 tests/visibility/privateAliasInSamePackage.kt	accepts valid		
-tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	elsewhere	
+tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	on an expected line	
 tests/visibility/privateDeclarationInAnotherFile.kt	rejects invalid	on an expected line	
 tests/visibility/privateFromInAnonymousObject.kt	accepts valid		
 tests/visibility/privateSealedNested.kt	rejects invalid	on an expected line	

@@ -461,6 +461,12 @@ type Checker struct {
 	// class's code assigns null to a var it captures (see varStable).
 	classFrames map[*syntax.Lambda]*syntax.ClassDecl
 	nullFrames  map[varFrame]bool
+	// frameNodes are the local functions of their frames, and assignTypes
+	// the types of the values that the assignments of local vars checked
+	// so far assign (see frameAllows).
+	frameNodes  map[*syntax.Lambda]any
+	assignTypes map[*syntax.Assign]types.Type
+	frameMemo   map[frameName][]*syntax.Assign
 	// siblingAssigns has, for a lambda argument, the names of the locals
 	// the call's other lambda arguments assign, which may run before it.
 	siblingAssigns map[*syntax.Lambda]map[string]bool
@@ -708,7 +714,7 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 		}
 		f := &types.FunSym{Name: m.Name, Owner: owner, Desc: m.Desc, Operator: true, Resolved: true,
 			Abstract: m.Access&classfile.AccAbstract != 0}
-		ok := t.signature(f, m.Desc)
+		ok := t.signature(f, m.Desc, false)
 		if m.Sig != "" {
 			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
 		}

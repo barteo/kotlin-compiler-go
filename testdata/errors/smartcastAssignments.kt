@@ -376,3 +376,16 @@ fun elvisAssign(any: Any, a: Foo, maybe: Foo?, s: String?, t: String) {
     y = s ?: t
     y.length
 }
+
+// Nor of a property of a var a lambda assigns, which may run between the
+// check and the read, as K2 has it whatever the value it assigns.
+class Stable(val x: Any)
+
+fun later(f: () -> Unit) {}
+
+fun propertyOfCapturedVar() {
+    var b = Stable("")
+    later { b = Stable("") }
+    b.x as String
+    b.x.length // ERROR unresolved reference: length
+}
