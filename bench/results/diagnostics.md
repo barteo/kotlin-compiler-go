@@ -66,7 +66,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21472 of 22026 expected errors (97.5%) on their lines.
+kc reports 21475 of 22026 expected errors (97.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -82,9 +82,9 @@ kc reports 21472 of 22026 expected errors (97.5%) on their lines.
 | `INAPPLICABLE_CANDIDATE` | 127 | 119 | 8 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 420 | 8 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 107 | 7 |
-| `INVISIBLE_REFERENCE` | 525 | 518 | 7 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
+| `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
@@ -109,7 +109,6 @@ kc reports 21472 of 22026 expected errors (97.5%) on their lines.
 | `NON_LOCAL_RETURN_NOT_ALLOWED` | 25 | 22 | 3 |
 | `NO_SET_METHOD` | 11 | 8 | 3 |
 | `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
-| `UNSAFE_CALL` | 525 | 522 | 3 |
 | `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 32 | 2 |
@@ -130,6 +129,7 @@ kc reports 21472 of 22026 expected errors (97.5%) on their lines.
 | `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 94 | 2 |
 | `NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION` | 2 | 0 | 2 |
 | `NO_ELSE_IN_WHEN` | 217 | 215 | 2 |
+| `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 24 | 2 |
 | *540 more* | | | |
 
 ### Missed errors by cause
@@ -138,11 +138,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 6.1% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 76 | 13.7% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 6.2% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 76 | 13.8% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 94 | 17.0% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 350 | 63.2% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 39, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| nearby | 94 | 17.1% | `ARGUMENT_TYPE_MISMATCH` 20, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 347 | 63.0% | `ARGUMENT_TYPE_MISMATCH` 65, `UNRESOLVED_REFERENCE` 39, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -150,10 +150,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 192 |
+| `unresolved reference: _` | 190 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `type mismatch: inferred type is _ but _ was expected` | 133 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
+| `type mismatch: inferred type is _ but _ was expected` | 131 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
