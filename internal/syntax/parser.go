@@ -949,7 +949,7 @@ func (p *parser) parseType() *TypeRef {
 	if t.Text != "_" || p.typeArgs == 0 {
 		p.underscoreRef(t)
 	}
-	ref := &TypeRef{P: t.Pos, Name: t.Text}
+	ref := &TypeRef{P: t.Pos, Name: t.Text, Parts: []Pos{t.Pos}}
 	for {
 		if p.typeArgs > 0 && p.at(NL) && p.peekPastNL() == DOT {
 			p.skipNL()
@@ -959,9 +959,12 @@ func (p *parser) parseType() *TypeRef {
 		}
 		p.next()
 		p.skipNL()
-		ref.Name += "." + p.underscoreRef(p.ident()).Text
+		n := p.underscoreRef(p.ident())
+		ref.Name += "." + n.Text
+		ref.Parts = append(ref.Parts, n.Pos)
 	}
 	if p.at(LT) {
+		ref.ArgsP = p.tok().Pos
 		ref.Args = p.parseTypeArgs()
 	}
 	ref = p.innerTypeChain(ref)
@@ -1168,12 +1171,16 @@ func (p *parser) innerTypeChain(ref *TypeRef) *TypeRef {
 	for ref.Args != nil && p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 		p.next()
 		outer := ref
-		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + p.ident().Text, Outer: outer}
+		n := p.ident()
+		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + n.Text, Outer: outer, Parts: []Pos{n.Pos}}
 		for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 			p.next()
-			ref.Name += "." + p.ident().Text
+			n := p.ident()
+			ref.Name += "." + n.Text
+			ref.Parts = append(ref.Parts, n.Pos)
 		}
 		if p.at(LT) {
+			ref.ArgsP = p.tok().Pos
 			ref.Args = p.parseTypeArgs()
 		}
 	}
@@ -2709,7 +2716,9 @@ func (p *parser) parsePostfix() Expr {
 				if name, ok := dottedName(x); ok && p.classRefAhead() {
 					// List<*>::class: the type arguments of a class name,
 					// and Outer<A>.Inner<B>::foo, an inner class's.
-					ref := p.innerTypeChain(&TypeRef{P: x.Pos(), Name: name, Args: p.parseTypeArgs()})
+					ref := &TypeRef{P: x.Pos(), Name: name, Parts: dottedParts(x), ArgsP: p.tok().Pos}
+					ref.Args = p.parseTypeArgs()
+					ref = p.innerTypeChain(ref)
 					for p.at(QUEST) {
 						p.next()
 						ref.Nullable = true
@@ -2940,13 +2949,15 @@ func (p *parser) parenTypeRef() Expr {
 	p.expect(RPAREN)
 	for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 		p.next()
-		name := p.ident().Text
+		n := p.ident()
 		if ref.Args != nil {
-			ref = &TypeRef{P: ref.P, Name: ref.Name + "." + name, Outer: ref}
+			ref = &TypeRef{P: ref.P, Name: ref.Name + "." + n.Text, Outer: ref}
 		} else {
-			ref.Name += "." + name
+			ref.Name += "." + n.Text
 		}
+		ref.Parts = append(ref.Parts, n.Pos)
 		if p.at(LT) {
+			ref.ArgsP = p.tok().Pos
 			ref.Args = p.parseTypeArgs()
 		}
 	}
@@ -2999,6 +3010,17 @@ func trailableAfterNL(x Expr) bool {
 }
 
 // dottedName returns the name a.b.C that x spells, if it is one.
+// dottedParts returns the positions of the names of x, a dotted name.
+func dottedParts(x Expr) []Pos {
+	switch x := x.(type) {
+	case *Ident:
+		return []Pos{x.P}
+	case *Member:
+		return append(dottedParts(x.X), x.P)
+	}
+	return nil
+}
+
 func dottedName(x Expr) (string, bool) {
 	switch x := x.(type) {
 	case *Ident:

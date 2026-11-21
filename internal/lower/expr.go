@@ -557,6 +557,7 @@ func dottedName(n psi.NodeRef) (string, psi.NodeRef, bool) {
 // has type arguments.
 func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 	prefix := ""
+	var parts []syntax.Pos
 	if n.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION {
 		ops := operands(n)
 		if len(ops) != 2 {
@@ -567,6 +568,7 @@ func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 			return nil
 		}
 		prefix, n = x+".", ops[1]
+		parts = l.dottedParts(ops[0])
 	}
 	if n.NumericKind() != psi.KindCALL_EXPRESSION || has(n, psi.KindVALUE_ARGUMENT_LIST) || has(n, psi.KindLAMBDA_ARGUMENT) ||
 		!has(n, psi.KindTYPE_ARGUMENT_LIST) {
@@ -576,7 +578,25 @@ func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 	if !ok || strings.Contains(name, ".") {
 		return nil
 	}
-	return &syntax.TypeRef{P: l.pos(last), Name: prefix + name, Args: l.typeArgsOf(n)}
+	ref := &syntax.TypeRef{P: l.pos(last), Name: prefix + name, Parts: append(parts, l.pos(last))}
+	if ta := child(n, psi.KindTYPE_ARGUMENT_LIST); ta.Valid() {
+		ref.ArgsP = l.pos(ta)
+	}
+	ref.Args = l.typeArgsOf(n)
+	return ref
+}
+
+// dottedParts returns the positions of the names of n, a dotted name.
+func (l *lowerer) dottedParts(n psi.NodeRef) []syntax.Pos {
+	switch n.NumericKind() {
+	case psi.KindREFERENCE_EXPRESSION:
+		return []syntax.Pos{l.pos(first(n))}
+	case psi.KindDOT_QUALIFIED_EXPRESSION:
+		if ops := operands(n); len(ops) == 2 {
+			return append(l.dottedParts(ops[0]), l.dottedParts(ops[1])...)
+		}
+	}
+	return nil
 }
 
 // colonColonLeft returns the left side of a class literal or callable
@@ -616,7 +636,7 @@ func (l *lowerer) typeChain(n psi.NodeRef, lastPos bool) (*syntax.TypeRef, bool)
 		return l.typeChain(exprChild(n), false)
 	case psi.KindREFERENCE_EXPRESSION:
 		if t := first(n); t.NumericKind() == psi.KindIDENTIFIER {
-			return &syntax.TypeRef{P: l.pos(t), Name: ident(t)}, true
+			return &syntax.TypeRef{P: l.pos(t), Name: ident(t), Parts: []syntax.Pos{l.pos(t)}}, true
 		}
 	case psi.KindCALL_EXPRESSION:
 		if has(n, psi.KindVALUE_ARGUMENT_LIST) || has(n, psi.KindLAMBDA_ARGUMENT) || !has(n, psi.KindTYPE_ARGUMENT_LIST) {
@@ -626,6 +646,7 @@ func (l *lowerer) typeChain(n psi.NodeRef, lastPos bool) (*syntax.TypeRef, bool)
 		if !ok || ref.Args != nil || ref.Outer != nil {
 			return nil, false
 		}
+		ref.ArgsP = l.pos(child(n, psi.KindTYPE_ARGUMENT_LIST))
 		ref.Args = l.typeArgsOf(n)
 		return ref, true
 	case psi.KindDOT_QUALIFIED_EXPRESSION:
@@ -642,10 +663,11 @@ func (l *lowerer) typeChain(n psi.NodeRef, lastPos bool) (*syntax.TypeRef, bool)
 			return nil, false
 		}
 		if outer.Args != nil {
-			return &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + seg.Name, Outer: outer, Args: seg.Args}, true
+			return &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + seg.Name, Outer: outer, Args: seg.Args, Parts: seg.Parts, ArgsP: seg.ArgsP}, true
 		}
 		outer.Name += "." + seg.Name
-		outer.Args = seg.Args
+		outer.Args, outer.ArgsP = seg.Args, seg.ArgsP
+		outer.Parts = append(outer.Parts, seg.Parts...)
 		if lastPos && outer.Outer == nil {
 			outer.P = seg.P
 		}

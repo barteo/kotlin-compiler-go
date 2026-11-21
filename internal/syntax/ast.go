@@ -134,6 +134,12 @@ type TypeRef struct {
 	// class's type arguments, Outer<A>.Inner: Outer<A>. Name is then the
 	// qualified name, Outer.Inner, and Args the inner class's own.
 	Outer *TypeRef
+	// Parts are the positions of the names Name adds to its Outer's, or
+	// of all its names if it has no Outer, and ArgsP that of the < of
+	// its Args: where kotlinc reports misplaced type arguments of a
+	// callable reference's left side.
+	Parts []Pos
+	ArgsP Pos
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool

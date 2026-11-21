@@ -259,6 +259,9 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	}
 	if c.refLHS && ref.Outer != nil && !c.segmentsFit(ref) {
 		if t, ok := c.flatInnerType(cls, ref); ok {
+			if t.K != types.Invalid {
+				c.lhsArgsWarning(cls, ref, t)
+			}
 			return t
 		}
 	}
@@ -323,6 +326,9 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	t := types.GenericType(cls, args)
 	if !c.noBoundChecks {
 		c.checkBoundsOf(t, ref, own+extra)
+	}
+	if inner {
+		c.lhsArgsWarning(cls, ref, t)
 	}
 	return c.nullable(t, ref)
 }

@@ -613,3 +613,9 @@ func TestWarningsDangerousCharacters(t *testing.T) {
 func TestWarningsInPlace(t *testing.T) {
 	checkReference(t, "testdata/inplace.kt", Options{Warnings: true})
 }
+
+// TestWarningsLHSArgs checks the WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING
+// warnings, and their local classes' variant, of testdata/lhsargs.kt.
+func TestWarningsLHSArgs(t *testing.T) {
+	checkReference(t, "testdata/lhsargs.kt", Options{Warnings: true})
+}
