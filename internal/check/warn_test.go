@@ -619,3 +619,9 @@ func TestWarningsInPlace(t *testing.T) {
 func TestWarningsLHSArgs(t *testing.T) {
 	checkReference(t, "testdata/lhsargs.kt", Options{Warnings: true})
 }
+
+// TestWarningsJavaTarget checks the ANNOTATION_TARGETS_ONLY_IN_JAVA
+// warnings of testdata/javatarget.kt.
+func TestWarningsJavaTarget(t *testing.T) {
+	checkReference(t, "testdata/javatarget.kt", Options{Warnings: true})
+}

@@ -99,6 +99,17 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 	seen := map[repeatKey]bool{}
 	var applied []appliedAnnotation
 	defer func() { c.repeatedWithContainer(applied) }()
+	// A class with Java's @Target but not Kotlin's targets everything in
+	// Kotlin, of which kotlinc warns (ANNOTATION_TARGETS_ONLY_IN_JAVA).
+	var javaTarget *syntax.Annotation
+	kotlinTarget := false
+	if site.kind == siteClass {
+		defer func() {
+			if javaTarget != nil && !kotlinTarget {
+				c.warnf(javaTarget.P, "ANNOTATION_TARGETS_ONLY_IN_JAVA", "No Kotlin '@Target' annotation specified (implicitly targeting everything), but one exists for Java.")
+			}
+		}()
+	}
 	for i := range as {
 		a := &as[i]
 		if local && site.kind == siteLocal {
@@ -113,6 +124,14 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		if rec := c.u.rec; rec != nil {
 			rec.Annotation(c.file, a, cls)
+		}
+		switch cls.Name {
+		case "java/lang/annotation/Target":
+			if javaTarget == nil && a.Target == "" {
+				javaTarget = a
+			}
+		case "kotlin/annotation/Target":
+			kotlinTarget = true
 		}
 		if k := javaAnnotationReplacements[cls.Name]; k != "" && cls.External {
 			c.warnf(a.P, "DEPRECATED_JAVA_ANNOTATION", "This annotation is deprecated in Kotlin. Use '@%s' instead.", k)
