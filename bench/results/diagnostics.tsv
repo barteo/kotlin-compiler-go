@@ -921,7 +921,7 @@ tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt	
 tests/callableReference/resolve/resolveTwoReferencesAgainstGenerics.kt	accepts valid		
 tests/callableReference/resolve/valVsFun.kt	accepts valid		
 tests/callableReference/resolve/withAs.kt	rejects invalid	on an expected line	
-tests/callableReference/resolve/withExtFun.kt	rejects invalid	elsewhere	
+tests/callableReference/resolve/withExtFun.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/withGenericFun.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/withPlaceholderTypes.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/withVararg.kt	accepts valid		
@@ -1597,7 +1597,7 @@ tests/contextParameters/declarationAndUsages/genericContextAmbiguity.kt	accepts 
 tests/contextParameters/declarationAndUsages/inFunctionDeclaration.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/inFunctionalType.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/inPropertyDeclaration.kt	accepts valid		
-tests/contextParameters/declarationAndUsages/initializerInProperty.kt	rejects invalid	elsewhere	
+tests/contextParameters/declarationAndUsages/initializerInProperty.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/memberUsageFromContextScope.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/moreThenOneContext.kt	accepts valid		
@@ -7677,8 +7677,8 @@ tests/resolve/errorPriority.kt	rejects invalid	on an expected line
 tests/resolve/functionCallExpectedWrongReceiver.kt	rejects invalid	on an expected line	
 tests/resolve/functionalConstraintDuringCompletion.kt	skip	LANGUAGE	
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependant.kt	rejects invalid	on an expected line	
-tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	rejects invalid	elsewhere	
-tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt	rejects invalid	on an expected line	
+tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	rejects invalid	on an expected line	
+tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt	skip	IDE_MODE error	
 tests/resolve/implicitReceiverProperty.kt	accepts valid		
 tests/resolve/incompleteConstructorInvocation.kt	rejects invalid	on an expected line	
 tests/resolve/inferenceInLinkedLambdas.kt	accepts valid		

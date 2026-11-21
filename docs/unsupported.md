@@ -496,9 +496,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   parameter its receiver projects out, and for an invariant argument of
   a member property's type that a star captures, checked after the
   value is inferred against the read type; so does a Java field or a
-  Java setter's parameter. A Java setter called as a method
-  (`setWrapper(w)` on a `Container<*>`) doesn't, and an invariant
-  argument that an `in` projection captures takes the projection.
+  Java setter's parameter. A call's parameter, and a Java synthetic
+  setter's, takes `Nothing` for an invariant argument that a star or an
+  `in` projection captures (`setW(w)` of a `KC<in String>`); a Kotlin
+  property's assignment keeps the projection, as K2 approximates it.
 - Of K2's captured types, `kc` has only those of reading an explicit
   backing field through a stable receiver whose type projects the
   field's type parameters, `o.num` for an `o: C<*>`: the receiver is
