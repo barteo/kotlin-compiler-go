@@ -533,6 +533,13 @@ func checkReferenceFiles(t *testing.T, opts Options, files ...string) {
 	}
 }
 
+// TestWarningsBackingField checks the warnings of explicit backing
+// fields of their properties' types against kotlinc's of
+// testdata/backingfield.kt.
+func TestWarningsBackingField(t *testing.T) {
+	checkReference(t, "testdata/backingfield.kt", Options{Warnings: true})
+}
+
 // TestWarningsInferredInvisible checks the warnings of inferred types
 // that name a class the code can't see against kotlinc's of
 // testdata/inferredvis/b.kt.

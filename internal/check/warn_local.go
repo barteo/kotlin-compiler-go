@@ -21,6 +21,7 @@ func (c *Checker) localWarnings() {
 	c.shadowWarnings()
 	c.dangerousNames()
 	c.inPlaceWarnings()
+	c.redundantBackingFields()
 	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
