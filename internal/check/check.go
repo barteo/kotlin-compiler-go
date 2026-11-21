@@ -2052,6 +2052,26 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 	return nil
 }
 
+// starVarAmbiguous reports whether v, a top-level property of the
+// program's packages that one star import gives, is also, as another
+// property, given by another: as in Kotlin, the use is ambiguous.
+func (c *Checker) starVarAmbiguous(name string, v *types.VarSym) bool {
+	if v.Kind != types.Global {
+		return false
+	}
+	mine, others := false, false
+	for _, p := range c.userStars {
+		if w, ok := p.Vars[name]; ok && !c.renamedAway(p.Name, name) && c.propVisible(w) {
+			if w == v {
+				mine = true
+			} else {
+				others = true
+			}
+		}
+	}
+	return mine && others
+}
+
 // libraryVar reports whether v is a top-level property of a library, which
 // a star import gives, rather than of the program.
 func (c *Checker) libraryVar(v *types.VarSym) bool {

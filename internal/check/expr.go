@@ -153,7 +153,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return objectValue(x, obj)
 			}
 		}
-		if ok && sym.Ambiguous {
+		if ok && (sym.Ambiguous || c.starVarAmbiguous(x.Name, sym)) {
 			c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 		}
 		if ok {
