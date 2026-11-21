@@ -147,16 +147,16 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 ## Errors kotlinc doesn't report
 
-kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
+kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
 
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 193 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `type mismatch: inferred type is _ but _ was expected` | 139 |
+| `type mismatch: inferred type is _ but _ was expected` | 133 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
-| `class '_' is not abstract and does not implement abstract member '_'` | 58 |
 | `unresolved or unsupported type: _` | 29 |
+| `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `no function '_' takes n arguments` | 14 |
@@ -181,7 +181,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
-| *111 more* | |
+| *110 more* | |
 
 ## Unsupported features
 
