@@ -2556,6 +2556,11 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 		// of myBuilder2 { add("") }'s Foo<K2> are then K1's.
 		w.ret = ret
 	}
+	if sl.l.Anon && sl.l.AnonUnit {
+		// An anonymous function with a block body returns Unit, as the
+		// check that counts has it (see postponedLambda).
+		w.ret, w.check = types.UnitType, true
+	}
 	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
 	c.trial = t
 	skips := c.trialSkips

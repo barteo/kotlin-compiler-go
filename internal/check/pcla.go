@@ -57,11 +57,12 @@ func (c *Checker) keepTrial(t *trial) {
 }
 
 // committable reports whether stubInference may keep the check of lambda
-// l: one whose result, for a result type of the call's other variables,
+// l: not a reference, nor an anonymous function declaring its result
+// type, which the check that counts resolves, and one whose result, for a result type of the call's other variables,
 // is no call or branches that the call's system would infer with it
 // (see checkTail).
 func committable(l *syntax.Lambda, retVars bool) bool {
-	if l.Ref != nil || l.Anon {
+	if l.Ref != nil || l.Anon && l.AnonRet != nil {
 		return false
 	}
 	return !retVars || !endsWithCall(l.Body) && !returnsCall(l) && !endsWithBranches(l.Body)
