@@ -4659,7 +4659,7 @@ tests/inference/pcla/nestedLambdaWithNonLastYieldStatement.kt	accepts valid
 tests/inference/pcla/nestedLambdasWithOverloadResolutionByReturnType.kt	accepts valid		
 tests/inference/pcla/newTvFromLamdaAreNotCountedAsProper.kt	accepts valid		
 tests/inference/pcla/noBuilderInferenceRestrictionReceiverInconsistency.kt	skip	LANGUAGE	
-tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	elsewhere	
+tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	on an expected line	
 tests/inference/pcla/noCompilerAssertionWithErrorTypes.kt	rejects invalid	on an expected line	
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/AnonymousFunctionArgumentAndBuildeeReceiver.kt	accepts valid		
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/sourceSinkFeedContexts/ByAssignmentToALocalVariableMaterializeCase.kt	accepts valid		

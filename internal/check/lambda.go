@@ -3310,6 +3310,31 @@ func (r *stubRun) onlyVarsBelow(v *types.TypeParamSym) bool {
 	return !r.properBelow(v)
 }
 
+// varsBelow returns the variables below v in r's constraints, directly or
+// through other variables.
+func (r *stubRun) varsBelow(v *types.TypeParamSym) []*types.TypeParamSym {
+	c := r.s.c
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	trial, _ := r.build(saved)
+	var out []*types.TypeParamSym
+	var walk func(tv *tvar)
+	walk = func(tv *tvar) {
+		if tv == nil {
+			return
+		}
+		for _, l := range tv.lower {
+			if w := trial.unfixedVar(l.Flex().NonNull()); w != nil && !slices.Contains(out, w.v) && w.v != v {
+				out = append(out, w.v)
+				walk(w)
+			}
+		}
+	}
+	walk(trial.byVar[v])
+	return out
+}
+
 // stubReceiver records x, of type t, as the receiver of member name if t
 // is a stub that nothing fixes yet (see stubRun.recvs), or whose only
 // bounds are other variables: K2 reports the receiver of an extension of

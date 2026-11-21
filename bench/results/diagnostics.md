@@ -15,7 +15,7 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4449 tests both reject, kc reports an error on the line of an expected one in 4416.
+Of the 4449 tests both reject, kc reports an error on the line of an expected one in 4417.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -66,7 +66,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21560 of 22026 expected errors (97.9%) on their lines.
+kc reports 21561 of 22026 expected errors (97.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -75,7 +75,7 @@ kc reports 21560 of 22026 expected errors (97.9%) on their lines.
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 601 | 34 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 69 | 18 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 146 | 13 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 147 | 12 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 239 | 12 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 145 | 10 |
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
@@ -142,7 +142,7 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | syntax-error | 74 | 15.9% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 55 | 11.8% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `NULL_FOR_NONNULL_TYPE` 3 |
-| missing-check | 303 | 65.0% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 33, `CANNOT_INFER_PARAMETER_TYPE` 25, `OVERLOAD_RESOLUTION_AMBIGUITY` 12, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| missing-check | 302 | 64.9% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 33, `CANNOT_INFER_PARAMETER_TYPE` 25, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 

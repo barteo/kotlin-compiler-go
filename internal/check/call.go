@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"maps"
 	"math/bits"
 	"slices"
@@ -1670,6 +1671,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		}
 		n := len(sys.errs)
 		for _, p := range ps {
+			if r := c.onlyStubsBelow(sys, p); r != nil {
+				// As in K2, a parameter whose variable only builder's
+				// variables bound from below, which give no type yet, can't
+				// be fixed for the lambda: w.myMap { "" } for a w of
+				// MutableCollection<U> before w.add("") is ambiguous, though
+				// the builder's variables, inferred later, would choose.
+				if c.trial != nil {
+					r.recvs = append(r.recvs, stubRecv{p: x.P, msg: fmt.Sprintf("ambiguous call: %d candidates for '%s' take a lambda whose parameter types builder's variables don't give yet", len(match), match[0].f.Name)})
+				}
+				return nil
+			}
 			sys.fixVarsIn(p)
 		}
 		if len(sys.errs) > n {
@@ -1734,6 +1746,36 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
 	return maximal[0]
+}
+
+// onlyStubsBelow returns the run of the builder's variables that are the
+// lower bounds of p, a variable of s, if they have no proper type below
+// them yet, p has no other bounds, and they and the variables below them
+// are more than one, whose common supertype K2 can't find.
+func (c *Checker) onlyStubsBelow(s *system, p types.Type) *stubRun {
+	tv := s.unfixedVar(s.apply(p).Flex().NonNull())
+	if tv == nil || len(c.stubs) == 0 || len(tv.lits) > 0 || len(tv.lower) == 0 || len(tv.upper) > 0 {
+		return nil
+	}
+	var run *stubRun
+	vars := map[*types.TypeParamSym]bool{}
+	for _, l := range tv.lower {
+		r := c.stub(l.Flex().NonNull())
+		if r == nil || r.properBelow(l.Flex().NonNull().Param()) {
+			return nil
+		}
+		run = r
+		vars[l.Flex().NonNull().Param()] = true
+		for _, w := range r.varsBelow(l.Flex().NonNull().Param()) {
+			vars[w] = true
+		}
+	}
+	if len(vars) < 2 {
+		// One variable below it, which K2 semi-fixes it to: flatMap {
+		// listOf(it) } in buildList { } before add("").
+		return nil
+	}
+	return run
 }
 
 // sourceNotByLambdaResult reports whether f is a function of the program
