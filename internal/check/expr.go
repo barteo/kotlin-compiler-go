@@ -288,6 +288,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.Unary:
 		return c.unary(x, want)
 	case *syntax.Binary:
+		if x.Op != syntax.ELVIS && x.Op != syntax.AND && x.Op != syntax.OR {
+			// An elvis's and a condition's operands have the expected
+			// type of their own.
+			saved := c.operator
+			c.operator = x
+			defer func() { c.operator = saved }()
+		}
 		return c.binary(x, want, allowRange)
 	case *syntax.Member:
 		return c.member(x)
@@ -2975,6 +2982,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				fs = gs
 			}
 		}
+		if (cls != nil || alias != nil) && len(fs) == 0 && c.ambiguousCtor(name) {
+			// import a.A.B, import a.D.B: B() is unresolved, as K2's.
+			c.errorf(fn.P, "unresolved reference: %s", name)
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		if a := alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
 			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
@@ -4058,7 +4071,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		}
 		return types.UnitType
 	}
-	t, ok := c.joinBranches(thenT, elseT, want, x.Else.P)
+	t, ok := c.joinBranches(thenT, elseT, want, x.P)
 	if !ok {
 		c.errorf(x.P, "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
 		return types.InvalidType
@@ -4551,8 +4564,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					// A T smart cast to Char, a Char & T, as a Char.
 					st = e
 				}
-				if !(isIntOrLong(st) && isIntOrLong(rt.RangeElem())) {
-					c.wantType(x.Subject, st, rt.RangeElem())
+				if w := rt.RangeElem(); !(isIntOrLong(st) && isIntOrLong(w)) {
+					// At the condition, in 1..10, which takes the subject
+					// as its argument.
+					if t := st.Flex(); t != w && t.K != types.Invalid && w.K != types.Invalid {
+						c.errorf(cond.P, "type mismatch: inferred type is %s but %s was expected", t, w)
+					}
 				}
 			case x.Subject != nil:
 				ct := c.value(cond.X, st)
@@ -4691,7 +4708,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				}
 				continue
 			}
-			t, ok := c.joinBranches(result, bt, want, br.Body.P)
+			t, ok := c.joinBranches(result, bt, want, x.P)
 			if !ok {
 				c.errorf(br.Body.P, "type mismatch: 'when' branches have incompatible types %s and %s", result, bt)
 				return types.InvalidType
@@ -4862,7 +4879,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
-			c.assignable(c.returnValue(x.X, c.retType), c.retType, x.X.Pos())
+			c.assignable(c.returnValue(x.X, c.retType), c.retType, syntax.StartPos(x.X))
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
 			c.errorf(x.P, "this function must return a value of type %s", c.retType)
 		}

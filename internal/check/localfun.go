@@ -143,7 +143,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 	case sym.Resolved:
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
 	default:
 		sym.InProgress = true
 		rets := []exprRet{}

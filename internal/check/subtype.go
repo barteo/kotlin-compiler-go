@@ -23,9 +23,13 @@ func (c *Checker) subtype(t, u types.Type) bool {
 
 // readOnlyView returns a platform mutable collection type as the read-only
 // type: Kotlin sees java.util.List as (Mutable)List, which also takes
-// read-only lists.
+// read-only lists. Not one with a contravariant argument, List<? super T>,
+// which only a mutable collection can be: MutableList<in T>.
 func readOnlyView(u types.Type) (types.Type, bool) {
 	if !u.P || u.K != types.Class || u.C.ReadOnly == nil {
+		return u, false
+	}
+	if u.A != nil && slices.ContainsFunc(u.A.List, func(a types.Arg) bool { return a.V == types.In }) {
 		return u, false
 	}
 	u.C = u.C.ReadOnly
@@ -596,7 +600,8 @@ func joinNull(t, a, b types.Type) types.Type {
 // joinBranch joins the type of a branch of an if, when or try, bt, with
 // the result of the branches before it. Where they are different value
 // types, as Int and String, and the expected type is one of them, the
-// branch is reported, as kotlinc checks each branch against it.
+// mismatch is reported at p, the start of the if, when or try, where
+// kotlinc reports the whole expression's type not fitting it.
 func (c *Checker) joinBranch(result, bt, want types.Type, p syntax.Pos) (types.Type, bool) {
 	if want.K != types.Invalid && !want.HasVars() && isBuiltin(result) && isBuiltin(bt) && result.NonNull() != bt.NonNull() &&
 		!c.subtype(types.AnyType, want.NonNull()) {

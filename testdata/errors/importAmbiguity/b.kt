@@ -11,3 +11,7 @@ class Some {
 }
 
 val foo = 42
+
+class H {
+    fun m2() {}
+}

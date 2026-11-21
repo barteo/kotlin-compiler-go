@@ -68,6 +68,11 @@ type tvar struct {
 	// call's own type parameters, R <: T of <T : A, R : T>: a variable
 	// with no other constraints can't be inferred, as K2 has it.
 	declUp []types.Type
+	// wantUp are the upper bounds added from the type expected of the
+	// call, T <: String of val s: String = run { }, which a lambda's
+	// result that contradicts them is reported against (see
+	// postponedLambda).
+	wantUp []types.Type
 }
 
 type inferError struct {
@@ -104,6 +109,9 @@ type system struct {
 	// declaring is set while the declared bounds of fresh variables are
 	// added (see tvar.declUp).
 	declaring int
+	// expecting is set while the type expected of the call is added (see
+	// tvar.wantUp).
+	expecting int
 	// forks are the fork points not resolved yet (see fork).
 	forks []fork
 	// wholeForks is set where a fork's branch is taken only if the whole
@@ -183,6 +191,7 @@ func (s *system) clone() *system {
 		c := *tv
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
+		c.wantUp = slices.Clip(tv.wantUp)
 		c.lits = append([]*syntax.IntLit{}, tv.lits...)
 		n.vars = append(n.vars, &c)
 		n.byVar[c.v] = &c
@@ -617,6 +626,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 	tv.upper = append(tv.upper, t)
 	if s.declaring > 0 {
 		tv.declUp = append(tv.declUp, t)
+	}
+	if s.expecting > 0 {
+		tv.wantUp = append(tv.wantUp, t)
 	}
 	for _, l := range tv.lower {
 		s.sub(l, t)

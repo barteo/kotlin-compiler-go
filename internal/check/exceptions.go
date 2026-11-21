@@ -130,7 +130,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.pop()
 		allJump = allJump && bt.K == types.Nothing
 		if valueUsed {
-			j, ok := c.joinBranch(result, bt, want, cb.Body.P)
+			j, ok := c.joinBranch(result, bt, want, x.P)
 			if !ok {
 				c.errorf(cb.Body.P, "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
 				if x.Finally != nil {

@@ -1293,7 +1293,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				continue
 			}
 			want := captured(a.Type(), params[i], pt)
-			c.assignable(a.Type(), want, a.Pos())
+			c.assignable(a.Type(), want, syntax.StartPos(a))
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
@@ -1338,7 +1338,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
 		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 			trial := sys.clone()
+			if o := c.operator; o == nil || o.X != syntax.Expr(x) && o.Y != syntax.Expr(x) {
+				trial.expecting++
+			}
 			trial.sub(ret, want)
+			trial.expecting = 0
 			if trial.ok {
 				sys = trial
 			}
@@ -1986,7 +1990,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		c.samArgs(x, ts, func(i int) types.Type { return best.argType(i, x.Args) })
 		for i, t := range ts {
 			if ch, ok := x.Args[i].(*syntax.Checked); !ok || ch.SAM == nil {
-				c.assignable(t, best.argType(i, x.Args), x.Args[i].Pos())
+				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]))
 			}
 		}
 		if best.ext.K != types.Invalid {

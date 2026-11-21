@@ -2240,16 +2240,27 @@ func (p *parser) annotationArgs(i, end int) []AnnotationArg {
 			}
 			i++
 		}
-		for _, t := range p.toks[start:i] {
-			if t.Kind == NL {
-				continue
-			}
-			arg.Toks = append(arg.Toks, t)
-		}
+		arg.Toks = AnnotationArgToks(p.toks[start:i])
 		args = append(args, arg)
 		i++ // the comma
 	}
 	return args
+}
+
+// AnnotationArgToks returns the tokens of an annotation's argument that
+// ParseAnnotationArg parses, toks without EOF. In the argument's
+// parentheses the lexer keeps only the newlines in the body of a lambda
+// or an anonymous function, which end its statements, as in
+// @A({ val x = 1
+// x }).
+func AnnotationArgToks(toks []Token) []Token {
+	var out []Token
+	for _, t := range toks {
+		if t.Kind != EOF {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // ParseAnnotationArg parses an annotation's argument: an expression, or
@@ -3494,10 +3505,10 @@ func (p *parser) parseWhen() Expr {
 				var c WhenCond
 				switch p.tok().Kind {
 				case IN:
-					p.next()
+					c.P = p.next().Pos
 					c.In = true
 				case NOT_IN:
-					p.next()
+					c.P = p.next().Pos
 					c.NotIn = true
 				case IS, NOT_IS:
 					c.Is, c.NotIs = p.at(IS), p.at(NOT_IS)

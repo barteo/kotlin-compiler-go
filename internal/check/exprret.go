@@ -43,7 +43,7 @@ func (c *Checker) checkExprReturns(rets []exprRet, ret types.Type, fn string) {
 		case ret.K == types.Nothing && !ret.N:
 			c.errorf(r.x.P, "'return' needs an explicit return type on '%s'", fn)
 		case r.x.X != nil:
-			c.assignable(r.t, ret, r.x.X.Pos())
+			c.assignable(r.t, ret, syntax.StartPos(r.x.X))
 		case ret.K != types.Unit:
 			c.errorf(r.x.P, "return type mismatch: expected %s, actual Unit", ret)
 		}

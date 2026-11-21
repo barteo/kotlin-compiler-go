@@ -9,3 +9,8 @@ class Some {
         val foo = 1
     }
 }
+
+@Deprecated("Use b.H", level = DeprecationLevel.HIDDEN)
+class H {
+    fun m1() {}
+}

@@ -832,6 +832,7 @@ var kotlinTypes = map[string]bool{
 func (c *Checker) resolveImports() {
 	c.imports = map[string]*types.ClassSym{}
 	c.aliasImports = map[string]*types.AliasSym{}
+	c.conflictingImports = map[string]bool{}
 	c.funImports = map[string][]*types.FunSym{}
 	c.memberImports = map[string]memberImport{}
 	c.moreMemberImports = map[string][]memberImport{}
@@ -1029,6 +1030,7 @@ func (c *Checker) resolveImports() {
 			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
 		}
 		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
+			c.conflictingImports[alias] = true
 			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
 		}
 	}
@@ -1225,24 +1227,25 @@ func hiddenClass(cls *types.ClassSym) bool {
 }
 
 func (c *Checker) findClassifier1(name string) classifier {
-	if cls, ok := c.imports[name]; ok {
-		return classifier{cls: cls}
-	}
-	if a, ok := c.aliasImports[name]; ok {
-		return classifier{alias: a}
-	}
 	// Another file's private class or typealias is found only if nothing
 	// else is: pack1's private SomeClass doesn't hide pack2's by import
-	// pack1.*, import pack2.*.
+	// pack1.*, import pack2.*. Nor does a class deprecated with level
+	// HIDDEN, imported explicitly or not, as K2's: its use is an error.
 	var hidden classifier
 	visible := func(k classifier) bool {
-		if c.privateElsewhere(k) {
+		if c.privateElsewhere(k) || hiddenClass(k.cls) {
 			if hidden == (classifier{}) {
 				hidden = k
 			}
 			return false
 		}
 		return true
+	}
+	if cls, ok := c.imports[name]; ok && visible(classifier{cls: cls}) {
+		return classifier{cls: cls}
+	}
+	if a, ok := c.aliasImports[name]; ok {
+		return classifier{alias: a}
 	}
 	own := !c.renamedAway(c.pkg.Name, name)
 	if cls, ok := c.pkg.Classes[name]; ok && own && visible(classifier{cls: cls}) {
@@ -1263,11 +1266,11 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 	}
 	for _, owner := range c.starOwners {
-		if cls := c.nestedOf(owner, name); cls != nil {
+		if cls := c.nestedOf(owner, name); cls != nil && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
 	}
-	if cls := c.extClass(name); cls != nil {
+	if cls := c.extClass(name); cls != nil && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
 	if a := c.extAlias(name); a != nil {
@@ -1321,15 +1324,24 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 			}
 		}
 	}
+	// A class deprecated with level HIDDEN gives way to another star
+	// import's, as K2's.
+	var hidden *types.ClassSym
 	for _, r := range c.starPkgs() {
 		if c.renamedAway(r.name, name) {
 			continue
 		}
+		var cls *types.ClassSym
 		if ext.kotlin {
-			if cls := ext.pkgClassIn(r, name); cls != nil {
-				return cls
+			cls = ext.pkgClassIn(r, name)
+		} else {
+			cls = ext.classIn(r.path, r.hash, name)
+		}
+		if cls != nil && hiddenClass(cls) {
+			if hidden == nil {
+				hidden = cls
 			}
-		} else if cls := ext.classIn(r.path, r.hash, name); cls != nil {
+		} else if cls != nil {
 			return cls
 		}
 	}
@@ -1340,10 +1352,12 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 			}
 		}
 	}
-	if c.renamedAway("java.lang", name) {
-		return nil
+	if !c.renamedAway("java.lang", name) {
+		if cls := ext.classIn("java/lang", javaLangHash, name); cls != nil {
+			return cls
+		}
 	}
-	return ext.classIn("java/lang", javaLangHash, name)
+	return hidden
 }
 
 // kotlinFuns returns the Kotlin top-level functions a simple name can
@@ -1697,6 +1711,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
 			s := sub(g)
+			if g.Hidden {
+				continue // deprecated with level HIDDEN: unresolved
+			}
 			if !c.recvFits(rt, s.Apply(g.Recv)) {
 				continue // nor is its type inferred, which may be in progress
 			}
@@ -2587,7 +2604,7 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
-			if seen[params] || javaRemoveAt(f) {
+			if seen[params] || javaRemoveAt(cls, f) || kotlinShaped(s, f) {
 				continue
 			}
 			// The program's overloads in one class are distinct even when
@@ -2623,13 +2640,56 @@ func cloneable(cls *types.ClassSym) bool {
 	return found
 }
 
-// javaRemoveAt reports whether f is a Java List's remove(int), which
-// Kotlin, which sees every Java List as a MutableList, calls removeAt:
-// remove(x) on a list of Ints removes the element x.
-func javaRemoveAt(f *types.FunSym) bool {
-	return f.Name == "remove" && f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" &&
-		len(f.Params) == 1 && f.Params[0].Type.Flex() == types.IntType && strings.HasPrefix(f.Desc, "(I)") &&
-		f.Owner.IsSubclassOf(listInterface(f.Owner))
+// javaRemoveAt reports whether f, a method of class cls or of one of its
+// superclasses, is a Java List's remove(int), which Kotlin, which sees
+// every Java List as a MutableList, calls removeAt: remove(x) on a list of
+// Ints removes the element x. So is a remove(int) that a Java List
+// inherits from a class that isn't one, Java's or Kotlin's: of
+// class A extends AImpl implements List<String>, AImpl's.
+func javaRemoveAt(cls *types.ClassSym, f *types.FunSym) bool {
+	if f.Name != "remove" || f.Owner == nil || f.Owner.KotlinName != "" || len(f.Params) != 1 || f.Params[0].Type.Flex() != types.IntType {
+		return false
+	}
+	if f.Owner.External && !strings.HasPrefix(f.Desc, "(I)") {
+		return false
+	}
+	list := listInterface(cls)
+	if list == nil {
+		return false
+	}
+	// A Kotlin class's remove(element: Int) of its own MutableList<Int>
+	// is the element's.
+	return f.Owner.External || !f.Owner.IsSubclassOf(list)
+}
+
+// kotlinShaped reports whether f, a method of Java class s, overrides a
+// member of a Kotlin supertype of s with context parameters or a receiver,
+// which its JVM method takes first: foo(String a, int b) of
+// context(a: String) fun foo(b: Int), getBar(String a) of
+// context(a: String) val bar. K2 sees the Kotlin member, which is called
+// with its context arguments and receiver, not the Java method.
+func kotlinShaped(s *types.ClassSym, f *types.FunSym) bool {
+	if f.Static || !isJavaClass(s) {
+		return false
+	}
+	fits := func(g *types.FunSym) bool {
+		return g != nil && (len(g.Contexts) > 0 || g.Ext) && g.JVM() == f.Name && jvmArity(g) == len(f.Params)
+	}
+	found := false
+	s.Supertypes(func(t *types.ClassSym) bool {
+		if t == s || isJavaClass(t) || t.KotlinName != "" {
+			return true
+		}
+		found = slices.ContainsFunc(t.Methods[f.Name], fits) || slices.ContainsFunc(t.ExtMethods[f.Name], fits)
+		for _, p := range t.Props {
+			found = found || len(p.Contexts) > 0 && types.GetterJVM(p) == f.Name && len(p.Contexts) == len(f.Params)
+		}
+		for _, gs := range t.ExtProps {
+			found = found || slices.ContainsFunc(gs, fits)
+		}
+		return !found
+	})
+	return found
 }
 
 // listInterface returns the java.util.List class among cls's supertypes,
@@ -3339,10 +3399,8 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		x.Getter, x.Setter = kp.Getter, kp.Setter
 		return c.memberSubst(rt, kp.Getter.Owner).Apply(kp.Getter.Ret), true
 	}
-	// Kotlin decapitalizes the name of getTypeName(): typeName. A
-	// capitalized name, as TypeName, names a class, not the getter.
 	// Nor is a name that can't start a Java identifier, as `1` of get1().
-	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) || !unicode.IsLetter(r) && r != '_' && r != '$' {
+	if r, _ := utf8.DecodeRuneInString(x.Name); !unicode.IsLetter(r) && r != '_' && r != '$' {
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
@@ -3372,29 +3430,43 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// deprecatedOverrideOfHidden).
 		return types.InvalidType, false
 	}
-	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
-		// Only Java methods are seen as properties, and the program's
-		// overrides of them.
-		// isX() is the getter of isX whatever its result, as Rx's
-		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-			x.Getter = f
-		}
-	}
-	if x.Getter == nil && !special && getterName == x.Name {
-		// isX of getIsX(), whose setter is setIsX(), when there is no
-		// boolean isX().
-		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
-		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
-			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-				x.Getter, setterName = f, "set"+alt[3:]
+	getter := func(name string) *types.FunSym {
+		var g *types.FunSym
+		for _, f := range c.accessible(cls, c.javaMethods(cls, name)) {
+			// Only Java methods are seen as properties, and the program's
+			// overrides of them; not generic ones, nor an annotation's
+			// elements, but by their own names (see annotElem).
+			// isX() is the getter of isX whatever its result, as Rx's
+			// Maybe.isEmpty(), a Single<Boolean>.
+			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
+				!overridesKotlinFun(cls, f) && (special || f.Owner == nil || !isAnnotationClass(f.Owner)) {
+				g = f
 			}
 		}
+		return g
 	}
-	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
-		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
-			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(cls, f) {
-				x.Getter, setterName = f, acronymAccessor("set", x.Name)
+	if special {
+		x.Getter = getter(getterName)
+	} else {
+		// K2's getters of a property, getUrl() and getURL() of url, of
+		// which two are ambiguous.
+		var found []*types.FunSym
+		for _, name := range javaGetterNames(x.Name) {
+			if g := getter(name); g != nil {
+				found = append(found, g)
+			}
+		}
+		if len(found) > 1 {
+			c.errorf(x.P, "overload resolution ambiguity: %s is the property of %s() and %s()", x.Name, found[0].Name, found[1].Name)
+			return types.InvalidType, true
+		}
+		if len(found) == 1 {
+			// The setter of getX() or isX() is setX().
+			x.Getter = found[0]
+			if g := x.Getter.Name; strings.HasPrefix(g, "get") {
+				setterName = "set" + g[3:]
+			} else {
+				setterName = "set" + g[2:]
 			}
 		}
 	}
@@ -3551,19 +3623,102 @@ func overridesKotlinFun(cls *types.ClassSym, f *types.FunSym) bool {
 	return kotlinRoot && !javaRoot
 }
 
-// acronymAccessor returns the name of the Java accessor, with prefix get
-// or set, of property p if p starts with an acronym, which Kotlin
-// decapitalizes as a whole: getFD() is fd, getURLConnection()
-// urlConnection. It returns "" for other names.
-func acronymAccessor(prefix, p string) string {
-	i := strings.IndexFunc(p, unicode.IsUpper)
-	if i < 0 {
-		i = len(p)
+// javaGetterNames returns the names of the Java methods that are getters
+// of a property named p, as K2's possibleGetMethodNames: isX() of isX,
+// getUrl() or getURL() of url, whose name, decapitalized back, is p.
+// getURL() isn't uRL's, nor getКУ() кУ's: only ASCII letters change
+// case.
+func javaGetterNames(p string) []string {
+	var names []string
+	if startsWithIs(p) {
+		names = append(names, p)
 	}
-	if i < 2 {
-		return ""
+	c1 := capitalizeASCII(p)
+	names = append(names, "get"+c1)
+	if c2 := capitalizeFirstWordASCII(p); c2 != c1 {
+		names = append(names, "get"+c2)
 	}
-	return prefix + strings.ToUpper(p[:i]) + p[i:]
+	return slices.DeleteFunc(names, func(n string) bool { return javaPropertyName(n) != p })
+}
+
+// javaPropertyName returns the name of the property whose getter is the
+// method named m, as K2's propertyNameByGetMethodName, or "": url of
+// getURL(), htmlFile of getHTMLFile(), isX of isX().
+func javaPropertyName(m string) string {
+	if strings.HasPrefix(m, "get") && len(m) > 3 && !isLowerASCII(m[3]) {
+		return decapitalizeSmartASCII(m[3:])
+	}
+	if startsWithIs(m) {
+		return m
+	}
+	return ""
+}
+
+// startsWithIs reports whether s is is followed by a character that
+// isn't an ASCII lower-case letter: isEmpty, as JvmAbi's.
+func startsWithIs(s string) bool {
+	return len(s) > 2 && strings.HasPrefix(s, "is") && !isLowerASCII(s[2])
+}
+
+func isLowerASCII(b byte) bool { return 'a' <= b && b <= 'z' }
+func isUpperASCII(b byte) bool { return 'A' <= b && b <= 'Z' }
+
+func capitalizeASCII(s string) string {
+	if s != "" && isLowerASCII(s[0]) {
+		return string(s[0]-'a'+'A') + s[1:]
+	}
+	return s
+}
+
+// capitalizeFirstWordASCII upper-cases the ASCII letters of the first
+// word of s, up to the first character after the first that isn't an
+// ASCII lower-case letter: URL of url, HTMLFile of htmlFile.
+func capitalizeFirstWordASCII(s string) string {
+	i := 1
+	for i < len(s) && isLowerASCII(s[i]) {
+		i++
+	}
+	return upperASCII(s[:i]) + s[i:]
+}
+
+// decapitalizeSmartASCII lower-cases the ASCII letters of the first word
+// of s, an acronym as a whole: url of URL, htmlFile of HTMLFile, as K2's
+// decapitalizeSmartForCompiler(asciiOnly = true).
+func decapitalizeSmartASCII(s string) string {
+	if s == "" || !isUpperASCII(s[0]) {
+		return s
+	}
+	if len(s) == 1 || !isUpperASCII(s[1]) {
+		return string(s[0]-'A'+'a') + s[1:]
+	}
+	i := 0
+	for i < len(s) && isUpperASCII(s[i]) {
+		i++
+	}
+	if i == len(s) {
+		return lowerASCII(s)
+	}
+	return lowerASCII(s[:i-1]) + s[i-1:]
+}
+
+func upperASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isLowerASCII(c) {
+			b[i] = c - 'a' + 'A'
+		}
+	}
+	return string(b)
+}
+
+func lowerASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isUpperASCII(c) {
+			b[i] = c - 'A' + 'a'
+		}
+	}
+	return string(b)
 }
 
 // numberConversions are kotlin.Number's functions and the methods of

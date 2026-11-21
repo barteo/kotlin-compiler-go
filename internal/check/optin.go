@@ -48,7 +48,7 @@ func optInErrors(checkers []*Checker) {
 	}
 	o := &optPass{u: checkers[0].u, annClasses: map[string][]*types.ClassSym{}, aliases: map[string][]*types.AliasSym{},
 		markers: map[*types.ClassSym]*optMarker{}, descs: map[string]*optMarker{}, extClasses: map[*types.ClassSym][]*optMarker{},
-		seen: map[optErrKey]bool{}}
+		seen: map[optErrKey]bool{}, extProps: map[*types.FunSym]*types.VarSym{}}
 	for _, c := range checkers {
 		o.collect(c.file.Decls)
 	}
@@ -144,6 +144,9 @@ type optPass struct {
 	descs      map[string]*optMarker
 	extClasses map[*types.ClassSym][]*optMarker
 	seen       map[optErrKey]bool
+	// extProps are the program's extension properties, by their
+	// getters' and setters' symbols, whose deprecations are theirs.
+	extProps map[*types.FunSym]*types.VarSym
 }
 
 type optErrKey struct {
@@ -168,6 +171,14 @@ func (o *optPass) collect(decls []syntax.Decl) {
 				o.annClasses[d.Name] = append(o.annClasses[d.Name], d.Sym)
 			}
 			o.collect(d.Members)
+		case *syntax.PropDecl:
+			if d.Recv != nil && d.Sym != nil {
+				for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+					if a != nil && a.Sym != nil {
+						o.extProps[a.Sym] = d.Sym
+					}
+				}
+			}
 		case *syntax.TypeAliasDecl:
 			if d.Sym != nil {
 				o.aliases[d.Name] = append(o.aliases[d.Name], d.Sym)
@@ -1823,7 +1834,10 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 		if !write {
 			w.deprecatedUse(p, v.Name, w.propReadDeprecation(v, w.refReads[p]))
 		} else {
-			w.deprecatedUse(p, v.Name, notHidden(w.propWriteDeprecation(v)))
+			// A property, or a setter, deprecated with level HIDDEN
+			// can't be assigned, as it can't be read: K2 reports the
+			// assignment's name unresolved.
+			w.deprecatedUse(p, v.Name, w.propWriteDeprecation(v))
 		}
 	case types.Local, types.Param:
 		if !write {
@@ -1833,7 +1847,7 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 		if !write {
 			w.require(p, w.entryMarkers(v))
 		}
-		w.deprecatedUse(p, v.Name, notHidden(w.staticDepr(v)))
+		w.deprecatedUse(p, v.Name, w.staticDepr(v))
 	}
 }
 
@@ -1925,15 +1939,30 @@ func (w *optWalker) aliasObject(name string, obj *types.ClassSym, p syntax.Pos) 
 }
 
 // accessor checks a read, or with write an assignment, at p of property
-// name of the class path, by its getter and setter.
+// name, of the class path or an extension property of the program, by its
+// getter and setter.
 func (w *optWalker) accessor(name string, get, set *types.FunSym, p syntax.Pos, write bool) {
+	if write && set == nil && get != nil {
+		set = get.ExtSetter
+	}
 	f := get
 	if write && set != nil {
 		f = set
 	}
-	if f != nil && f.Decl == nil {
+	if f == nil {
+		return
+	}
+	if v := w.o.extProps[f]; v != nil {
+		// The program's extension property, or its accessor, deprecated:
+		// with level HIDDEN, K2 reports the name unresolved.
+		if f == set {
+			w.deprecatedUse(p, name, w.propWriteDeprecation(v))
+		} else {
+			w.deprecatedUse(p, name, w.propReadDeprecation(v, w.refReads[p]))
+		}
+	} else if f.Decl == nil {
 		w.funNamed(f, name, p, types.Type{})
-	} else if f != nil {
+	} else {
 		// A synthetic property of the program's override of a Java
 		// getter that K2 deprecates: first of getFirst().
 		w.deprecatedUse(p, name, w.c.jdkOverrideDepr(f))
@@ -1944,7 +1973,14 @@ func (w *optWalker) member(n *syntax.Member) {
 	if w.readWrites[n] {
 		w.memberAccess(n, false)
 	}
+	// An assignment of an implicit receiver's member, whose setter is
+	// deprecated with level HIDDEN: K2 resolves around it, to a top-level
+	// property of the name, which kc's resolution doesn't.
+	if this, ok := n.X.(*syntax.This); ok && this.Implicit && w.writes[n] {
+		w.hiddenOff = true
+	}
 	w.memberAccess(n, w.writes[n])
+	w.hiddenOff = false
 	if n.Object != nil {
 		w.object(n.Object, n.P)
 	}

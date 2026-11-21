@@ -477,12 +477,8 @@ func (l *lowerer) annotationArgs(n psi.NodeRef) []syntax.AnnotationArg {
 		})
 		if start.Valid() {
 			from := l.tokenStart(start)
-			toks, _ := syntax.TokenizeAt(l.path, l.src[from:c.Range().End], l.posAt(from))
-			for _, t := range toks {
-				if t.Kind != syntax.NL && t.Kind != syntax.EOF {
-					arg.Toks = append(arg.Toks, t)
-				}
-			}
+			toks, _ := syntax.TokenizeArgAt(l.path, l.src[from:c.Range().End], l.posAt(from))
+			arg.Toks = syntax.AnnotationArgToks(toks)
 		}
 		args = append(args, arg)
 	}

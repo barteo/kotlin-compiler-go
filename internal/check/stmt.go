@@ -652,7 +652,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		t = c.resolveType(s.Type)
 	case s.Type != nil:
 		t = c.resolveType(s.Type)
-		c.assignable(c.value(s.Init, t), t, s.Init.Pos())
+		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
 		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
@@ -1427,7 +1427,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if s.Op == syntax.ASSIGN {
 		n := len(c.errs)
 		vt := c.value(s.Value, tt)
-		c.assignable(vt, tt, s.Value.Pos())
+		c.assignable(vt, tt, syntax.StartPos(s.Value))
 		if id, ok := s.Value.(*syntax.Ident); len(c.errs) == n && !(ok && strings.HasPrefix(id.Name, "$p")) {
 			// Not a property reference's set, which is mutable still,
 			// as kotlinc's: Klass<*>::mutableProperty.

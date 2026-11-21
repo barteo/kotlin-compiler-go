@@ -182,6 +182,11 @@ type Checker struct {
 	// a reading of a call (extFuncVar): a cycle it runs into isn't
 	// reported at its references, as kotlinc reports the call instead.
 	probing int
+	// operator is the operator expression whose operands are being
+	// checked. The type an operand is checked with is a hint, as Int for
+	// x in 0..2, not a type expected of it: the operator is a call, as
+	// (0..2).contains(x) or "a".plus(x) (see tvar.wantUp).
+	operator *syntax.Binary
 	// inferFrom is one more than the count of reentries
 	// (Universe.reentries) when the inference whose declaration the
 	// checker is checking began, or 0 outside one: a reference to a declaration left Cyclic is reported
@@ -192,7 +197,10 @@ type Checker struct {
 	imports   map[string]*types.ClassSym // explicitly imported classes by name
 	// aliasImports are the program's explicitly imported typealiases.
 	aliasImports map[string]*types.AliasSym
-	funImports   map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
+	// conflictingImports are the names that two explicit imports of
+	// classifiers give, which are ambiguous: CONFLICTING_IMPORT.
+	conflictingImports map[string]bool
+	funImports         map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
 	// memberImports are the explicitly imported members of classes and
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
@@ -1170,8 +1178,8 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Outer != nil {
 		return c.innerType(ref)
 	}
-	if c.lookupTypeParam(ref.Name) == nil {
-		c.starAmbiguity(ref.Name, ref.P)
+	if c.lookupTypeParam(ref.Name) == nil && !c.starAmbiguity(ref.Name, ref.P) && c.conflictingImports[ref.Name] && c.nestedClassifier(ref.Name) == (classifier{}) {
+		c.errorf(ref.P, "overload resolution ambiguity: %s is a classifier of more than one import", ref.Name)
 	}
 	if a != nil {
 		c.u.typeUses.Store(ref, a)
@@ -3846,7 +3854,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
@@ -3892,7 +3900,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.jvmFunctionInit(d.Type, d.Init)
 	}
 	if sym.Resolved {
-		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
+		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init))
 		return
 	}
 	var t types.Type
@@ -3918,7 +3926,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t = c.provideDelegate(d, p, t, provided)
 	}
 	c.ambiguousAnon(d, cls, t)
-	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
+	if sym.Type = t; d.DelegateOf != nil && !keepsAnon(&d.Modifiers, cls) {
+		sym.Type = approxTop(c.approxIntersections(t))
+	} else if !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}
 	if d.Const && sym.Type.P {

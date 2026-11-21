@@ -529,8 +529,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		bt = c.unitBody(x.Body)
 		c.stubTail(lr)
-		if x.Anon && x.AnonExpr && x.AnonRet != nil {
-			// fun (): Unit = c?.close() returns a Unit?.
+		if x.Anon && x.AnonExpr && (x.AnonRet != nil || w.check) {
+			// fun (): Unit = c?.close() returns a Unit?. Nor is an
+			// expression body coerced to the Unit expected of it, as a
+			// lambda's is: (fun() = "1") isn't a () -> Unit.
 			if e := tailExpr(x.Body); e != nil {
 				if t := c.safeUnit(e, e.Type()); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
 					c.errorf(e.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
@@ -999,7 +1001,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 		}
 		switch {
 		case lr.check && lr.want.K != types.Invalid:
-			c.assignable(t, lr.want, x.X.Pos())
+			c.assignable(t, lr.want, syntax.StartPos(x.X))
 		case len(c.errs) > n && simpleExpr(x.X):
 			// As kotlinc postpones its type variables, the value is
 			// checked against the lambda's other results.
@@ -1280,9 +1282,63 @@ func findSAM(cls *types.ClassSym) *types.FunSym {
 		return nil
 	}
 	if f := ms[0]; !f.Unsupported && len(f.TypeParams) == 0 && len(f.Params) <= types.MaxArity {
-		return f
+		return inheritedNullability(f)
 	}
 	return nil
+}
+
+// inheritedNullability returns f, a Java interface's method, with the
+// nullability of a method of a Java superinterface that it overrides
+// where its own types are platform types, as K2 enhances an override
+// without annotations: J2's String foo(String x), overriding J's
+// @NotNull String foo(@Nullable String x), takes a String? and returns
+// a String. It returns f if it inherits none.
+func inheritedNullability(f *types.FunSym) *types.FunSym {
+	if f.Owner == nil || !isJavaClass(f.Owner) || f.Desc == "" {
+		return f
+	}
+	out := f
+	inherit := func(own, over types.Type) (types.Type, bool) {
+		if !own.P || over.P || over.K == types.Invalid || over.K != own.K {
+			return own, false
+		}
+		if over.N {
+			return own.Nullable(), true
+		}
+		return own.NonNull(), true
+	}
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || !isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if g.Static || len(g.Params) != len(f.Params) || g.Desc != f.Desc {
+				continue
+			}
+			for j := range out.Params {
+				if t, ok := inherit(out.Params[j].Type, g.Params[j].Type); ok {
+					if out == f {
+						cp := *f
+						cp.Params = slices.Clone(f.Params)
+						out = &cp
+					}
+					v := *out.Params[j]
+					v.Type = t
+					out.Params[j] = &v
+				}
+			}
+			if t, ok := inherit(out.Ret, g.Ret); ok {
+				if out == f {
+					cp := *f
+					cp.Params = slices.Clone(f.Params)
+					out = &cp
+				}
+				out.Ret = t
+			}
+		}
+		return true
+	})
+	return out
 }
 
 // abstractMethods returns the abstract methods of an interface and its
@@ -1959,6 +2015,20 @@ func endsInLambda(l *syntax.Lambda) bool {
 	}
 	_, ok = es.X.(*syntax.Lambda)
 	return ok
+}
+
+// endsInAnonFun reports whether lambda l's result is an anonymous
+// function with a block body: run { fun(): String { return "" } }.
+func endsInAnonFun(l *syntax.Lambda) bool {
+	if l.Body == nil || len(l.Body.Stmts) == 0 {
+		return false
+	}
+	es, ok := l.Body.Stmts[len(l.Body.Stmts)-1].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	f, ok := es.X.(*syntax.Lambda)
+	return ok && f.Anon && !f.AnonExpr
 }
 
 // lambdaResultOpen reports whether a pending lambda's result is a variable
@@ -3209,6 +3279,13 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 		lt := c.lambda(l, want)
 		l.T = lt
+		if tv := s.unfixedVar(pt); tv != nil && want.K == types.Invalid && l.Arrow && !l.Anon && l.Ref == nil &&
+			slices.ContainsFunc(l.Params, func(p *syntax.LambdaParam) bool { return p.Type == nil }) {
+			// As kotlinc, the variable whose value is a lambda with a
+			// parameter it can't infer can't be inferred either: T of
+			// callParam { p -> p } for a callParam(arg: T).
+			s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
 		if pt.HasVars() {
 			s.sub(lt, pt)
 		} else {
@@ -3263,13 +3340,26 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	c.stubInference(s, l, params, ft)
-	for _, q := range params {
+	errs0 := len(s.errs)
+	vars := make([]*tvar, len(params))
+	for i, q := range params {
+		if q = s.apply(q); q.K == types.TypeVar && !q.N {
+			vars[i] = s.byVar[q.Param()]
+		}
 		if !c.hasStub(s.apply(q)) {
 			s.fixVarsIn(q)
 		}
 	}
 	for i := range params {
 		params[i] = c.demandStubs(s.final(params[i]))
+		// As kotlinc, a parameter declared without a type whose variable
+		// can't be inferred is reported too: x of foo { x -> 43 } for a
+		// foo(block: (T) -> R).
+		if tv := vars[i]; tv != nil && params[i].K == types.Invalid && l.Arrow && l.Ref == nil && !ft.Flex().E && ft.Flex().Contexts() == 0 &&
+			i < len(l.Params) && l.Params[i].Type == nil &&
+			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
 	if sam == nil {
@@ -3315,6 +3405,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			w.ret = ft
 		}
 	}
+	if l.Anon {
+		// An anonymous function's result is its declared type, or Unit
+		// for a block body: run(fun () { return 42 }) returns Unit, and
+		// its return is reported.
+		switch {
+		case l.AnonRet != nil:
+			w.ret, w.check = c.resolveType(l.AnonRet), true
+		case l.AnonUnit:
+			w.ret, w.check = types.UnitType, true
+		}
+	}
 	var bt types.Type
 	if pre, ok := c.checked[l]; ok {
 		// Checked to choose the overload, with these parameter types.
@@ -3332,14 +3433,29 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// against the type the parameter gives R (see the fixup below).
 	// A result that contradicts R's declared bound isn't a lower bound of
 	// R either: as kotlinc, R is within its bound, and the result is
-	// reported where it is. (Not the type expected of the call, which an
-	// overload being tried can give.)
+	// reported where it is. Nor one that contradicts an upper constraint
+	// of R from the type expected of the call: val s: String = run { { } }
+	// reports the lambda { }, not the call. (Not one from a parameter of
+	// an outer call's overload being tried, which the result rules out.)
+	// An anonymous function there with a block body is reported both
+	// where it is and, as the lower bound it still is, at the call, as
+	// kotlinc does; one with an expression body only where it is.
 	contradicts := false
 	if tv := s.unfixedVar(r); tv != nil && bt.K != types.Invalid && bt.K != types.Unit && !bt.HasVars() && !r.N {
 		for _, u := range tv.v.Bounds {
 			if u = s.apply(u); !u.HasVars() && u.K != types.Invalid && !c.subtype(bt, u) {
 				contradicts = true
 			}
+		}
+		for _, u := range tv.wantUp {
+			if u = s.apply(u); contradicts || u.HasVars() || u.K == types.Invalid || c.subtype(bt, u) {
+				continue
+			}
+			if endsInAnonFun(l) {
+				c.errorf(resultPos(l), "type mismatch: inferred type is %s but %s was expected", bt, u)
+				break
+			}
+			contradicts = true
 		}
 	}
 	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) && !contradicts {

@@ -381,8 +381,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   members that just Java's collection interfaces declare.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
-  types (star projections), and the inferred type isn't an
-  intersection's component.
+  types (star projections) and no type parameters out of scope where
+  the call is, and the inferred type isn't an intersection's component.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,

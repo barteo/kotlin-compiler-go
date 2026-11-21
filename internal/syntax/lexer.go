@@ -74,6 +74,14 @@ func tokenizeAt(file, src string, pos Pos) ([]Token, []*Error) {
 	return lx.toks, lx.errs
 }
 
+// tokenizeArgAt lexes src, a call's argument starting at pos, as inside
+// its parentheses: newlines count only in the braces of a lambda.
+func tokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) {
+	lx := &lexer{src: src, line: pos.Line, col: pos.Col, file: file, stack: []byte{'('}}
+	lx.run()
+	return lx.toks, lx.errs
+}
+
 func (lx *lexer) errorf(p Pos, msg string) {
 	lx.errs = append(lx.errs, &Error{File: lx.file, Pos: p, Msg: msg})
 }
