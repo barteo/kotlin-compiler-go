@@ -778,8 +778,8 @@ func (t *classTable) arityMismatch(cls *types.ClassSym, kt *kmeta.Type) *types.C
 	for o := kt.Outer; o != nil; o = o.Outer {
 		n += len(o.Args)
 	}
-	cls.Ensure()
-	if len(cls.TypeParams) == n {
+	a, ok := t.arity(cls.Name, 0)
+	if !ok || a.n == n {
 		return cls
 	}
 	key := "mismatch:" + cls.Name + "/" + strconv.Itoa(n)
@@ -790,12 +790,93 @@ func (t *classTable) arityMismatch(cls *types.ClassSym, kt *kmeta.Type) *types.C
 	}
 	c := types.NewExternal(cls.Name, func(*types.ClassSym) {})
 	c.Ensure()
-	c.Interface, c.ArityOf = cls.Interface, cls
+	c.Interface, c.ArityOf = a.iface, cls
 	for i := range n {
 		c.TypeParams = append(c.TypeParams, &types.TypeParamSym{Name: "T" + strconv.Itoa(i), Index: i, Owner: c, Library: true})
 	}
 	t.m[key] = c
 	return c
+}
+
+// classArity is a class's number of type parameters, its outer classes'
+// included, and whether it is an interface.
+type classArity struct {
+	n     int
+	iface bool
+}
+
+// arity returns the arity of the class of the class path named name, as
+// load gives it, from its class file alone. arityMismatch can't load the
+// class: a type in a class's own signatures can name it, and its loading
+// would then wait for itself.
+func (t *classTable) arity(name string, depth int) (classArity, bool) {
+	if t.cp == nil || depth > 8 {
+		return classArity{}, false
+	}
+	type key struct {
+		cp   *classpath.Path
+		name string
+	}
+	k := key{t.cp, name}
+	if v, ok := t.arities.Load(k); ok {
+		return v.(classArity), true
+	}
+	info, err := t.cp.Load(name)
+	if err != nil {
+		return classArity{}, false
+	}
+	a := classArity{iface: info.Access&classfile.AccInterface != 0}
+	outer := ""
+	fromKotlin := false
+	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
+		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+			fromKotlin = true
+			a.n = len(kc.TypeParams)
+			if kc.IsInner() && info.Inner != nil {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if !fromKotlin {
+		a.n = sigArity(info.Sig)
+		if info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+			info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
+			if oi, err := t.cp.Load(info.Inner.Outer); err == nil && oi.Access&classfile.AccInterface == 0 {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if outer != "" {
+		o, ok := t.arity(outer, depth+1)
+		if !ok {
+			return classArity{}, false
+		}
+		a.n += o.n
+	}
+	t.arities.Store(k, a)
+	return a, true
+}
+
+// sigArity returns the number of the type parameters a class's generic
+// signature declares.
+func sigArity(sig string) int {
+	p := &sigParser{s: sig, ok: true}
+	if p.peek() != '<' {
+		return 0
+	}
+	p.i++
+	n := 0
+	for p.ok && p.peek() != '>' {
+		p.ident(":")
+		n++
+		for p.ok && p.peek() == ':' {
+			p.i++
+			if p.isTypeStart() {
+				p.skipRef()
+			}
+		}
+	}
+	return n
 }
 
 // suspendType maps a suspend function type, which metadata writes as the
