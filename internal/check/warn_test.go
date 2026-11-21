@@ -153,6 +153,20 @@ fun f6() = Any()
 val v = java.lang.String::class
 fun f7(x: Any) = x is java.lang.Number
 `, []string{"10:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "2:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "6:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "7:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
+		{"opt-in annotation class used as an annotation", `
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
+annotation class Exp
+@Exp
+annotation class EAnno
+@EAnno fun f1() {}
+fun f2(@EAnno p: String) {}
+@Exp @EAnno fun f3() {}
+@OptIn(Exp::class) @EAnno class C
+fun f4() {
+    @EAnno fun local() {}
+}
+val v = @EAnno fun() {}
+`, []string{"11:OPT_IN_USAGE", "13:OPT_IN_USAGE", "6:OPT_IN_USAGE", "7:OPT_IN_USAGE"}},
 		{"platform class type argument", `
 fun <T> id(t: T) = t
 fun f1() = java.lang.Integer::class.java
