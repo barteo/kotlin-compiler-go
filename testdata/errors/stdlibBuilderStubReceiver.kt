@@ -1,10 +1,11 @@
 // As kotlinc's BUILDER_INFERENCE_STUB_RECEIVER, an element of a builder's
 // type isn't fixed by an indexed compound assignment, as it is by an
-// operator: this[0] += "K" leaves buildList's E uninferred.
+// operator: this[0] += "K" is the error, and add("O") still gives
+// buildList's E.
 fun indexedCompound() {
-    buildList { // ERROR cannot infer type for type parameter 'E'
+    buildList {
         add("O")
-        this[0] += "K"
+        this[0] += "K" // ERROR the type of a receiver hasn't been inferred yet
     }
 }
 

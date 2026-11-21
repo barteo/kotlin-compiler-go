@@ -252,34 +252,60 @@ own tests.
   `A<Int>` isn't the first module's `A`. kc reads those type arguments only
   from Kotlin metadata, not from Java generic signatures: a Java class's
   method that names the other class keeps the first class.
-- Builder inference isn't K2's PCLA: a builder's lambda is checked with
-  its variables unfixed and then again with them fixed. A call in a
-  nested builder that combines both builders' variables, as
-  `select(this@outer.get(), get())`, is inferred with the inner
-  builder's first, the outer one's in the system but left unfixed, and
-  again with the outer one's. A fork of the constraint system over a
-  builder's variables waits for its lambda's constraints. Of K2's
-  fixation on demand, `kc` fixes a builder's variable for a member of a
-  value of its type and for a nested call's lambda that takes the
-  variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
-  not one in a type argument. A call's variable that captures an `out`
-  projection of a builder's variable is reported as uninferred, as K2
-  reports it, but kc infers its other captures of builders' variables,
-  which K2 may not. An `if` or `when` whose branches mention a builder's
-  variable joins them into its inference. A branch's generic call that
-  only the builder's variable, not yet bounded, gives a type to, as
-  `removeLast()` before `add(42)` in the other branch, takes the other
-  branches' join as its bound, as K2's fixation of the join's variable
-  first does; K2's own order of fixation isn't modeled otherwise, but
-  for KT-58232: a builder call returned by the one-branch `when` a
-  lambda ends with can't infer its variables, which are `Nothing`. A
-  builder's lambda that casts its receiver to a
-  star-projected subtype, `this as DerivedBuildee<*>`, infers the
-  variable as `Unit`, where K2 infers a captured type. Of the errors a
-  call adds to K2's shared constraint system, only one shape is carried
-  to the calls after it: a generic extension called on an unresolved
-  receiver with the lambda's `this`, `Unresolved().bar(this)`, after
-  which the extension calls on the builder's receiver are inapplicable.
+- Builder inference follows the rules of K2's PCLA, but not its single
+  pass: a builder's lambda is checked twice. The first check has the
+  builder's variables unfixed, on the constraint system that the
+  builder's call shares with the calls in the lambda and with the
+  builders around and in it. A call that mentions the variables is
+  postponed as K2's is, a variable is fixed on demand, for a member of a
+  value of its type or a type written without its arguments in an `is`
+  or `as`, only from the proper constraints it has at that statement,
+  and the errors of this check are the lambda's: a member of a value
+  whose variable can't be fixed yet is unresolved, whatever the
+  statements after it infer, and doesn't keep the variables from being
+  inferred. The second check, with the variables fixed, gives the tree
+  its types and reports what the checkers find on them. What differs
+  from K2:
+  - Of the errors a call adds to K2's shared constraint system, only
+    one shape is carried to the calls after it: a generic extension
+    called on an unresolved receiver with the lambda's `this`,
+    `Unresolved().bar(this)`, after which the extension calls on the
+    builder's receiver are inapplicable. K2 fails every later call of
+    the lambda, with an error on each argument.
+  - A variable that is a component of a smart cast's intersection,
+    `OTv & A` after `x is A`, isn't fixed for a member, and one that a
+    projection captures is, where K2 leaves its member unresolved. kc
+    fixes one for `++x[i]` and `x[i]++` too, which K2 doesn't
+    (KT-71778).
+  - A call of a Java generic method between the variables of two
+    nested builders, `select(get(), Test.foo(this@outer.getInv()))`, is
+    accepted where K2 reports its argument.
+  - A lambda that a builder's lambda returns, `return@build { arg ->
+    arg.length }`, an overload chosen by a lambda's result type with a
+    builder's variable in it, and the positions of K2's "cannot infer"
+    on a parameter or a type argument (`CANNOT_INFER_PARAMETER_TYPE`)
+    in a lambda with errors are kc's own.
+  - A fork of the constraint system over a builder's variables waits
+    for its lambda's constraints. A call's variable that captures an
+    `out` projection of a builder's variable is reported as uninferred,
+    as K2 reports it, but kc infers its other captures of builders'
+    variables, which K2 may not.
+  - An `if` or `when` whose branches mention a builder's variable joins
+    them into its inference. A branch's generic call that only the
+    builder's variable, not yet bounded, gives a type to, as
+    `removeLast()` before `add(42)` in the other branch, takes the
+    other branches' join as its bound, as K2's fixation of the join's
+    variable first does; K2's own order of fixation isn't modeled
+    otherwise, but for KT-58232: a builder call returned by the
+    one-branch `when` a lambda ends with can't infer its variables,
+    which are `Nothing`.
+  - A builder's lambda that casts its receiver to a star-projected
+    subtype, `this as DerivedBuildee<*>`, infers the variable as
+    `Unit`, where K2 infers a captured type.
+  - The right side of an elvis gives the call on its left its
+    variables before that call's lambda is analyzed, as K2's `K` of
+    `elvis(x: K?, y: K)` does, only in the initializer of a local
+    declared without a type: `val x = find { it.length } ?: ""`.
 
 ## Without the standard library
 

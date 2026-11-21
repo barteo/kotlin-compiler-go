@@ -124,6 +124,14 @@ type system struct {
 	// resolves once its lambda is analyzed. Elsewhere the first branch
 	// that its own constraints allow is.
 	wholeForks bool
+	// dep is the builder's run whose variables the call's receiver,
+	// arguments or expected type mention (see dependentRun): finish then
+	// completes it as K2's postponed call.
+	dep *stubRun
+	// elvisRet and elvisWant are the result type of a call on the left
+	// of an elvis and the type its right side gives it, where nothing
+	// else is expected (see elvisHint).
+	elvisRet, elvisWant types.Type
 }
 
 // fork is K2's fork point: an intersection below a class type through
@@ -197,6 +205,10 @@ func (s *system) clone() *system {
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
 		c.wantUp = slices.Clip(tv.wantUp)
+		// declUp is edited in place (see addUpper), and boundUp appended to:
+		// a clone that shared them would change the system it is a copy of.
+		c.declUp = slices.Clone(tv.declUp)
+		c.boundUp = slices.Clone(tv.boundUp)
 		c.lits = append([]*syntax.IntLit{}, tv.lits...)
 		n.vars = append(n.vars, &c)
 		n.byVar[c.v] = &c
@@ -1324,19 +1336,36 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 // finish completes the system, reports what could not be inferred and
 // writes the results into the tree.
 func (s *system) finish() {
-	if r := s.c.joinRun(s); r != nil {
+	r := s.c.joinRun(s)
+	if r == nil && s.dep != nil && s.ok && s.c.stubs != nil {
+		// K2's postponed call: its variables without a proper constraint
+		// are the builder's call's to fix.
+		s.completePostponed()
+		if s.unfixed() {
+			r = s.dep
+		}
+	}
+	if r != nil {
 		if !slices.Contains(r.joined, s) {
 			r.join(s)
 		}
 	} else {
 		s.complete()
 	}
-	for _, e := range s.errs {
-		s.c.errorf(e.pos, "%s", e.msg)
+	// A fixup may add errors and fixups of its own, as the one that writes
+	// the results of a builder's lambda does (see pclaSession): they are
+	// reported and run too.
+	n := 0
+	report := func() {
+		for ; n < len(s.errs); n++ {
+			s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
+		}
 	}
-	for _, f := range s.fixups {
-		f(s)
+	report()
+	for i := 0; i < len(s.fixups); i++ {
+		s.fixups[i](s)
 	}
+	report()
 }
 
 // final returns t with all variables replaced: those that could not be

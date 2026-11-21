@@ -861,7 +861,13 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		c.sink = c.takeBranchSink()
 		sink, n := c.sink, len(c.errs)
+		if call, ok := x.X.(*syntax.Call); ok && pclaShared() && x == c.elvisFull && xw.K == types.Invalid && sink == nil && hasLambda(call.Args) {
+			if yt, ok := c.elvisRightType(x.Y); ok {
+				c.elvisCall, c.elvisWant = call, starsBounded(yt).Nullable()
+			}
+		}
 		xt := c.safeUnit(x.X, c.value(x.X, xw)) // x?.f() ?: y for a Unit f
+		c.elvisCall = nil
 		if xw.K == types.Invalid && sink == nil && c.cannotInferSince(n) && retryableCall(x.X) {
 			// Nothing gives the left call's variables, but K2's K is fixed
 			// from the right side first, and the call's result is below it:
@@ -2364,6 +2370,9 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		return t, nil, false
 	}
 	c.stubReceiver(fn.X, t, fn.Name)
+	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
+		return types.InvalidType, nil, false
+	}
 	t = c.castView(fn.X, t, fn.Name)
 	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
 		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
@@ -2521,6 +2530,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return xt
 	}
 	c.stubReceiver(x.X, xt, x.Name)
+	if c.unfixedReceiver(x.X, xt, x.Name, x.P) {
+		return types.InvalidType
+	}
 	xt = c.castView(x.X, xt, x.Name)
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {

@@ -1348,6 +1348,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return ret
 		}
 	}
+	if x == c.elvisCall && want.K == types.Invalid {
+		sys.elvisRet, sys.elvisWant = ret, c.elvisWant
+	}
 	if len(sys.lambdas) > 0 {
 		// The expected type can help infer the lambdas' parameters. One
 		// of a builder's stubs relates the call's variables to them: as
@@ -1375,6 +1378,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if trial.ok {
 			sys = trial
 		}
+	}
+	if pclaShared() {
+		sys.dep = c.dependentRun(best, ts, want)
 	}
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))

@@ -658,7 +658,9 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		t = c.resolveType(s.Type)
 		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
+		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
 		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
+		c.elvisFull = nil
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.

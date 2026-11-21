@@ -15,7 +15,7 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4397.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4414.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -67,24 +67,24 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21502 of 22025 expected errors (97.6%) on their lines.
+kc reports 21568 of 22025 expected errors (97.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1402 | 89 |
-| `UNRESOLVED_REFERENCE` | 2553 | 2488 | 65 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1439 | 52 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2502 | 51 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
-| `RETURN_TYPE_MISMATCH` | 418 | 399 | 19 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 237 | 14 |
+| `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 239 | 12 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 148 | 11 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 76 | 11 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 145 | 10 |
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
-| `INAPPLICABLE_CANDIDATE` | 127 | 119 | 8 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 420 | 8 |
+| `INAPPLICABLE_CANDIDATE` | 127 | 120 | 7 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 108 | 6 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 422 | 6 |
 | `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
@@ -92,24 +92,22 @@ kc reports 21502 of 22025 expected errors (97.6%) on their lines.
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
 | `VAL_REASSIGNMENT` | 231 | 226 | 5 |
-| `BUILDER_INFERENCE_STUB_RECEIVER` | 5 | 1 | 4 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 21 | 4 |
 | `UPPER_BOUND_VIOLATED` | 125 | 121 | 4 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 159 | 4 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 221 | 3 |
-| `CANNOT_CHECK_FOR_ERASED` | 27 | 24 | 3 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 88 | 3 |
 | `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
 | `INCONSISTENT_BACKING_FIELD_TYPE` | 18 | 15 | 3 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 11 | 3 |
 | `INVALID_TYPE_OF_ANNOTATION_MEMBER` | 30 | 27 | 3 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
-| `NONE_APPLICABLE` | 150 | 147 | 3 |
 | `NON_LOCAL_RETURN_NOT_ALLOWED` | 25 | 22 | 3 |
 | `NO_SET_METHOD` | 11 | 8 | 3 |
 | `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
 | `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
+| `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
 | `CAPTURED_VAL_INITIALIZATION` | 34 | 32 | 2 |
 | `CONTEXT_PARAMETERS_WITH_BACKING_FIELD` | 2 | 0 | 2 |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 43 | 2 |
@@ -131,6 +129,8 @@ kc reports 21502 of 22025 expected errors (97.6%) on their lines.
 | `NO_ELSE_IN_WHEN` | 217 | 215 | 2 |
 | `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 24 | 2 |
 | `OPT_IN_MARKER_ON_WRONG_TARGET` | 16 | 14 | 2 |
+| `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 30 | 2 |
+| `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 30 | 28 | 2 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -139,11 +139,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 6.5% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 74 | 14.1% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 7.4% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 74 | 16.2% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 92 | 17.6% | `ARGUMENT_TYPE_MISMATCH` 19, `UNRESOLVED_REFERENCE` 19, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 6, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 323 | 61.8% | `ARGUMENT_TYPE_MISMATCH` 61, `UNRESOLVED_REFERENCE` 31, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 10 |
+| nearby | 62 | 13.6% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE` 9, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 287 | 62.8% | `ARGUMENT_TYPE_MISMATCH` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `UNRESOLVED_REFERENCE` 27, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,15 +151,15 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 190 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 179 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
-| `type mismatch: inferred type is _ but _ was expected` | 131 |
+| `unresolved reference: _` | 198 |
+| `type mismatch: inferred type is _ but _ was expected` | 148 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 133 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 88 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
+| `no function '_' takes n arguments` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
-| `no function '_' takes n arguments` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `expected n parameter of type _ but n were declared` | 13 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
@@ -181,7 +181,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
-| *109 more* | |
+| *108 more* | |
 
 ## Unsupported features
 

@@ -17,16 +17,17 @@ fun unitResult(): Unit = myRun {
     materializeNumber() // ERROR cannot infer type for type parameter 'N'. Specify it explicitly.
 }
 
-// A builder lambda that doesn't check with the variable unfixed, for a
-// reason other than an ambiguous call, leaves it uninferred: the other
-// lambda doesn't give it a type for a second check.
+// A member of a value of a builder's variable that nothing has given a
+// type yet isn't resolved, as in kotlinc, though the other lambda gives
+// the variable its type afterwards: the variable is inferred, and the
+// member is the only error.
 class Container<A> {
     fun consume(arg: A) {}
 }
 fun <B> build(funcA: (Container<B>) -> ((B) -> Unit), funcB: (Container<B>) -> Unit) {}
 fun twoLambdas() {
-    build( // ERROR cannot infer type for type parameter 'B'
-        { container -> { arg -> arg.length } },
+    build(
+        { container -> { arg -> arg.length } }, // ERROR unresolved reference: length
         { container -> container.consume("") },
     )
 }

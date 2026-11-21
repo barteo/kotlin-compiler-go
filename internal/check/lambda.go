@@ -2353,7 +2353,22 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	clean := false
 	for _, sl := range group {
 		nc, nj, ne, nr, nruns := len(r.cons), len(r.joined), len(r.extra), len(c.stubRejected), c.stubRuns
-		ok, ambiguous, msgs, unresolved := c.stubCheck(s, sl, r)
+		ok, ambiguous, msgs, unresolved, errs := c.stubCheck(s, sl, r)
+		if pclaShared() {
+			for _, e := range errs {
+				pclaLogf("PCLA %s first check: %s: %s\n", sl.l.P, e.Pos, e.Msg)
+			}
+			if !ambiguous && !(!ok && unresolved.Line > 0 && c.poisons(sl.l, unresolved)) {
+				// As in K2, where the lambda's errors don't end its
+				// analysis: its variables are inferred from the
+				// constraints, and the errors reported where they are.
+				c.keepPCLAErrors(s, sl.l, errs)
+				delete(c.pclaPoison, sl.l)
+				clean = true
+				continue
+			}
+			delete(c.pclaErrs, sl.l)
+		}
 		if !ok && !ambiguous && unresolved.Line > 0 && c.poisons(sl.l, unresolved) {
 			if c.pclaPoison == nil {
 				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
@@ -2393,7 +2408,12 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		// after provide().memberFunction() fixed OTv to ScopeOwner.
 		return
 	}
-	if useful, trial, ok := r.solve(); ok {
+	useful, trial, ok := r.solve()
+	if pclaDebug && ok {
+		pclaLogf("PCLA %s solved:\n", l.P)
+		trial.pclaDump()
+	}
+	if ok {
 		for _, k := range useful {
 			s.sub(k[0], k[1])
 		}
@@ -2486,7 +2506,7 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string, unresolved syntax.Pos) {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string, unresolved syntax.Pos, errs []*syntax.Error) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
@@ -2528,8 +2548,9 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 			unresolved = e.Pos
 		}
 	}
+	errs = slices.Clone(c.errs[n:])
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean, ambiguous, msgs, unresolved
+	return clean, ambiguous, msgs, unresolved, errs
 }
 
 // poisonedRecv reports a call f() at p on the receiver r of a builder
@@ -2724,6 +2745,10 @@ func (r *stubRun) add(t, u types.Type) bool {
 	trial, _ := r.fixAll()
 	if !trial.ok || slices.ContainsFunc(trial.errs[len(r.s.errs):], func(e inferError) bool { return !strings.HasPrefix(e.msg, "cannot infer") }) {
 		r.cons = r.cons[:len(r.cons)-1]
+		if pclaDebug {
+			pclaLogf("PCLA %v <: %v rejected:\n", t, u)
+			trial.pclaDump()
+		}
 		k := [2]types.Type{t, u}
 		if !slices.Contains(r.s.c.stubRejected, k) {
 			r.s.c.stubRejected = append(r.s.c.stubRejected, k)
@@ -2737,6 +2762,10 @@ func (r *stubRun) add(t, u types.Type) bool {
 // r's system with them added and r's variables fixed, if they agree.
 func (r *stubRun) solve() ([][2]types.Type, *system, bool) {
 	trial, useful := r.fixAll()
+	if pclaDebug && (!trial.ok || len(trial.errs) > len(r.s.errs)) {
+		pclaLogf("PCLA not solved:\n")
+		trial.pclaDump()
+	}
 	if !trial.ok || len(trial.errs) > len(r.s.errs) {
 		return nil, nil, false
 	}
@@ -2753,6 +2782,51 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	saved := c.stubs
 	c.stubs = nil
 	defer func() { c.stubs = saved }()
+	var trial *system
+	var useful [][2]types.Type
+	if pclaShared() {
+		trial, useful = r.buildShared(saved)
+	} else {
+		trial, useful = r.build(saved)
+	}
+	trial.forks = append(trial.forks, r.forks...)
+	trial.wholeForks = true
+	trial.resolveForks()
+	for _, v := range r.vars {
+		trial.fixVarsIn(types.VarType(v))
+	}
+	// Until none is left that can be: fixing T2 and T3 gives R1 its
+	// lower bound MyPair<T2, T3>. One whose bound is a variable that can
+	// be, of the call's own, can be too: T3 <: IRR, for IRR's W.
+	fixable := func(tv *tvar) bool {
+		if trial.fixable(tv) {
+			return true
+		}
+		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
+			if w := trial.unfixedVar(b); w != nil && w != tv && trial.fixable(w) {
+				return true
+			}
+		}
+		return false
+	}
+	for more := true; more; {
+		more = false
+		for _, v := range r.extra {
+			if tv := trial.byVar[v]; tv != nil && !tv.fixed && fixable(tv) {
+				trial.fixVarsIn(types.VarType(v))
+				more = true
+			}
+		}
+	}
+	return trial, useful
+}
+
+// build returns a copy of r's system, with the joined calls' systems and
+// the constraints of r that say something added, and those constraints:
+// the system that the builder's call and the calls in its lambda share,
+// nothing of it fixed. It is called with the Checker's stubs, saved,
+// cleared: in the copy, they are its own variables.
+func (r *stubRun) build(saved map[*types.TypeParamSym]*stubRun) (*system, [][2]types.Type) {
 	trial := r.s.clone()
 	for _, j := range r.joined {
 		if !j.ok {
@@ -2819,11 +2893,20 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 			}
 		}
 	}
-	// The constraints must agree: println(get(0)), which every println
-	// takes, gives get's E none. Those with the variables of other calls'
-	// systems, finished, and trivial ones, say nothing. Nothing says
-	// something only of a variable that nothing else does: yield(throw e)
-	// alone gives Buildee<Nothing>.
+	useful := r.useful(trial)
+	for _, k := range useful {
+		trial.sub(k[0], k[1])
+	}
+	return trial, useful
+}
+
+// useful returns the constraints of r that say something in trial, a
+// system with r's variables. The constraints must agree: println(get(0)),
+// which every println takes, gives get's E none. Those with the variables
+// of other calls' systems, finished, and trivial ones, say nothing.
+// Nothing says something only of a variable that nothing else does:
+// yield(throw e) alone gives Buildee<Nothing>.
+func (r *stubRun) useful(trial *system) [][2]types.Type {
 	var useful, nothing [][2]types.Type
 	for _, k := range r.cons {
 		switch {
@@ -2843,39 +2926,7 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 			useful = append(useful, k)
 		}
 	}
-	for _, k := range useful {
-		trial.sub(k[0], k[1])
-	}
-	trial.forks = append(trial.forks, r.forks...)
-	trial.wholeForks = true
-	trial.resolveForks()
-	for _, v := range r.vars {
-		trial.fixVarsIn(types.VarType(v))
-	}
-	// Until none is left that can be: fixing T2 and T3 gives R1 its
-	// lower bound MyPair<T2, T3>. One whose bound is a variable that can
-	// be, of the call's own, can be too: T3 <: IRR, for IRR's W.
-	fixable := func(tv *tvar) bool {
-		if trial.fixable(tv) {
-			return true
-		}
-		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
-			if w := trial.unfixedVar(b); w != nil && w != tv && trial.fixable(w) {
-				return true
-			}
-		}
-		return false
-	}
-	for more := true; more; {
-		more = false
-		for _, v := range r.extra {
-			if tv := trial.byVar[v]; tv != nil && !tv.fixed && fixable(tv) {
-				trial.fixVarsIn(types.VarType(v))
-				more = true
-			}
-		}
-	}
-	return trial, useful
+	return useful
 }
 
 // project returns the constraints useful, which trial solves, on r's own
@@ -2928,13 +2979,21 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	}
 	v := types.VarType(t.Flex().Param())
 	r := c.stubs[v.Param()]
-	_, trial, ok := r.solve()
-	if !ok {
-		return t
-	}
-	val := trial.apply(v)
-	if val.HasVars() || val.K == types.Invalid {
-		return t
+	var val types.Type
+	if pclaShared() {
+		var ok bool
+		if val, ok = r.semiFix(v.Param()); !ok {
+			return t
+		}
+	} else {
+		_, trial, ok := r.solve()
+		if !ok {
+			return t
+		}
+		val = trial.apply(v)
+		if val.HasVars() || val.K == types.Invalid {
+			return t
+		}
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
 	r.demanded = true
@@ -2976,8 +3035,8 @@ func (c *Checker) demandStubs(t types.Type) types.Type {
 // it checkType { } for fun <T> T.checkType(f: ...).
 func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
 	r := c.stub(t.Flex())
-	if r == nil {
-		return
+	if r == nil || pclaShared() {
+		return // see unfixedReceiver
 	}
 	switch name {
 	case "hashCode", "toString", "equals":
@@ -3334,6 +3393,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// As in Kotlin, the parameter types whose variables are known are
 	// fixed first, and only the others are inferred from the body: T of
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
+	c.elvisHint(s, params)
 	c.stubRelated(s, params)
 	for _, q := range params {
 		if s.known(q) && s.apply(q).HasVars() && !c.hasStub(s.apply(q)) {
@@ -3418,6 +3478,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	var bt types.Type
+	nerrs := len(c.errs)
 	if pre, ok := c.checked[l]; ok {
 		// Checked to choose the overload, with these parameter types.
 		bt = pre
@@ -3428,6 +3489,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	} else {
 		bt = c.checkTail(s, l, w, r)
 	}
+	c.replayPCLAErrors(s, l, nerrs)
 	// A lambda ending in a statement gives R := Unit. Not if a parameter
 	// declared with a type contradicts it, as String does R's Int in
 	// foo { s: String -> 1 } for (R) -> R: the result is then checked
