@@ -153,34 +153,34 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved reference: _` | 187 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 77 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 71 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `no function '_' takes n arguments` | 14 |
-| `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `expected n parameter of type _ but n were declared` | 13 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
 | `expected parameter of type _` | 12 |
 | `this lambda must return a value of type _` | 12 |
-| `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 11 |
 | `unresolved import: _` | 11 |
 | `ambiguous call: n candidates for '_' take (_)` | 10 |
 | `expected no parameters, but n were declared` | 10 |
-| `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 10 |
 | `'_' overrides nothing` | 9 |
 | `cannot access '_': it is private to this in '_'` | 9 |
-| `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
 | `operator '_' cannot be applied to Any?` | 7 |
-| *107 more* | |
+| `unexpected '_'` | 7 |
+| `captured values cannot be initialized because of possible reassignments` | 6 |
+| `names _, __, ___, ... are reserved in Kotlin` | 6 |
+| `type checking has run into a recursive problem; specify the return type of '_'` | 6 |
+| *103 more* | |
 
 ## Unsupported features
 

@@ -514,6 +514,8 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				rt := recvType
 				if recv != nil {
 					rt = r.Bound.Type
+				} else if !unbound && r.X == nil && r.Type == nil {
+					rt = c.implicitExtRecv(f)
 				}
 				sub, _ = c.recvTypeArgs(f, rt)
 			}
@@ -984,8 +986,39 @@ func (c *Checker) paramsMoreSpecific(f, g *types.FunSym) bool {
 func (c *Checker) recvTypeArgsOK(f *types.FunSym, recvType types.Type, r *syntax.CallableRef, bound bool) bool {
 	if bound {
 		recvType = r.Bound.Type
+	} else if recvType.K == types.Invalid && r.X == nil && r.Type == nil {
+		recvType = c.implicitExtRecv(f)
 	}
 	_, ok := c.recvTypeArgs(f, recvType)
+	return ok
+}
+
+// implicitExtRecv returns the type of the implicit receiver, the innermost
+// first, that a reference without a receiver to generic extension f takes,
+// whose type arguments are f's: K := String of ::bar for fun <K>
+// FlowCollector<K>.bar() in a FlowCollector<String>'s code. Invalid if
+// none is.
+func (c *Checker) implicitExtRecv(f *types.FunSym) types.Type {
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		if rt := c.scope.narrowed(c.recvs[i].sym); c.extFits(f, rt) {
+			return rt
+		}
+	}
+	for k := c.cls; k != nil; k = k.Outer {
+		if c.extFits(f, k.This()) {
+			return k.This()
+		}
+		if !k.Inner {
+			break
+		}
+	}
+	return types.InvalidType
+}
+
+// extFits reports whether a receiver of type rt gives generic extension
+// f's type arguments.
+func (c *Checker) extFits(f *types.FunSym, rt types.Type) bool {
+	_, ok := c.recvTypeArgs(f, rt)
 	return ok
 }
 
