@@ -94,6 +94,7 @@ func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 		return
 	}
 	ft := c.resolveType(bf.Type)
+	bf.Redundant = c.sameFieldType(ft, sym.Type)
 	if !c.fieldNarrows(ft, sym.Type, d.P) {
 		if ft.K != types.Invalid && ft != sym.Type {
 			// Reported: its initializer is still checked with the type
@@ -119,6 +120,39 @@ func (c *Checker) fieldNarrows(ft, t types.Type, p syntax.Pos) bool {
 	return ft != t // a field of the property's type is redundant
 }
 
+// sameFieldType reports whether a backing field of type ft is of t, the
+// property's type, as kotlinc's REDUNDANT_EXPLICIT_BACKING_FIELD judges
+// it: each a subtype of the other, so that a field of (Int) -> Unit is
+// one of Int.() -> Unit.
+func (c *Checker) sameFieldType(ft, t types.Type) bool {
+	if ft.K == types.Invalid || t.K == types.Invalid || ft.P || t.P || ft.HasVars() || t.HasVars() {
+		return false
+	}
+	return ft == t || c.subtype(ft, t) && c.subtype(t, ft)
+}
+
+// redundantBackingFields reports the explicit backing fields of the
+// file's properties that are of the property's type: kotlinc's
+// REDUNDANT_EXPLICIT_BACKING_FIELD.
+func (c *Checker) redundantBackingFields() {
+	var visit func(ds []syntax.Decl)
+	visit = func(ds []syntax.Decl) {
+		for _, d := range ds {
+			switch d := d.(type) {
+			case *syntax.PropDecl:
+				if bf := d.BackingField; bf != nil && bf.Allowed && bf.Redundant {
+					c.warnf(bf.P, "REDUNDANT_EXPLICIT_BACKING_FIELD", "explicit backing field declaration is unnecessary if it has the same type as the property")
+				}
+			case *syntax.ClassDecl:
+				if !d.Generated && !d.Synthetic {
+					visit(d.Members)
+				}
+			}
+		}
+	}
+	visit(c.file.Decls)
+}
+
 // inferBackingField checks the initializer of property d's backing field,
 // which gives its type, as inferProp does an omitted type's.
 func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
@@ -132,6 +166,7 @@ func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
 	t := c.fieldInit(d, owner, sym.Type, false)
 	c.state, c.trial = saved, trial
 	sym.InProgress, sym.Resolved = false, true
+	d.BackingField.Redundant = c.sameFieldType(t, sym.Type)
 	if c.fieldNarrows(t, sym.Type, d.P) {
 		sym.FieldT = &t
 	}

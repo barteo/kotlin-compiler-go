@@ -1854,6 +1854,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	if hasReified(best) {
 		c.reifiedProp(x, best, vars, sys)
 	}
+	c.notePlatformArgs(x, best.TypeParams, vars, sys)
 	return sys.final(vars.Apply(best.Ret)), true
 }
 

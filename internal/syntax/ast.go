@@ -665,8 +665,8 @@ type BackingField struct {
 	Init Expr     // nil: initialized in an init block or a constructor
 	Mods []Mod    // the modifiers written on it, which it can't take
 	// Checked is set by the checker, and Allowed on a field that the
-	// property can have.
-	Checked, Allowed bool
+	// property can have, and Redundant on one of the property's type.
+	Checked, Allowed, Redundant bool
 }
 
 // TypeAliasDecl is a typealias, typealias Name<T> = Type, at the top

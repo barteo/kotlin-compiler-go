@@ -213,3 +213,106 @@ fun cap14() {
         use(x)
     }
 }
+fun try1() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    try {
+        foo = 3 // ASSIGNED_VALUE_IS_NEVER_READ
+    } catch (_: Throwable) {
+        foo = 5 // ASSIGNED_VALUE_IS_NEVER_READ
+    } finally {
+        foo = 6
+    }
+    use(foo)
+}
+fun try2() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    try {
+        foo = 3
+    } catch (_: Throwable) {
+        foo = 5
+    }
+    use(foo)
+}
+fun try3() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    try {
+        foo = 3 // ASSIGNED_VALUE_IS_NEVER_READ
+        foo = 4
+    } catch (t: Throwable) {
+        foo = 5 // ASSIGNED_VALUE_IS_NEVER_READ
+        throw t
+    }
+    use(foo)
+}
+fun try4() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    try {
+        foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+        use(0)
+        foo = 3 // ASSIGNED_VALUE_IS_NEVER_READ
+    } catch (_: Throwable) {
+        foo = 4
+        use(foo)
+    } finally {
+        foo = 5 // ASSIGNED_VALUE_IS_NEVER_READ
+        foo = 6 // ASSIGNED_VALUE_IS_NEVER_READ
+    }
+}
+fun try5() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    foo = 2
+    try {
+        foo = 3
+        use(1)
+        foo = 4
+    } catch (_: Throwable) {
+        use(foo)
+    }
+    use(foo)
+}
+fun try6() {
+    var foo = 1
+    try {
+        foo = 2
+        return
+    } finally {
+        use(foo)
+    }
+}
+fun try7() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    foo = 2
+    try {
+        try {
+            use(1)
+            foo = 3
+        } finally {
+            use(2)
+        }
+    } catch (_: Throwable) {
+        use(foo)
+    }
+    use(foo)
+}
+fun try9() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    try {
+        foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    } finally {
+        foo = 3 // ASSIGNED_VALUE_IS_NEVER_READ
+        foo = 4
+    }
+    use(foo)
+}
+fun try10(b: Boolean) {
+    var foo = 1
+    try {
+        if (b) throw Exception()
+        foo = 2
+    } catch (_: Exception) {
+    }
+    use(foo)
+}

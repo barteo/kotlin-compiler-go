@@ -122,6 +122,47 @@ func (c *Checker) platformClass(p syntax.Pos, k string) {
 	c.warnf(p, "PLATFORM_CLASS_MAPPED_TO_KOTLIN", "this class is not recommended for use in Kotlin. Use '%s' instead", k)
 }
 
+// boxedPlatform are the Java classes of platformMapped that kc's types
+// tell from the Kotlin ones: java.lang.Integer, which only code that
+// names it gives a value, as java.lang.Integer::class, isn't Int.
+var boxedPlatform = map[string]bool{
+	"java/lang/Integer": true, "java/lang/Long": true, "java/lang/Short": true, "java/lang/Byte": true,
+	"java/lang/Character": true, "java/lang/Boolean": true, "java/lang/Float": true, "java/lang/Double": true,
+}
+
+// notePlatformArgs records call or property read n if a type argument it
+// infers, of type parameters tps with substitution sub in system s, is
+// a Java class that is a Kotlin one, as T of java.lang.Integer::class.java,
+// which kotlinc warns of at the callee. Not one in a type argument, as
+// KClass<java.lang.Integer> of listOf(java.lang.Integer::class).
+func (c *Checker) notePlatformArgs(n any, tps []*types.TypeParamSym, sub types.Subst, s *system) {
+	for _, tp := range tps {
+		if t := s.final(sub.Apply(types.ParamType(tp))); t.K == types.Class && boxedPlatform[t.C.Name] {
+			if c.platformArgs == nil {
+				c.platformArgs = map[any]string{}
+			}
+			c.platformArgs[n] = platformMapped[t.C.Name]
+			return
+		}
+	}
+	delete(c.platformArgs, n)
+}
+
+// platformArgWarning warns of call or property read n if notePlatformArgs
+// recorded it.
+func (c *Checker) platformArgWarning(n any) {
+	k, ok := c.platformArgs[n]
+	if !ok {
+		return
+	}
+	switch n := n.(type) {
+	case *syntax.Call:
+		c.platformClass(calleePos(n), k)
+	case *syntax.Member:
+		c.platformClass(n.P, k)
+	}
+}
+
 // platformClassImports warns of the file's imports of Java classes that
 // are Kotlin ones, as kotlinc's PlatformClassMappedToKotlinImportsChecker
 // does: in their order, up to the first import of a class's member or

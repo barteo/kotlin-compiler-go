@@ -485,8 +485,6 @@ tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteral
 tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteralsWithoutArtifactOnClasspath.kt:4	UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH	accepted
 tests/varargs/varargInSetter.kt	varargInSetter.kt:5	ASSIGNMENT_TYPE_MISMATCH	syntax-error
 tests/varargs/varargViewedAsArray.kt	varargViewedAsArray.kt:26	INAPPLICABLE_CANDIDATE	missing-check
-tests/versionOverload/optInRequred.kt	optInRequred.kt:7	OPT_IN_USAGE_ERROR	syntax-error
-tests/versionOverload/optInRequred.kt	optInRequred.kt:8	OPT_IN_USAGE_ERROR	syntax-error
 tests/visibility/moreSpecificProtected.kt	moreSpecificProtected.kt:81	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/when/guard/initializationAnalyses.kt	initializationAnalyses.kt:84	VAL_REASSIGNMENT	missing-check
 tests/when/guard/typeCheckerBehaves.kt	typeCheckerBehaves.kt:33	NO_ELSE_IN_WHEN	nearby
@@ -528,7 +526,6 @@ testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithLambda.kt	only
 testsWithStdLib/inference/delegates/kt50994.kt	kt50994.kt:13	INAPPLICABLE_CANDIDATE	missing-check
 testsWithStdLib/inference/subAtomAlreadyInitialized.kt	subAtomAlreadyInitialized.kt:6	RETURN_TYPE_MISMATCH	missing-check
 testsWithStdLib/inference/subAtomAlreadyInitialized2.kt	subAtomAlreadyInitialized2.kt:12	CANNOT_INFER_IT_PARAMETER_TYPE	missing-check
-testsWithStdLib/inference/subAtomAlreadyInitialized2.kt	subAtomAlreadyInitialized2.kt:5	OPT_IN_USAGE_ERROR	missing-check
 testsWithStdLib/kt9078.kt	kt9078.kt:7	UNRESOLVED_REFERENCE	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:36	LATEINIT_INTRINSIC_CALL_ON_NON_LITERAL	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:44	LATEINIT_INTRINSIC_CALL_IN_INLINE_FUNCTION	missing-check

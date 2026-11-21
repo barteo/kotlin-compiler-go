@@ -216,3 +216,73 @@ fun dw5(b: Boolean) {
     } while (todo())
     bar() // UNREACHABLE_CODE
 }
+open class UFoo(i: Int)
+fun u9_a() {
+    todo()
+    val k = { // UNREACHABLE_CODE
+        val x: Int by lazy { 1 } // UNREACHABLE_CODE
+        baz(x)
+    }
+    baz(k) // UNREACHABLE_CODE
+}
+fun u9_b() {
+    todo()
+    class L { // UNREACHABLE_CODE
+        fun f() {
+            val y: Int by lazy { 1 } // UNREACHABLE_CODE
+            baz(y)
+        }
+        val z by lazy { 2 } // UNREACHABLE_CODE
+    }
+}
+fun u9_c(n: Nothing) {
+    n // UNUSED_EXPRESSION
+    baz(1) // UNREACHABLE_CODE
+}
+fun u9_d(n: Nothing) {
+    baz(n) // UNREACHABLE_CODE
+    baz(2) // UNREACHABLE_CODE
+}
+class U9E : UFoo(todo()) { // UNREACHABLE_CODE
+    val p = 1 // UNREACHABLE_CODE
+    init { baz(3) } // UNREACHABLE_CODE
+}
+fun u9_f() {
+    class C : UFoo(todo()) { // UNREACHABLE_CODE
+        val q = 2 // UNREACHABLE_CODE
+    }
+    baz(4)
+}
+fun u9_g(): Int {
+    (if (true) return 1 else return 0)::hashCode // UNREACHABLE_CODE
+    return 0 // UNREACHABLE_CODE
+}
+fun u9_h() {
+    val o = object : UFoo(todo()) {} // UNREACHABLE_CODE
+    baz(o) // UNREACHABLE_CODE
+}
+fun u9_i() {
+    operator fun Nothing.invoke(): Nothing = this
+    todo()() // UNREACHABLE_CODE
+    baz(5) // UNREACHABLE_CODE
+}
+fun u9_j() {
+    todo()
+    val w = object { // UNREACHABLE_CODE
+        fun g() { val v by lazy { 3 }; baz(v) } // UNREACHABLE_CODE
+    }
+    baz(w) // UNREACHABLE_CODE
+}
+fun u9_k() {
+    while (true) {
+        (break)::hashCode // UNREACHABLE_CODE
+        baz(6) // UNREACHABLE_CODE
+    }
+}
+fun u9_m(a: Any?, b: Any?) {}
+fun u9_l() {
+    u9_m( // UNREACHABLE_CODE
+        todo(),
+        ""
+    )
+}

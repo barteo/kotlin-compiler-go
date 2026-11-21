@@ -21,7 +21,8 @@ import (
 // itself or @OptIn(Marker::class), or where the module does (-opt-in).
 // A declaration needs opt-in for its own markers, those of the classes
 // it is nested in or constructs, and those of the classes and typealiases
-// its signature names. A class annotated @SubclassOptInRequired(Marker)
+// its signature names; an annotation class needs opt-in where it is
+// used as an annotation too, @EAnno fun f(). A class annotated @SubclassOptInRequired(Marker)
 // needs opt-in to inherit from, which @SubclassOptInRequired(Marker) on
 // the subclass also gives, and overriding a member with a marker needs
 // it too.
@@ -795,6 +796,13 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 	w.push(as)
 	for i := range as {
 		w.annotationArgs(&as[i], 0)
+		// An annotation class that needs opt-in, used as an annotation,
+		// which the declaration's annotations may opt in to.
+		if a := &as[i]; !a.Implicit {
+			if cls := w.o.annClass(a); cls != nil {
+				w.require(annotationNamePos(a), w.o.classMarkers(cls))
+			}
+		}
 	}
 	w.pop()
 	for i := range as {
@@ -827,6 +835,17 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			}
 		}
 	}
+}
+
+// annotationNamePos returns where the name of annotation a is, after
+// the @ and a use-site target.
+func annotationNamePos(a *syntax.Annotation) syntax.Pos {
+	p := a.P
+	p.Col++
+	if a.Target != "" {
+		p.Col += len(a.Target) + 1
+	}
+	return p
 }
 
 // annotationArgs checks the arguments of annotation a, and of the
@@ -1003,6 +1022,7 @@ func (w *optWalker) params(ps []*syntax.Param) {
 		if p == nil {
 			continue
 		}
+		w.annotationErrors(p.Annotations)
 		w.markerTargetErrors(p.Annotations, true)
 		w.push(p.Annotations)
 		w.typeRef(p.Type)

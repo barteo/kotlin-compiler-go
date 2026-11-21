@@ -153,6 +153,29 @@ fun f6() = Any()
 val v = java.lang.String::class
 fun f7(x: Any) = x is java.lang.Number
 `, []string{"10:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "2:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "6:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "7:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
+		{"opt-in annotation class used as an annotation", `
+@RequiresOptIn(level = RequiresOptIn.Level.WARNING)
+annotation class Exp
+@Exp
+annotation class EAnno
+@EAnno fun f1() {}
+fun f2(@EAnno p: String) {}
+@Exp @EAnno fun f3() {}
+@OptIn(Exp::class) @EAnno class C
+fun f4() {
+    @EAnno fun local() {}
+}
+val v = @EAnno fun() {}
+`, []string{"11:OPT_IN_USAGE", "13:OPT_IN_USAGE", "6:OPT_IN_USAGE", "7:OPT_IN_USAGE"}},
+		{"platform class type argument", `
+fun <T> id(t: T) = t
+fun f1() = java.lang.Integer::class.java
+fun f2() = Integer::class.javaObjectType
+fun f3() = id(java.lang.Long::class.java)
+fun f4() = listOf(java.lang.Integer::class)
+fun f5() = Int::class.java
+fun f6() = java.lang.Character::class.java.name
+`, []string{"3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "5:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "8:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
 		{"no tail calls found", `
 tailrec fun t1(n: Int): Int = if (n == 0) 0 else t1(n - 1)
 tailrec fun t2(n: Int): Int = 1
@@ -470,6 +493,81 @@ func checkReference(t *testing.T, file string, opts Options) {
 	if got := slices.Compact(checkWarningsWith(t, string(b), opts)); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("%s: got  %v\nwant %v", file, got, want)
 	}
+}
+
+// checkReferenceFiles is checkReference of file, the last of files, all
+// checked together, of which the warnings of the others aren't judged.
+func checkReferenceFiles(t *testing.T, opts Options, files ...string) {
+	t.Helper()
+	lib, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skip(err)
+	}
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, []string{lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fs []*syntax.File
+	var want []string
+	for i, name := range files {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, errs := syntax.Parse(name, string(b))
+		if len(errs) > 0 {
+			t.Fatal(errs[0])
+		}
+		fs = append(fs, f)
+		if i < len(files)-1 {
+			continue
+		}
+		for j, line := range strings.Split(string(b), "\n") {
+			if _, names, ok := strings.Cut(line, " // "); ok && !strings.HasPrefix(line, "//") {
+				for _, n := range strings.Fields(names) {
+					want = append(want, fmt.Sprintf("%d:%s", j+1, n))
+				}
+			}
+		}
+	}
+	ds, err := CheckOptions(context.Background(), fs, NewLibrary(cp), 1, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	last := files[len(files)-1]
+	for _, d := range ds {
+		switch {
+		case d.File != last:
+		case d.IsWarning():
+			got = append(got, fmt.Sprintf("%d:%s", d.Pos.Line, d.Name))
+		default:
+			got = append(got, fmt.Sprintf("%d:error", d.Pos.Line))
+		}
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if got = slices.Compact(got); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("%s: got  %v\nwant %v", last, got, want)
+	}
+}
+
+// TestWarningsBackingField checks the warnings of explicit backing
+// fields of their properties' types against kotlinc's of
+// testdata/backingfield.kt.
+func TestWarningsBackingField(t *testing.T) {
+	checkReference(t, "testdata/backingfield.kt", Options{Warnings: true})
+}
+
+// TestWarningsInferredInvisible checks the warnings of inferred types
+// that name a class the code can't see against kotlinc's of
+// testdata/inferredvis/b.kt.
+func TestWarningsInferredInvisible(t *testing.T) {
+	checkReferenceFiles(t, Options{Warnings: true}, "testdata/inferredvis/a.kt", "testdata/inferredvis/b.kt")
 }
 
 func TestWarningsNullOperators(t *testing.T) {

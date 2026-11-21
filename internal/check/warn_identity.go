@@ -48,9 +48,11 @@ func (c *Checker) noteIdentTypes(x *syntax.Binary, xt, yt types.Type) {
 	c.identTypes[x] = [4]types.Type{orig(x.X, xt), orig(x.Y, yt), xt, yt}
 }
 
-// identityWarnings reports the identity comparison x of a primitive. As
-// kotlinc, it judges the operands' types before smart casts, and, only if
-// those decide nothing and a smart cast is involved, the smart-cast types.
+// identityWarnings reports the identity comparison x of a primitive or a
+// value class. As kotlinc, it judges the operands' types before smart
+// casts, and, only if those decide nothing and a smart cast is involved,
+// the smart-cast types, which, where they rule out the comparison, only
+// make it FORBIDDEN_IDENTITY_EQUALS_WARNING.
 func (c *Checker) identityWarnings(x *syntax.Binary) {
 	ts, ok := c.identTypes[x]
 	if !ok || x.X == nil || x.Y == nil || x.OpType.K == types.Invalid {
@@ -58,7 +60,9 @@ func (c *Checker) identityWarnings(x *syntax.Binary) {
 	}
 	diag := c.identityDiag(ts[0], ts[1])
 	if diag == "" && (ts[0] != ts[2] || ts[1] != ts[3]) {
-		diag = c.identityDiag(ts[2], ts[3])
+		if diag = c.identityDiag(ts[2], ts[3]); diag == "skip" {
+			diag = "FORBIDDEN_IDENTITY_EQUALS_WARNING"
+		}
 	}
 	xt, yt := ts[2], ts[3]
 	switch diag {
@@ -66,37 +70,90 @@ func (c *Checker) identityWarnings(x *syntax.Binary) {
 		c.warnf(x.X.Pos(), diag, "identity equality for arguments of types '%s' and '%s' is deprecated", xt, yt)
 	case "IMPLICIT_BOXING_IN_IDENTITY_EQUALS":
 		c.warnf(x.X.Pos(), diag, "identity equality for arguments of types '%s' and '%s' can be unstable because of implicit boxing", xt, yt)
+	case "FORBIDDEN_IDENTITY_EQUALS_WARNING":
+		c.warnf(x.X.Pos(), diag, "identity equality for arguments of types '%s' and '%s' is prohibited", xt, yt)
 	}
 }
 
 // identityDiag returns the warning about a === b for operands of types l
-// and r: DEPRECATED_IDENTITY_EQUALS for two primitives of a type, and
+// and r: DEPRECATED_IDENTITY_EQUALS for two primitives of a type,
 // IMPLICIT_BOXING_IN_IDENTITY_EQUALS for one and a type it is a subtype
-// of. It returns "" if neither is a primitive, and "skip" where kotlinc
-// reports FORBIDDEN_IDENTITY_EQUALS instead (two primitives of different
-// types, or one and an unrelated type), or kc can't judge.
+// of, and FORBIDDEN_IDENTITY_EQUALS_WARNING for a nullable primitive and
+// a type its value, boxed, may be of (Int? and Int?, Any or an unbounded
+// T), which K1 allowed, and for type parameters bounded by different
+// primitives. It returns "" if neither has no identity, "skip" where
+// kotlinc reports FORBIDDEN_IDENTITY_EQUALS instead (two primitives of
+// different types, or one and an unrelated type, or a value class), and
+// "unknown" where kc can't judge.
 func (c *Checker) identityDiag(l, r types.Type) string {
 	lp, lok := identityPrimitive(l)
 	rp, rok := identityPrimitive(r)
 	switch {
 	case !lok || !rok:
-		return "skip"
-	case lp.K == types.Invalid && rp.K == types.Invalid:
-		return ""
+		return "unknown"
 	case lp.K != types.Invalid && rp.K != types.Invalid:
 		if lp.K != rp.K {
+			if l.K == types.TypeParam && r.K == types.TypeParam {
+				return "FORBIDDEN_IDENTITY_EQUALS_WARNING"
+			}
 			return "skip"
 		}
 		return "DEPRECATED_IDENTITY_EQUALS"
+	case lp.K != types.Invalid || rp.K != types.Invalid:
+		p, other := lp, r
+		if p.K == types.Invalid {
+			p, other = rp, l
+		}
+		if !c.boxesTo(p, other) {
+			return "skip"
+		}
+		return "IMPLICIT_BOXING_IN_IDENTITY_EQUALS"
 	}
-	p, other := lp, r
+	if types.IsValue(l.NonNull()) || types.IsValue(r.NonNull()) {
+		return "skip"
+	}
+	ln, rn := nullablePrimitive(l), nullablePrimitive(r)
+	switch {
+	case ln.K == types.Invalid && rn.K == types.Invalid:
+		return ""
+	case ln.K != types.Invalid && rn.K != types.Invalid:
+		if ln.K != rn.K && !(l.K == types.TypeParam && r.K == types.TypeParam) {
+			return "skip"
+		}
+		return "FORBIDDEN_IDENTITY_EQUALS_WARNING"
+	}
+	p, other := ln, r
 	if p.K == types.Invalid {
-		p, other = rp, l
+		p, other = rn, l
+	}
+	if other.P || other.NonNull().K == types.Nothing {
+		return "unknown"
 	}
 	if !c.boxesTo(p, other) {
 		return "skip"
 	}
-	return "IMPLICIT_BOXING_IN_IDENTITY_EQUALS"
+	return "FORBIDDEN_IDENTITY_EQUALS_WARNING"
+}
+
+// nullablePrimitive returns the primitive type P of a value of type t
+// that is a P?, not a platform type, or a type parameter bounded by P
+// that may be null, or else InvalidType.
+func nullablePrimitive(t types.Type) types.Type {
+	if t.P {
+		return types.InvalidType
+	}
+	if t.K == types.TypeParam {
+		for _, b := range t.Param().Bounds {
+			if !b.P && types.IsPrimitiveKind(b.K) && (t.N || b.N) {
+				return b.NonNull()
+			}
+		}
+		return types.InvalidType
+	}
+	if t.N && types.IsPrimitiveKind(t.K) {
+		return t.NonNull()
+	}
+	return types.InvalidType
 }
 
 // boxesTo reports whether a value of the primitive type p, boxed, may be

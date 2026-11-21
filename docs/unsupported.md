@@ -10,120 +10,212 @@ own tests.
 
 ## The language
 
-- Warnings: `kc` reports only `DEPRECATION`, `OVERRIDE_DEPRECATION`,
-  `TYPEALIAS_EXPANSION_DEPRECATION`, `DEPRECATED_JAVA_ANNOTATION`,
-  `INLINE_CLASS_DEPRECATED`, `OPT_IN_USAGE`, `OPT_IN_OVERRIDE`,
-  `ANNOTATION_TARGETS_ONLY_IN_JAVA`, `DSL_MARKER_APPLIED_TO_WRONG_TARGET`
-  (not on a lambda), `POTENTIALLY_NON_REPORTED_ANNOTATION`,
-  `ERROR_SUPPRESSION`,
-  `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
-  `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION`,
-  `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE`, `USELESS_CAST`,
-  `UNCHECKED_CAST`, `SENSELESS_COMPARISON`, `SENSELESS_NULL_IN_WHEN`,
-  `USELESS_ELVIS`, `USELESS_ELVIS_LEFT_IS_NULL`,
-  `USELESS_ELVIS_RIGHT_IS_NULL`, `OVERRIDE_BY_INLINE`,
-  `NOTHING_TO_INLINE`, `FINAL_UPPER_BOUND`, `REDUNDANT_PROJECTION`,
-  `MISPLACED_TYPE_PARAMETER_CONSTRAINTS`,
-  `PLATFORM_CLASS_MAPPED_TO_KOTLIN`, `NO_TAIL_CALLS_FOUND`,
-  `NON_TAIL_RECURSIVE_CALL`, `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED`,
-  `USELESS_IS_CHECK`, `IMPOSSIBLE_IS_CHECK_WARNING`,
-  `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`, `CAST_NEVER_SUCCEEDS`,
-  `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL`,
-  `SAFE_CAST_RELYING_ON_NULL`, `UNSAFE_CAST_RELYING_ON_NULL`,
-  `DEPRECATED_IDENTITY_EQUALS`, `IMPLICIT_BOXING_IN_IDENTITY_EQUALS`,
-  `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS`,
-  `REDUNDANT_CALL_OF_CONVERSION_METHOD`, `EMPTY_RANGE`,
-  `UNUSED_EXPRESSION`, `UNUSED_LAMBDA_EXPRESSION`,
-  `EXTENSION_SHADOWED_BY_MEMBER`,
-  `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE`,
-  `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
-  `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES`,
-  `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE`,
-  `PROPERTY_HIDES_JAVA_FIELD`, `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY`,
-  `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY`,
-  `NO_REFLECTION_IN_CLASS_PATH`, `DIVISION_BY_ZERO`,
-  `REDUNDANT_ELSE_IN_WHEN`, `INCOMPATIBLE_ENUM_COMPARISON`,
-  `NON_FINAL_MEMBER_IN_FINAL_CLASS`, `NON_FINAL_MEMBER_IN_OBJECT`,
-  `REDUNDANT_OPEN_IN_INTERFACE`, `REDUNDANT_MODIFIER`,
-  `USELESS_VARARG_ON_PARAMETER`, `DUPLICATE_BRANCH_CONDITION_IN_WHEN`,
-  `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION`,
-  `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION`,
-  `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL`, `REDUNDANT_NULLABLE`,
-  `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING`,
-  `LEAKED_IN_PLACE_LAMBDA` and `WRONG_INVOCATION_KIND` (not of a
-  parameter used in a callable reference, a safe call or a context
-  argument, nor the invocation kind where its calls are in a loop that
-  jumps, a lambda that jumps, or a `when` without `else` that isn't
-  exhaustive, or in a function that never returns normally),
-  `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` (not
-  of a class that doesn't override the function),
-  `UNNECESSARY_LATEINIT` (not where an object expression or a local
-  class reads the property, nor of a type parameter's type, nor for
-  constructors whose `this(...)` calls loop),
-  `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` and
-  `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` (not
-  through a typealias, nor of an inner class of a generic nested
-  class, nor of a local class inside a generic class),
-  `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` (not of a
-  constructor call),
-  `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
-  types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
-  (of smart-cast values, not of enums nor an identity comparison of a
-  value without identity), `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` (of
-  an inherited var's setter), `SYNCHRONIZED_ON_INLINE`,
-  `JAVA_CLASS_ON_COMPANION` (not through an alias of a built-in type),
-  `DANGEROUS_CHARACTERS` (not of a function type's parameter names, nor
-  of a destructuring `for` loop's) and, in
-  explicit API warning mode, `NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING`
-  and `NO_EXPLICIT_RETURN_TYPE_IN_API_MODE_WARNING`; and those only
-  where the types make them certain, so that `-Werror` doesn't reject
-  what `kotlinc` compiles: the null checks never of a platform type, a type parameter
-  or a type it couldn't resolve, and `UNCHECKED_CAST` only of a cast to
-  a type parameter that isn't reified, to a generic type from `Any`
-  or a star-projected supertype, to a function type from another of
-  its class, or to a generic type whose type arguments its operand's
-  type doesn't tell, judged as `kotlinc` does but only where that
-  type's arguments map to the target class's type parameters one by one,
-  without projections, and the operand isn't smart cast. Parameter names are compared only where they are stable,
-  of the program's and Kotlin libraries' functions, not Java methods,
-  and `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
-  `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` only of the program's
-  Kotlin members. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is
-  reported where the Java class is named, not through a typealias or an
-  inferred type, and `NO_TAIL_CALLS_FOUND` not where a recursive call in
-  tail position may be a tail call to `kotlinc`, as one on another
-  receiver. Type checks and casts are judged as `kotlinc` judges them,
-  by the declared type and then by its smart casts, but never where a
-  platform type or a type `kc` couldn't resolve is involved. Unused
-  expressions are judged as `kotlinc` does, but never property reads,
-  calls or operators. Shadowed extensions are judged by the members of
-  the program's classes and of the class path's Kotlin classes, not of
-  Java classes or built-in types such as `List` and `Int`.
-  `DIVISION_BY_ZERO` isn't reported in annotation arguments, and
-  `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum or
-  a sealed class, not of one exhaustive through an `is` check of the
-  subject's own type, or over a type parameter's value.
-  `INCOMPATIBLE_ENUM_COMPARISON` is reported of two nullable enums, not
-  of an enum and a type parameter's value or a value smart cast to
-  another enum. `ERROR_SUPPRESSION` is reported, as `kotlinc` 2.4.21
-  does, for every error name in a `@Suppress`, but not in one on a type
-  or a supertype. With `-Wextra`, as `kotlinc`, it also reports
-  `UNREACHABLE_CODE`, after a statement that always jumps (not the dead
-  code of a class's initialization order), `UNUSED_VARIABLE`,
-  `VARIABLE_NEVER_READ`, `ASSIGNED_VALUE_IS_NEVER_READ` and
-  `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
-  statement that may read the value comes before it is overwritten or
-  out of scope, through `if` and `when` but not loops or `try`, and,
-  for a variable a lambda, a local function or a local class uses,
-  only before the first of them and outside loops,
-  `UNUSED_ANONYMOUS_PARAMETER`, but not of a parameter whose name the
-  lambda's body uses for another variable,
-  `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
-  on an override of a member that inherits its visibility, and
-  `USELESS_CALL_ON_NOT_NULL`, but not of a callable reference; and with
-  `-Xuse-fir-experimental-checkers` `REDUNDANT_INTERPOLATION_PREFIX`.
-  `@Suppress` silences a warning by its name, or all of them with
-  `"warnings"`.
+- Warnings: `kc` reports `kotlinc`'s warnings by their names and
+  messages, but only where the types make them certain, so that
+  `-Werror` doesn't reject what `kotlinc` compiles. `@Suppress`
+  silences a warning by its name, or all of them with `"warnings"`.
+  These warnings of `kotlinc` 2.4.21 aren't reported:
+  - Those of Java's nullability and type annotations and Java
+    declarations: `TYPE_MISMATCH_BASED_ON_JAVA_ANNOTATIONS`,
+    `RECEIVER_NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS`,
+    `RECEIVER_MUTABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS`,
+    `NULLABILITY_MISMATCH_BASED_ON_EXPLICIT_TYPE_ARGUMENTS_FOR_JAVA`,
+    `UNEXHAUSTIVE_WHEN_BASED_ON_JAVA_ANNOTATIONS`,
+    `UPPER_BOUND_VIOLATED_BASED_ON_JAVA_ANNOTATIONS`,
+    `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_BASED_ON_JAVA_ANNOTATIONS`,
+    `TYPE_MISMATCH_WHEN_FLEXIBILITY_CHANGES`,
+    `EXPANSIVE_INHERITANCE_IN_JAVA`, `FINITE_BOUNDS_VIOLATION_IN_JAVA`,
+    `WRONG_TYPE_FOR_JAVA_OVERRIDE`,
+    `SYNTHETIC_PROPERTY_WITHOUT_JAVA_ORIGIN`,
+    `SYNCHRONIZED_BLOCK_ON_JAVA_VALUE_BASED_CLASS` and
+    `IDENTITY_SENSITIVE_OPERATIONS_WITH_VALUE_TYPE`.
+  - Those of classes missing from the class path:
+    `MISSING_DEPENDENCY_SUPERCLASS_WARNING`,
+    `MISSING_DEPENDENCY_CLASS_IN_EXPRESSION_TYPE`,
+    `MISSING_DEPENDENCY_CLASS_IN_LAMBDA_PARAMETER`,
+    `MISSING_DEPENDENCY_CLASS_IN_LAMBDA_RECEIVER` and
+    `MISSING_DEPENDENCY_CLASS_IN_TYPEALIAS`.
+  - Those of multiplatform declarations:
+    `ACTUAL_ANNOTATIONS_NOT_MATCH_EXPECT`,
+    `ACTUAL_IGNORABILITY_NOT_MATCH_EXPECT` and
+    `EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING`.
+  - Those of annotations: `WRONG_ANNOTATION_TARGET_WARNING`,
+    `INAPPLICABLE_TARGET_ON_PROPERTY_WARNING`,
+    `INCOMPATIBLE_ANNOTATION_TARGETS`,
+    `ANNOTATION_WILL_BE_APPLIED_ALSO_TO_PROPERTY_OR_FIELD`,
+    `ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE`,
+    `REDUNDANT_ANNOTATION`, `REDUNDANT_ANNOTATION_TARGET`,
+    `REDUNDANT_REPEATABLE_ANNOTATION`, `REPEATED_ANNOTATION_WARNING`,
+    `INAPPLICABLE_JVM_FIELD_WARNING`, `OVERLOADS_PRIVATE`,
+    `OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS`,
+    `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION`,
+    `USELESS_JVM_EXPOSE_BOXED`, `NEWER_VERSION_IN_SINCE_KOTLIN` and
+    `DSL_MARKER_PROPAGATES_TO_MANY`, and of opt-in markers:
+    `OPT_IN_WITHOUT_ARGUMENTS`, `OPT_IN_ARGUMENT_IS_NOT_MARKER`,
+    `OPT_IN_MARKER_ON_OVERRIDE_WARNING` and `OPT_IN_TO_INHERITANCE`.
+  - Those of modifiers: `DEPRECATED_MODIFIER_PAIR`,
+    `DEPRECATED_MODIFIER_FOR_TARGET`,
+    `DEPRECATED_MODIFIER_CONTAINING_DECLARATION`,
+    `REDUNDANT_MODIFIER_FOR_TARGET`,
+    `INAPPLICABLE_OPERATOR_MODIFIER_WARNING`,
+    `OPERATOR_RENAMED_ON_IMPORT`,
+    `CANNOT_CHANGE_ACCESS_PRIVILEGE_WARNING` and
+    `CANNOT_INFER_VISIBILITY_WARNING`.
+  - Those of deprecated forms: `DEPRECATED_ACCESS_TO_ENTRIES_PROPERTY`,
+    `DEPRECATED_ACCESS_TO_ENTRIES_AS_QUALIFIER`,
+    `DEPRECATED_ACCESS_TO_ENTRY_PROPERTY_FROM_ENUM`,
+    `DEPRECATED_ACCESS_TO_ENUM_ENTRY_COMPANION_PROPERTY`,
+    `DEPRECATED_ACCESS_TO_ENUM_ENTRY_PROPERTY_AS_REFERENCE`,
+    `DEPRECATED_SMARTCAST_ON_DELEGATED_PROPERTY`,
+    `DEPRECATION_ERROR_MIGRATION_PERIOD_WARNING`,
+    `VERSION_REQUIREMENT_DEPRECATION`, `ROOT_IDE_PACKAGE_DEPRECATED`,
+    `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE_DEPRECATION`,
+    `EXPOSED_TYPE_PARAMETER_BOUND_DEPRECATION_WARNING`,
+    `TYPE_PARAMETER_AS_REIFIED_DEPRECATION_WARNING`,
+    `TYPE_INTERSECTION_AS_REIFIED_DEPRECATION_WARNING`,
+    `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` and
+    `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING`.
+    Of the diagnostics that are a `_WARNING` until a language version
+    makes them an `_ERROR`, `kc` reports only
+    `IMPOSSIBLE_IS_CHECK_WARNING`,
+    `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING` and
+    `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`,
+    not, for example, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING`.
+  - Those of types and type arguments: `INCOMPATIBLE_TYPES_WARNING`,
+    `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION`,
+    `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
+    `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
+    `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING`,
+    `TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER`,
+    `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS_WARNING`,
+    `CONFLICTING_PROJECTION_IN_CALLABLE_REFERENCE_WARNING`,
+    `LOCAL_VARIABLE_WITH_TYPE_PARAMETERS_WARNING`,
+    `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_GET_CLASS_WARNING`, and of class
+    literals: `CLASS_LITERAL_LHS_NOT_A_CLASS_WARNING`,
+    `EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS_WARNING`,
+    `UNSUPPORTED_ARRAY_OF_NOTHING_IN_CLASS_LITERAL_LHS` and
+    `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING`.
+  - Those of initialization and inline functions:
+    `MUST_BE_INITIALIZED_WARNING`,
+    `MUST_BE_INITIALIZED_OR_BE_ABSTRACT_WARNING`,
+    `MUST_BE_INITIALIZED_OR_BE_FINAL_WARNING`,
+    `MUST_BE_INITIALIZED_OR_FINAL_OR_ABSTRACT_WARNING`,
+    `INITIALIZATION_BEFORE_DECLARATION_WARNING`,
+    `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT`,
+    `NOT_YET_SUPPORTED_IN_INLINE_WARNING` and
+    `INVISIBLE_REFERENCE_WARNING`.
+  - Others: `MISSING_BRANCH_FOR_NON_ABSTRACT_SEALED_CLASS`,
+    `DESTRUCTURING_SHORT_FORM_NAME_MISMATCH`,
+    `DESTRUCTURING_SHORT_FORM_OF_NON_DATA_CLASS`,
+    `DESTRUCTURING_SHORT_FORM_UNDERSCORE`,
+    `UNNAMED_PROPERTY_WITH_IMPLICIT_IGNORABLE_TYPE`,
+    `RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER`, `LABEL_NAME_CLASH`,
+    `REDUNDANT_LABEL_WARNING`, `REDUNDANT_RETURN`,
+    `ESCAPING_CAPTURED_VARIABLE`, `TRIM_MARGIN_BLANK_PREFIX`,
+    `INEFFICIENT_EQUALS_OVERRIDING_IN_VALUE_CLASS`,
+    `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY`, and those of
+    the return value checker: `RETURN_VALUE_NOT_USED`,
+    `RETURN_VALUE_NOT_USED_COERCION` and
+    `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
+  - With `-Wextra`: `CAN_BE_VAL`, `CAN_BE_VAL_DELAYED_INITIALIZATION`,
+    `CAN_BE_VAL_LATEINIT`, `REDUNDANT_MODALITY_MODIFIER`,
+    `REDUNDANT_RETURN_UNIT_TYPE`, `REDUNDANT_SETTER_PARAMETER_TYPE` and
+    `REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE`.
+
+  These are reported only in part:
+  - The null checks, such as `UNNECESSARY_SAFE_CALL`,
+    `SENSELESS_COMPARISON` and `USELESS_ELVIS`, never of a platform
+    type, a type parameter or a type `kc` couldn't resolve.
+  - Type checks and casts, such as `USELESS_IS_CHECK`,
+    `IMPOSSIBLE_IS_CHECK_WARNING`, `USELESS_CAST` and
+    `CAST_NEVER_SUCCEEDS`, are judged as `kotlinc` judges them, by the
+    declared type and then by its smart casts, but never where a
+    platform type or a type `kc` couldn't resolve is involved.
+  - `UNCHECKED_CAST` only of a cast to a type parameter that isn't
+    reified, to a generic type from `Any` or a star-projected
+    supertype, to a function type from another of its class, or to a
+    generic type whose type arguments its operand's type doesn't tell,
+    judged as `kotlinc` does but only where that type's arguments map
+    to the target class's type parameters one by one, without
+    projections, and the operand isn't smart cast.
+  - `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
+    `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
+    `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names
+    only where they are stable, of the program's and Kotlin libraries'
+    functions, not Java methods, and the last two only of the program's
+    Kotlin members.
+  - `PLATFORM_CLASS_MAPPED_TO_KOTLIN` where the Java class is named,
+    not through a typealias, and at a call that infers it as a type
+    argument only for a boxed primitive's class, as
+    `java.lang.Integer::class.java`.
+  - `NO_TAIL_CALLS_FOUND` not where a recursive call in tail position
+    may be a tail call to `kotlinc`, as one on another receiver.
+  - `UNUSED_EXPRESSION` never of property reads, calls or operators.
+  - `EXTENSION_SHADOWED_BY_MEMBER` and
+    `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` by the
+    members of the program's classes and of the class path's Kotlin
+    classes, not of Java classes or built-in types such as `List` and
+    `Int`.
+  - `DIVISION_BY_ZERO` not in annotation arguments.
+  - `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum
+    or a sealed class, not of one exhaustive through an `is` check of
+    the subject's own type, or over a type parameter's value.
+  - `INCOMPATIBLE_ENUM_COMPARISON` and
+    `FORBIDDEN_IDENTITY_EQUALS_WARNING` not where a platform type is
+    involved.
+  - `EQUALITY_NOT_APPLICABLE_WARNING` only of smart-cast values, not of
+    enums nor an identity comparison of a value without identity.
+  - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
+    error name in a `@Suppress`, but not in one on a type or a
+    supertype.
+  - `DSL_MARKER_APPLIED_TO_WRONG_TARGET` not on a lambda.
+  - `REDUNDANT_EXPLICIT_BACKING_FIELD` not of a field the property
+    can't have.
+  - `LEAKED_IN_PLACE_LAMBDA` and `WRONG_INVOCATION_KIND` not of a
+    parameter used in a callable reference, a safe call or a context
+    argument, nor the invocation kind where its calls are in a loop
+    that jumps, a lambda that jumps, or a `when` without `else` that
+    isn't exhaustive, or in a function that never returns normally.
+  - `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`
+    not of a class that doesn't override the function.
+  - `UNNECESSARY_LATEINIT` not where an object expression or a local
+    class reads the property, nor of a type parameter's type, nor for
+    constructors whose `this(...)` calls loop.
+  - `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` and
+    `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` not
+    through a typealias, nor of an inner class of a generic nested
+    class, nor of a local class inside a generic class.
+  - `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` not of a
+    constructor call.
+  - `CONTEXTUAL_OVERLOAD_SHADOWED` not where the context parameters'
+    types mention type parameters.
+  - `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` only of an inherited var's
+    setter.
+  - `INFERRED_INVISIBLE_RETURN_TYPE_WARNING`,
+    `INFERRED_INVISIBLE_WHEN_TYPE_WARNING`,
+    `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` and
+    `INFERRED_INVISIBLE_VARARG_TYPE_ARGUMENT_WARNING` only of a private
+    top-level class of another file or a package-private Java class of
+    another package, or a class nested in one, not of a private or
+    protected nested class, nor of an `if` or `when` that an expected
+    type gives a type.
+  - `JAVA_CLASS_ON_COMPANION` not through an alias of a built-in type.
+  - `DANGEROUS_CHARACTERS` not of a function type's parameter names,
+    nor of a destructuring `for` loop's.
+  - With `-Wextra`: `UNREACHABLE_CODE` only after a statement that
+    always jumps, not the dead code of a class's initialization order;
+    `ASSIGNED_VALUE_IS_NEVER_READ` and
+    `VARIABLE_INITIALIZER_IS_REDUNDANT` only where no statement that
+    may read the value comes before it is overwritten or out of scope,
+    through `if`, `when` and `try` but not loops, a catch taken as
+    entered after any statement of the `try`, and, for a variable a
+    lambda, a local function or a local class uses, only before the
+    first of them and outside loops; `UNUSED_ANONYMOUS_PARAMETER` not
+    of a parameter whose name the lambda's body uses for another
+    variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
+    property, nor on an override of a member that inherits its
+    visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
+    reference.
 
 - Local `external` functions inside an interface's members when the
   interface's methods are JVM default methods (the default

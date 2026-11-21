@@ -1101,9 +1101,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		yt := c.value(x.Y, yWant)
 		x.OpType = c.castEquality(x, xt, yt)
-		if x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.NOT_EQ_EQ {
-			c.noteIdentTypes(x, xt, yt)
-		}
+		c.noteIdentTypes(x, xt, yt)
 		return types.BoolType
 	}
 
@@ -1337,8 +1335,11 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
 	if op == syntax.EQ || op == syntax.NE {
-		if c.mayBeNullEnums(xt, yt) {
-			return false // only a warning: see enumComparisonWarning
+		if (c.enumType(x) || c.enumType(y)) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+			// K1 let a nullable enum be compared with any nullable type,
+			// as both may be null: K2 only warns (see
+			// enumComparisonWarning).
+			return false
 		}
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
 			return false
@@ -2420,6 +2421,15 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// X::class.java is the Java class, without a KClass.
 		t := c.classLit(cl, true)
 		cl.SetType(t)
+		if t.K == types.Class && t.A != nil && len(t.A.List) == 1 {
+			// T of the extension property KClass<T>.java.
+			if a := t.A.List[0].T; a.K == types.Class && boxedPlatform[a.C.Name] {
+				if c.platformArgs == nil {
+					c.platformArgs = map[any]string{}
+				}
+				c.platformArgs[x] = platformMapped[a.C.Name]
+			}
+		}
 		return t
 	}
 	if x.Object != nil {
@@ -4090,6 +4100,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
+		c.noteBranchJoin(x, c.statementJoin(x.Then, x.Else))
 		thenT, elseT = inferredJump(thenT, x.Then), inferredJump(elseT, x.Else)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
 			return types.NothingType
@@ -4104,7 +4115,11 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	if sink != nil {
 		return c.sinkBranches(sink, pending, t)
 	}
-	return c.completeBranches(pending, t, want, true)
+	t = c.completeBranches(pending, t, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, t)
+	}
+	return t
 }
 
 // joinBranches joins the type of a branch of an if or when, bt, with the
@@ -4366,6 +4381,53 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 	return result
 }
 
+// noteBranchJoin records t, the join of the types of the branches of
+// the if or when x, which no expected type gave a type, for the warnings
+// about it (see inferredInvisibleBranches).
+func (c *Checker) noteBranchJoin(x syntax.Expr, t types.Type) {
+	if t.K == types.Invalid {
+		return
+	}
+	if c.branchJoins == nil {
+		c.branchJoins = map[syntax.Expr]types.Type{}
+	}
+	c.branchJoins[x] = t
+}
+
+// statementJoin returns the join of the values of bodies, the branches of
+// an if or when whose value isn't used, or InvalidType unless each that
+// doesn't jump ends with an expression of a type that isn't Unit.
+func (c *Checker) statementJoin(bodies ...*syntax.Block) types.Type {
+	result := types.NothingType
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return types.InvalidType
+		}
+		if b.T.K == types.Nothing {
+			continue
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return types.InvalidType
+		}
+		bt := es.X.Type()
+		switch {
+		case bt.K == types.Invalid || bt.K == types.Unit || bt.HasVars():
+			return types.InvalidType
+		case bt.K == types.Nothing:
+		case result.K == types.Nothing:
+			result = bt
+		default:
+			j, ok := c.join(result, bt)
+			if !ok {
+				return types.InvalidType
+			}
+			result = j
+		}
+	}
+	return result
+}
+
 // unusedJoin joins the type of a branch of an if or when whose value
 // isn't used into the others', result, which complete a generic call
 // that can't be inferred on its own, as in K2, which infers the
@@ -4614,7 +4676,19 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					}
 				}
 				if cond.OpType.K == types.Invalid {
+					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
+					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid && c.incompatibleEnums(st, ct) {
+						// A subject smart cast to an enum, compared with a
+						// value its declared type may be equal to: as
+						// kotlinc, only a warning (see whenEnumWarnings).
+						m := len(c.errs)
+						if t := c.equality(cond.X.Pos(), syntax.EQ, dt, ct); t.K != types.Invalid {
+							c.errs, cond.OpType = c.errs[:n], t
+						} else {
+							c.errs = c.errs[:m]
+						}
+					}
 				}
 				cov.add(cond.X)
 				if single && x.SubjVar == "" {
@@ -4793,6 +4867,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	}
 	if !valueUsed {
 		c.completeBranches(pending, unused, noWant, false)
+		bodies := make([]*syntax.Block, len(x.Branches))
+		for i, br := range x.Branches {
+			bodies[i] = br.Body
+		}
+		c.noteBranchJoin(x, c.statementJoin(bodies...))
 		if !allJump {
 			allJump = true
 			for i, br := range x.Branches {
@@ -4810,7 +4889,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if sink != nil {
 		return c.sinkBranches(sink, pending, result)
 	}
-	return c.completeBranches(pending, result, want, true)
+	result = c.completeBranches(pending, result, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, result)
+	}
+	return result
 }
 
 // joinIs returns the common supertype of the types of a when branch's

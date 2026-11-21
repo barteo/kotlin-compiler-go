@@ -289,10 +289,13 @@ type Checker struct {
 	// typeFacts are, for each x is T, x as T and is condition of a when,
 	// what its check knew of x (see noteTypeFacts).
 	typeFacts map[any]typeFacts
-	// identTypes are, for each a === b and a !== b, the types of a and b
-	// before smart casts and then after them, for the warnings about
-	// them (see identityWarnings).
+	// identTypes are, for each a == b, a != b, a === b and a !== b, the
+	// types of a and b before smart casts and then after them, for the
+	// warnings about them (see identityWarnings, enumComparisonWarning).
 	identTypes map[*syntax.Binary][4]types.Type
+	// branchJoins are, for each if and when that no expected type gave a
+	// type, the join of its branches' types (see noteBranchJoin).
+	branchJoins map[syntax.Expr]types.Type
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool
@@ -302,7 +305,16 @@ type Checker struct {
 	// blockJumps are the blocks with a statement that always jumps, and
 	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
-	// deadBlocks are the blocks in code reported as unreachable.
+	// platformArgs are the calls and property reads, *syntax.Call and
+	// *syntax.Member, with a type argument they infer that is a Java
+	// class that is a Kotlin one, java.lang.Integer of
+	// java.lang.Integer::class.java: the Kotlin class's name.
+	platformArgs map[any]string
+	// deadClasses are the local classes and object expressions in code
+	// reported unreachable, which classDeadCode doesn't judge.
+	deadClasses map[*syntax.ClassDecl]bool
+	// deadBlocks are the blocks in code reported as unreachable, and the
+	// bodies of callable references' lambdas, which aren't written.
 	deadBlocks map[*syntax.Block]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to

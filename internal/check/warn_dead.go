@@ -13,7 +13,9 @@ import (
 // completes, as val s = todo(), whose declaration never happens. It
 // follows how kotlinc marks the code, which reports the condition and
 // branch statements of an if or a when that can't run, but only the
-// start of a loop, a try, a lambda or a local declaration.
+// start of a loop, a try, a lambda or a local declaration, and the start
+// of each property delegate in it. A class whose superclass constructor
+// call jumps, class C : B(todo()), has its initializers reported.
 
 // noteJump records that statement jump of block b always jumps, or, if it
 // is -1, that none does: b's check may be repeated.
@@ -31,8 +33,21 @@ func (c *Checker) noteJump(b *syntax.Block, jump int) {
 // unreachableWarnings reports the unreachable code of block b, which
 // isn't in code reported already.
 func (c *Checker) unreachableWarnings(b *syntax.Block) {
-	i, ok := c.blockJumps[b]
-	if !ok || c.deadBlocks[b] || !c.stmtCFGJumps(b.Stmts[i]) {
+	if c.deadBlocks[b] {
+		return
+	}
+	// The statement that jumps in kotlinc's graph, by kc's judgment
+	// (stmtJumps) or not: x::f of an x that jumps, an object expression
+	// whose superclass's constructor call jumps.
+	n, j := len(b.Stmts), -1
+	if k, ok := c.blockJumps[b]; ok {
+		n, j = k+1, k
+	}
+	i := slices.IndexFunc(b.Stmts[:n], func(s syntax.Stmt) bool {
+		_, loop := s.(*syntax.While)
+		return (!loop || j >= 0 && s == b.Stmts[j]) && c.stmtCFGJumps(s)
+	})
+	if i < 0 {
 		return
 	}
 	c.partlyDead(b.Stmts[i])
@@ -72,7 +87,13 @@ func (c *Checker) partlyDead(s syntax.Stmt) {
 		report = c.stmtCFGJumps(s)
 	}
 	if report {
-		c.unreachable(syntax.StmtPos(s))
+		p := syntax.StmtPos(s)
+		if es, ok := s.(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Ref != nil && l.Ref.X != nil {
+				p = syntax.StartPos(l.Ref.X) // x::f, which starts at x
+			}
+		}
+		c.unreachable(p)
 	}
 }
 
@@ -157,8 +178,13 @@ func (c *Checker) cfgJumps(e syntax.Expr, expected bool) bool {
 			}
 		}
 		return true
+	case *syntax.Checked:
+		return c.cfgJumps(e.X, expected)
+	case *syntax.Lambda:
+		return e.Ref != nil && c.operandJumps(e) // x::f, not a lambda
 	case *syntax.Jump, *syntax.Call, *syntax.Member, *syntax.Index, *syntax.Binary, *syntax.Unary, *syntax.Is,
-		*syntax.StringLit:
+		*syntax.StringLit, *syntax.Ident, *syntax.This, *syntax.ObjectExpr:
+		// A variable of type Nothing too: reading it jumps.
 	default:
 		return false // not judged: a lambda, an object expression, ...
 	}
@@ -234,8 +260,29 @@ func (c *Checker) operandJumps(e syntax.Expr) bool {
 				return true
 			}
 		}
+	case *syntax.Checked:
+		return c.operandJumps(e.X)
+	case *syntax.Lambda:
+		// (break)::toString: the receiver is evaluated first.
+		if r := e.Ref; r != nil {
+			return r.X != nil && c.cfgJumps(r.X, false) || r.BoundExpr != nil && c.cfgJumps(r.BoundExpr, false)
+		}
+	case *syntax.ObjectExpr:
+		// object : Foo(todo()) {}: the superclass's constructor call.
+		return e.Decl != nil && c.superCallJumps(e.Decl) != nil
 	}
 	return false
+}
+
+// superCallJumps returns the call of class d's superclass's constructor
+// in its header, B(x), if an argument of it always jumps, or nil.
+func (c *Checker) superCallJumps(d *syntax.ClassDecl) *syntax.Call {
+	for _, st := range d.Supers {
+		if st.Call != nil && c.operandJumps(st.Call) {
+			return st.Call
+		}
+	}
+	return nil
 }
 
 // deadStmt reports statement s, which can't run.
@@ -264,6 +311,60 @@ func (c *Checker) deadStmt(s syntax.Stmt) {
 	default:
 		c.unreachable(syntax.StmtPos(s))
 	}
+	c.deadDelegates(s)
+}
+
+// deadDelegates reports each property delegate in statement s, which
+// can't run, as kotlinc does, at its start: val x by lazy { }, in a
+// lambda, a local class or function or an object expression too.
+func (c *Checker) deadDelegates(s syntax.Stmt) {
+	seen := map[*syntax.ClassDecl]bool{}
+	var members func(d *syntax.ClassDecl)
+	members = func(d *syntax.ClassDecl) {
+		if d == nil || seen[d] {
+			return
+		}
+		seen[d] = true
+		for _, m := range d.Members {
+			switch m := m.(type) {
+			case *syntax.PropDecl:
+				if m.DelegateOf != nil && m.Init != nil {
+					c.unreachable(syntax.StartPos(m.Init))
+				}
+			case *syntax.ClassDecl:
+				members(m)
+			}
+		}
+	}
+	// walkCode enters the local classes and object expressions in the
+	// code it walks; syntax.Inspect doesn't.
+	see := func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.VarStmt:
+			if n.Delegate != nil {
+				c.unreachable(syntax.StartPos(n.Delegate))
+			}
+		case *syntax.LocalClass:
+			members(n.Decl)
+		case *syntax.ObjectExpr:
+			members(n.Decl)
+		}
+		return true
+	}
+	syntax.Inspect(s, func(n any) bool {
+		see(n)
+		var d *syntax.ClassDecl
+		switch n := n.(type) {
+		case *syntax.LocalClass:
+			d = n.Decl
+		case *syntax.ObjectExpr:
+			d = n.Decl
+		}
+		if d != nil {
+			walkCode([]syntax.Decl{d}, see)
+		}
+		return true
+	})
 }
 
 // deadBranches reports the branches of when x, which can't run.
@@ -298,8 +399,14 @@ func (c *Checker) deadBlock(b *syntax.Block) {
 // markDead marks the blocks in n as unreachable code, reported already.
 func (c *Checker) markDead(n any) {
 	syntax.Inspect(n, func(n any) bool {
-		if b, ok := n.(*syntax.Block); ok {
-			c.markBlockDead(b)
+		switch n := n.(type) {
+		case *syntax.Block:
+			c.markBlockDead(n)
+		case *syntax.ClassDecl:
+			if c.deadClasses == nil {
+				c.deadClasses = map[*syntax.ClassDecl]bool{}
+			}
+			c.deadClasses[n] = true
 		}
 		return true
 	})
@@ -324,11 +431,17 @@ func (c *Checker) unreachable(p syntax.Pos) {
 // property's initializer or an init block that always jumps, as with
 // kotlinc, which judges a class's initialization as one graph.
 func (c *Checker) classDeadCode(d *syntax.ClassDecl, done map[*syntax.ClassDecl]bool) {
-	if d == nil || done[d] || d.Generated || d.Synthetic {
+	if d == nil || done[d] || d.Generated || d.Synthetic || c.deadClasses[d] {
 		return
 	}
 	done[d] = true
 	dead := false
+	if call := c.superCallJumps(d); call != nil && !d.Anonymous {
+		// class C : B(todo()): the call, then the initializers. An object
+		// expression's is reported with the code it is in.
+		c.unreachable(syntax.StartPos(call))
+		dead = true
+	}
 	for _, m := range d.Members {
 		switch m := m.(type) {
 		case *syntax.ClassDecl:

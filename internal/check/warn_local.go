@@ -21,6 +21,7 @@ func (c *Checker) localWarnings() {
 	c.shadowWarnings()
 	c.dangerousNames()
 	c.inPlaceWarnings()
+	c.redundantBackingFields()
 	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
@@ -57,6 +58,7 @@ func (c *Checker) localWarnings() {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
+			c.platformArgWarning(n)
 			c.javaClassOnCompanion(n)
 			if !callees[n] {
 				c.reflectionWarning(n, nil)
@@ -82,6 +84,9 @@ func (c *Checker) localWarnings() {
 				uselessVarargs(c, n)
 			}
 			if n.Ref != nil {
+				if n.Body != nil {
+					c.markBlockDead(n.Body) // not written: unreachableWarnings skips it
+				}
 				syntax.Inspect(n.Body, func(m any) bool {
 					if x, ok := m.(*syntax.Call); ok {
 						refCalls[x] = true
@@ -90,11 +95,13 @@ func (c *Checker) localWarnings() {
 				})
 			}
 		case *syntax.Call:
+			c.platformArgWarning(n)
 			c.atomicWarnings(n)
 			c.redundantSpreads(n)
 			c.varargNothing(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
+				c.inferredInvisibleCall(n)
 				if c.u.extraWarnings {
 					c.uselessCallOnNotNull(n)
 				}
@@ -126,6 +133,9 @@ func (c *Checker) localWarnings() {
 			c.redundantElseWarning(n)
 			c.duplicateWhenConditions(n)
 			c.whenEnumWarnings(n)
+			c.inferredInvisibleBranches(n)
+		case *syntax.If:
+			c.inferredInvisibleBranches(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)
