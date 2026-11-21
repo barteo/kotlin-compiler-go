@@ -176,8 +176,11 @@ func (c *Checker) inside(cls *types.ClassSym) bool {
 // program's by its visibility, a protected one of the class path's in
 // subclasses of its class.
 func (c *Checker) funVisible(f *types.FunSym) bool {
-	if o := f.Owner; o != nil && o.CompanionOf != nil && !o.External && !c.classVisible(o) {
-		// A member of a private companion object, outside its class.
+	if o := f.Owner; c.inPrivateClass(o) || o != nil && o.CompanionOf != nil && !o.External && !c.classVisible(o) {
+		// A member of a private companion object, outside its class,
+		// or of a private class of the program the code can't see, as
+		// bar of another file's private class A, through a value of its
+		// type that a function exposes.
 		return false
 	}
 	if f.PackagePrivate {
@@ -233,6 +236,9 @@ func propNotInherited(p *types.VarSym, on *types.ClassSym) bool {
 
 // propVisible reports whether the code may read property p.
 func (c *Checker) propVisible(p *types.VarSym) bool {
+	if c.inPrivateClass(p.Owner) {
+		return false // see funVisible
+	}
 	if p.PackagePrivate {
 		// A Java field of package visibility, which its subclasses in
 		// other packages don't see either.
@@ -342,11 +348,19 @@ func (c *Checker) invisibleFun(p syntax.Pos, f *types.FunSym) {
 		c.errorf(p, "cannot access '%s': it is a member of a private companion object of '%s'", f.Name, o.CompanionOf.DisplayName())
 		return
 	}
+	if c.inPrivateClass(f.Owner) {
+		c.invisibleMember(p, f.Name, f.Owner)
+		return
+	}
 	c.errorf(p, "cannot access '%s': it is %s", f.Name, visibilityOf(memberVisibility(f), f.Owner))
 }
 
 // invisibleProp reports a use of a property the code can't see.
 func (c *Checker) invisibleProp(p syntax.Pos, v *types.VarSym) {
+	if c.inPrivateClass(v.Owner) {
+		c.invisibleMember(p, v.Name, v.Owner)
+		return
+	}
 	vis, ok := propVisibility(v)
 	if !ok {
 		vis = syntax.Protected
@@ -733,4 +747,31 @@ func (c *Checker) shadowedField(cls *types.ClassSym, f *types.VarSym, p syntax.P
 	if shadow != nil {
 		c.errorf(p, "the Java field '%s' is shadowed by the Kotlin property of '%s', which is invisible here", f.Name, shadow.Owner.Name)
 	}
+}
+
+// invisibleMember reports a use of member name of class owner, which the
+// code can't see, or a class it is nested in.
+func (c *Checker) invisibleMember(p syntax.Pos, name string, owner *types.ClassSym) {
+	k := c.invisibleOuter(owner)
+	v, _ := declVisibility(k.Decl)
+	c.errorf(p, "cannot access '%s': it is a member of '%s', which is %s", name, owner.DisplayName(), visibilityOf(v, k.Outer))
+}
+
+// inPrivateClass reports whether cls is a class of the program that the
+// code can't see, or a class it is nested in: a private companion
+// object's, another file's private class's, or a protected nested class
+// outside its outer class's subclasses, except in a subclass of cls,
+// which inherits the member, as K2 has it.
+func (c *Checker) inPrivateClass(cls *types.ClassSym) bool {
+	if cls == nil || cls.External {
+		return false
+	}
+	k := c.invisibleOuter(cls)
+	if k == nil {
+		return false
+	}
+	if v, _ := declVisibility(k.Decl); v == syntax.Protected {
+		return !c.seesProtected(cls)
+	}
+	return true
 }

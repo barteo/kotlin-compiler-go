@@ -169,6 +169,11 @@ func (c *Checker) importedMember(x *syntax.Ident) (types.Type, bool) {
 func (c *Checker) checkImportedRef(m *syntax.Member, mi memberImport) types.Type {
 	var t types.Type
 	if id, ok := m.X.(*syntax.Ident); ok && id.Object == nil {
+		if o := mi.owner; c.inPrivateClass(o) {
+			// An enum entry or static of a class the code can't
+			// see, as the entry of a private nested enum.
+			c.invisibleMember(m.P, mi.name, o)
+		}
 		t = c.staticField(m, c.fieldOwner(mi.owner, mi.name))
 	} else {
 		t = c.member(m)

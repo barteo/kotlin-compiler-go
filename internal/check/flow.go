@@ -683,7 +683,16 @@ func (c *Checker) aliasable(k narrow) bool {
 	if !base.Mutable {
 		return true
 	}
-	return isVar(base) && len(c.nestedAssigns[base]) == 0 && c.varStable(base, types.Type{})
+	return isVar(base) && c.varUntouched(base)
+}
+
+// varUntouched reports whether no code that may run while the code here
+// does assigns local v, a val or a var: as K2 has it, of a var that a
+// lambda assigns, whatever the type, the code knows nothing but its
+// positive smart casts (see varStable), not the values it isn't, nor the
+// smart casts of its properties.
+func (c *Checker) varUntouched(v *types.VarSym) bool {
+	return !isVar(v) || len(c.nestedAssigns[v]) == 0 && c.varStable(v, types.Type{})
 }
 
 // alias records that local v holds the value of k, as after val v = x,
@@ -1124,7 +1133,7 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 		return narrow{sym: sym, t: c.scope.narrowedMember(nil, sym, t)}, true
 	}
 	recv := c.narrowSym(m.X)
-	if recv == nil {
+	if recv == nil || !c.varUntouched(recv) {
 		return narrow{}, false
 	}
 	return narrow{recv: recv, sym: sym, t: c.scope.narrowedMember(recv, sym, t)}, true

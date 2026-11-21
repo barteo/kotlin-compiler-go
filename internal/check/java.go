@@ -485,7 +485,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 				vok = vok && sok
 			}
 		}
-		ok := t.signature(f, desc)
+		ok := t.signature(f, desc, !source)
 		if ok && m.Name == "<init>" && cls.Inner && len(f.Params) > 0 && f.Params[0].Type.NonNull().C == cls.Outer {
 			// The outer instance, which javac's signature leaves out, as
 			// Kotlin does: outer.Inner(x) passes it.
@@ -801,16 +801,36 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 	return types.InvalidType, false
 }
 
+// classFileType is fieldType for a descriptor of a class file's member:
+// a class the class path doesn't have is still unsupported, but a type of
+// its own, which no other class's type is the same as (see
+// javaMissingClass). A Java source's is an error type, as to K2.
+func (t *classTable) classFileType(d string) (types.Type, bool) {
+	ft, ok := t.fieldType(d)
+	if name, isClass := strings.CutPrefix(d, "L"); !ok && isClass {
+		if c := t.javaMissingClass(strings.TrimSuffix(name, ";")); c != nil {
+			return types.ClassType(c).Platform(), false
+		}
+	}
+	return ft, ok
+}
+
 // signature fills in f's parameters and return type from a method
-// descriptor and reports whether kc supports all of them.
-func (t *classTable) signature(f *types.FunSym, d string) bool {
+// descriptor and reports whether kc supports all of them. Of a class
+// file's method, classFile, a missing class is a type (see
+// classFileType).
+func (t *classTable) signature(f *types.FunSym, d string, classFile bool) bool {
+	ft := t.fieldType
+	if classFile {
+		ft = t.classFileType
+	}
 	ok := true
 	for _, p := range classfile.DescParams(d) {
-		pt, pok := t.fieldType(p)
+		pt, pok := ft(p)
 		ok = ok && pok
 		f.Params = append(f.Params, &types.VarSym{Name: "p", Type: pt, Kind: types.Param})
 	}
-	rt, rok := t.fieldType(classfile.RetDesc(d))
+	rt, rok := ft(classfile.RetDesc(d))
 	f.Ret = rt
 	return ok && rok
 }

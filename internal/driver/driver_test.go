@@ -264,6 +264,26 @@ func kotlincFlags(path string) []string {
 	return strings.Fields(flags)
 }
 
+// moduleDeps returns the output directories of the modules that a first
+// line "// deps: <modules>" of the file at path names, from outs, or
+// def if it has none.
+func moduleDeps(path string, outs map[string]string, def []string) []string {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return def
+	}
+	first, _, _ := strings.Cut(string(src), "\n")
+	deps, ok := strings.CutPrefix(first, "// deps: ")
+	if !ok {
+		return def
+	}
+	var dirs []string
+	for _, m := range strings.Fields(deps) {
+		dirs = append(dirs, outs[m])
+	}
+	return dirs
+}
+
 // flagOptions sets the options for kotlinc's flags -jvm-default,
 // -Xdebug, -Xmulti-platform and -opt-in=<marker> among flags.
 func flagOptions(opts *Options, flags []string) {
@@ -626,7 +646,11 @@ func checkErrors(t *testing.T, srcs []string, err error) {
 // first (its Java files by javac), and X/lib2/, if there is one, as a
 // second library module after it, then X/use/ against them, with
 // "// ERROR <substring>" comments as in TestErrors. A first line
-// "// kotlinc: <flags>" of either's first file gives its flags.
+// "// kotlinc: <flags>" of either's first file gives its flags. lib2 is
+// compiled against the standard library alone, and use against every
+// module, unless the first line of its first file is "// deps: <modules>",
+// which names the modules on its class path: a module that a dependency
+// depends on is then missing from it.
 func TestLibraryErrors(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -636,6 +660,7 @@ func TestLibraryErrors(t *testing.T) {
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			cp := []string{lib}
+			outs := map[string]string{}
 			for _, name := range []string{"lib", "lib2"} {
 				libSrcs, _ := filepath.Glob(filepath.Join(dir, name, "*.kt"))
 				if len(libSrcs) == 0 && name != "lib" {
@@ -643,7 +668,8 @@ func TestLibraryErrors(t *testing.T) {
 				}
 				libOut := t.TempDir()
 				javas, _ := filepath.Glob(filepath.Join(dir, name, "*.java"))
-				libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: name}
+				libCP := append([]string{lib}, moduleDeps(libSrcs[0], outs, nil)...)
+				libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: libCP, ModuleName: name}
 				flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
 				if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
 					t.Fatalf("compile %s: %v", name, err)
@@ -653,14 +679,17 @@ func TestLibraryErrors(t *testing.T) {
 					if err != nil {
 						t.Skip("javac not found on PATH")
 					}
-					args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
+					javaCP := strings.Join(append([]string{libOut}, libCP...), string(os.PathListSeparator))
+					args := append([]string{"-nowarn", "-cp", javaCP, "-d", libOut}, javas...)
 					if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 						t.Fatalf("javac: %v\n%s", err, out)
 					}
 				}
+				outs[name] = libOut
 				cp = append(cp, libOut)
 			}
 			srcs, _ := filepath.Glob(filepath.Join(dir, "use", "*.kt"))
+			cp = append([]string{lib}, moduleDeps(srcs[0], outs, cp[1:])...)
 			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: cp}
 			flagOptions(&opts, kotlincFlags(srcs[0]))
 			checkErrors(t, srcs, Compile(srcs, opts))

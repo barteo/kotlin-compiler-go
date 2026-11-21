@@ -42,3 +42,36 @@ fun eitherSide(e: E): Int {
         E.A -> 1
     }
 }
+
+// Nor of a var a lambda assigns, which may have run since, whatever the
+// value it assigns; one an inline function's lambda assigns may not have.
+inline fun inlined(f: () -> Unit) = f()
+
+fun lambdaAssigns(): Int {
+    var e = E.A
+    val block = { e = E.B }
+    if (e == E.A) return 1
+    return when (e) { // ERROR 'when' expression must be exhaustive
+        E.B -> 2
+        E.C -> 3
+    }
+}
+
+fun lambdaAssignsBoolean(): Int {
+    var b = true
+    val block = { b = false }
+    if (b == false) return 1
+    return when (b) { // ERROR 'when' expression must be exhaustive
+        true -> 2
+    }
+}
+
+fun inlineAssigns(): Int {
+    var e = E.A
+    inlined { e = E.B }
+    if (e == E.A) return 1
+    return when (e) {
+        E.B -> 2
+        E.C -> 3
+    }
+}

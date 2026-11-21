@@ -22,3 +22,27 @@ fun withNull(i: Int?) = when (i) { null -> 0; is Int -> 1 }
 fun nullableIs(s: String?) = when (s) { is String? -> 1 }
 fun negatedBoth(s: S) = when (s) { !is S.N -> 1; is S.N -> 2 }
 fun nothing(n: Nothing) = when (n) {}
+
+// A value of A checked to be a B is an A & B: a when over it covers A's
+// sealed subclasses or B's, not the ones they share alone.
+sealed interface IA
+sealed interface IB
+class SubA : IA
+class SubB : IB
+class SubAB : IA, IB
+
+fun sharedOnly(x: IA): Int {
+    check(x is IB)
+    return when (x) { is SubAB -> 1 } // ERROR 'when' expression must be exhaustive
+}
+
+fun coversA(x: IA): Int {
+    check(x is IB)
+    return when (x) { is SubA -> 1; is SubAB -> 2 }
+}
+
+// Exhaustive through B's subclasses, though SubB isn't an IA, as K2 has it.
+fun coversB(x: IA): Int {
+    check(x is IB)
+    return when (x) { is SubB -> 1; is SubAB -> 2 } // ERROR check for instance is always 'false'
+}

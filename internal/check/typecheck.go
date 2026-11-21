@@ -508,7 +508,11 @@ func (c *Checker) stable(v *types.VarSym) bool {
 			return c.stableOn(cp.PropSym, c.thisType())
 		}
 		return true
-	case types.Local, types.BackingField:
+	case types.Local:
+		// A local delegated val's getValue may return anything each
+		// time: K2 never smart casts it.
+		return v.Delegate == nil
+	case types.BackingField:
 		return true
 	case types.Prop:
 		return c.stableOn(v, c.thisType())
