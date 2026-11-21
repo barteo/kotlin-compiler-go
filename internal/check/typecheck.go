@@ -361,6 +361,10 @@ func (c *Checker) argsInBounds(t types.Type) bool {
 // with the arguments that follow from the subject's type, x is List for
 // an x: Collection<String> giving List<String>, and * for the others.
 func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) types.Type {
+	// As in K2, a subject of a builder's variable is fixed on demand for
+	// the arguments: otvOwner.provide() is GenericScopeOwnerSubtype after
+	// otvOwner.constrain(GenericScopeOwner<TypeArgument>()) fixes OTv.
+	subject = c.fixedStub(subject)
 	t, known, _ := c.bareArgs(cls, ref, subject)
 	if !known && ref == c.bareRef && ref != nil && subject.K != types.Invalid && !subject.IsParam() {
 		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",

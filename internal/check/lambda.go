@@ -2997,7 +2997,7 @@ func (r *stubRun) project(trial *system, useful [][2]types.Type) [][2]types.Type
 // Target's consume. The variable stays fixed to it for the rest of the
 // check. Otherwise, it returns t.
 func (c *Checker) fixedStub(t types.Type) types.Type {
-	if c.stub(t.Flex()) == nil {
+	if c.stub(t.Flex()) == nil || c.noDemand > 0 {
 		return t
 	}
 	v := types.VarType(t.Flex().Param())

@@ -4509,8 +4509,8 @@ tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt
 tests/inference/pcla/fixationOnDemand/syntaxForms/RangeOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ReferenceEqualityExpression.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/StringInterpolationExpression.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCastExpression.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCastExpression.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/UnarySignOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ValueEqualityOperatorCall.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/WhenExpression.kt	rejects invalid	on an expected line	
@@ -4643,7 +4643,7 @@ tests/inference/pcla/lambdaBelongsToOuterCallAdditionalFixedVariable.kt	accepts 
 tests/inference/pcla/lambdaBelongsToOuterCallUnitConstraint.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForBareType.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForBareTypeAs.kt	accepts valid		
-tests/inference/pcla/lambdaParameterForBareTypeEarlyFixationAffectsBehavior.kt	rejects invalid	elsewhere	
+tests/inference/pcla/lambdaParameterForBareTypeEarlyFixationAffectsBehavior.kt	rejects invalid	on an expected line	
 tests/inference/pcla/lambdaParameterForBareTypeOnOuterTypeVariable.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForNonBareType.kt	accepts valid		
 tests/inference/pcla/lambdaParameterTypeFixation.kt	accepts valid		

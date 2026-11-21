@@ -1603,6 +1603,11 @@ func arithOf(k syntax.Kind) syntax.Kind {
 // after it.
 func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	u.T = types.UnitType
+	// As in K2, which doesn't fix a builder's variable on demand in an
+	// increment or decrement (KT-71778): otvOwner.immutableReference[Index]++
+	// leaves get and inc unresolved, and OTv unfixed.
+	c.noDemand++
+	defer func() { c.noDemand-- }()
 	if recv, build, ok := safeTarget(u.X); ok {
 		return c.safeIncDec(u, recv, build, value)
 	}

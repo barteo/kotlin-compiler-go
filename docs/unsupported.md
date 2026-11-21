@@ -270,8 +270,9 @@ own tests.
   not one in a type argument. As in K2, it fixes one with a constraint
   by a proper type, directly or through the variables below it, and
   semi-fixes one bounded by a type of other variables (`Box<PNTv> <:
-  OTv`), but not one only below another variable (KT-72030); a call
-  whose variable nothing gives a type yet,
+  OTv`), but not one only below another variable (KT-72030), nor any in
+  an increment or decrement (KT-71778); a bare type in an `is` or `as`
+  fixes the subject's; a call whose variable nothing gives a type yet,
   `createDerivativeTypeVariable()`, is inferred with the builder's
   variables. A call's variable that captures an `out` projection of a
   builder's variable is reported as uninferred, as K2 reports it, but kc
