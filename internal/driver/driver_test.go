@@ -1267,6 +1267,99 @@ func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string,
 	}
 }
 
+// TestInnerClasses compiles testdata/innerclasses/ with kotlinc and kc
+// and compares the InnerClasses attributes of the classes both write: an
+// entry kotlinc writes for a nested class that kc's class file names too
+// must be in kc's, with the same outer class, simple name and access
+// flags. A Kotlin compiler reading the class file needs them to tell a
+// nested class from a top-level one with $ in its name.
+func TestInnerClasses(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	srcs := sources(t, "../../testdata/innerclasses")
+	kotlincOut, kcOut := t.TempDir(), t.TempDir()
+	args := append([]string{"-nowarn", "-d", kotlincOut}, srcs...)
+	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc: %v\n%s", err, out)
+	}
+	if err := Compile(srcs, Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib}, OutDir: kcOut}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	type class struct {
+		data    []byte
+		entries map[string]classfile.InnerClassEntry
+	}
+	read := func(dir string) map[string]class {
+		classes := map[string]class{}
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || !strings.HasSuffix(path, ".class") {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			info, err := classfile.Parse(data)
+			if err != nil {
+				return err
+			}
+			details, err := classfile.ParseDetails(data)
+			if err != nil {
+				return err
+			}
+			c := class{data, map[string]classfile.InnerClassEntry{}}
+			for _, e := range details.InnerClasses {
+				c.entries[e.Inner] = e
+			}
+			classes[info.Name] = c
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return classes
+	}
+	want, got := read(kotlincOut), read(kcOut)
+	var names []string
+	for name := range want {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		g, ok := got[name]
+		if !ok {
+			continue // a class only kotlinc writes
+		}
+		var inners []string
+		for inner := range want[name].entries {
+			inners = append(inners, inner)
+		}
+		sort.Strings(inners)
+		for _, inner := range inners {
+			w := want[name].entries[inner]
+			if w.Outer == "" || !bytes.Contains(g.data, []byte(inner)) {
+				continue // an anonymous or local class, or one kc's class file doesn't name
+			}
+			compared++
+			if e, ok := g.entries[inner]; !ok {
+				t.Errorf("%s: no InnerClasses entry for %s, kotlinc's is %+v", name, inner, w)
+			} else if e != w {
+				t.Errorf("%s: InnerClasses entry %+v, want kotlinc's %+v", name, e, w)
+			}
+		}
+	}
+	if compared < 20 {
+		t.Errorf("compared only %d entries", compared)
+	}
+}
+
 // TestParcelize compiles testdata/parcelize/ as kotlinc does with its
 // parcelize plugin: javac compiles java/, Android's Parcelable and a fake
 // of its Parcel, which logs what is written; kotlinc, with the plugin,

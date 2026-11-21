@@ -276,6 +276,38 @@ type Options struct {
 	// Cache is shared by the files of a compilation, which compute what
 	// it holds once; if nil, each file has its own.
 	Cache *Cache
+	// Program are the program's named classes, by JVM name (see
+	// ProgramClasses), and ClassFile reads a class of the class path:
+	// the InnerClasses attributes list the nested classes of either that
+	// a class file names (see nestedEntry).
+	Program   map[string]*syntax.ClassDecl
+	ClassFile func(name string) (*cf.Info, error)
+}
+
+// ProgramClasses returns the named classes the files declare, nested
+// ones included, by JVM name.
+func ProgramClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
+	m := map[string]*syntax.ClassDecl{}
+	var walk func(cd *syntax.ClassDecl)
+	walk = func(cd *syntax.ClassDecl) {
+		if cd.Sym == nil {
+			return
+		}
+		m[cd.Sym.Name] = cd
+		for _, d := range cd.Members {
+			if nd, ok := d.(*syntax.ClassDecl); ok {
+				walk(nd)
+			}
+		}
+	}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if cd, ok := d.(*syntax.ClassDecl); ok {
+				walk(cd)
+			}
+		}
+	}
+	return m
 }
 
 // Cache holds what code generation computes once for a compilation and
@@ -343,6 +375,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	g.writeMetadata()
 	for i, o := range out {
 		if c := g.shared.classes[o.Name]; c != nil && o.Bytes == nil {
+			c.Nested = g.nestedEntry
 			out[i].Bytes = c.Bytes()
 		}
 	}
@@ -477,20 +510,7 @@ func (g *gen) innerClasses() {
 			if inner == nil || outer == nil {
 				continue
 			}
-			access := inner.Access &^ (cf.AccSuper | cf.AccPublic)
-			if !nd.Sym.Inner {
-				access |= cf.AccStatic
-			}
-			switch {
-			case nd.EnumEntry:
-			case nd.Visibility == syntax.Private:
-				access |= cf.AccPrivate
-			case nd.Visibility == syntax.Protected:
-				access |= cf.AccProtected
-			default:
-				access |= cf.AccPublic
-			}
-			e := cf.InnerClassEntry{Inner: nd.Sym.Name, Outer: cd.Sym.Name, Simple: nd.Name, Access: access}
+			e := cf.InnerClassEntry{Inner: nd.Sym.Name, Outer: cd.Sym.Name, Simple: nd.Name, Access: nestedAccess(nd, inner.Access)}
 			outer.InnerClasses = append(outer.InnerClasses, e)
 			c := append(chain[:len(chain):len(chain)], e)
 			inner.InnerClasses = append(inner.InnerClasses, c...)
@@ -541,11 +561,61 @@ func (g *gen) innerClasses() {
 	}
 }
 
+// nestedAccess returns the access flags of the InnerClasses entry of nd,
+// a nested class, whose class file's are access.
+func nestedAccess(nd *syntax.ClassDecl, access uint16) uint16 {
+	access &^= cf.AccSuper | cf.AccPublic
+	if !nd.Sym.Inner {
+		access |= cf.AccStatic
+	}
+	switch {
+	case nd.EnumEntry:
+	case nd.Visibility == syntax.Private:
+		access |= cf.AccPrivate
+	case nd.Visibility == syntax.Protected:
+		access |= cf.AccProtected
+	default:
+		access |= cf.AccPublic
+	}
+	return access
+}
+
+// nestedEntry returns the InnerClasses entry of the class named name if
+// it is nested: a class of the file, by its own entry, another of the
+// program, from its declaration, or a class of the class path, from its
+// class file.
+func (g *gen) nestedEntry(name string) (cf.InnerClassEntry, bool) {
+	if c := g.shared.classes[name]; c != nil {
+		for _, e := range c.InnerClasses {
+			if e.Inner == name {
+				return e, true
+			}
+		}
+		return cf.InnerClassEntry{}, false
+	}
+	opts := g.shared.opts
+	if cd := opts.Program[name]; cd != nil {
+		outer := cd.Sym.Outer
+		if outer == nil || !strings.HasPrefix(name, outer.Name+"$") {
+			return cf.InnerClassEntry{}, false
+		}
+		return cf.InnerClassEntry{Inner: name, Outer: outer.Name, Simple: cd.Name, Access: nestedAccess(cd, classAccess(cd))}, true
+	}
+	if opts.ClassFile == nil {
+		return cf.InnerClassEntry{}, false
+	}
+	info, err := opts.ClassFile(name)
+	if err != nil || info.Inner == nil || info.Inner.Outer == "" || !strings.HasPrefix(name, info.Inner.Outer+"$") {
+		return cf.InnerClassEntry{}, false
+	}
+	return cf.InnerClassEntry{Inner: name, Outer: info.Inner.Outer, Simple: name[len(info.Inner.Outer)+1:], Access: info.Inner.Access}, true
+}
+
 // annotationClass generates an annotation class: an annotation interface
 // whose abstract methods are its parameters, with their defaults.
 func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 	cls := cd.Sym
-	c := cf.NewClass(cf.AccPublic|cf.AccInterface|cf.AccAbstract|cf.AccAnnotation, cls.Name, "java/lang/Object")
+	c := cf.NewClass(annotationAccess, cls.Name, "java/lang/Object")
 	c.Interfaces = []string{"java/lang/annotation/Annotation"}
 	c.SourceFile = filepath.Base(g.file.Path)
 	c.Signature = classSignature(cls, "java/lang/Object", c.Interfaces)
@@ -1211,17 +1281,21 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	}
 }
 
-func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
+// The access flags of an annotation class's and a value class's class
+// files.
+const (
+	annotationAccess = cf.AccPublic | cf.AccInterface | cf.AccAbstract | cf.AccAnnotation
+	valueAccess      = cf.AccPublic | cf.AccFinal | cf.AccSuper
+)
+
+// classAccess returns the access flags of cd's class file.
+func classAccess(cd *syntax.ClassDecl) uint16 {
 	cls := cd.Sym
-	if cls.Annotation {
-		return g.annotationClass(cd)
-	}
-	if cls.Value {
-		return g.valueClass(cd)
-	}
-	super := "java/lang/Object"
-	if cls.Super != nil {
-		super = cls.Super.Name
+	switch {
+	case cls.Annotation:
+		return annotationAccess
+	case cls.Value:
+		return valueAccess
 	}
 	access := uint16(cf.AccPublic | cf.AccSuper)
 	switch {
@@ -1244,7 +1318,22 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	if cd.Synthetic {
 		access |= cf.AccSynthetic
 	}
-	c := cf.NewClass(access, cls.Name, super)
+	return access
+}
+
+func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
+	cls := cd.Sym
+	if cls.Annotation {
+		return g.annotationClass(cd)
+	}
+	if cls.Value {
+		return g.valueClass(cd)
+	}
+	super := "java/lang/Object"
+	if cls.Super != nil {
+		super = cls.Super.Name
+	}
+	c := cf.NewClass(classAccess(cd), cls.Name, super)
 	// As with kotlinc, the Java interfaces of Kotlin's collection types
 	// come first, then their marker, then the other interfaces.
 	for _, i := range cls.Interfaces {
