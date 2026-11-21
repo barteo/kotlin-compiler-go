@@ -443,6 +443,13 @@ type Checker struct {
 	// that nothing gave a type where their members were used (see
 	// stubReceivers).
 	stubRecvAt map[syntax.Pos]bool
+	// pclaCommits are the builder lambdas whose check with the variables
+	// unfixed stands, in KC_PCLA=single mode (see settleTrials), and
+	// trialSkips counts the checks a trial skipped, which the check
+	// again would make: a trial that skipped one isn't kept.
+	pclaCommits  map[*syntax.Lambda]*pclaCommit
+	trialSkips   int
+	trialSkipWhy string
 	// probingRuns is set while system.uninferable completes a copy of a
 	// call's system, which joins no run.
 	probingRuns bool

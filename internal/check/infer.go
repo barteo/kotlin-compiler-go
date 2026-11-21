@@ -514,6 +514,7 @@ func (s *system) subArgs(sup, b types.Type) {
 								s.c.stubCapts = map[stubHintKey]bool{}
 							}
 							s.c.stubCapts[k] = true
+							s.c.skipTrial("capture") // for the check again to report
 						} else if s.c.stubCapts[k] && len(s.c.stubs) == 0 && !slices.ContainsFunc(s.errs, func(e inferError) bool { return e.pos == tv.pos }) {
 							s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 						}

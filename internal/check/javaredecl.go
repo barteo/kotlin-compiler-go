@@ -7,7 +7,11 @@ import "github.com/barteo/kotlin-compiler-go/internal/syntax"
 // (CLASSIFIER_REDECLARATION): a class Hello in Hello.kt and Hello.java, or
 // a nested class of such a class that the Java class nests too.
 func (c *Checker) javaRedeclaration(d *syntax.ClassDecl, name string) {
-	if c.trial != nil || d.EnumEntry || hasExpectActual(&d.Modifiers) {
+	if d.EnumEntry || hasExpectActual(&d.Modifiers) {
+		return
+	}
+	if c.trial != nil && !pclaSingle {
+		// The check again reports it, as the trial is thrown away.
 		return
 	}
 	if cp := c.u.ext.cp; cp != nil && cp.IsSource(name) {

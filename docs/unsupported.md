@@ -251,9 +251,12 @@ own tests.
   `A<Int>` isn't the first module's `A`. kc reads those type arguments only
   from Kotlin metadata, not from Java generic signatures: a Java class's
   method that names the other class keeps the first class.
-- Builder inference isn't K2's PCLA: a builder's lambda is checked with
-  its variables unfixed and then again with them fixed. An error in the
-  first check doesn't stop the inference, as in K2, and an ambiguous
+- Builder inference isn't K2's PCLA in every case: a builder's lambda is
+  checked once with its variables unfixed, and that check stands, the
+  variables' values written into it, unless it has errors or leaves one
+  to report once the variables are fixed. Such a lambda is checked again
+  with them fixed, as all were before (`KC_PCLA=twopass`). An error in
+  the first check doesn't stop the inference, as in K2, and an ambiguous
   call in it adds nothing but keeps the other calls' constraints. Only
   some of its errors are kept where the second finds none, as K2 reports
   them from the state where the code is: a member of a receiver whose

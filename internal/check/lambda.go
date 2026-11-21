@@ -2306,10 +2306,12 @@ func noInputs(t types.Type) bool {
 // whose constraints contradict the ones recorded so far isn't applicable
 // (see stubRun.add). A member of a value of one of their types fixes the
 // variable to what those constraints give (see fixedStub), and the value
-// a lambda returning Unit ends with makes it Unit (see stubTail). The
-// check's errors and the types it gives the tree are discarded, and what
-// it changes outside l undone (see trial): l is checked again once the
-// variables are fixed.
+// a lambda returning Unit ends with makes it Unit (see stubTail). A
+// clean check stands, as K2's single pass: postponedLambda writes the
+// variables' values into what it gave the tree (see settleTrials and
+// writePCLA). Otherwise its errors and the types it gives the tree are
+// discarded, and what it changes outside l undone (see trial): l is
+// checked again once the variables are fixed.
 func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type, ft types.Type) {
 	if c.nothingTail {
 		// The value of a lambda's nothingTail: its variables aren't
@@ -2409,7 +2411,9 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	}
 	c.stubReceivers(r)
 	c.reportStateErrors(stateErrs)
-	if useful, trial, ok := r.solve(); ok {
+	useful, trial, ok := r.solve()
+	c.settleTrials(r, group, ok, trial)
+	if ok {
 		for _, k := range useful {
 			s.sub(k[0], k[1])
 		}
@@ -2524,8 +2528,9 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 
 // stubCheck checks sl for stubInference, and reports whether it checks
 // without errors, whether its errors are all ambiguous calls, and their
-// messages. They and the types the check gives the tree are
-// discarded, and what it changes outside sl's lambda undone. A result type
+// messages. They are discarded. The check's trial is left to r, which
+// keeps or undoes it once solved (see settleTrials), or, with
+// KC_PCLA=twopass, ended: what it changes outside sl's lambda is undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
 func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, errs []*syntax.Error, unresolved syntax.Pos) {
@@ -2553,10 +2558,30 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	}
 	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
 	c.trial = t
+	skips := c.trialSkips
 	_, bt, _ := c.checkLambda(sl.l, w)
-	c.endTrial(t)
+	if pclaSingle {
+		// The run keeps or undoes it once solved (see stubInference).
+		c.trial = t.outer
+		retVars := ret.HasVars() && w.ret.K == types.Invalid
+		why := ""
+		switch {
+		case c.trialSkips != skips:
+			why = "skipped:" + c.trialSkipWhy
+		case !committable(sl.l, retVars):
+			why = "shape"
+		}
+		r.pending = append(r.pending, pendingTrial{l: sl.l, t: t, bt: bt, why: why})
+	} else {
+		c.endTrial(t)
+	}
 	clean = len(c.errs) == n
 	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
+	if pclaSingle {
+		if p := &r.pending[len(r.pending)-1]; p.why == "" && !clean {
+			p.why = "errors"
+		}
+	}
 	// So does one with the call's other variables, for a result of the
 	// stubs: MyPair<BV, IRR> of build's (Controller<BK>) -> MyPair<BV,
 	// IRR> gives BV the BK of c.foo { c.get() }'s MyPair<BK, T3>.
@@ -2606,6 +2631,9 @@ func stubReceiverError(v *types.TypeParamSym) string {
 // finds them again.
 func (c *Checker) reportStateErrors(errs []*syntax.Error) {
 	if c.trial != nil {
+		if len(errs) > 0 {
+			c.skipTrial("state")
+		}
 		return
 	}
 	for _, e := range errs {
@@ -2712,6 +2740,12 @@ type stubRun struct {
 	// forks are the system's forks over r's variables alone (see
 	// system.stubFork), which fixAll resolves.
 	forks []fork
+	// pending are the trials of the run's lambdas, in KC_PCLA=single
+	// mode, that the run keeps or undoes once solved (see settleTrials).
+	pending []pendingTrial
+	// dropped is set when force dropped a constraint that disagreed,
+	// which the check again reports.
+	dropped bool
 }
 
 // stubRecv is a receiver of stub v at p: see stubRun.recvs.
@@ -3402,6 +3436,9 @@ func (c *Checker) stubReceivers(r *stubRun) {
 	if c.trial != nil {
 		// In a check another run throws away, whose errors would make
 		// it fail: the check that counts finds them again.
+		if len(r.recvs) > 0 {
+			c.skipTrial("recvs")
+		}
 		return
 	}
 	for _, rv := range r.recvs {
@@ -3425,7 +3462,7 @@ func (c *Checker) stubReceivers(r *stubRun) {
 	}
 }
 
-// trial is a check of a lambda that stubInference throws away: what it
+// trial is a check of a lambda that stubInference may throw away: what it
 // changes outside the lambda, its classes' names and the file's list of
 // them, the captures it adds to the lambdas around and in it, and the
 // declarations of its classes inferred, is undone, so that the check
@@ -3878,7 +3915,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	var bt types.Type
-	if pre, ok := c.checked[l]; ok {
+	if cm := c.pclaCommits[l]; cm != nil {
+		// Checked with the builder's variables unfixed, a check that
+		// stands: their values are written into its tree.
+		delete(c.pclaCommits, l)
+		bt = c.writeCommit(s, l, cm)
+		if w.check && w.ret.K != types.Unit {
+			c.assignable(bt, w.ret, resultPos(l))
+			bt = w.ret
+		}
+	} else if pre, ok := c.checked[l]; ok {
 		// Checked to choose the overload, with these parameter types.
 		bt = pre
 		if w.check && w.ret.K != types.Unit {
@@ -4296,6 +4342,9 @@ func (r *stubRun) force(at int, t, u types.Type) {
 	later := slices.Clone(r.cons[at:])
 	r.cons = append(r.cons[:at:at], [2]types.Type{t, u})
 	for _, k := range later {
-		r.add(k[0], k[1])
+		if !r.add(k[0], k[1]) {
+			// The check again reports where it is: this one doesn't stand.
+			r.dropped = true
+		}
 	}
 }

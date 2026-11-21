@@ -117,9 +117,13 @@ that is an argument of another joins the outer system, as in K2, and so
 do the branches of an `if` or `when` used as a value. A lambda argument
 is checked after the other arguments, once the variables in its parameter
 types are fixed, and its body constrains the result. Builder inference
-(`buildList { add("x") }`) checks a lambda twice: first with variables
-open, recording the subtyping on them, then once they are fixed
-(`stubInference`).
+(`buildList { add("x") }`) checks a lambda with its variables open,
+recording the subtyping on them (`stubInference`), as K2's PCLA does.
+The check stands once the variables are fixed: their values are written
+into the types it gave the tree and the lambda's local declarations
+(`writePCLA`). A lambda whose check has errors is checked again with the
+variables fixed, which reports them where those values say;
+`KC_PCLA=twopass` checks every builder lambda again.
 
 **Smart casts.** Stable values (`val`s, `this`, final `val` properties
 with fields, and local `var`s no closure assigns) are narrowed by `is`
