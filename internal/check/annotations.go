@@ -667,6 +667,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.noFileTarget(d.Annotations)
 		c.publishedApi(&d.Modifiers)
 		fun(d, funSite(owner))
+		c.anyOverrideAnnotations(d, owner)
 		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
@@ -979,3 +980,54 @@ func (c *Checker) dslMarkerTarget(a *syntax.Annotation, cls *types.ClassSym, sit
 	c.warnf(a.P, "DSL_MARKER_APPLIED_TO_WRONG_TARGET", "applying DSL marker annotation '%s' to target '%s' has no effect. DSL marker annotations must only be applied to types. See https://youtrack.jetbrains.com/issue/KT-81567 for further information.", simpleName(cls), target)
 }
 
+// anyOverrideAnnotations warns, as kotlinc does, of the deprecations and
+// opt-in markers on d, an override of equals, hashCode or toString of
+// Any in class owner, which calls through Any don't report
+// (POTENTIALLY_NON_REPORTED_ANNOTATION).
+func (c *Checker) anyOverrideAnnotations(d *syntax.FunDecl, owner *types.ClassSym) {
+	if !d.Override || owner == nil || d.Sym == nil || d.Recv != nil || len(d.Contexts) > 0 {
+		return
+	}
+	switch ps := d.Sym.Params; d.Name {
+	case "equals":
+		if len(ps) != 1 || ps[0].Type.K != types.Any || !ps[0].Type.N {
+			return
+		}
+	case "hashCode", "toString":
+		if len(ps) != 0 {
+			return
+		}
+	default:
+		return
+	}
+	for i := range d.Annotations {
+		a := &d.Annotations[i]
+		cls := a.Class
+		if cls == nil {
+			cls = a.Source
+		}
+		if cls == nil || a.Target != "" {
+			continue
+		}
+		switch {
+		case cls.Name == "kotlin/Deprecated" || cls.Name == "kotlin/SinceKotlin" || cls.Name == "java/lang/Deprecated":
+		case optInMarkerClass(cls):
+		default:
+			continue
+		}
+		c.warnf(a.P, "POTENTIALLY_NON_REPORTED_ANNOTATION", "Deprecations and opt-ins on a method overridden from 'Any' may not be reported.")
+	}
+}
+
+// optInMarkerClass reports whether annotation class cls is annotated
+// @RequiresOptIn.
+func optInMarkerClass(cls *types.ClassSym) bool {
+	if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		return d.Annotation && d.Find("", "RequiresOptIn") != nil
+	}
+	if cls.External {
+		cls.Ensure()
+		return cls.OptInLevel != ""
+	}
+	return false
+}

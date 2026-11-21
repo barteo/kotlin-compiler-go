@@ -649,3 +649,9 @@ func TestWarningsLateinit(t *testing.T) {
 func TestWarningsDslMarkerTarget(t *testing.T) {
 	checkReference(t, "testdata/dslmarker.kt", Options{Warnings: true})
 }
+
+// TestWarningsAnyOverride checks the POTENTIALLY_NON_REPORTED_ANNOTATION
+// warnings of testdata/anyoverride.kt.
+func TestWarningsAnyOverride(t *testing.T) {
+	checkReference(t, "testdata/anyoverride.kt", Options{Warnings: true})
+}
