@@ -3312,7 +3312,6 @@ func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string, namePos
 	r.recvs = append(r.recvs, rv)
 }
 
-
 // constrains reports whether a constraint of r, or of a call that joined
 // it, mentions variable v.
 func (r *stubRun) constrains(v *types.TypeParamSym) bool {
