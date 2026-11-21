@@ -334,7 +334,11 @@ With `-compose`, `-serialization`, `-parcelize` and `-metro`, `kc` compiles as `
   with those capturing nothing in `ComposableSingletons`.
 - **kotlinx.serialization** (`check/serialization.go`, `codegen/serial.go`):
   the `$serializer` object, `serializer()`, `write$Self` and the
-  deserialization constructor.
+  deserialization constructor. A generic class's `$serializer` is a class
+  whose constructor takes its type arguments' serializers, which
+  `serializer(...)` and `write$Self` take too, and the class keeps a
+  static `$cachedDescriptor` for the deserialization constructor's
+  missing-field exception.
 - **Parcelize** (`check/parcelize.go`): `describeContents`,
   `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
   each property as kotlinc's serializer for its type does: a generic

@@ -2069,6 +2069,14 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		d.Sym = sym
 	}
 	sym.Throws = c.throws(&d.Modifiers)
+	if d.Plugin {
+		// A plugin's types, as serialization's KSerializer<C<T>> of a
+		// generic class C<T : Any> for a T without the bound, aren't
+		// checked, as kotlinc's plugins write IR.
+		saved := c.noBoundChecks
+		c.noBoundChecks = true
+		defer func() { c.noBoundChecks = saved }()
+	}
 	if d.Annotation {
 		what := "member function"
 		if owner == nil {
@@ -2804,6 +2812,11 @@ func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
 				c.boundsVariance(m.TypeParams)
 			}
 		case *syntax.FunDecl:
+			if m.SelfStatic {
+				// serialization's write$Self, a static function of its own
+				// type parameters in kotlinc's code.
+				continue
+			}
 			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
 				c.funVariance(m, m.Visibility != syntax.Private)
 			}
