@@ -2362,6 +2362,26 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		for _, e := range errs {
 			pclaLogf("PCLA %s first check: %s: %s\n", sl.l.P, e.Pos, e.Msg)
 		}
+		if pclaStats != "" {
+			how := "clean"
+			switch {
+			case ambiguous:
+				how = "ambiguous"
+			case !ok && unresolved.Line > 0 && c.poisons(sl.l, unresolved):
+				how = "poisoned"
+			case !ok:
+				how = "errors"
+			}
+			fs := c.pclaFeatures(sl.l, r, len(group))
+			if _, ret, _ := funcParts(sl.ft); s.apply(ret).HasVars() {
+				fs = strings.TrimPrefix(fs+",ret-vars", ",")
+			}
+			c.pclaStat("lambda", sl.l.P, fmt.Sprint(r.depth), fs, how)
+			if c.pclaFirst == nil {
+				c.pclaFirst = map[*syntax.Lambda][]*syntax.Error{}
+			}
+			c.pclaFirst[sl.l] = errs
+		}
 		if ambiguous {
 			delete(c.pclaErrs, sl.l)
 			delete(c.pclaPoison, sl.l)
@@ -2404,6 +2424,17 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	if ok {
 		for _, k := range useful {
 			s.sub(k[0], k[1])
+		}
+		if pclaStats != "" {
+			// Where the call's system, with the constraints that say
+			// something, gives a variable another type than the shared one.
+			probe := s.clone()
+			for _, v := range vars {
+				probe.fixVarsIn(types.VarType(v))
+				if a, b := probe.vals[v].T, trial.vals[v].T; a != b {
+					c.pclaStat("value-differs", l.P, v.Name, fmt.Sprint(b), fmt.Sprint(a))
+				}
+			}
 		}
 		for _, v := range r.extra {
 			if tv := trial.byVar[v]; tv != nil && tv.fixed && v.Origin != nil {
@@ -3352,6 +3383,14 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	} else {
 		bt = c.checkTail(s, l, w, r)
+	}
+	if first, ok := c.pclaFirst[l]; ok {
+		delete(c.pclaFirst, l)
+		for _, e := range c.errs[nerrs:] {
+			if !slices.ContainsFunc(first, func(o *syntax.Error) bool { return o.Pos == e.Pos }) {
+				c.pclaStat("second-only", e.Pos, e.Msg)
+			}
+		}
 	}
 	c.replayPCLAErrors(s, l, nerrs)
 	// A lambda ending in a statement gives R := Unit. Not if a parameter

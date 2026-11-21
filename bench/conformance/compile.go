@@ -154,6 +154,12 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		}
 		output, failed, timedOut := c.run(name, args)
 		res.outDirs = append(res.outDirs, out)
+		// What the compiler said, without the directory's name, for
+		// comparing two runs kept with -keep (bench/pcla-diff.sh).
+		kept := "test: " + t.path + "\n" + strings.ReplaceAll(output, dir, "")
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("m%d", mi), "compiler.out"), []byte(kept), 0o644); err != nil {
+			return nil, err
+		}
 		if c.kotlinc == "" {
 			res.warns = append(res.warns, kcWarnings(output, byPath)...)
 		}

@@ -1622,7 +1622,9 @@ invisible:
 		if s == cls || mapped && s.External && s.KotlinName == "" && s.Java == nil {
 			return true
 		}
-		for name, fs := range s.Methods {
+		// By name: the errors' order doesn't depend on the maps'.
+		for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
+			fs := s.Methods[name]
 			if d.Data && anyMember[name] {
 				continue // a data class generates them
 			}
@@ -1648,8 +1650,8 @@ invisible:
 				}
 			}
 		}
-		for name, fs := range s.ExtMethods {
-			for _, g := range fs {
+		for _, name := range slices.Sorted(maps.Keys(s.ExtMethods)) {
+			for _, g := range s.ExtMethods[name] {
 				if g.Abstract && !c.implemented(cls, this, g) && !c.javaImplements(cls, g) {
 					missing(name)
 				}
@@ -1666,8 +1668,8 @@ invisible:
 				}
 			}
 		}
-		for name, kp := range s.KProps {
-			for kp := range kpropAlts(kp) {
+		for _, name := range slices.Sorted(maps.Keys(s.KProps)) {
+			for kp := range kpropAlts(s.KProps[name]) {
 				if kp.Getter.Abstract {
 					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, nil, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
 						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {

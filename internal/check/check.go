@@ -444,6 +444,9 @@ type Checker struct {
 	// pclaErrs are the errors of builder lambdas' first checks that their
 	// second checks report where they have none (see replayPCLAErrors).
 	pclaErrs map[*syntax.Lambda]pclaKept
+	// pclaFirst are the errors of builder lambdas' first checks, kept
+	// for $KC_PCLA_STATS only.
+	pclaFirst map[*syntax.Lambda][]*syntax.Error
 	// pclaReplayed is where those errors were reported: no warning is
 	// reported there.
 	pclaReplayed map[filePos]bool

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
+	"sync"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -41,6 +43,81 @@ func pclaLogf(format string, args ...any) {
 	if pclaDebug {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
+}
+
+// pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'
+// lambdas are listed in, a tab-separated line each, for measuring what
+// builder inference does over a corpus (bench/pcla-diff.sh): "lambda",
+// the lambda's position, the depth of its run, what it has that the
+// checks treat specially, and how its first check ended; and
+// "second-only", an error that only the second check of a lambda
+// reports, with its message.
+var pclaStats = os.Getenv("KC_PCLA_STATS")
+
+var pclaStatsMu sync.Mutex
+
+// pclaStat adds a line to $KC_PCLA_STATS, for position p of the file
+// being checked.
+func (c *Checker) pclaStat(kind string, p syntax.Pos, fields ...string) {
+	if pclaStats == "" {
+		return
+	}
+	pclaStatsMu.Lock()
+	defer pclaStatsMu.Unlock()
+	f, err := os.OpenFile(pclaStats, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s\t%s:%d:%d\t%s\n", kind, c.file.Path, p.Line, p.Col, strings.Join(fields, "\t"))
+}
+
+// pclaFeatures lists what lambda l of run r, one of n that the run
+// checks, has that builder inference treats specially, for $KC_PCLA_STATS.
+func (c *Checker) pclaFeatures(l *syntax.Lambda, r *stubRun, n int) string {
+	var fs []string
+	add := func(on bool, name string) {
+		if on && !slices.Contains(fs, name) {
+			fs = append(fs, name)
+		}
+	}
+	add(r.depth > 0, "nested")
+	add(n > 1, "group")
+	add(c.trial != nil, "in-trial")
+	add(l.Anon, "anon-fun")
+	add(l.Ref != nil, "ref")
+	_, pre := c.checked[l]
+	add(pre, "prechecked")
+	if l.Body != nil {
+		add(endsWithCall(l.Body), "tail-call")
+		add(endsWithBranches(l.Body), "tail-branches")
+		add(returnsCall(l), "return-call")
+		syntax.Inspect(l.Body, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.LocalClass:
+				add(true, "local-class")
+			case *syntax.ObjectExpr:
+				add(true, "object-expr")
+			case *syntax.LocalFun:
+				add(true, "local-fun")
+			case *syntax.Lambda:
+				add(true, "lambda")
+			case *syntax.When:
+				add(true, "when")
+			case *syntax.For:
+				add(true, "for")
+			case *syntax.Jump:
+				add(n.Kind == syntax.RETURN, "return")
+			case *syntax.VarStmt:
+				add(n.Delegate != nil, "delegate")
+			}
+			return true
+		})
+	}
+	add(len(r.joined) > 0, "joined")
+	add(len(r.forks) > 0, "forks")
+	add(r.demanded, "demanded")
+	return strings.Join(fs, ",")
 }
 
 // pclaDump logs the variables of s, for $KC_PCLA_DEBUG.
