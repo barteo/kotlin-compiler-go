@@ -103,6 +103,8 @@ own tests.
   statement that may read the value comes before it is overwritten or
   out of scope, through `if` and `when` but not loops or `try`, and
   never for a variable a lambda or a local function uses,
+  `UNUSED_ANONYMOUS_PARAMETER`, but not of a parameter whose name the
+  lambda's body uses for another variable,
   `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
   on an override of a member that inherits its visibility, and
   `USELESS_CALL_ON_NOT_NULL`, but not of a callable reference; and with

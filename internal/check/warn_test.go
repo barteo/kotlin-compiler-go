@@ -631,3 +631,9 @@ func TestWarningsJavaTarget(t *testing.T) {
 func TestWarningsOptInOverride(t *testing.T) {
 	checkReference(t, "testdata/optinoverride.kt", Options{Warnings: true})
 }
+
+// TestWarningsUnusedParam checks the UNUSED_ANONYMOUS_PARAMETER warnings
+// of testdata/unusedparam.kt.
+func TestWarningsUnusedParam(t *testing.T) {
+	checkReference(t, "testdata/unusedparam.kt", Options{Warnings: true, ExtraWarnings: true})
+}

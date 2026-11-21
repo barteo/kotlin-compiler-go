@@ -22,6 +22,7 @@ func (c *Checker) localWarnings() {
 	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()
+		c.unusedLambdaParams()
 		c.redundantVisibilities()
 		// Before the walk, so that unreachableWarnings skips the blocks
 		// reported here.
