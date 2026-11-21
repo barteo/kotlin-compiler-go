@@ -265,9 +265,11 @@ own tests.
   again with the outer one's. A fork of the constraint system over a
   builder's variables waits for its lambda's constraints. Of K2's
   fixation on demand, `kc` fixes a builder's variable for a member of a
-  value of its type and for a nested call's lambda that takes the
+  value of its type, or of a smart cast of one, an intersection with it,
+  including a safe call's, and for a nested call's lambda that takes the
   variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
-  not one in a type argument. As in K2, it fixes one with a constraint
+  not one in a type argument. Unlike K2, it also fixes one that a
+  captured type of a projection stands for (KT-71843, KT-71845). As in K2, it fixes one with a constraint
   by a proper type, directly or through the variables below it, and
   semi-fixes one bounded by a type of other variables (`Box<PNTv> <:
   OTv`), but not one only below another variable (KT-72030), nor any in

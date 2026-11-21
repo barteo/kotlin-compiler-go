@@ -639,10 +639,11 @@ func (c *Checker) narrowedTo(cur, t types.Type, subclass bool) types.Type {
 // parameter's type cur to a class type t, as K2 has it: o of type T is
 // a String & T after o is String, which is still a T, as listOf(o) for
 // an expected Collection<T> needs. Not to a primitive type or a value
-// class, whose values are represented otherwise.
+// class, whose values are represented otherwise. So is one of a builder's
+// variable's type: IntersectionArgument & OT, whose members fix OT.
 func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 	a, b := cur.Flex(), t.NonNull()
-	if a.K != types.TypeParam || a.IsIntersection() || types.IsValue(b) {
+	if a.K != types.TypeParam && c.stub(a.NonNull()) == nil || a.IsIntersection() || types.IsValue(b) {
 		return types.InvalidType, false
 	}
 	switch {

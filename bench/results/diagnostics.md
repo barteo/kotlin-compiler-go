@@ -66,11 +66,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21533 of 22026 expected errors (97.8%) on their lines.
+kc reports 21534 of 22026 expected errors (97.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1425 | 66 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1426 | 65 |
 | `UNRESOLVED_REFERENCE` | 2553 | 2498 | 55 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
@@ -141,8 +141,8 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | accepted | 34 | 6.9% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
 | syntax-error | 74 | 15.0% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 61 | 12.4% | `ARGUMENT_TYPE_MISMATCH` 10, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 324 | 65.7% | `ARGUMENT_TYPE_MISMATCH` 47, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| nearby | 60 | 12.2% | `ARGUMENT_TYPE_MISMATCH` 9, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 324 | 65.9% | `ARGUMENT_TYPE_MISMATCH` 47, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -150,7 +150,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 191 |
+| `unresolved reference: _` | 190 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 77 |

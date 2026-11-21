@@ -2997,6 +2997,24 @@ func (r *stubRun) project(trial *system, useful [][2]types.Type) [][2]types.Type
 // Target's consume. The variable stays fixed to it for the rest of the
 // check. Otherwise, it returns t.
 func (c *Checker) fixedStub(t types.Type) types.Type {
+	if t.IsIntersection() && c.noDemand == 0 && slices.ContainsFunc(t.Param().Bounds, c.hasStub) {
+		// A variable in an intersection, of a smart cast of a value of
+		// its type, is fixed for the intersection's members too.
+		bs := slices.Clone(t.Param().Bounds)
+		changed := false
+		for i, b := range bs {
+			if f := c.fixedStub(b); f != b {
+				bs[i], changed = f, true
+			}
+		}
+		if !changed {
+			return t
+		}
+		if t.N {
+			bs[0] = bs[0].Nullable()
+		}
+		return c.intersect(bs)
+	}
 	if c.stub(t.Flex()) == nil || c.noDemand > 0 {
 		return t
 	}

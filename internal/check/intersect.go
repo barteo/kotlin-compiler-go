@@ -31,6 +31,13 @@ func (c *Checker) intersect(ts []types.Type) types.Type {
 			flat = append(flat, t)
 		}
 	}
+	if slices.ContainsFunc(flat, c.hasStub) {
+		// A builder's variable is a component, not a type to constrain:
+		// x is A of an x of its type is OT & A.
+		saved := c.stubs
+		c.stubs = nil
+		defer func() { c.stubs = saved }()
+	}
 	var comps []types.Type
 	for i, t := range flat {
 		keep := true
