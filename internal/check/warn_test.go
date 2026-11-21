@@ -767,3 +767,10 @@ func TestWarningsMultipleDefaults(t *testing.T) {
 func TestWarningsVarargNothing(t *testing.T) {
 	checkReference(t, "testdata/varargnothing.kt", Options{Warnings: true})
 }
+
+// TestWarningsOrderDependent checks the
+// IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT warnings of
+// testdata/orderdependent.kt.
+func TestWarningsOrderDependent(t *testing.T) {
+	checkReference(t, "testdata/orderdependent.kt", Options{Warnings: true})
+}

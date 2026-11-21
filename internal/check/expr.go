@@ -2819,8 +2819,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) &&
 				// Members that don't take the arguments' types give way to
 				// a property of the name whose value does: sut(state) next
-				// to fun sut(a: A), for a state whose type is inferred.
-				!(c.propInvokeFits(name, x) && !c.takeTypes(ms, x, c.argTypes(x))) {
+				// to fun sut(a: A), for a state whose type is inferred. Its
+				// type is inferred only then, as K2 infers it only if no
+				// member is applicable: in declaration order otherwise.
+				!(c.userProp(c.cls, name) != nil && !c.takeTypes(ms, x, c.argTypes(x)) && c.propInvokeFits(name, x)) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
@@ -3168,7 +3170,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 			return c.call(x, want, sink)
 		}
-		if _, ok := c.extFuncVar(fn.Name); (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
+		_, ok := c.extFuncVar(fn.Name)
+		if p := c.orderDependent; p != nil && p.Owner != nil {
+			c.warnf(fn.P, "IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT",
+				"the resolution result depends on the declaration order. This can lead to false-positive errors in the IDE. Specify the type of '%s' defined in '%s' explicitly", p.Name, p.Owner.DisplayName())
+		}
+		if (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
