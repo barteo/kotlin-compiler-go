@@ -64,6 +64,8 @@ own tests.
   `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` (not
   through a typealias, nor of an inner class of a generic nested
   class, nor of a local class inside a generic class),
+  `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` (not of a
+  constructor call),
   `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
   types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
   (of smart-cast values, not of enums nor an identity comparison of a
