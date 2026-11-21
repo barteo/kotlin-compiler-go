@@ -3278,10 +3278,29 @@ func (r *stubRun) properBelow(v *types.TypeParamSym) bool {
 	return walk(trial.byVar[v])
 }
 
+// onlyVarsBelow reports whether v's only bounds are lower bounds that
+// are other variables, without a proper type below them: v :> MT for
+// constrain(materialize()), which gives K2 nothing to fix v to.
+func (r *stubRun) onlyVarsBelow(v *types.TypeParamSym) bool {
+	c := r.s.c
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	trial, _ := r.build(saved)
+	tv := trial.byVar[v]
+	if tv == nil || tv.fixed || len(tv.lits) > 0 || len(tv.lower) == 0 || slices.ContainsFunc(tv.upper, func(u types.Type) bool { return !(u.K == types.Any && u.N) }) {
+		return false
+	}
+	return !r.properBelow(v)
+}
+
 // stubReceiver records x, of type t, as the receiver of member name if t
-// is a stub that nothing fixes yet (see stubRun.recvs). Not if an
-// extension of a type parameter, which takes any receiver, may be called:
-// it checkType { } for fun <T> T.checkType(f: ...).
+// is a stub that nothing fixes yet (see stubRun.recvs), or whose only
+// bounds are other variables: K2 reports the receiver of an extension of
+// a type parameter too, otvOwner.provide().fix() for fun <PH> PH.fix().
+// Not of a variable with a declared bound, which K2 may find a value for
+// before the lambda, where kc doesn't: it checkType { } in
+// foo { } ?: "" for fun <T : Any> foo(f: (T) -> Unit).
 func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string, namePos syntax.Pos) {
 	r := c.stub(t.Flex())
 	if r == nil {
@@ -3292,18 +3311,19 @@ func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string, namePos
 	// the variable for the member. it.extensionProduceConcreteType() in
 	// letForTypeVariable { } before setTypeVariable(TargetType()).
 	v := t.Flex().Param()
-	if !slices.Contains(r.vars, v) || r.constrains(v) {
+	if !slices.Contains(r.vars, v) || r.constrains(v) && !r.onlyVarsBelow(v) {
 		// Only one of the builder's own variables that nothing constrains
 		// yet: K2 fixes one that has constraints for the member, though
 		// kc may not find their value, as of another call's variable
 		// equal to it (see fixedStub).
 		return
 	}
-	if slices.ContainsFunc(c.extCallees(name, t), func(cl callee) bool { return cl.f.Recv.Flex().NonNull().K == types.TypeParam }) {
+	if slices.ContainsFunc(v.Bounds, func(b types.Type) bool { return !(b.K == types.Any && b.N) }) &&
+		slices.ContainsFunc(c.extCallees(name, t), func(cl callee) bool { return cl.f.Recv.Flex().NonNull().K == types.TypeParam }) {
 		return
 	}
 	rv := stubRecv{p: x.Pos(), v: v}
-	if !anyMember[name] && !slices.ContainsFunc(c.kotlinFunLevels(name, true), func(fs []*types.FunSym) bool { return len(fs) > 0 }) {
+	if !anyMember[name] && len(c.extCallees(name, t)) == 0 && !slices.ContainsFunc(c.kotlinFunLevels(name, true), func(fs []*types.FunSym) bool { return len(fs) > 0 }) {
 		// Without a candidate of the name, K2 reports the member as
 		// unresolved: get().length, but get().toString() reports the
 		// receiver.
