@@ -17,8 +17,9 @@ import (
 // by the code's control flow graph. kc reports them only where the code's
 // structure makes it certain: the value is overwritten, or the variable
 // goes out of scope or the function returns, before any statement that
-// reads the variable, going through if and when statements but not
-// loops, nor out of try blocks. For a variable that a lambda, a local
+// reads the variable, going through if, when and try statements but not
+// loops. In a try, a catch may be entered after any statement, and the
+// finally block from anywhere. For a variable that a lambda, a local
 // function or a local class uses, kotlinc judges the writes before the
 // first of them, which reads the variable if it uses it other than by
 // assigning it; kc judges these writes too, but not in loops, where the
@@ -362,10 +363,21 @@ const (
 // overwrite it or leave the function, or v goes out of scope, before
 // any reads it.
 func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bool {
-	// An exception may carry the value to a catch or finally block in v's
-	// scope.
+	// An exception, after any statement, may carry the value to a catch or
+	// finally block in v's scope: the catches must overwrite it, or leave,
+	// before they may read it, and the finally block too, or not read it.
+	// Leaving them goes through the finally block and out of the try, to
+	// the next try in v's scope, or out of v's scope.
 	for _, t := range u.tries[loc.block] {
-		if !slices.Contains(u.tries[v.block], t) {
+		if slices.Contains(u.tries[v.block], t) {
+			continue
+		}
+		for _, ct := range t.Catches {
+			if !u.blockKills(ct.Body, sym) {
+				return false
+			}
+		}
+		if t.Finally != nil && u.blockEffect(t.Finally, sym) == reads {
 			return false
 		}
 	}
@@ -385,6 +397,22 @@ func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bo
 		switch p := u.blockParent[b].(type) {
 		case *syntax.If, *syntax.When:
 			l, ok := u.exprStmt[p.(syntax.Expr)]
+			if !ok {
+				return false
+			}
+			b, i = l.block, l.index
+		case *syntax.Try:
+			// The end of its block or a catch goes through the finally
+			// block.
+			if p.Finally != nil && b != p.Finally {
+				switch u.blockEffect(p.Finally, sym) {
+				case kills:
+					return true
+				case reads:
+					return false
+				}
+			}
+			l, ok := u.exprStmt[p]
 			if !ok {
 				return false
 			}
@@ -422,6 +450,10 @@ func (u *unusedVars) effect(st syntax.Stmt, sym *types.VarSym) int {
 			if u.whenKills(x, sym) {
 				return kills
 			}
+		case *syntax.Try:
+			if u.tryKills(x, sym) {
+				return kills
+			}
 		}
 	}
 	if readsVar(st, sym) {
@@ -451,21 +483,39 @@ func (u *unusedVars) whenKills(x *syntax.When, sym *types.VarSym) bool {
 	return hasElse
 }
 
+// tryKills reports whether try statement x overwrites variable sym on
+// every path, reading it nowhere before: its finally block does, and
+// nothing before reads it, or its block and catches do, the catches
+// entered from anywhere in the block, and the finally block doesn't
+// read it.
+func (u *unusedVars) tryKills(x *syntax.Try, sym *types.VarSym) bool {
+	catchesKill, catchesRead := true, false
+	for _, ct := range x.Catches {
+		catchesKill = catchesKill && u.blockKills(ct.Body, sym)
+		catchesRead = catchesRead || readsVar(ct.Body, sym)
+	}
+	if x.Finally != nil && u.blockKills(x.Finally, sym) && !readsVar(x.Body, sym) && !catchesRead {
+		return true
+	}
+	return u.blockKills(x.Body, sym) && catchesKill && (x.Finally == nil || !readsVar(x.Finally, sym))
+}
+
 // blockKills reports whether block b overwrites variable sym, or leaves
 // the function, before it may read it.
 func (u *unusedVars) blockKills(b *syntax.Block, sym *types.VarSym) bool {
-	if b == nil {
-		return false
-	}
+	return b != nil && u.blockEffect(b, sym) == kills
+}
+
+// blockEffect returns what block b does with the value of variable sym:
+// the effect of the first of its statements that does something with
+// it.
+func (u *unusedVars) blockEffect(b *syntax.Block, sym *types.VarSym) int {
 	for _, st := range b.Stmts {
-		switch u.effect(st, sym) {
-		case kills:
-			return true
-		case reads:
-			return false
+		if e := u.effect(st, sym); e != passes {
+			return e
 		}
 	}
-	return false
+	return passes
 }
 
 // breaksOut reports whether node n has a break or a continue, which may take
