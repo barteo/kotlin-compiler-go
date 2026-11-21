@@ -965,6 +965,12 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 	t := v.Type
 	if vt.K != types.Invalid && vt.K != types.Null && vt.K != types.Nothing && c.subtype(vt, v.Type) {
 		t = vt
+		if c.stub(v.Type) != nil && !c.hasStub(vt) {
+			// var x = get() in a builder, then x = A(): x is A and a
+			// builder's variable still, which a member of x fixes to A,
+			// as in K2 (kt63841).
+			t = c.intersect([]types.Type{v.Type, vt})
+		}
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
 	c.dropMembers(v)
