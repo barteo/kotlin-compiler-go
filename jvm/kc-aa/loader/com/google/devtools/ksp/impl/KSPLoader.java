@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -48,11 +49,12 @@ import java.util.stream.Stream;
  * lives, and the caller's thread is the build tool's to keep.
  *
  * <p>The plugin makes the processors' class loader anew for every task of every build, so each
- * run loads the processors' classes and runs them before the JVM has compiled them. With the
- * environment variable {@code KC_KSP_KEEP} set, the processors of a run come from a class
- * loader this class keeps for their class path, for as long as the jars stay the same, and
- * every task and build with that class path shares it. A processor then keeps its static
- * state from one run to the next, which is why the variable has to ask for it.
+ * run loads the processors' classes and runs them before the JVM has compiled them. The
+ * processors of a run come instead from a class loader this class keeps for their class path,
+ * for as long as the jars stay the same, and every task and build with that class path shares
+ * it, so they run on code the JVM has compiled. A processor then keeps its static state from one
+ * run to the next. The environment variable {@code KC_KSP_KEEP} set to {@code 0} turns this
+ * off, for a processor whose static state from one run breaks the next.
  *
  * <p>The system property {@code kc.ksp.stock:CLASSPATH}, where CLASSPATH is this class
  * loader's class path, gives the class path of stock KSP for this one. When it is set and
@@ -79,7 +81,16 @@ public final class KSPLoader {
   /** A kept class loader of processors, with the sizes and times of its jars when it was made. */
   private record Kept(String jars, URLClassLoader loader) {}
 
-  private static final Map<List<URL>, Kept> KEPT = new HashMap<>();
+  /** The kept class loaders of processors, at most this many, the least recently used dropped. */
+  private static final int MAX_KEPT = 16;
+
+  private static final Map<List<URL>, Kept> KEPT =
+      new LinkedHashMap<>(MAX_KEPT, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<List<URL>, Kept> eldest) {
+          return size() > MAX_KEPT;
+        }
+      };
 
   private KSPLoader() {}
 
@@ -94,7 +105,7 @@ public final class KSPLoader {
     Object failure;
     try {
       ClassLoader context = Thread.currentThread().getContextClassLoader();
-      List<?> own = System.getenv("KC_KSP_KEEP") == null ? providers : kept(providers);
+      List<?> own = "0".equals(System.getenv("KC_KSP_KEEP")) ? providers : kept(providers);
       if (own != providers && context == providers.get(0).getClass().getClassLoader()) {
         context = own.get(0).getClass().getClassLoader();
       }
