@@ -662,3 +662,10 @@ func TestWarningsAnyOverride(t *testing.T) {
 func TestWarningsMultipleDefaults(t *testing.T) {
 	checkReference(t, "testdata/multipledefaults.kt", Options{Warnings: true})
 }
+
+// TestWarningsVarargNothing checks the
+// ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING warnings of
+// testdata/varargnothing.kt.
+func TestWarningsVarargNothing(t *testing.T) {
+	checkReference(t, "testdata/varargnothing.kt", Options{Warnings: true})
+}

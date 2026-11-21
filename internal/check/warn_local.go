@@ -92,6 +92,7 @@ func (c *Checker) localWarnings() {
 		case *syntax.Call:
 			c.atomicWarnings(n)
 			c.redundantSpreads(n)
+			c.varargNothing(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
 				if c.u.extraWarnings {
