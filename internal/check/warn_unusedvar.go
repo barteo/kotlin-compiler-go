@@ -18,8 +18,11 @@ import (
 // structure makes it certain: the value is overwritten, or the variable
 // goes out of scope or the function returns, before any statement that
 // reads the variable, going through if and when statements but not
-// loops, nor out of try blocks, and only for variables no lambda, local
-// function or local class uses.
+// loops, nor out of try blocks. For a variable that a lambda, a local
+// function or a local class uses, kotlinc judges the writes before the
+// first of them, which reads the variable if it uses it other than by
+// assigning it; kc judges these writes too, but not in loops, where the
+// capture may come before them.
 
 // localVar is what unusedVars knows of a local variable.
 type localVar struct {
@@ -28,7 +31,9 @@ type localVar struct {
 	writes   []*syntax.Assign // its assignments, x = v
 	updates  []*syntax.Assign // its compound assignments, x += v
 	read     bool
-	captured bool // used in a lambda, a local function or a local class
+	captured bool       // used in a lambda, a local function or a local class
+	capture  syntax.Pos // where the first of these begins
+	annot    bool       // named in an annotation's argument
 }
 
 // stmtLoc is a statement's place: its block and its index there.
@@ -77,7 +82,7 @@ func (c *Checker) unusedVarWarnings() {
 					}
 				case *syntax.ExprStmt:
 					switch x := st.X.(type) {
-					case *syntax.If, *syntax.When:
+					case *syntax.If, *syntax.When, *syntax.Try:
 						u.exprStmt[x] = stmtLoc{n, i}
 					}
 				}
@@ -128,14 +133,14 @@ func (c *Checker) unusedVarWarnings() {
 		case *syntax.Lambda:
 			if n.Ref == nil {
 				u.blockParent[n.Body] = n
-				u.capture(&syntax.FunDecl{Body: n.Body})
+				u.capture(&syntax.FunDecl{Body: n.Body}, syntax.StartPos(n))
 			}
 		case *syntax.LocalFun:
-			u.capture(n.Decl)
+			u.capture(n.Decl, n.Decl.P)
 		case *syntax.ObjectExpr:
-			u.capture(n.Decl)
+			u.capture(n.Decl, syntax.StartPos(n))
 		case *syntax.LocalClass:
-			u.capture(n.Decl)
+			u.capture(n.Decl, n.Decl.P)
 		case *syntax.Assign:
 			id, ok := n.Target.(*syntax.Ident)
 			if v := u.local(id, ok); v != nil {
@@ -190,7 +195,7 @@ func (c *Checker) unusedVarWarnings() {
 	for _, sym := range u.order {
 		v := u.vars[sym]
 		if annotNames[sym.Name] {
-			v.read, v.captured = true, true
+			v.read, v.captured, v.annot = true, true, true
 		}
 		vs, _ := v.decl.(*syntax.VarStmt)
 		delegated := vs != nil && vs.Delegate != nil
@@ -206,7 +211,7 @@ func (c *Checker) unusedVarWarnings() {
 			}
 			continue
 		}
-		if delegated || v.captured || v.block == nil {
+		if delegated || v.annot || v.block == nil {
 			continue
 		}
 		if vs != nil && vs.Init != nil {
@@ -215,7 +220,7 @@ func (c *Checker) unusedVarWarnings() {
 			}
 		}
 		for _, w := range append(v.writes[:len(v.writes):len(v.writes)], v.updates...) {
-			if loc, ok := u.stmtLoc[w]; ok && u.unreadAfter(sym, v, loc) {
+			if loc, ok := u.stmtLoc[w]; ok && u.beforeCapture(v, w.Target.Pos(), loc) && u.unreadAfter(sym, v, loc) {
 				c.warnf(w.Target.Pos(), "ASSIGNED_VALUE_IS_NEVER_READ", "assigned value is never read")
 			}
 		}
@@ -223,14 +228,14 @@ func (c *Checker) unusedVarWarnings() {
 	for _, x := range u.postfix {
 		id := x.X.(*syntax.Ident)
 		v := u.vars[id.Sym]
-		if v.captured || v.block == nil {
+		if v.annot || v.block == nil {
 			continue
 		}
 		if vs, _ := v.decl.(*syntax.VarStmt); vs != nil && vs.Delegate != nil {
 			continue
 		}
 		loc, ok := u.writeLoc[x]
-		if !ok || varUses(loc.block.Stmts[loc.index], id.Sym) != 1 {
+		if !ok || !u.beforeCapture(v, id.Pos(), loc) || varUses(loc.block.Stmts[loc.index], id.Sym) != 1 {
 			continue // the statement may read the new value
 		}
 		if u.unreadAfter(id.Sym, v, loc) {
@@ -257,10 +262,51 @@ func (u *unusedVars) local(id *syntax.Ident, ok bool) *localVar {
 	return u.vars[id.Sym]
 }
 
+// beforeCapture reports whether the write of variable v at position p,
+// in the statement at loc, comes before every lambda, local function and
+// local class that uses v, outside any loop in v's scope.
+func (u *unusedVars) beforeCapture(v *localVar, p syntax.Pos, loc stmtLoc) bool {
+	if !v.captured {
+		return true
+	}
+	if !before(p, v.capture) {
+		return false
+	}
+	for b := loc.block; b != v.block; {
+		switch n := u.blockParent[b].(type) {
+		case *syntax.If, *syntax.When, *syntax.Try:
+			l, ok := u.stmtOf(n)
+			if !ok {
+				return false
+			}
+			b = l.block
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// stmtOf returns the place of the statement that is if, when or try
+// construct n.
+func (u *unusedVars) stmtOf(n any) (stmtLoc, bool) {
+	if x, ok := n.(syntax.Expr); ok {
+		if l, ok := u.exprStmt[x]; ok {
+			return l, true
+		}
+	}
+	if st, ok := n.(syntax.Stmt); ok {
+		l, ok := u.stmtLoc[st]
+		return l, ok
+	}
+	return stmtLoc{}, false
+}
+
 // capture marks the variables that declaration d, a function or a class
-// nested in another function, uses but doesn't declare as captured. The
-// variables it declares are declared first, as its code comes before.
-func (u *unusedVars) capture(d syntax.Decl) {
+// nested in another function that begins at p, uses but doesn't declare
+// as captured. The variables it declares are declared first, as its code
+// comes before.
+func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 	own := map[*types.VarSym]bool{}
 	var used []*types.VarSym
 	walkCode([]syntax.Decl{d}, func(n any) bool {
@@ -284,6 +330,9 @@ func (u *unusedVars) capture(d syntax.Decl) {
 	})
 	for _, s := range used {
 		if v := u.vars[s]; v != nil && !own[s] {
+			if !v.captured || before(p, v.capture) {
+				v.capture = p
+			}
 			v.captured = true
 		}
 	}

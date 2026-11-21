@@ -108,8 +108,9 @@ own tests.
   `VARIABLE_NEVER_READ`, `ASSIGNED_VALUE_IS_NEVER_READ` and
   `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
   statement that may read the value comes before it is overwritten or
-  out of scope, through `if` and `when` but not loops or `try`, and
-  never for a variable a lambda or a local function uses,
+  out of scope, through `if` and `when` but not loops or `try`, and,
+  for a variable a lambda, a local function or a local class uses,
+  only before the first of them and outside loops,
   `UNUSED_ANONYMOUS_PARAMETER`, but not of a parameter whose name the
   lambda's body uses for another variable,
   `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
