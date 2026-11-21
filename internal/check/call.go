@@ -1173,6 +1173,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.ambiguousLambdas(x)
 			}
 			return types.InvalidType
 		}
@@ -1904,6 +1905,18 @@ func (c *Checker) memberResultClass(rt types.Type, name string) *types.ClassSym 
 // a vararg's arguments (VARARG_OUTSIDE_PARENTHESES).
 // The arguments before it are checked against their parameters, as
 // kotlinc does (ARGUMENT_TYPE_MISMATCH), where their types are known.
+// ambiguousLambdas checks the lambdas of x, an ambiguous call, that no
+// candidate checked, as K2 does, without the candidates' types: g { add("") }
+// for g's overloads that take MutableList<E>.() -> Int and -> String leaves
+// add unresolved.
+func (c *Checker) ambiguousLambdas(x *syntax.Call) {
+	for _, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Type().K == 0 && l.Ret.K == 0 {
+			c.checkLambda(l, lambdaWant{ret: noWant, recover: true})
+		}
+	}
+}
+
 func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
 	report := func(p syntax.Pos) { c.errorf(p, "no function '%s' takes %d arguments", name, len(x.Args)) }
 	excess, vararg := excessArg(x, cands)

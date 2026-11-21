@@ -66,12 +66,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21550 of 22026 expected errors (97.8%) on their lines.
+kc reports 21552 of 22026 expected errors (97.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1436 | 55 |
-| `UNRESOLVED_REFERENCE` | 2553 | 2498 | 55 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2499 | 54 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 69 | 18 |
@@ -138,11 +138,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 7.1% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 74 | 15.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 7.2% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 74 | 15.6% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 58 | 12.2% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 310 | 65.1% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| missing-check | 308 | 65.0% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 33, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -192,7 +192,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3234 of the 3667 warnings the tests expect (88.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3235 of the 3667 warnings the tests expect (88.2%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -204,7 +204,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_IS_CHECK` | 127 | 114 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 99 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 87 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 88 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 72 | 1 |
 | `USELESS_CAST` | 91 | 77 | 2 |
