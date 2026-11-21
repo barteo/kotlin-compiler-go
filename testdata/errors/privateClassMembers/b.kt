@@ -8,8 +8,8 @@ fun otherFile() {
     Entry // ERROR cannot access 'Entry'
 }
 
-fun outside(p: Any) {
-    if (p is Holder.Prot) { // ERROR cannot access 'Holder.Prot'
-        p.prot() // ERROR cannot access 'prot'
-    }
+fun outside(
+    p: Holder.Prot, // ERROR cannot access 'Holder.Prot'
+) {
+    p.prot() // ERROR cannot access 'prot'
 }

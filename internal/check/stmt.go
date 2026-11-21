@@ -1457,6 +1457,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 			}
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+			c.assignChecked(s, vt)
 			if slices.Contains(c.scope.vars, v) {
 				// Not in a branch, where another value of v may meet
 				// it, nor in a lambda.
@@ -1479,6 +1480,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			b.P = s.P
 			return b
 		})
+		if v != nil {
+			c.assignChecked(s, c.scope.narrowed(v))
+		}
 		if kt, ok := c.loopKept[v]; v != nil && ok && len(c.errs) == n {
 			// A loop around kept v smart cast to kt for its whole body.
 			if t := c.scope.narrowed(v); t != kt {
@@ -1490,6 +1494,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if v != nil {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
+		c.assignChecked(s, v.Type)
 	}
 	if !builtinOperand(tt) || classBound(tt) || c.assignExt(tt, s) {
 		// x += v may call x.plusAssign(v), also on a val or a var whose
