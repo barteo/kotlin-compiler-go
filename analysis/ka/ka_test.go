@@ -295,6 +295,7 @@ enum E [a/b/E] CLASS
   ctor <init> -
   entry A [a/b/E.A] ENUM_ENTRY
   entry B [a/b/E.B] ENUM_ENTRY @a/b/Marker
+    ctor <init> -
   fun values -
   fun valueOf -
     (param value -

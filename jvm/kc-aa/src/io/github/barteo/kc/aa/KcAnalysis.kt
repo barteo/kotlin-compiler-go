@@ -130,6 +130,7 @@ class KcAnalysis internal constructor(
         is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcConstructorSymbol -> s.info.parent
         is KcEnumEntrySymbol -> s.info.parent
+        is KcEnumEntryInitializerSymbol -> s.entry
         is KcValueParameterSymbol -> s.info.parent
         is KcTypeParameterSymbol -> s.info.parent
         is KcJavaFieldSymbol -> s.info.parent
@@ -155,6 +156,9 @@ class KcAnalysis internal constructor(
             getContainingSymbol(s)?.let(::getContainingModule) ?: module
         else -> module
     }
+
+    /** None: the expect declarations are the module's own, and the Analysis API looks for them in the modules it depends on. */
+    fun getExpectsForActual(s: KaDeclarationSymbol): List<KaDeclarationSymbol> = emptyList()
 
     fun getDirectlyOverriddenSymbols(s: KaCallableSymbol): Sequence<KaCallableSymbol> = round.directlyOverridden(s).asSequence()
     fun getAllOverriddenSymbols(s: KaCallableSymbol): Sequence<KaCallableSymbol> = round.allOverridden(s).asSequence()
@@ -346,7 +350,7 @@ class KcAnalysis internal constructor(
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.let(round::declared) ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: (s as? KcEnumEntryInitializerSymbol)?.members ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that

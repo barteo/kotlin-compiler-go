@@ -425,7 +425,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken := lowerAll(snaps, m, jobs)
+	files, provs, broken, ex := lowerAll(snaps, m, jobs, false)
 	if java != nil {
 		java.SetKotlin(files)
 	}
@@ -457,6 +457,15 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				only[files[i]] = true
 			}
 		}
+		// The declarations of the files' second view, checked first: the
+		// library keeps what the last check gave the Java sources.
+		var others []otherFile
+		if ex.paired {
+			var err error
+			if others, err = otherView(ctx, snaps, m.lib, lib, java, jobs, files, only); err != nil {
+				return nil, err
+			}
+		}
 		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)
@@ -465,7 +474,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
 			// The checker can't take a file with syntax errors: check the
 			// others, and model the broken ones from syntax alone.
-			files, provs, _ = lowerAll(snaps, nil, jobs)
+			files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
 			if java != nil {
 				java.SetKotlin(files)
 			}
@@ -507,14 +516,27 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				m.Files = append(m.Files, prev.files[i])
 				continue
 			}
-			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, annotAliases: rec.annotAliases[f], lib: m.lib,
-				tparams: map[*types.TypeParamSym]psi.NodeID{}}
+			b := newFileBuilder(f, snaps[i], provs[i], rec, m.lib)
+			b.inherited = ex.defaults
+			if others != nil {
+				rec.lookups[f] = append(rec.lookups[f], others[i].lookups...)
+			}
 			mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
 			mf.Annotations = b.annotations(f.Annotations)
 			pkg := strings.ReplaceAll(f.Package, ".", "/")
 			for _, d := range f.Decls {
 				if md := b.decl(d, nil, pkg+"/"); md != nil {
 					mf.Decls = append(mf.Decls, md)
+				}
+			}
+			if others != nil {
+				// In the place they are written.
+				for _, md := range others[i].decls {
+					j := slices.IndexFunc(mf.Decls, func(o *Decl) bool { return o.Node > md.Node })
+					if j < 0 {
+						j = len(mf.Decls)
+					}
+					mf.Decls = slices.Insert(mf.Decls, j, md)
 				}
 			}
 			m.Files = append(m.Files, mf)
@@ -534,7 +556,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if len(dirty)*maxDirtyShare > len(sources) {
 			dirty, only = nil, nil
 		}
-		files, provs, _ = lowerAll(snaps, nil, jobs)
+		files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
@@ -576,16 +598,16 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 	return names
 }
 
-// lowerAll lowers snaps, adding their errors to m if it isn't nil, and
-// reports which have errors.
-func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
+// lowerAll lowers snaps to their first or second view (keepExpects),
+// adding their errors to m if it isn't nil, and reports which have errors.
+func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int, second bool) ([]*syntax.File, []*lower.Provenance, map[int]bool, *expects) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
 	errLists := make([][]*syntax.Error, len(snaps))
 	parallel(len(snaps), jobs, func(i int) {
 		files[i], provs[i], errLists[i] = lower.File(snaps[i])
 	})
-	keepExpects(files)
+	ex := keepExpects(files, second)
 	broken := map[int]bool{}
 	for i, snap := range snaps {
 		errs := errLists[i]
@@ -598,7 +620,60 @@ func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*low
 			}
 		}
 	}
-	return files, provs, broken
+	return files, provs, broken, ex
+}
+
+// otherFile is what a file's second view adds to its model: the
+// declarations it has in place of the first's, and its lookups.
+type otherFile struct {
+	decls   []*Decl
+	lookups []Lookup
+}
+
+// otherView returns what the second view (keepExpects) of each of the
+// files first adds to its model: nothing for a file that isn't in only, if
+// only isn't nil. The second view is lowered and checked for that alone,
+// and a check that crashes leaves it out.
+func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *check.Library, java *driver.JavaSources, jobs int, first []*syntax.File, only map[*syntax.File]bool) ([]otherFile, error) {
+	files, provs, _, ex := lowerAll(snaps, nil, jobs, true)
+	if java != nil {
+		java.SetKotlin(files)
+		defer java.SetKotlin(first)
+	}
+	var checked map[*syntax.File]bool
+	if only != nil {
+		checked = map[*syntax.File]bool{}
+		for i, f := range first {
+			if only[f] {
+				checked[files[i]] = true
+			}
+		}
+	}
+	rec, _, err := checkFiles(ctx, files, lib, jobs, checked, namesIn(snaps, files, checked))
+	if _, crashed := err.(checkPanic); crashed {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]otherFile, len(files))
+	for i, f := range files {
+		if checked != nil && !checked[f] {
+			continue
+		}
+		out[i].lookups = rec.lookups[f]
+		b := newFileBuilder(f, snaps[i], provs[i], rec, ml)
+		pkg := strings.ReplaceAll(f.Package, ".", "/")
+		for _, d := range f.Decls {
+			if !ex.other[d] {
+				continue
+			}
+			if md := b.decl(d, nil, pkg+"/"); md != nil {
+				out[i].decls = append(out[i].decls, md)
+			}
+		}
+	}
+	return out, nil
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
@@ -782,6 +857,16 @@ type fileBuilder struct {
 	// parameters, which their types point to.
 	tparams map[*types.TypeParamSym]psi.NodeID
 	lines   []int // the byte offsets the source's lines start at, once needed
+	// inherited are the default values that the parameters of actual
+	// declarations have from their expect declarations (expects.defaults).
+	inherited map[syntax.Expr]bool
+}
+
+// newFileBuilder returns the builder of the model of f, lowered from snap
+// and checked with rec.
+func newFileBuilder(f *syntax.File, snap *psi.Snapshot, prov *lower.Provenance, rec *recorder, lib *library) *fileBuilder {
+	return &fileBuilder{f: f, snap: snap, prov: prov, annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, annotAliases: rec.annotAliases[f], lib: lib,
+		tparams: map[*types.TypeParamSym]psi.NodeID{}}
 }
 
 func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {

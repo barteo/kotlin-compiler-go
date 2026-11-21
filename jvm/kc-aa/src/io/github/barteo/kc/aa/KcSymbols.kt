@@ -92,6 +92,7 @@ internal class KcInfo(
                     ?: p.info.symbolPsi
                 is KcConstructorSymbol -> p.info.symbolPsi
                 is KcPropertySymbol -> p.info.symbolPsi
+                is KcEnumEntryInitializerSymbol -> p.psi
                 else -> null
             }
         } else null
@@ -528,6 +529,32 @@ internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
     override val isExternal get() = false
     override fun createPointer(): KaSymbolPointer<KaEnumEntrySymbol> = info.pointer()
+
+    /** The entry's initializer, or null if it has none. */
+    var initializerSymbol: KcEnumEntryInitializerSymbol? = null
+    override val enumEntryInitializer: KaEnumEntryInitializerSymbol? get() = initializerSymbol
+}
+
+/**
+ * The initializer of enum entry [entry]: the anonymous object that
+ * initializes it, a subclass of the enum, whose members are the
+ * declarations of the entry's body and its constructor. FIR's is the same
+ * symbol, both a KaAnonymousObjectSymbol and a KaEnumEntryInitializerSymbol.
+ */
+internal class KcEnumEntryInitializerSymbol(val entry: KcEnumEntrySymbol) :
+    StubKaAnonymousObjectSymbol(), KaEnumEntryInitializerSymbol {
+    override val token get() = entry.token
+    override val psi: PsiElement? get() = entry.psi
+    override val origin get() = entry.origin
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), token)
+    override val superTypes: List<KaType> get() = listOf(entry.returnType)
+    lateinit var members: List<KaDeclarationSymbol>
+    override fun createPointer(): KaSymbolPointer<KcEnumEntryInitializerSymbol> = entry.info.pointer<KaSymbol>().let { p ->
+        object : StubKaSymbolPointer<KcEnumEntryInitializerSymbol>() {
+            override fun restoreSymbol(analysisSession: org.jetbrains.kotlin.analysis.api.KaSession) =
+                (p.restoreSymbol(analysisSession) as? KcEnumEntrySymbol)?.initializerSymbol
+        }
+    }
 }
 
 internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
