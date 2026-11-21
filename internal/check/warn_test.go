@@ -643,3 +643,9 @@ func TestWarningsUnusedParam(t *testing.T) {
 func TestWarningsLateinit(t *testing.T) {
 	checkReference(t, "testdata/lateinit.kt", Options{Warnings: true})
 }
+
+// TestWarningsDslMarkerTarget checks the
+// DSL_MARKER_APPLIED_TO_WRONG_TARGET warnings of testdata/dslmarker.kt.
+func TestWarningsDslMarkerTarget(t *testing.T) {
+	checkReference(t, "testdata/dslmarker.kt", Options{Warnings: true})
+}

@@ -125,6 +125,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if rec := c.u.rec; rec != nil {
 			rec.Annotation(c.file, a, cls)
 		}
+		c.dslMarkerTarget(a, cls, site)
 		switch cls.Name {
 		case "java/lang/annotation/Target":
 			if javaTarget == nil && a.Target == "" {
@@ -948,3 +949,33 @@ func (c *Checker) repeatedSetparam(d *syntax.PropDecl) {
 		}
 	}
 }
+
+// dslMarkerTarget warns, as kotlinc does, of annotation a of class cls on
+// site if cls is a DSL marker and site isn't a class, a typealias or a
+// type, where the marker has no effect (DSL_MARKER_APPLIED_TO_WRONG_TARGET).
+// kc leaves alone the annotations of expressions, among which kotlinc
+// warns of a lambda's.
+func (c *Checker) dslMarkerTarget(a *syntax.Annotation, cls *types.ClassSym, site annotSite) {
+	switch site.kind {
+	case siteUnchecked, siteClass, siteTypealias, siteType, siteExpr, siteInit:
+		return
+	}
+	if !isDslMarker(cls) && !declaredDslMarker(cls) {
+		return
+	}
+	target := site.name
+	switch {
+	case a.Accessor && a.Target == "set", a.Target == "set":
+		target = "setter"
+	case a.Accessor, a.Target == "get":
+		target = "getter"
+	case a.Target == "param", a.Target == "setparam":
+		target = "value parameter"
+	case a.Target == "field", a.Target == "delegate":
+		target = "field"
+	case a.Target == "file":
+		target = "file"
+	}
+	c.warnf(a.P, "DSL_MARKER_APPLIED_TO_WRONG_TARGET", "applying DSL marker annotation '%s' to target '%s' has no effect. DSL marker annotations must only be applied to types. See https://youtrack.jetbrains.com/issue/KT-81567 for further information.", simpleName(cls), target)
+}
+
