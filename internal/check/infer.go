@@ -73,6 +73,11 @@ type tvar struct {
 	// result that contradicts them is reported against (see
 	// postponedLambda).
 	wantUp []types.Type
+	// flexNull is set when null is passed for the variable's flexible
+	// type, V!: as K2's nullability constraint, it makes the variable
+	// Nothing? only if no other bound decides it, as T of a Java
+	// JavaBox<T>(T) for JavaBox(null) is.
+	flexNull bool
 }
 
 type inferError struct {
@@ -371,6 +376,9 @@ func (s *system) sub(a, b types.Type) {
 			// makes K a T!, which takes the T? of select(value, null).
 			a = a.Platform()
 		case b.N:
+			if b.P && a.K == types.Null && s.contra == 0 {
+				tv.flexNull = true
+			}
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
 			s.ok = false
@@ -850,6 +858,22 @@ func (s *system) isUpperOf(tv *tvar) bool {
 }
 
 // fix chooses a value for a variable from its known bounds.
+// flexNull reports whether null was passed for tv's flexible type, or
+// that of a variable it is equal to or bounded by: T of
+// foo6(JavaBox(null)) for a Java <T> JavaBox<T> foo6(JavaBox<T>) is
+// JavaBox's.
+func (s *system) flexNull(tv *tvar) bool {
+	if tv.flexNull {
+		return true
+	}
+	for _, b := range append(slices.Clone(tv.lower), tv.upper...) {
+		if w := s.unfixedVar(b); w != nil && w != tv && w.flexNull {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *system) fix(tv *tvar) {
 	if len(s.forks) > 0 {
 		s.resolveForks()
@@ -963,6 +987,10 @@ func (s *system) fix(tv *tvar) {
 			return l.HasVars() && l.N && (l.K != types.TypeVar || len(lowers) > 0 && !l.P)
 		}) {
 			val = val.Nullable()
+		}
+		if s.flexNull(tv) && len(tv.lits) == 0 && !slices.ContainsFunc(lowers, func(l types.Type) bool { return l.K != types.Nothing }) &&
+			!slices.ContainsFunc(uppers, func(u types.Type) bool { return !types.AcceptsNull(u) }) {
+			val = types.NullType
 		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
 			// A UInt from unsigned literals is the variable's ULong,

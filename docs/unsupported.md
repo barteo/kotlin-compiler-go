@@ -101,7 +101,6 @@ own tests.
     `MUST_BE_INITIALIZED_OR_BE_FINAL_WARNING`,
     `MUST_BE_INITIALIZED_OR_FINAL_OR_ABSTRACT_WARNING`,
     `INITIALIZATION_BEFORE_DECLARATION_WARNING`,
-    `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT`,
     `NOT_YET_SUPPORTED_IN_INLINE_WARNING` and
     `INVISIBLE_REFERENCE_WARNING`.
   - Others: `MISSING_BRANCH_FOR_NON_ABSTRACT_SEALED_CLASS`,
@@ -200,6 +199,8 @@ own tests.
     protected nested class, nor of an `if` or `when` that an expected
     type gives a type.
   - `JAVA_CLASS_ON_COMPANION` not through an alias of a built-in type.
+  - `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` not of a
+    delegated property.
   - `DANGEROUS_CHARACTERS` not of a function type's parameter names,
     nor of a destructuring `for` loop's.
   - With `-Wextra`: `UNREACHABLE_CODE` only after a statement that
@@ -495,9 +496,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   parameter its receiver projects out, and for an invariant argument of
   a member property's type that a star captures, checked after the
   value is inferred against the read type; so does a Java field or a
-  Java setter's parameter. A Java setter called as a method
-  (`setWrapper(w)` on a `Container<*>`) doesn't, and an invariant
-  argument that an `in` projection captures takes the projection.
+  Java setter's parameter. A call's parameter, and a Java synthetic
+  setter's, takes `Nothing` for an invariant argument that a star or an
+  `in` projection captures (`setW(w)` of a `KC<in String>`); a Kotlin
+  property's assignment keeps the projection, as K2 approximates it.
 - Of K2's captured types, `kc` has only those of reading an explicit
   backing field through a stable receiver whose type projects the
   field's type parameters, `o.num` for an `o: C<*>`: the receiver is

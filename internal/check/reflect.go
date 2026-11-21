@@ -482,6 +482,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				// Kotlin, if kc can make one, and otherwise a function.
 				n := len(c.errs)
 				if ps, rt, ok := c.kpropLambda(x, propForm(ps), recv != nil); ok && len(c.errs) == n {
+					if c.refFunsToo(r, recvType, static, recv != nil) {
+						// As in K2, without an expected type a property
+						// and a function of the name are ambiguous.
+						c.errorf(p, "overload resolution ambiguity for %s: specify the expected type", refString(r))
+						return nil, types.InvalidType, false
+					}
 					return ps, rt, ok
 				}
 				c.errs, x.KProp = c.errs[:n], nil
@@ -792,6 +798,18 @@ func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool 
 	fs, _ := c.scope.findFuns(r.Name)
 	for _, f := range fs {
 		if f.Ext {
+			return true
+		}
+	}
+	return false
+}
+
+// refFunsToo reports whether reference r, which names a property, may
+// also name a function of the program. A library's, as a Java class's
+// size() of its size property, is left out.
+func (c *Checker) refFunsToo(r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) bool {
+	for _, f := range c.refFuns(r, recvType, static, bound) {
+		if _, src := f.Decl.(*syntax.FunDecl); src && !f.Hidden {
 			return true
 		}
 	}

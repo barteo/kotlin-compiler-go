@@ -1026,8 +1026,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.
 			// Through a projected receiver, Nothing where its argument
-			// is projected out, as a property's.
-			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).ApplyIn(x.Setter.Params[0].Type), true
+			// is projected out, as a property's, and as K2 calls the
+			// setter, its captured type where a star or an in projection
+			// replaces an invariant argument: a Container<in String>'s
+			// setWrapper(Wrapper<E>) takes no Wrapper<Any>.
+			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).ApplyParam(x.Setter.Params[0].Type), true
 		case x.Getter != nil:
 			if c.extSetterProjectedOut(x) {
 				return types.NothingType, true

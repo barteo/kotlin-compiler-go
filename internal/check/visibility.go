@@ -482,6 +482,20 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 	return lookup
 }
 
+// annotationStatics returns the class whose companion members the
+// arguments of annotations on site in class owner see. As with K2, a
+// class's own annotations are outside it: they see its outer class's, and a
+// companion's annotations not its own members.
+func annotationStatics(owner *types.ClassSym, site annotSite) *types.ClassSym {
+	if owner == nil || site.kind != siteClass {
+		return owner
+	}
+	if o := owner.Outer; o != nil && o.Companion == owner {
+		return o.Outer
+	}
+	return owner.Outer
+}
+
 // annotationThis returns the class whose instance is this in the
 // arguments of annotations on site in class owner, or nil: as with
 // kotlinc, those of a member or its parameters see the class's instance

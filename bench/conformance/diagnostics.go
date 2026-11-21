@@ -64,6 +64,11 @@ func diagSkip(t *test) string {
 			return d
 		}
 	}
+	if t.has("IDE_MODE") && t.marks("IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR") {
+		// Checked as the IDE does, which reports the command line's
+		// warning as an error.
+		return "IDE_MODE error"
+	}
 	if strings.HasPrefix(t.path, "tests/multiplatform/") {
 		return "multiplatform"
 	}
@@ -78,6 +83,19 @@ func diagSkip(t *test) string {
 		}
 	}
 	return ""
+}
+
+// marks reports whether the markup of one of the test's files names the
+// diagnostic name.
+func (t *test) marks(name string) bool {
+	for _, m := range t.modules {
+		for _, f := range m.files {
+			if strings.Contains(f.text, "<!"+name+"!>") || strings.Contains(f.text, ", "+name+"!>") || strings.Contains(f.text, "<!"+name+",") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Severities of diagnostics. A deprecation is a warning or an error

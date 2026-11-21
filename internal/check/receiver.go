@@ -1097,23 +1097,38 @@ func simpleExpr(e syntax.Expr) bool {
 // it with x as the receiver. In an object expression, the classes around
 // it count too: ktor's DelegatingMutableSet calls its convertTo: From.() ->
 // To in an iterator object's next().
+//
+// A property whose type is being inferred, or whose inference runs into
+// a cycle, isn't invoked, and c.orderDependent is set to it: K2 reports
+// x.f() then as IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT, as
+// declared after the call, the property would be invoked if its type
+// allowed. Its inference is otherwise run, in which a cycle is reported
+// at its references, as K2 does.
 func (c *Checker) extFuncVar(name string) (types.Type, bool) {
+	c.orderDependent = nil
 	if _, t, ok := c.scope.lookup(name); ok {
 		return t, t.Flex().IsExtFunc()
 	}
 	prop := func(p *types.VarSym) (types.Type, bool) {
+		d, _ := p.Decl.(*syntax.PropDecl)
 		if p.InProgress {
 			// Being inferred, as aliases in val aliases =
 			// command.aliases(): x.f() calls a function.
+			if d != nil && d.Type == nil && d.DelegateOf == nil && d.Field == nil && c.inferring != any(p) {
+				// Not in its own initializer, a loop of one, which K2
+				// doesn't report: val d = O1.d().
+				c.orderDependent = p
+			}
 			return types.InvalidType, false
 		}
-		if d, ok := p.Decl.(*syntax.PropDecl); ok && d.Field != nil && d.Field.Sym != nil && d.Field.Sym.InProgress {
+		if d != nil && d.Field != nil && d.Field.Sym != nil && d.Field.Sym.InProgress {
 			// So is its delegate: val enabled by lazy { checker.enabled() }.
 			return types.InvalidType, false
 		}
-		c.probing++
 		ensureVar(p)
-		c.probing--
+		if p.RanIntoCycle && d != nil && d.Type == nil && d.Field == nil {
+			c.orderDependent = p
+		}
 		return p.Type, p.Type.Flex().IsExtFunc()
 	}
 	// The implicit receivers of lambdas and extensions come first: 5.foo()

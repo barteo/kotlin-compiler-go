@@ -178,10 +178,12 @@ type loopCtx struct {
 // Checker checks one file. Only one goroutine uses a Checker at a time.
 type Checker struct {
 	u *Universe
-	// probing is set while a declaration's type is inferred only to try
-	// a reading of a call (extFuncVar): a cycle it runs into isn't
-	// reported at its references, as kotlinc reports the call instead.
-	probing int
+	// orderDependent is the property whose type extFuncVar couldn't use
+	// because it is being inferred or its inference ran into a cycle.
+	orderDependent *types.VarSym
+	// inferring is the symbol of the innermost declaration whose omitted
+	// type the checker is inferring, a *types.FunSym or *types.VarSym.
+	inferring any
 	// operator is the operator expression whose operands are being
 	// checked. The type an operand is checked with is a hint, as Int for
 	// x in 0..2, not a type expected of it: the operator is a call, as
@@ -2050,6 +2052,26 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 	return nil
 }
 
+// starVarAmbiguous reports whether v, a top-level property of the
+// program's packages that one star import gives, is also, as another
+// property, given by another: as in Kotlin, the use is ambiguous.
+func (c *Checker) starVarAmbiguous(name string, v *types.VarSym) bool {
+	if v.Kind != types.Global {
+		return false
+	}
+	mine, others := false, false
+	for _, p := range c.userStars {
+		if w, ok := p.Vars[name]; ok && !c.renamedAway(p.Name, name) && c.propVisible(w) {
+			if w == v {
+				mine = true
+			} else {
+				others = true
+			}
+		}
+	}
+	return mine && others
+}
+
 // libraryVar reports whether v is a top-level property of a library, which
 // a star import gives, rather than of the program.
 func (c *Checker) libraryVar(v *types.VarSym) bool {
@@ -3201,6 +3223,12 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 		return
 	}
 	sym.InProgress = true
+	if d.Property == "" {
+		// A getter's inference is its property's.
+		savedInferring := c.inferring
+		c.inferring = sym
+		defer func() { c.inferring = savedInferring }()
+	}
 	before := c.u.reentries.Load()
 	savedFrom := c.inferFrom
 	c.inferFrom = before + 1
@@ -3246,6 +3274,9 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		return
 	}
 	sym.InProgress = true
+	savedInferring := c.inferring
+	c.inferring = sym
+	defer func() { c.inferring = savedInferring }()
 	before := c.u.reentries.Load()
 	savedFrom := c.inferFrom
 	c.inferFrom = before + 1
@@ -3284,7 +3315,8 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if sym.Reentered > 0 && sym.ReentryReported == 0 && (d.DelegateOf == nil || d.DelegateOf.Sym.ReentryReported == 0) {
 		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
 	}
-	sym.Cyclic = c.u.reentries.Load() > before && sym.Type.K == types.Invalid
+	sym.RanIntoCycle = c.u.reentries.Load() > before
+	sym.Cyclic = sym.RanIntoCycle && sym.Type.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
 }
 
@@ -3292,10 +3324,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 // to a declaration whose inference is in progress (or, if cyclic, left an
 // error for a cycle) is reported.
 func (c *Checker) reportsRecursion(inProgress, cyclic bool) bool {
-	switch {
-	case c.probing > 0:
-		return false
-	case inProgress:
+	if inProgress {
 		return true
 	}
 	return cyclic && c.inferFrom > 0 && c.u.reentries.Load() >= c.inferFrom
@@ -3899,6 +3928,15 @@ func usesField(a *syntax.FunDecl) bool {
 	return found
 }
 
+// noField reports whether field is unresolved in accessor d of property p,
+// as in K2: p has context parameters, which rule out a field, or d is the
+// getter p's type comes from, as p has neither a written type nor an
+// initializer.
+func noField(p *types.VarSym, d *syntax.FunDecl) bool {
+	pd, ok := p.Decl.(*syntax.PropDecl)
+	return ok && (len(pd.Contexts) > 0 || pd.Getter == d && pd.Type == nil && pd.Init == nil)
+}
+
 // setterParamType checks the type written on a setter's parameter, set(v:
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
@@ -3939,7 +3977,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	sym := d.Sym
 	s := &scope{}
-	if p := d.AccessorOf; p != nil && p.HasField() {
+	if p := d.AccessorOf; p != nil && p.HasField() && !noField(p, d) {
 		// An accessor's field is its property's backing field.
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}

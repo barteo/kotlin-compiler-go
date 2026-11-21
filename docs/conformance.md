@@ -219,7 +219,10 @@ Four things differ from the test infrastructure:
   directive), and skipped where it doesn't (the return value checker in
   `crv/`, header mode, strict equality), as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
-  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`. So are `IDE_MODE`
+  tests that mark the error form of a diagnostic (such as
+  `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR`), which
+  `kotlinc` reports only in the IDE.
 - **Switched-off backend errors.** A test that switches off
   `CONFLICTING_JVM_DECLARATIONS`, `CONFLICTING_INHERITED_JVM_DECLARATIONS`
   or `ACCIDENTAL_OVERRIDE` with the `DIAGNOSTICS` directive still runs
@@ -313,8 +316,8 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 8,614 | |
-| rejects invalid | 4,449 | 51.6% |
+| run (of 10,827) | 8,613 | |
+| rejects invalid | 4,448 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
 | accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | |
@@ -322,8 +325,8 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,478 of the 22,026 expected errors (97.5%) on their lines, and 3,234 of
-the 3,667 expected warnings (88.2%), with 18 warnings on lines that expect
+21,502 of the 22,025 expected errors (97.6%) on their lines, and 3,249 of
+the 3,667 expected warnings (88.6%), with 18 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 6 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:

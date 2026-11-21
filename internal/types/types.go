@@ -277,6 +277,9 @@ type VarSym struct {
 	// whose type is its recursive implicit type.
 	Reentered, ReentryReported int
 	Cyclic                     bool
+	// RanIntoCycle is set when its inference ran into a cycle of omitted
+	// types, whatever its type.
+	RanIntoCycle bool
 
 	// FieldT is the type of a final property's explicit backing field,
 	// val x: List<T> field = mutableListOf(), if it has one: what x reads

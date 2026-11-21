@@ -146,7 +146,8 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 	for i, arg := range args {
 		if (arg.V == types.In || arg.V == types.Out) && projectionConflicts(a.Type, a.TypeParams[i], arg.V) {
 			c.errorf(ref.Args[i].P, "conflicting projection in typealias expansion: typealias %s uses %s where '%s' conflicts with the variance", a.Name, a.TypeParams[i].Name, arg.V)
-			return types.InvalidType
+			// As in K2, the argument is then a star.
+			args[i] = types.Arg{V: types.Star}
 		}
 	}
 	for i, arg := range args {
