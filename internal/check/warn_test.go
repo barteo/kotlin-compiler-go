@@ -655,3 +655,10 @@ func TestWarningsDslMarkerTarget(t *testing.T) {
 func TestWarningsAnyOverride(t *testing.T) {
 	checkReference(t, "testdata/anyoverride.kt", Options{Warnings: true})
 }
+
+// TestWarningsMultipleDefaults checks the
+// MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING
+// warnings of testdata/multipledefaults.kt.
+func TestWarningsMultipleDefaults(t *testing.T) {
+	checkReference(t, "testdata/multipledefaults.kt", Options{Warnings: true})
+}

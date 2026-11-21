@@ -3644,8 +3644,39 @@ func (c *Checker) multipleDefaults(fd *syntax.FunDecl) {
 		}
 		if n > 1 {
 			c.errorf(p.P, "more than one overridden descriptor declares a default value for '%s'", p.Name)
+			continue
+		}
+		// kotlinc counts those of all supertypes, and for those it
+		// misses this way warns of what it will report as the error.
+		var bases []*types.FunSym
+		for _, o := range over {
+			if i < len(o.Params) && declaresDefault(o, i) && !slices.Contains(bases, o) {
+				bases = append(bases, o)
+			}
+		}
+		if len(bases) > 1 && i < len(fd.Sym.Params) {
+			var b strings.Builder
+			for _, o := range bases {
+				fmt.Fprintf(&b, "\n    %s, defined in %s", defaultsSignature(o), simpleName(o.Owner))
+			}
+			c.warnf(p.P, "MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING",
+				"more than one function overridden by '%s' declares a default value for '%s: %s': %s\nAs the compiler can not make sure these values agree, this will be prohibited in the future. See: https://youtrack.jetbrains.com/issue/KT-36188. This will become an error in a future release.",
+				fd.Name, p.Name, fd.Sym.Params[i].Type, b.String())
 		}
 	}
+}
+
+// defaultsSignature renders function f as kotlinc's messages about
+// default values do: fun f(x: Int = ...): Unit.
+func defaultsSignature(f *types.FunSym) string {
+	ps := make([]string, len(f.Params))
+	for i, p := range f.Params {
+		ps[i] = p.Name + ": " + p.Type.String()
+		if declaresDefault(f, i) {
+			ps[i] += " = ..."
+		}
+	}
+	return fmt.Sprintf("fun %s(%s): %s", f.Name, strings.Join(ps, ", "), f.Ret)
 }
 
 // directSupertype reports whether class s is a superclass or an interface

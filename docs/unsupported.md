@@ -55,6 +55,8 @@ own tests.
   argument, nor the invocation kind where its calls are in a loop that
   jumps, a lambda that jumps, or a `when` without `else` that isn't
   exhaustive, or in a function that never returns normally),
+  `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` (not
+  of a class that doesn't override the function),
   `UNNECESSARY_LATEINIT` (not where an object expression or a local
   class reads the property, nor of a type parameter's type, nor for
   constructors whose `this(...)` calls loop),
