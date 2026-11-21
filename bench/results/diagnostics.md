@@ -150,7 +150,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 187 |
+| `unresolved reference: _` | 186 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 70 |

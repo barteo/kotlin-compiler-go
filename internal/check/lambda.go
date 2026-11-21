@@ -3122,9 +3122,22 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	if trial == nil {
 		trial = r.s
 	}
+	if tv := trial.byVar[v.Param()]; tv != nil && v.Param().Origin != nil && !val.HasVars() && c.trial != nil {
+		// The check that counts, with the builder's variables fixed, fixes
+		// it so too, as K2's one pass has: R of myWith(get()) { it.length }
+		// is the Any that bar(get()) gives S then, not the String that
+		// yield("") gives S later.
+		if c.stubHints == nil {
+			c.stubHints = map[stubHintKey]types.Type{}
+		}
+		c.stubHints[stubHintKey{v.Param().Origin, c.file.Path, tv.pos}] = val
+	}
 	if tv := trial.byVar[v.Param()]; tv != nil {
 		for _, l := range tv.lower {
-			if q := c.stub(l.Flex().NonNull()); q != nil && q != r && q.depth < r.depth {
+			// Not one bounded only from above, S <: Any, which K2 leaves
+			// unfixed: R of myWith(get()) { it.length } is Any, and S is
+			// what yield("") gives later.
+			if q := c.stub(l.Flex().NonNull()); q != nil && q != r && q.depth < r.depth && q.properBelow(l.Flex().Param()) {
 				c.fixedStub(l.Flex().NonNull())
 			}
 		}
@@ -3223,10 +3236,46 @@ func (c *Checker) demandStubs(t types.Type) types.Type {
 	// And only a builder's own variable: a call's variable that is a
 	// stub because a lambda's parameter type is equal to it (see
 	// stubRelated) stays unfixed for the lambda.
-	if r := c.stub(t); r == nil || t.N || t.P || !slices.Contains(r.vars, t.Param()) {
+	r := c.stub(t)
+	if r == nil || t.N || t.P || !slices.Contains(r.vars, t.Param()) {
+		return t
+	}
+	if !r.properBelow(t.Param()) && c.noDemand == 0 && r.demandable(t.Param()) {
+		// Bounded only from above, as S of bar(get()) for a bar(x: Any),
+		// the variable isn't fixed: the lambda's parameter takes what its
+		// bounds give, Any of myWith(get()) { it }, and yield("") later
+		// gives S String, as in K2.
+		if _, trial, ok := r.solve(); ok {
+			if val := trial.apply(t); !val.HasVars() && val.K != types.Invalid {
+				return val
+			}
+		}
 		return t
 	}
 	return c.fixedStub(t)
+}
+
+// properBelow reports whether variable v of r has a lower bound that is
+// a proper type, or a literal, directly or through the variables below it.
+func (r *stubRun) properBelow(v *types.TypeParamSym) bool {
+	c := r.s.c
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	trial, _ := r.build(saved)
+	seen := map[*tvar]bool{}
+	var walk func(tv *tvar) bool
+	walk = func(tv *tvar) bool {
+		if tv == nil || seen[tv] {
+			return false
+		}
+		seen[tv] = true
+		if tv.fixed || len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, trial.proper) {
+			return true
+		}
+		return slices.ContainsFunc(tv.lower, func(l types.Type) bool { return walk(trial.unfixedVar(l)) })
+	}
+	return walk(trial.byVar[v])
 }
 
 // stubReceiver records x, of type t, as the receiver of member name if t
