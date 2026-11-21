@@ -461,8 +461,6 @@ testsWithStdLib/kt9078.kt	kt9078.kt:7	UNRESOLVED_REFERENCE	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:36	LATEINIT_INTRINSIC_CALL_ON_NON_LITERAL	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:44	LATEINIT_INTRINSIC_CALL_IN_INLINE_FUNCTION	missing-check
 testsWithStdLib/pcla/typeVariableShouldNotBeFixed.kt	spr/foo.kt:18	CANNOT_INFER_PARAMETER_TYPE	missing-check
-testsWithStdLib/pcla/unsafeAssignmentExtra.kt	unsafeAssignmentExtra.kt:31	NONE_APPLICABLE	missing-check
-testsWithStdLib/pcla/unsafeAssignmentExtra.kt	unsafeAssignmentExtra.kt:35	NONE_APPLICABLE	missing-check
 testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	backingFieldWithContextParameter.kt:4	CONTEXT_PARAMETERS_WITH_BACKING_FIELD	nearby
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:12	OPT_IN_MARKER_ON_WRONG_TARGET	missing-check
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:17	OPT_IN_USAGE_ERROR	missing-check

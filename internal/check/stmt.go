@@ -1678,6 +1678,12 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	}
 	c.rewrite(&u.X, c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X)))))
 	t, mutable := c.lvalue(u.X)
+	if r := c.stub(t.Flex()); r != nil && c.trial != nil && r.constrains(t.Flex().Param()) {
+		// a++ for a var a of a builder's variable that a = 45 bounds: K2
+		// finds no inc for it, which it doesn't fix (see above), though
+		// the variable's type, inferred later, has one.
+		r.recvs = append(r.recvs, stubRecv{p: u.P, msg: fmt.Sprintf("none of the candidates for '%s' takes a receiver of a builder's variable that isn't fixed here", opNames[u.Op])})
+	}
 	if f, _ := contextAccessor(u.X, false); !builtinIncDec(t) || f != nil {
 		// Also a property with context parameters', whose accessors
 		// take them: x = x.inc().
