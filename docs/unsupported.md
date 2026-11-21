@@ -78,8 +78,11 @@ own tests.
   what `kotlinc` compiles: the null checks never of a platform type, a type parameter
   or a type it couldn't resolve, and `UNCHECKED_CAST` only of a cast to
   a type parameter that isn't reified, to a generic type from `Any`
-  or a star-projected supertype, or to a function type from another of
-  its class. Parameter names are compared only where they are stable,
+  or a star-projected supertype, to a function type from another of
+  its class, or to a generic type whose type arguments its operand's
+  type doesn't tell, judged as `kotlinc` does but only where that
+  type's arguments map to the target class's type parameters one by one,
+  without projections, and the operand isn't smart cast. Parameter names are compared only where they are stable,
   of the program's and Kotlin libraries' functions, not Java methods,
   and `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
   `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` only of the program's

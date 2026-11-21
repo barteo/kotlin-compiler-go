@@ -455,3 +455,48 @@ fun <T> ud20(a: Array<T>) { uUse(a[0] as T) } // USELESS_CAST
 fun <E : Enum<E>> ud21(e: E) { uUse(e as E) } // USELESS_CAST
 fun ud22(m: Map<String, Int>) { uUse(m["a"] as Int?) } // USELESS_CAST
 fun <T> ud23(v: T) { var w = v; w = uFoo(w) as T; uUse(w) } // USELESS_CAST
+// Unchecked casts between classes' types: the type of the target's class
+// that the operand's type tells isn't a subtype of the target.
+class UkCl<T>(val name: String)
+class UkW<T>(val x: T)
+open class UkBase<T>
+class UkSub<T> : UkBase<T>()
+class UkSub2 : UkBase<String>()
+class UkPair2<A, B>
+open class UkPB<X> 
+class UkPS<Y, Z> : UkPB<Z>()
+interface UkIn<in T>
+interface UkOut<out T>
+class UkOutImpl<T> : UkOut<T>
+fun <T> uk1(c: UkCl<T>) { uUse(c as UkCl<Any>) } // UNCHECKED_CAST
+fun uk2() { val a = arrayOfNulls<Any>(5); uUse(a as Array<Int>) } // UNCHECKED_CAST
+fun uk3() { val a = arrayOf(UkW(1)); uUse(a as Array<UkW<String>>) } // UNCHECKED_CAST
+fun uk4() { val a = arrayOfNulls<String>(1); uUse(a as Array<Any>) } // UNCHECKED_CAST
+fun uk5(c: MutableCollection<String>) { uUse(c as MutableList<Int>) } // UNCHECKED_CAST
+fun uk6(c: MutableCollection<String>) { uUse(c as MutableList<String>) }
+fun uk7(c: Collection<String>) { uUse(c as List<String>) }
+fun uk8(c: Collection<String>) { uUse(c as List<Int>) } // UNCHECKED_CAST
+fun uk9(b: UkBase<String>) { uUse(b as UkSub<String>) }
+fun uk10(b: UkBase<String>) { uUse(b as UkSub<Int>) } // UNCHECKED_CAST
+fun uk11(b: UkBase<String>) { uUse(b as UkSub2) }
+fun uk12(l: List<Any>) { uUse(l as List<String>) } // UNCHECKED_CAST
+fun uk13(l: List<*>) { uUse(l as List<String>) } // UNCHECKED_CAST
+fun uk14(p: UkPB<Int>) { uUse(p as UkPS<String, Int>) } // UNCHECKED_CAST
+fun uk15(p: UkPB<Int>) { uUse(p as UkPS<String, String>) } // UNCHECKED_CAST
+fun uk16(o: UkOut<Number>) { uUse(o as UkOutImpl<Int>) } // UNCHECKED_CAST
+fun uk17(o: UkOut<Int>) { uUse(o as UkOutImpl<Number>) } // UNCHECKED_CAST
+fun uk18(c: Collection<String>?) { uUse(c as List<String>?) }
+fun uk19(c: Collection<String>?) { uUse(c as? List<Int>) } // UNCHECKED_CAST
+fun <T> uk20(c: Collection<T>) { uUse(c as List<T>) }
+fun <T> uk21(c: Collection<T>) { uUse(c as MutableList<T>) }
+fun uk22(m: Map<String, Int>) { uUse(m as HashMap<String, Int>) }
+fun uk23(m: Map<String, Int>) { uUse(m as HashMap<Int, Int>) } // UNCHECKED_CAST
+fun uk24(x: Iterable<String>) { uUse(x as Set<String>) }
+fun uk25(x: Comparable<String>) { uUse(x as String) }
+fun uk26(f: Function1<Int, String>) { uUse(f as Function1<Any, String>) } // UNCHECKED_CAST
+fun uk27(a: Any) { if (a is List<*>) uUse(a as List<String>) } // UNCHECKED_CAST
+fun uk28(c: Collection<out String>) { uUse(c as List<String>) } // REDUNDANT_PROJECTION
+fun uk29(l: MutableList<String>) { uUse(l as ArrayList<String>) }
+fun uk30(l: MutableList<String>) { uUse(l as ArrayList<Int>) } // UNCHECKED_CAST
+fun uk31(l: List<String>) { uUse(l as MutableList<String>) }
+fun uk32(s: Sequence<Int>) { uUse(s as List<Int>) } // UNCHECKED_CAST

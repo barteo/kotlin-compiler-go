@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -408,6 +410,7 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 		case t.K == types.Class && t.C != nil && starImplied(t) && target.C.IsSubclassOf(t.C) && x.Ref != nil && x.Ref.Args != nil:
 			// From MutableList<out Any?>, which tells as little, to type
 			// arguments written: those of a bare type follow from it.
+		case c.castErased(x, t, target):
 		default:
 			return
 		}
@@ -415,6 +418,66 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 		return
 	}
 	c.warnf(x.P, "UNCHECKED_CAST", "unchecked cast of '%s' to '%s'", t, target)
+}
+
+// castErased reports whether cast x of a value of class type t to class
+// type target, which has type arguments, is unchecked, as kotlinc's
+// isCastErased judges it: the type of target's class that t tells
+// statically (findStaticallyKnownSubtype), whose type arguments are
+// those that t's determine and the class's own type parameters, isn't a
+// subtype of target: Class<T> as Class<Any>, or MutableCollection<String>
+// as MutableList<Int>. kc judges only casts whose operand isn't smart
+// cast, that can succeed, and where t's type arguments map to the
+// class's type parameters one by one, without projections.
+func (c *Checker) castErased(x *syntax.As, t, target types.Type) bool {
+	f, ok := c.typeFacts[x]
+	if !ok || len(f.casts) > 0 || !f.certain() || !certainCastType(target) || lambdaLike(unchecked(x.X)) {
+		return false
+	}
+	if c.castImpossible(f.orig, []types.Type{f.orig}, target, x.Safe) {
+		return false // CAST_NEVER_SUCCEEDS
+	}
+	t, target = t.NonNull(), target.NonNull()
+	k := target.C
+	if t.K != types.Class || t.C == nil || k.Local || platformArgs(t) || c.subtype(t, target) {
+		return false
+	}
+	known := t
+	if t.C != k {
+		args := make([]types.Arg, len(k.TypeParams))
+		set := make([]bool, len(k.TypeParams))
+		if sup, ok := c.asSuper(k.This(), t.C); ok && sup.A != nil {
+			if t.A == nil || t.A.Len() != sup.A.Len() {
+				return false
+			}
+			for i, a := range sup.A.List {
+				ta := t.A.List[i]
+				j := -1
+				if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N {
+					j = slices.Index(k.TypeParams, a.T.Param())
+				}
+				if j < 0 || ta.V != types.Inv && ta.V != types.Star {
+					return false // not one of k's parameters, or projected
+				}
+				arg := ta
+				if ta.V == types.Star {
+					// What a star tells fits anything.
+					arg = target.A.List[j]
+				}
+				if set[j] && args[j] != arg {
+					return false
+				}
+				args[j], set[j] = arg, true
+			}
+		}
+		for j, p := range k.TypeParams {
+			if !set[j] {
+				args[j] = types.Arg{T: types.ParamType(p)}
+			}
+		}
+		known = types.GenericType(k, args)
+	}
+	return !c.subtype(known, target)
 }
 
 // argsTellMore reports whether some type argument of class type t
