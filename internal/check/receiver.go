@@ -634,7 +634,8 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 // K2 tries a scope's functions before its extensions of implicit
 // receivers, so run { } in a class is kotlin's run(block), not
 // this.run { }, whose lambda would read the class's properties through
-// its own receiver, without their smart casts.
+// its own receiver, without their smart casts. A function of another
+// package that may take x doesn't count.
 func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSym) bool {
 	pkgs := map[string]bool{}
 	var ts []types.Type
@@ -651,8 +652,19 @@ func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSy
 	if len(pkgs) == 0 {
 		return false
 	}
+	extPkgs := map[string]bool{}
 	for _, f := range fs {
 		if f.Facade == "" || !pkgs[path.Dir(f.Facade)] {
+			return false
+		}
+		extPkgs[path.Dir(f.Facade)] = true
+	}
+	// A function of another scope that may take x, such as the file's
+	// package's run(block), still gives way to the extensions: run { } in
+	// a class doesn't call it, though the top-level functions of its
+	// package come before kotlin's.
+	for p := range pkgs {
+		if !extPkgs[p] {
 			return false
 		}
 	}
