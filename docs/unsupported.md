@@ -103,9 +103,10 @@ own tests.
   `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum or
   a sealed class, not of one exhaustive through an `is` check of the
   subject's own type, or over a type parameter's value.
-  `INCOMPATIBLE_ENUM_COMPARISON` is reported of two nullable enums, not
-  of an enum and a type parameter's value or a value smart cast to
-  another enum. `ERROR_SUPPRESSION` is reported, as `kotlinc` 2.4.21
+  `INCOMPATIBLE_ENUM_COMPARISON` is reported as `kotlinc` reports it,
+  of an enum and a class or interface it isn't related to, by the
+  operands' types after smart casts and a type parameter's bounds, but
+  not where a platform type is involved. `ERROR_SUPPRESSION` is reported, as `kotlinc` 2.4.21
   does, for every error name in a `@Suppress`, but not in one on a type
   or a supertype. With `-Wextra`, as `kotlinc`, it also reports
   `UNREACHABLE_CODE`, after a statement that always jumps (not the dead

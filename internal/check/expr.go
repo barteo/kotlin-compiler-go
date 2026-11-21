@@ -1101,9 +1101,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		yt := c.value(x.Y, yWant)
 		x.OpType = c.castEquality(x, xt, yt)
-		if x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.NOT_EQ_EQ {
-			c.noteIdentTypes(x, xt, yt)
-		}
+		c.noteIdentTypes(x, xt, yt)
 		return types.BoolType
 	}
 
@@ -1337,8 +1335,11 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
 	if op == syntax.EQ || op == syntax.NE {
-		if c.mayBeNullEnums(xt, yt) {
-			return false // only a warning: see enumComparisonWarning
+		if (c.enumType(x) || c.enumType(y)) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+			// K1 let a nullable enum be compared with any nullable type,
+			// as both may be null: K2 only warns (see
+			// enumComparisonWarning).
+			return false
 		}
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
 			return false
@@ -4614,7 +4615,19 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					}
 				}
 				if cond.OpType.K == types.Invalid {
+					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
+					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid && c.incompatibleEnums(st, ct) {
+						// A subject smart cast to an enum, compared with a
+						// value its declared type may be equal to: as
+						// kotlinc, only a warning (see whenEnumWarnings).
+						m := len(c.errs)
+						if t := c.equality(cond.X.Pos(), syntax.EQ, dt, ct); t.K != types.Invalid {
+							c.errs, cond.OpType = c.errs[:n], t
+						} else {
+							c.errs = c.errs[:m]
+						}
+					}
 				}
 				cov.add(cond.X)
 				if single && x.SubjVar == "" {
