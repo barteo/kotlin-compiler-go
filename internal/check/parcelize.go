@@ -1619,9 +1619,24 @@ func (g *parcelGen) typeText(t types.Type) string {
 // kotlinType writes type t as Kotlin, with qualified names, which mean the
 // same anywhere, or reports that it can't: function types and type
 // parameters.
-func kotlinType(t types.Type) (string, bool) {
+func kotlinType(t types.Type) (string, bool) { return kotlinTypeOf(t, false) }
+
+// kotlinTypeOf is kotlinType, which writes type parameters by their names
+// if params is set: in the declarations of the class or function that
+// declares them.
+func kotlinTypeOf(t types.Type, params bool) (string, bool) {
 	var s string
 	switch t.K {
+	case types.TypeParam:
+		if !params {
+			return "", false
+		}
+		s = t.Param().Name
+	case types.Null:
+		if !params {
+			return "", false
+		}
+		s = "kotlin.Nothing"
 	case types.Int, types.Long, types.Float, types.Double, types.Byte, types.Short, types.Char, types.String, types.Any, types.Unit, types.Nothing:
 		s = "kotlin." + t.NonNull().String()
 	case types.Bool:
@@ -1637,7 +1652,7 @@ func kotlinType(t types.Type) (string, bool) {
 				var arg string
 				ok := true
 				if a.V != types.Star {
-					arg, ok = kotlinType(a.T)
+					arg, ok = kotlinTypeOf(a.T, params)
 				}
 				switch {
 				case !ok:

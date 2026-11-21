@@ -173,6 +173,7 @@ fun main() {
     fails("missingBase", Derived.serializer(), """{"extra":1}""")
     fails("unknown", Base.serializer(), """{"id":1,"x":2}""")
     fails("unknownType", Shape.serializer(), """{"type":"nope"}""")
+    generics()
     // As kotlinc's, a $serializer class is synthetic.
     println(Prims.serializer().javaClass.isSynthetic)
     println(log)

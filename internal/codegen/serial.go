@@ -55,8 +55,14 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 			g.code.Jump(cf.IF_ICMPEQ, read)
 			g.code.Local(cf.ILOAD, seen)
 			g.code.Iconst(mask)
-			g.code.FieldInsn(cf.GETSTATIC, s.Name, "INSTANCE", "L"+s.Name+";")
-			g.code.Invoke(cf.INVOKEVIRTUAL, s.Name, "getDescriptor", "()Lkotlinx/serialization/descriptors/SerialDescriptor;")
+			if s.Object {
+				g.code.FieldInsn(cf.GETSTATIC, s.Name, "INSTANCE", "L"+s.Name+";")
+				g.code.Invoke(cf.INVOKEVIRTUAL, s.Name, "getDescriptor", "()Lkotlinx/serialization/descriptors/SerialDescriptor;")
+			} else {
+				// A generic class's serializer is made of its type
+				// arguments': the class keeps a descriptor of its own.
+				g.code.FieldInsn(cf.GETSTATIC, cls.Name, "$cachedDescriptor", "Lkotlinx/serialization/descriptors/SerialDescriptor;")
+			}
 			g.code.Invoke(cf.INVOKESTATIC, "kotlinx/serialization/internal/PluginExceptionsKt", "throwMissingFieldException",
 				"(IILkotlinx/serialization/descriptors/SerialDescriptor;)V")
 			g.code.Place(read)
@@ -66,8 +72,11 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	if sd := serial.Super; sd != nil {
 		sf := sd.Serial.Ctor.Sym
 		g.code.Local(cf.ILOAD, seen)
-		for _, p := range props[:len(sf.Params)-2] {
+		for i, p := range props[:len(sf.Params)-2] {
 			g.code.Local(loadOp(p.Type), g.slot(p))
+			// A generic superclass's property, of the type argument the
+			// class gives it: an Int is boxed for its T.
+			g.coerce(p.Type, sf.Params[i+1].Type)
 		}
 		g.code.Local(cf.ALOAD, marker)
 		d := ctorJVMDesc(sf)

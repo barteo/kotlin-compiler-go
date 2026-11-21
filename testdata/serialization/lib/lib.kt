@@ -38,6 +38,11 @@ sealed class LibShape {
 @Serializable
 data object LibObj
 
+// A generic class of another module, whose $serializer class kc's code
+// constructs with its type argument's serializer.
+@Serializable
+data class LibBox<T>(val v: T, val tag: String = "")
+
 // A superclass from another module, which kc leaves to kotlinc.
 @Serializable
 open class LibBase(val b: Int = 0)

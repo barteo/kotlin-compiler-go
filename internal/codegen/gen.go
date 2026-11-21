@@ -2116,6 +2116,21 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 	if p.StaticField() {
 		acc |= cf.AccStatic
 	}
+	if pd, _ := p.Decl.(*syntax.PropDecl); pd != nil && pd.Plugin {
+		switch {
+		case strings.HasPrefix(p.Name, "typeSerial"):
+			// A generic class's $serializer keeps its type arguments'
+			// serializers, as kotlinc's plugin writes them.
+			c.AddField(cf.AccPrivate|cf.AccFinal|cf.AccSynthetic, p.Name, desc(p.Type))
+			c.LastField().SetSignature("Lkotlinx/serialization/KSerializer<*>;")
+			return
+		case p.Name == "$cachedDescriptor":
+			// Only the class's own code, its static initializer and
+			// synthetic constructor, uses it.
+			c.AddField(cf.AccPrivate|cf.AccStatic|cf.AccFinal, p.Name, desc(p.Type))
+			return
+		}
+	}
 	as, field, _ := classPropAnnotations(p)
 	ft := types.FieldType(p)
 	c.AddField(acc|fieldModifiers(as), p.Name, desc(ft))

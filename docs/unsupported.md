@@ -229,7 +229,7 @@ Java classes directly for the rest. Also:
 
 ## kotlinx.serialization (`-serialization`)
 
-Not supported: generic classes; interfaces annotated `@Serializable`
+Not supported: generic value classes; interfaces annotated `@Serializable`
 that aren't sealed; local and inner classes and companion objects;
 classes without a primary constructor or that delegate an interface
 (`by`); superclasses from other modules; more than 32 properties;
@@ -241,10 +241,11 @@ naming serializers of properties (a generic class in `@Serializable(with
 and `@MetaSerializable`; the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
-primitive types, `String`, enums, `@Serializable` classes, objects and
-value classes, `UInt`, `ULong`, `UShort`, `UByte`, interfaces
-(polymorphically), and `List`, `Set`, `Map`, `HashSet`,
-`HashMap`, `Pair` and `Triple` of these, each nullable too.
+primitive types, `String`, enums, `@Serializable` classes (generic ones
+too), objects and value classes, `UInt`, `ULong`, `UShort`, `UByte`,
+interfaces (polymorphically), the class's type parameters, and `List`,
+`Set`, `Map`, `HashSet`, `HashMap`, `Pair` and `Triple` of these, each
+nullable too.
 
 Without `-serialization`, only classes annotated `@Serializable(with =
 S::class)` get their `serializer()`.
@@ -608,3 +609,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   elements of a value class that it reads into a list to the class.
 - `Uuid` is written with an inlined `toLongs`, whose lambda's arguments
   `kc` boxes (see Inlining).
+- A generic `@Serializable` class's `$serializer` has a public primary
+  constructor that takes its type arguments' serializers. kotlinc's has
+  a private constructor without parameters, which builds the descriptor,
+  and a public secondary constructor that calls it, which has the same
+  signature as `kc`'s.

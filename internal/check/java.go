@@ -306,6 +306,16 @@ func (t *classTable) rootClass(name string) *types.ClassSym {
 
 func (t *classTable) hasPackage(pkg string) bool { return t.cp != nil && t.cp.HasPackage(pkg) }
 
+// hasPackageTree reports whether a package, or a package inside it, has a
+// class on the class path, by its internal name.
+func (t *classTable) hasPackageTree(pkg string) bool {
+	if t.cp == nil {
+		return false
+	}
+	_, ok := t.cp.Classes(pkg)
+	return ok
+}
+
 // load fills in a class's supertypes and public members.
 func (t *classTable) load(cls *types.ClassSym) {
 	info, err := t.cp.Load(cls.Name)
@@ -1749,10 +1759,15 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 			}
 		}
 	}
+	// A plugin's code reads one by its qualified name, as pluginQualified
+	// describes for functions.
+	if pkg, simple, ok := pluginQualified(c, x.Name); ok {
+		fits(c.u.ext.pkgExtProps(pkg, simple))
+	}
 	// Those declared in the class the code is in come first, then those of
 	// the objects in scope, and imported ones of objects.
 	var dispatch *types.ClassSym
-	if c.cls != nil {
+	if c.cls != nil && best == nil {
 		sub = func(g *types.FunSym) types.Subst { return c.memberSubst(c.cls.This(), g.Owner) }
 		if fits(memberExtProps(c.cls, x.Name)); best != nil {
 			c.captureThis()
@@ -1891,6 +1906,12 @@ func (c *Checker) lookupClass(name string) *types.ClassSym {
 func (c *Checker) isVar(name string) bool {
 	if _, _, ok := c.scope.lookup(name); ok {
 		return true
+	}
+	if c.state.plugin && (c.u.isPackage(name) || c.u.ext.hasPackageTree(name)) {
+		// A plugin's code names classes by their qualified names, whose
+		// packages no property of the class hides, as kotlinc's plugins
+		// refer to them: lib.LibPoint in a class with a val lib.
+		return false
 	}
 	return c.nonLocalVar(name)
 }

@@ -1549,16 +1549,16 @@ func TestSerialization(t *testing.T) {
 	// Classes that kc doesn't serialize as the plugin does are left to
 	// kotlinc.
 	for name, src := range map[string]string{
-		"generic":      "class A<T>(val x: T)",
-		"Date":         "class A(val x: java.util.Date)",
-		"Any":          "class A(val x: Any)",
-		"array":        "class A(val x: Array<String>)",
-		"IntArray":     "class A(val x: IntArray)",
-		"Contextual":   "class A(@Contextual val x: Int)",
-		"interface":    "interface A",
-		"lateinit":     "class A(val x: Int) { lateinit var y: String }",
-		"local":        "class A(val x: Int)\nfun f() {\n@Serializable class L(val y: Int)\n}",
-		"super module": "class A(val x: Int) : lib.LibBase()",
+		"generic value": "@JvmInline\nvalue class A<T>(val x: T)",
+		"Date":          "class A(val x: java.util.Date)",
+		"Any":           "class A(val x: Any)",
+		"array":         "class A(val x: Array<String>)",
+		"IntArray":      "class A(val x: IntArray)",
+		"Contextual":    "class A(@Contextual val x: Int)",
+		"interface":     "interface A",
+		"lateinit":      "class A(val x: Int) { lateinit var y: String }",
+		"local":         "class A(val x: Int)\nfun f() {\n@Serializable class L(val y: Int)\n}",
+		"super module":  "class A(val x: Int) : lib.LibBase()",
 	} {
 		t.Run("unsupported "+name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")

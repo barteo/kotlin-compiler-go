@@ -472,6 +472,19 @@ func (s *metaScope) params(ps []*types.VarSym, decls []*syntax.Param) []*kmeta.P
 func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *kmeta.Function {
 	sym := fd.Sym
 	s, tps := s.with(sym.TypeParams)
+	if fd.SelfStatic && len(owner.TypeParams) > 0 {
+		// serialization's write$Self, static in kotlinc's code, declares
+		// type parameters of its own for the class's, bounded by Any?.
+		s, tps = s.with(nil)
+		for _, tp := range owner.TypeParams {
+			s.ids[tp] = s.next
+			tps = append(tps, &kmeta.TypeParam{ID: s.next, Name: tp.Name, Variance: kmeta.Inv})
+			s.next++
+		}
+		for _, p := range tps {
+			p.Bounds = []*kmeta.Type{s.typ(types.AnyType.Nullable())}
+		}
+	}
 	mod := kmeta.Final
 	switch {
 	case sym.Abstract:

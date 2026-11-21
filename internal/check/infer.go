@@ -1128,7 +1128,9 @@ func (s *system) fix(tv *tvar) {
 			val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of its bound's captured type"})
 	}
 	for i, b := range tv.v.Bounds {
-		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !b.HasVars() && !c.subtype(val, b) {
+		// A plugin's code isn't checked, as kotlinc's plugins write IR:
+		// serialization's passes a class's T to encodeNullableSerializableElement<T : Any>.
+		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !c.state.plugin && !b.HasVars() && !c.subtype(val, b) {
 			s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}

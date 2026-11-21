@@ -29,6 +29,12 @@ func classSignature(cls *types.ClassSym, super string, interfaces []string) stri
 	if len(cls.TypeParams) > cls.OuterParams {
 		own = cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams]
 	}
+	if o := cls.Outer; o != nil && cls.Name == o.Name+"$$serializer" && len(o.TypeParams) == len(own) {
+		// The serialization plugin's generic $serializer, whose type
+		// parameters kotlinc writes with the class's bounds, though its
+		// metadata, as kc declares them, has none.
+		own = o.TypeParams
+	}
 	var w sigWriter
 	w.typeParams(own)
 	supertype := func(name string) {
