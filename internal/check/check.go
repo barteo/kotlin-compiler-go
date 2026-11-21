@@ -200,7 +200,7 @@ type Checker struct {
 	// conflictingImports are the names that two explicit imports of
 	// classifiers give, which are ambiguous: CONFLICTING_IMPORT.
 	conflictingImports map[string]bool
-	funImports   map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
+	funImports         map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
 	// memberImports are the explicitly imported members of classes and
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.

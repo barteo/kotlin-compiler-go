@@ -370,7 +370,9 @@ func IntLiteralErrors(text string) []string {
 
 // TokenizeArgAt lexes src, an argument in a call's parentheses starting
 // at pos, where newlines count only in a lambda's braces.
-func TokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) { return tokenizeArgAt(file, src, pos) }
+func TokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) {
+	return tokenizeArgAt(file, src, pos)
+}
 
 // CharValue decodes a character literal's text, quotes included, or
 // returns an error message.
