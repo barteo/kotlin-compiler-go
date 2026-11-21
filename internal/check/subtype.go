@@ -698,6 +698,15 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		if !ok {
 			continue
 		}
+		if isBuiltin(a) {
+			// A built-in's supertype as subtyping sees it, Comparable<String>
+			// and not java.lang.String's Comparable<String!>: the join with
+			// a Java class's Comparable<Date!> is Comparable<String & Date>,
+			// which a String is, not Comparable<(String & Date)?>.
+			if sa, ok := c.asSuper(a, s.C); ok {
+				s = sa
+			}
+		}
 		r := c.joinArgs(s, sb, depth)
 		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0
 		if !markerInterfaces[s.C.Name] && !javaIface {
