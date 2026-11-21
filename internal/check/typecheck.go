@@ -308,6 +308,17 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 		c.unsupported(ref.P, "compose", "is and as with composable function types are not supported")
 		return types.InvalidType
 	}
+	if is && t.A != nil && ref.Args != nil && !allStar(t) && !starImplied(t) {
+		if r := c.stub(subject.NonNull()); r != nil {
+			// Of a builder's variable that nothing fixed here: as in K2,
+			// whose check has only the stub, the arguments are unknown,
+			// though the variable's type, inferred later, may give them.
+			if c.trial != nil {
+				r.recvs = append(r.recvs, stubRecv{p: ref.P, msg: "cannot check for instance of erased type: " + t.String()})
+			}
+			return t
+		}
+	}
 	if is && t.A != nil && !allStar(t) && !c.argsKnown(t, subject, ref) && !slices.ContainsFunc(known, func(k types.Type) bool { return c.argsKnown(t, k, ref) }) {
 		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
 		return types.InvalidType

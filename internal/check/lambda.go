@@ -2722,6 +2722,9 @@ type stubRecv struct {
 	// name may be called: K2 reports it as unresolved.
 	unresolved string
 	namePos    syntax.Pos
+	// msg, if set, is another error at p that holds for a stub nothing
+	// fixes: x is C<A> for an x of one, whose arguments K2 can't check.
+	msg string
 }
 
 // joinRun returns the run that s, a call's system about to complete in a
@@ -3377,6 +3380,12 @@ func (c *Checker) stubReceivers(r *stubRun) {
 		return
 	}
 	for _, rv := range r.recvs {
+		if rv.msg != "" {
+			if !slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return e.Pos == rv.p && e.Msg == rv.msg }) {
+				c.errorf(rv.p, "%s", rv.msg)
+			}
+			continue
+		}
 		if c.stubRecvAt == nil {
 			c.stubRecvAt = map[syntax.Pos]bool{}
 		}
