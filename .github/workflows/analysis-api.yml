@@ -30,16 +30,16 @@ jobs:
   # The two checks run as separate jobs, side by side: both build into
   # jvm/kc-aa/build, so they can't share a checkout.
   kc-aa:
-    name: kc KSP backend (${{ matrix.check.name }})
+    name: KSP on kc (${{ matrix.check.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         check:
-          - name: recorded output and stock KSP
+          - name: recorded output, stock KSP
             mode: stock
-          - name: KSP's own test suite
+          - name: KSP's test suite
             mode: ksp
     steps:
       - uses: actions/checkout@v7
@@ -75,5 +75,5 @@ jobs:
         if: matrix.check.mode == 'stock'
         run: jvm/libkc/test.sh
 
-      - name: kc backend, ${{ matrix.check.name }}
+      - name: ${{ matrix.check.name }}
         run: jvm/kc-aa/build.sh ${{ matrix.check.mode }}
