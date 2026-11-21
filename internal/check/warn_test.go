@@ -637,3 +637,9 @@ func TestWarningsOptInOverride(t *testing.T) {
 func TestWarningsUnusedParam(t *testing.T) {
 	checkReference(t, "testdata/unusedparam.kt", Options{Warnings: true, ExtraWarnings: true})
 }
+
+// TestWarningsLateinit checks the UNNECESSARY_LATEINIT warnings of
+// testdata/lateinit.kt.
+func TestWarningsLateinit(t *testing.T) {
+	checkReference(t, "testdata/lateinit.kt", Options{Warnings: true})
+}

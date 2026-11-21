@@ -53,6 +53,9 @@ own tests.
   argument, nor the invocation kind where its calls are in a loop that
   jumps, a lambda that jumps, or a `when` without `else` that isn't
   exhaustive, or in a function that never returns normally),
+  `UNNECESSARY_LATEINIT` (not where an object expression or a local
+  class reads the property, nor of a type parameter's type, nor for
+  constructors whose `this(...)` calls loop),
   `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` and
   `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` (not
   through a typealias, nor of an inner class of a generic nested
