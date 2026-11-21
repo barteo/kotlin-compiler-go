@@ -2018,6 +2018,31 @@ func endsInLambda(l *syntax.Lambda) bool {
 	return ok
 }
 
+// returnsLambda reports whether lambda l ends with a lambda or returns
+// one, return@label { }: the lambda it returns takes its parameter types
+// from l's result type, once known.
+func returnsLambda(l *syntax.Lambda) bool {
+	if endsInLambda(l) {
+		return true
+	}
+	if l.Label == "" || l.Body == nil {
+		return false
+	}
+	found := false
+	syntax.Inspect(l.Body, func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Lambda:
+			return n.Label != l.Label && !found
+		case *syntax.Jump:
+			if _, ok := n.X.(*syntax.Lambda); ok && n.Kind == syntax.RETURN && n.Label == l.Label {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 // endsInAnonFun reports whether lambda l's result is an anonymous
 // function with a block body: run { fun(): String { return "" } }.
 func endsInAnonFun(l *syntax.Lambda) bool {
@@ -2331,7 +2356,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// So are those of the parameter types of the lambda that l returns,
 	// which it is checked for: B of func { a -> { b -> } } for
 	// func(lambda: (Container<A>) -> (Container<B>) -> Unit).
-	if _, ret, ok := funcParts(ft); ok && endsInLambda(l) {
+	if _, ret, ok := funcParts(ft); ok && returnsLambda(l) {
 		if rps, _, ok := funcParts(s.apply(ret)); ok {
 			vars = c.stubVars(s, rps, vars)
 		}
@@ -3586,7 +3611,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			// expects a C? of foo's T?.
 			w.ret = w.ret.Nullable()
 		}
-	case endsInLambda(l) && r.Flex().IsFunc():
+	case returnsLambda(l) && r.Flex().IsFunc():
 		// The lambda it returns takes its parameter types from the
 		// result's, once their variables are known: B of func { a ->
 		// { b -> } } for (Container<A>) -> (Container<B>) -> Unit.

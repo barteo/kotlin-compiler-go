@@ -15,7 +15,7 @@ Of 10827 test files, 2213 are skipped and 8614 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4449 tests both reject, kc reports an error on the line of an expected one in 4412.
+Of the 4449 tests both reject, kc reports an error on the line of an expected one in 4413.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -66,11 +66,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21540 of 22026 expected errors (97.8%) on their lines.
+kc reports 21541 of 22026 expected errors (97.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1432 | 59 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1433 | 58 |
 | `UNRESOLVED_REFERENCE` | 2553 | 2498 | 55 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
@@ -139,10 +139,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 34 | 7.0% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 74 | 15.2% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| syntax-error | 74 | 15.3% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 60 | 12.3% | `ARGUMENT_TYPE_MISMATCH` 9, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 318 | 65.4% | `ARGUMENT_TYPE_MISMATCH` 41, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| nearby | 59 | 12.2% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
+| missing-check | 318 | 65.6% | `ARGUMENT_TYPE_MISMATCH` 41, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -176,10 +176,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
+| `operator '_' cannot be applied to Any?` | 7 |
 | *107 more* | |
 
 ## Unsupported features

@@ -4519,7 +4519,7 @@ tests/inference/pcla/fixingDependentVariablesForReceiversInitial.kt	accepts vali
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter3.kt	accepts valid		
-tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	rejects invalid	elsewhere	
+tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument20.kt	skip	LANGUAGE	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn20.kt	skip	LANGUAGE	
