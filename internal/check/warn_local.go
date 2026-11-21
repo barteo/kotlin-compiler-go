@@ -278,15 +278,15 @@ func (c *Checker) castWarnings(x *syntax.As) {
 			return
 		}
 	case *syntax.Call:
-		// A generic call without type arguments may take them from the
-		// type the cast expects: foo() as String.
-		if call := x.X.(*syntax.Call); len(call.TypeArgs) == 0 &&
-			(call.Sym != nil && len(call.Sym.TypeParams) > 0 || call.Ctor != nil && len(call.Ctor.TypeParams) > 0) {
+		// A call of a function whose result is its only type parameter,
+		// which its parameters don't mention, takes its type from the
+		// type the cast expects: foo() as String, for a fun <T> foo(): T.
+		if e.Ctor == nil && expectsTypeFromCast(e.Sym) {
 			return
 		}
 	}
 	t, target := x.X.Type(), x.Target
-	if t.K == types.Invalid || target.K == types.Invalid || t.P || t.IsParam() || target.IsParam() {
+	if t.K == types.Invalid || target.K == types.Invalid || t.P || t.K == types.TypeVar || target.K == types.TypeVar {
 		return
 	}
 	if x.Safe && t.N {
@@ -301,6 +301,32 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		return
 	}
 	c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+}
+
+// expectsTypeFromCast reports whether f, a function with a single type
+// parameter that is its result type and that no parameter, receiver or
+// context parameter mentions, may take its type argument from a cast of
+// its call, as kotlinc's isFunctionForExpectTypeFromCastFeature: the cast
+// isn't useless then.
+func expectsTypeFromCast(f *types.FunSym) bool {
+	if f == nil || len(f.TypeParams) != 1 {
+		return false
+	}
+	tp := f.TypeParams[0]
+	if r := f.Ret; r.K != types.TypeParam || r.Param() != tp {
+		return false
+	}
+	if f.Ext && mentionsParam(f.Recv, tp) {
+		return false
+	}
+	for _, ps := range [][]*types.VarSym{f.Params, f.Contexts} {
+		for _, p := range ps {
+			if mentionsParam(p.Type, tp) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // intLiteralOps are the operators of the integer literal operations

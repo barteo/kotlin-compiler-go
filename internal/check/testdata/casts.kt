@@ -402,3 +402,56 @@ fun w37(x: Int, l: Long) {
     1 as Number
     @Suppress("INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL") val a = 1 as Int
 }
+// Casts of generic calls, useless unless the function takes its type
+// argument from the cast, and of type parameters' values.
+fun uUse(a: Any?) {}
+fun <T> uFoo(a: T) = a
+fun <T> uGen(): T = null as T // UNCHECKED_CAST
+fun <T> uLst(vararg a: T): List<T> = a.toList()
+class UBox<T>(val v: T)
+class UG<T>(val v: T) {
+    fun self() = this as UG<T> // USELESS_CAST
+    fun get(): T = v as T // USELESS_CAST
+    fun <R> map(f: (T) -> R): R = f(v) as R // USELESS_CAST
+}
+fun <T> T.uc1(): T = uFoo(this) as T // USELESS_CAST
+fun <T> uc2(v: T): T = v as T // USELESS_CAST
+fun <T> uc3(v: T): T = uFoo(v) as T // USELESS_CAST
+fun uc4() { uUse(uFoo(1) as Int) } // USELESS_CAST
+fun uc5() { uUse(uGen() as String) }
+fun uc6() { uUse(uFoo("a") as String) } // USELESS_CAST
+fun uc7() { uUse(uLst(1, 2) as List<Int>) } // USELESS_CAST
+fun uc8() { uUse(UBox(1) as UBox<Int>) } // USELESS_CAST
+fun uc9() { uUse(listOf<Int>() as List<Int>) } // USELESS_CAST
+fun uc10() { uUse(emptyList<String>() as List<String>) } // USELESS_CAST
+fun <T : Any> uc12(v: T?): T = v!! as T // USELESS_CAST
+fun <T> uc13(v: Any): T = v as T // UNCHECKED_CAST
+fun uc14(a: Any) { if (a is String) uUse(uFoo(a) as String) } // USELESS_CAST
+fun <T> uc15(v: T): T? = v as T?
+fun <T> uc16(v: T?) { uUse(v as T?) } // USELESS_CAST
+fun uc17() { uUse(mutableListOf(1) as MutableList<Int>) } // USELESS_CAST
+fun uc18() { uUse(uFoo(null) as Nothing?) } // USELESS_CAST
+fun uc19() { uUse(uFoo(1 as Number) as Number) } // USELESS_CAST
+fun uc20() { val x: Long = uFoo(1) as Long; uUse(x) } // NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL
+fun <T> ud2(v: T) { if (v != null) uUse(v as T) }
+fun <T> ud3(v: T) { if (v is String) uUse(v as T) }
+inline fun <reified T> ud4(v: T) { uUse(v as T) } // USELESS_CAST
+fun <T> ud5(v: T?) { uUse(v as? T) } // USELESS_CAST
+fun <T : Any> ud6(v: T) { uUse(v as? T) } // USELESS_CAST
+fun ud7(l: List<*>) { uUse(l as List<*>) } // USELESS_CAST
+fun ud8(l: List<Any?>) { uUse(l as List<*>) } // USELESS_CAST
+fun <T> ud9(l: List<T>) { uUse(l[0] as T) } // USELESS_CAST
+fun <T> ud10(l: List<T>) { uUse(l.first() as T) } // USELESS_CAST
+fun ud11(a: Any) { if (a is String && a is CharSequence) uUse(a as String) } // USELESS_IS_CHECK USELESS_CAST
+fun <T : CharSequence> ud12(v: T) { uUse(v as CharSequence) }
+fun <T> ud13(v: T & Any) { uUse(v as (T & Any)) } // USELESS_CAST
+fun ud14() { uUse(uGen<String>() as String) }
+fun ud15() { uUse(uFoo<String>("a") as String) } // USELESS_CAST
+fun <T> ud16(v: T) { val f = { v }; uUse(f() as T) } // USELESS_CAST
+fun ud17(s: String?) { uUse(s!! as String) } // USELESS_CAST
+fun <T> ud18(v: T) { uUse(listOf(v) as List<T>) } // USELESS_CAST
+fun ud19(x: Int?) { uUse(x as? Int) } // USELESS_CAST
+fun <T> ud20(a: Array<T>) { uUse(a[0] as T) } // USELESS_CAST
+fun <E : Enum<E>> ud21(e: E) { uUse(e as E) } // USELESS_CAST
+fun ud22(m: Map<String, Int>) { uUse(m["a"] as Int?) } // USELESS_CAST
+fun <T> ud23(v: T) { var w = v; w = uFoo(w) as T; uUse(w) } // USELESS_CAST

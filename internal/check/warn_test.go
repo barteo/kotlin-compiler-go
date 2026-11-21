@@ -171,7 +171,7 @@ fun f(s: String, a: Any) {
     g<String>() as String
     val x = g() as String
     1 as Int
-}`, []string{"4:USELESS_CAST", "6:USELESS_CAST", "8:INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL"}},
+}`, []string{"4:USELESS_CAST", "8:INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL"}},
 		{"generics and platform types", `
 fun <T> f(t: T, v: T, u: List<T>) {
     t?.hashCode()
