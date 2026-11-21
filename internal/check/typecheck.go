@@ -362,7 +362,7 @@ func (c *Checker) argsInBounds(t types.Type) bool {
 // with the arguments that follow from the subject's type, x is List for
 // an x: Collection<String> giving List<String>, and * for the others.
 func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) types.Type {
-	if pclaShared() && ref == c.bareRef && ref != nil {
+	if ref == c.bareRef && ref != nil {
 		// A builder's variable is fixed for the arguments, as K2 fixes
 		// it on demand: OTv of provide() is GenericScopeOwnerSubtype.
 		subject = c.fixedStub(subject)

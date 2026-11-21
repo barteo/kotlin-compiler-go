@@ -861,7 +861,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		c.sink = c.takeBranchSink()
 		sink, n := c.sink, len(c.errs)
-		if call, ok := x.X.(*syntax.Call); ok && pclaShared() && x == c.elvisFull && xw.K == types.Invalid && sink == nil && hasLambda(call.Args) {
+		if call, ok := x.X.(*syntax.Call); ok && x == c.elvisFull && xw.K == types.Invalid && sink == nil && hasLambda(call.Args) {
 			if yt, ok := c.elvisRightType(x.Y); ok {
 				c.elvisCall, c.elvisWant = call, starsBounded(yt).Nullable()
 			}
@@ -2369,7 +2369,6 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
-	c.stubReceiver(fn.X, t, fn.Name)
 	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
 		return types.InvalidType, nil, false
 	}
@@ -2529,7 +2528,6 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if xt.K == types.Invalid {
 		return xt
 	}
-	c.stubReceiver(x.X, xt, x.Name)
 	if c.unfixedReceiver(x.X, xt, x.Name, x.P) {
 		return types.InvalidType
 	}

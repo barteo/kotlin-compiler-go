@@ -31,17 +31,10 @@ import (
 // a constraint is added, a variable fixed on demand or the run solved.
 // The functions here are the first check's rules.
 
-// pclaMode, from $KC_PCLA: "stub" keeps the approximation of K2's rules
-// that kc had before it followed them, to compare the two.
-var pclaMode = os.Getenv("KC_PCLA")
-
 // pclaDebug, from $KC_PCLA_DEBUG, logs the first checks of builders'
 // lambdas: their errors, the shared system where a variable is fixed on
 // demand, and what each run is solved to.
 var pclaDebug = os.Getenv("KC_PCLA_DEBUG") != ""
-
-// pclaShared reports whether builders' lambdas are inferred by K2's rules.
-func pclaShared() bool { return pclaMode != "stub" }
 
 // pclaLogf logs for $KC_PCLA_DEBUG.
 func pclaLogf(format string, args ...any) {
@@ -384,7 +377,7 @@ func (r *stubRun) semiFixIn(trial *system, saved map[*types.TypeParamSym]*stubRu
 // takes it, a member of Any or an extension, is not called on it
 // (TypeVariablesInExplicitReceivers).
 func (c *Checker) unfixedReceiver(x syntax.Expr, t types.Type, name string, p syntax.Pos) bool {
-	if !pclaShared() || c.stub(t.Flex()) == nil {
+	if c.stub(t.Flex()) == nil {
 		return false
 	}
 	switch {

@@ -437,11 +437,6 @@ type Checker struct {
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
-	// stubRejected are the constraints on builders' variables that
-	// stubRun.add rejected.
-	stubRejected [][2]types.Type
-	// stubRuns counts stubInference's runs.
-	stubRuns int
 	// pclaPoison are the builder lambdas whose variables stubInference
 	// couldn't infer because of an unresolved reference, by where the
 	// first one is (see poisonedRecv).

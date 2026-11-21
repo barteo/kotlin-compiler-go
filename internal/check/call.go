@@ -1379,9 +1379,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			sys = trial
 		}
 	}
-	if pclaShared() {
-		sys.dep = c.dependentRun(best, ts, want)
-	}
+	sys.dep = c.dependentRun(best, ts, want)
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))
 }
