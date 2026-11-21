@@ -1,6 +1,7 @@
 package javasrc
 
 import (
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -13,6 +14,12 @@ import (
 // the class path's classes and the module's Kotlin classes.
 type Set struct {
 	classes map[string]*Class // by internal name
+	// misplaced are the classes kotlinc can't find by name: a top-level
+	// class that a file of another name declares, and its nested classes
+	// (KT-4455). kotlinc finds a Java source's top-level class only
+	// through the file named after it; the sources name it still, as
+	// javac compiles them.
+	misplaced map[string]bool
 	// Outside are the classes the sources name that aren't theirs: the
 	// class path's and the module's Kotlin classes. It is set before Info
 	// is called.
@@ -33,15 +40,18 @@ type Classes interface {
 
 // NewSet indexes the classes of files, nested ones too.
 func NewSet(files []*File) *Set {
-	s := &Set{classes: map[string]*Class{}}
-	var add func(prefix string, c *Class)
-	add = func(prefix string, c *Class) {
+	s := &Set{classes: map[string]*Class{}, misplaced: map[string]bool{}}
+	var add func(prefix string, c *Class, misplaced bool)
+	add = func(prefix string, c *Class, misplaced bool) {
 		name := prefix + c.Name
 		if _, dup := s.classes[name]; !dup {
 			s.classes[name] = c
+			if misplaced {
+				s.misplaced[name] = true
+			}
 		}
 		for _, n := range c.Nested {
-			add(name+"$", n)
+			add(name+"$", n, misplaced)
 		}
 	}
 	for _, f := range files {
@@ -49,12 +59,18 @@ func NewSet(files []*File) *Set {
 		if f.Package != "" {
 			prefix = strings.ReplaceAll(f.Package, ".", "/") + "/"
 		}
+		base, isJava := strings.CutSuffix(filepath.Base(f.Path), ".java")
 		for _, c := range f.Classes {
-			add(prefix, c)
+			add(prefix, c, isJava && c.Name != base)
 		}
 	}
 	return s
 }
+
+// Misplaced reports whether kotlinc can't find a class of the sources by
+// its internal name: a top-level class that a file of another name
+// declares, or one nested in it.
+func (s *Set) Misplaced(name string) bool { return s.misplaced[name] }
 
 // Names returns the internal names of the classes, sorted.
 func (s *Set) Names() []string {

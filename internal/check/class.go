@@ -1151,6 +1151,10 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	cls := d.Sym
 	this := cls.This()
 	c.checkExtPropOverrides(d)
+	// A class that mixes suspend and non-suspend function types is
+	// reported once, at its supertypes (checkMixedSuspendSupertypes), not
+	// again for its invoke overriding one of each kind.
+	mixed := mixesSuspendSupertypes(d)
 	for _, m := range d.Members {
 		fd, ok := m.(*syntax.FunDecl)
 		if !ok || fd.SelfStatic {
@@ -1210,6 +1214,8 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				c.overrideVisibility(fd.P, f.Name, memberVisibility(o), fd.Visibility, o.Owner)
 			}
 			switch {
+			case mixed && f.Suspend != o.Suspend && o.Owner.Func:
+				continue
 			case f.Suspend && !o.Suspend:
 				c.errorf(fd.P, "suspend function '%s' cannot override non-suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 				continue
@@ -1342,7 +1348,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	c.inheritedBridges(d)
 	reported := map[string]bool{}
-	mixed := c.checkMixedSuspendSupertypes(d)
+	c.checkMixedSuspendSupertypes(d)
 	if !d.Annotation {
 		reported = c.checkInheritedFuns(d, mixed)
 		c.checkInheritedProps(d, reported)
@@ -2666,6 +2672,16 @@ func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
 // other supertypes (MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES), at its
 // supertype list, as kotlinc does. It reports whether it did.
 func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
+	if mixesSuspendSupertypes(d) {
+		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
+		return true
+	}
+	return false
+}
+
+// mixesSuspendSupertypes reports whether class d has both a suspend and
+// a non-suspend function type among its supertypes.
+func mixesSuspendSupertypes(d *syntax.ClassDecl) bool {
 	if len(d.Supers) == 0 || d.Sym == nil {
 		return false
 	}
@@ -2680,9 +2696,5 @@ func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
 		}
 		return !(suspend && plain)
 	})
-	if suspend && plain {
-		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
-		return true
-	}
-	return false
+	return suspend && plain
 }

@@ -626,6 +626,16 @@ func (c *Checker) impliedBy(k narrow) []narrow {
 		cur := c.scope.narrowedMember(p.recv, p.sym, p.t)
 		out = append(out, narrow{recv: p.recv, sym: p.sym, t: c.isNarrowed(cur, k.t)})
 	}
+	if k.recv != nil {
+		// The same property of a local that holds the same value as k's
+		// receiver, as K2's aliases go through properties: after val b =
+		// x, b.value is String smart casts x.value.
+		for _, p := range c.sameAs[flowKey{sym: k.recv}] {
+			if p.recv == nil && p.sym != k.recv {
+				out = append(out, narrow{recv: p.sym, sym: k.sym, t: k.t, not: k.not, onlyNot: k.onlyNot})
+			}
+		}
+	}
 	return out
 }
 
