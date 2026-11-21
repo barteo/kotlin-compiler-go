@@ -209,11 +209,54 @@ func (c *compiler) compileJava(out string, cp, javas []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
-	if b, err := exec.CommandContext(ctx, c.javac, append(args, javas...)...).CombinedOutput(); err != nil {
+	b, err := exec.CommandContext(ctx, c.javac, append(args, javas...)...).CombinedOutput()
+	if m := packageInModule.FindSubmatch(b); err != nil && m != nil {
+		// A source of a package of the JDK's modules, as a library's
+		// java.util.Date, which javac compiles only as a patch of the
+		// module, from its source root.
+		if root := sourceRoot(javas); root != "" {
+			args = append(args, "--patch-module", string(m[1])+"="+root)
+			b, err = exec.CommandContext(ctx, c.javac, append(args, javas...)...).CombinedOutput()
+		}
+	}
+	if err != nil {
 		return fmt.Errorf("javac: %v\n%s", err, b)
 	}
 	return nil
 }
+
+// packageInModule matches javac's error for a source of a package of a
+// module of the JDK.
+var packageInModule = regexp.MustCompile(`package exists in another module: ([\w.]+)`)
+
+// sourceRoot returns the directory that the Java sources javas are in by
+// their packages, or "" if they aren't all in one.
+func sourceRoot(javas []string) string {
+	root := ""
+	for _, j := range javas {
+		b, err := os.ReadFile(j)
+		if err != nil {
+			return ""
+		}
+		dir := filepath.Dir(j)
+		if m := javaPackage.FindSubmatch(b); m != nil {
+			pkg := filepath.FromSlash(strings.ReplaceAll(string(m[1]), ".", "/"))
+			d, ok := strings.CutSuffix(dir, string(filepath.Separator)+pkg)
+			if !ok {
+				return ""
+			}
+			dir = d
+		}
+		if root != "" && root != dir {
+			return ""
+		}
+		root = dir
+	}
+	return root
+}
+
+// javaPackage matches a Java source's package declaration.
+var javaPackage = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)\s*;`)
 
 // parseKcOutput reads the diagnostics kc -features printed, or its
 // panic.

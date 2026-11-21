@@ -143,6 +143,16 @@ own tests.
   takes its place in the class path's signatures and supertypes, as in
   K2. A class of the program's Java sources doesn't: the class path's
   signatures still name the class path's class of its name.
+- A captured `var` is smart cast as in K2: not where a lambda or local
+  function that may run later assigns it, nor where the outermost lambda
+  entered since its declaration holds an assignment that isn't checked
+  yet or assigns another type. In a loop, `kc` is stricter: any
+  assignment in a lambda the loop holds counts, `x++` among them,
+  whatever type it assigns.
+- Two private classes or typealiases of one name in different files of
+  a package aren't reported as a `CLASSIFIER_REDECLARATION`, and each
+  file's uses resolve to its own, where K2 resolves them to the first
+  file's and reports them as invisible.
 - Two classes of one name on the class path, from different modules,
   are one class, the first, as in K2. A type in the other module's class
   files with another number of type arguments is a type of neither, so
