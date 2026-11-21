@@ -293,6 +293,9 @@ type Checker struct {
 	// types of a and b before smart casts and then after them, for the
 	// warnings about them (see identityWarnings, enumComparisonWarning).
 	identTypes map[*syntax.Binary][4]types.Type
+	// branchJoins are, for each if and when that no expected type gave a
+	// type, the join of its branches' types (see noteBranchJoin).
+	branchJoins map[syntax.Expr]types.Type
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool

@@ -95,6 +95,7 @@ func (c *Checker) localWarnings() {
 			c.varargNothing(n)
 			if !refCalls[n] {
 				c.conversionWarning(n)
+				c.inferredInvisibleCall(n)
 				if c.u.extraWarnings {
 					c.uselessCallOnNotNull(n)
 				}
@@ -126,6 +127,9 @@ func (c *Checker) localWarnings() {
 			c.redundantElseWarning(n)
 			c.duplicateWhenConditions(n)
 			c.whenEnumWarnings(n)
+			c.inferredInvisibleBranches(n)
+		case *syntax.If:
+			c.inferredInvisibleBranches(n)
 		case *syntax.Block:
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)

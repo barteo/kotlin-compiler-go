@@ -472,6 +472,74 @@ func checkReference(t *testing.T, file string, opts Options) {
 	}
 }
 
+// checkReferenceFiles is checkReference of file, the last of files, all
+// checked together, of which the warnings of the others aren't judged.
+func checkReferenceFiles(t *testing.T, opts Options, files ...string) {
+	t.Helper()
+	lib, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skip(err)
+	}
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, []string{lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fs []*syntax.File
+	var want []string
+	for i, name := range files {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, errs := syntax.Parse(name, string(b))
+		if len(errs) > 0 {
+			t.Fatal(errs[0])
+		}
+		fs = append(fs, f)
+		if i < len(files)-1 {
+			continue
+		}
+		for j, line := range strings.Split(string(b), "\n") {
+			if _, names, ok := strings.Cut(line, " // "); ok && !strings.HasPrefix(line, "//") {
+				for _, n := range strings.Fields(names) {
+					want = append(want, fmt.Sprintf("%d:%s", j+1, n))
+				}
+			}
+		}
+	}
+	ds, err := CheckOptions(context.Background(), fs, NewLibrary(cp), 1, nil, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	last := files[len(files)-1]
+	for _, d := range ds {
+		switch {
+		case d.File != last:
+		case d.IsWarning():
+			got = append(got, fmt.Sprintf("%d:%s", d.Pos.Line, d.Name))
+		default:
+			got = append(got, fmt.Sprintf("%d:error", d.Pos.Line))
+		}
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if got = slices.Compact(got); strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("%s: got  %v\nwant %v", last, got, want)
+	}
+}
+
+// TestWarningsInferredInvisible checks the warnings of inferred types
+// that name a class the code can't see against kotlinc's of
+// testdata/inferredvis/b.kt.
+func TestWarningsInferredInvisible(t *testing.T) {
+	checkReferenceFiles(t, Options{Warnings: true}, "testdata/inferredvis/a.kt", "testdata/inferredvis/b.kt")
+}
+
 func TestWarningsNullOperators(t *testing.T) {
 	checkReference(t, "testdata/nullops.kt", Options{Warnings: true})
 }

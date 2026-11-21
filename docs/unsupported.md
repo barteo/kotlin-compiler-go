@@ -71,6 +71,14 @@ own tests.
   (of smart-cast values, not of enums nor an identity comparison of a
   value without identity), `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` (of
   an inherited var's setter), `SYNCHRONIZED_ON_INLINE`,
+  `INFERRED_INVISIBLE_RETURN_TYPE_WARNING`,
+  `INFERRED_INVISIBLE_WHEN_TYPE_WARNING`,
+  `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` and
+  `INFERRED_INVISIBLE_VARARG_TYPE_ARGUMENT_WARNING` (only of a private
+  top-level class of another file or a package-private Java class of
+  another package, or a class nested in one, not of a private or
+  protected nested class, nor of an `if` or `when` that an expected
+  type gives a type),
   `JAVA_CLASS_ON_COMPANION` (not through an alias of a built-in type),
   `DANGEROUS_CHARACTERS` (not of a function type's parameter names, nor
   of a destructuring `for` loop's) and, in

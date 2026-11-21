@@ -4091,6 +4091,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
+		c.noteBranchJoin(x, c.statementJoin(x.Then, x.Else))
 		thenT, elseT = inferredJump(thenT, x.Then), inferredJump(elseT, x.Else)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
 			return types.NothingType
@@ -4105,7 +4106,11 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	if sink != nil {
 		return c.sinkBranches(sink, pending, t)
 	}
-	return c.completeBranches(pending, t, want, true)
+	t = c.completeBranches(pending, t, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, t)
+	}
+	return t
 }
 
 // joinBranches joins the type of a branch of an if or when, bt, with the
@@ -4362,6 +4367,53 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		}
 		if j, ok := c.join(done, bt); ok {
 			done = j
+		}
+	}
+	return result
+}
+
+// noteBranchJoin records t, the join of the types of the branches of
+// the if or when x, which no expected type gave a type, for the warnings
+// about it (see inferredInvisibleBranches).
+func (c *Checker) noteBranchJoin(x syntax.Expr, t types.Type) {
+	if t.K == types.Invalid {
+		return
+	}
+	if c.branchJoins == nil {
+		c.branchJoins = map[syntax.Expr]types.Type{}
+	}
+	c.branchJoins[x] = t
+}
+
+// statementJoin returns the join of the values of bodies, the branches of
+// an if or when whose value isn't used, or InvalidType unless each that
+// doesn't jump ends with an expression of a type that isn't Unit.
+func (c *Checker) statementJoin(bodies ...*syntax.Block) types.Type {
+	result := types.NothingType
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return types.InvalidType
+		}
+		if b.T.K == types.Nothing {
+			continue
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return types.InvalidType
+		}
+		bt := es.X.Type()
+		switch {
+		case bt.K == types.Invalid || bt.K == types.Unit || bt.HasVars():
+			return types.InvalidType
+		case bt.K == types.Nothing:
+		case result.K == types.Nothing:
+			result = bt
+		default:
+			j, ok := c.join(result, bt)
+			if !ok {
+				return types.InvalidType
+			}
+			result = j
 		}
 	}
 	return result
@@ -4806,6 +4858,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	}
 	if !valueUsed {
 		c.completeBranches(pending, unused, noWant, false)
+		bodies := make([]*syntax.Block, len(x.Branches))
+		for i, br := range x.Branches {
+			bodies[i] = br.Body
+		}
+		c.noteBranchJoin(x, c.statementJoin(bodies...))
 		if !allJump {
 			allJump = true
 			for i, br := range x.Branches {
@@ -4823,7 +4880,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if sink != nil {
 		return c.sinkBranches(sink, pending, result)
 	}
-	return c.completeBranches(pending, result, want, true)
+	result = c.completeBranches(pending, result, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, result)
+	}
+	return result
 }
 
 // joinIs returns the common supertype of the types of a when branch's
