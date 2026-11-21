@@ -2421,6 +2421,15 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// X::class.java is the Java class, without a KClass.
 		t := c.classLit(cl, true)
 		cl.SetType(t)
+		if t.K == types.Class && t.A != nil && len(t.A.List) == 1 {
+			// T of the extension property KClass<T>.java.
+			if a := t.A.List[0].T; a.K == types.Class && boxedPlatform[a.C.Name] {
+				if c.platformArgs == nil {
+					c.platformArgs = map[any]string{}
+				}
+				c.platformArgs[x] = platformMapped[a.C.Name]
+			}
+		}
 		return t
 	}
 	if x.Object != nil {

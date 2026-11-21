@@ -305,6 +305,11 @@ type Checker struct {
 	// blockJumps are the blocks with a statement that always jumps, and
 	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
+	// platformArgs are the calls and property reads, *syntax.Call and
+	// *syntax.Member, with a type argument they infer that is a Java
+	// class that is a Kotlin one, java.lang.Integer of
+	// java.lang.Integer::class.java: the Kotlin class's name.
+	platformArgs map[any]string
 	// deadClasses are the local classes and object expressions in code
 	// reported unreachable, which classDeadCode doesn't judge.
 	deadClasses map[*syntax.ClassDecl]bool

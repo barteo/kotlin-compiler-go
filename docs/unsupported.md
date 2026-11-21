@@ -100,8 +100,10 @@ own tests.
   and `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
   `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` only of the program's
   Kotlin members. `PLATFORM_CLASS_MAPPED_TO_KOTLIN` is
-  reported where the Java class is named, not through a typealias or an
-  inferred type, and `NO_TAIL_CALLS_FOUND` not where a recursive call in
+  reported where the Java class is named, not through a typealias, and
+  at a call that infers it as a type argument only for a boxed
+  primitive's class, as `java.lang.Integer::class.java`, and
+  `NO_TAIL_CALLS_FOUND` not where a recursive call in
   tail position may be a tail call to `kotlinc`, as one on another
   receiver. Type checks and casts are judged as `kotlinc` judges them,
   by the declared type and then by its smart casts, but never where a

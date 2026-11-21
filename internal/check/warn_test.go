@@ -153,6 +153,15 @@ fun f6() = Any()
 val v = java.lang.String::class
 fun f7(x: Any) = x is java.lang.Number
 `, []string{"10:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "2:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "6:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "7:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
+		{"platform class type argument", `
+fun <T> id(t: T) = t
+fun f1() = java.lang.Integer::class.java
+fun f2() = Integer::class.javaObjectType
+fun f3() = id(java.lang.Long::class.java)
+fun f4() = listOf(java.lang.Integer::class)
+fun f5() = Int::class.java
+fun f6() = java.lang.Character::class.java.name
+`, []string{"3:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "4:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "5:PLATFORM_CLASS_MAPPED_TO_KOTLIN", "8:PLATFORM_CLASS_MAPPED_TO_KOTLIN"}},
 		{"no tail calls found", `
 tailrec fun t1(n: Int): Int = if (n == 0) 0 else t1(n - 1)
 tailrec fun t2(n: Int): Int = 1
