@@ -27,10 +27,20 @@ env:
   LC_ALL: C.UTF-8
 
 jobs:
+  # The two checks run as separate jobs, side by side: both build into
+  # jvm/kc-aa/build, so they can't share a checkout.
   kc-aa:
-    name: kc KSP backend
+    name: KSP on kc (${{ matrix.check.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - name: recorded output, stock KSP
+            mode: stock
+          - name: KSP's test suite
+            mode: ksp
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -52,7 +62,9 @@ jobs:
         with:
           path: jvm/ksp/build
           key: kc-ksp-${{ hashFiles('jvm/aa-api/build.sh', 'jvm/ksp/build.sh') }}
+      # Only "stock" downloads them.
       - name: Cache the processors and stock KSP
+        if: matrix.check.mode == 'stock'
         uses: actions/cache@v6
         with:
           path: jvm/kc-aa/build/m2
@@ -60,10 +72,8 @@ jobs:
           restore-keys: kc-aa-m2-
 
       - name: JNI stress test
+        if: matrix.check.mode == 'stock'
         run: jvm/libkc/test.sh
 
-      - name: kc backend against recorded output and stock KSP
-        run: jvm/kc-aa/build.sh stock
-
-      - name: KSP's own test suite on the kc backend
-        run: jvm/kc-aa/build.sh ksp
+      - name: ${{ matrix.check.name }}
+        run: jvm/kc-aa/build.sh ${{ matrix.check.mode }}
