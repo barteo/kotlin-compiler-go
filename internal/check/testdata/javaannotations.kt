@@ -13,7 +13,7 @@ annotation class A1
 @java.lang.annotation.Retention(RetentionPolicy.RUNTIME) // DEPRECATED_JAVA_ANNOTATION
 annotation class A2
 
-@java.lang.annotation.Target(ElementType.METHOD) // DEPRECATED_JAVA_ANNOTATION
+@java.lang.annotation.Target(ElementType.METHOD) // ANNOTATION_TARGETS_ONLY_IN_JAVA DEPRECATED_JAVA_ANNOTATION
 annotation class A3
 
 @java.lang.annotation.Inherited

@@ -171,7 +171,7 @@ fun f(s: String, a: Any) {
     g<String>() as String
     val x = g() as String
     1 as Int
-}`, []string{"4:USELESS_CAST", "6:USELESS_CAST", "8:INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL"}},
+}`, []string{"4:USELESS_CAST", "8:INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL"}},
 		{"generics and platform types", `
 fun <T> f(t: T, v: T, u: List<T>) {
     t?.hashCode()
@@ -606,4 +606,66 @@ func TestWarningsUselessCallOnNotNull(t *testing.T) {
 
 func TestWarningsDangerousCharacters(t *testing.T) {
 	checkReference(t, "testdata/dangerous.kt", Options{Warnings: true})
+}
+
+// TestWarningsInPlace checks the LEAKED_IN_PLACE_LAMBDA and
+// WRONG_INVOCATION_KIND warnings of testdata/inplace.kt.
+func TestWarningsInPlace(t *testing.T) {
+	checkReference(t, "testdata/inplace.kt", Options{Warnings: true})
+}
+
+// TestWarningsLHSArgs checks the WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING
+// warnings, and their local classes' variant, of testdata/lhsargs.kt.
+func TestWarningsLHSArgs(t *testing.T) {
+	checkReference(t, "testdata/lhsargs.kt", Options{Warnings: true})
+}
+
+// TestWarningsJavaTarget checks the ANNOTATION_TARGETS_ONLY_IN_JAVA
+// warnings of testdata/javatarget.kt.
+func TestWarningsJavaTarget(t *testing.T) {
+	checkReference(t, "testdata/javatarget.kt", Options{Warnings: true})
+}
+
+// TestWarningsOptInOverride checks the OPT_IN_OVERRIDE warnings of
+// testdata/optinoverride.kt.
+func TestWarningsOptInOverride(t *testing.T) {
+	checkReference(t, "testdata/optinoverride.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnusedParam checks the UNUSED_ANONYMOUS_PARAMETER warnings
+// of testdata/unusedparam.kt.
+func TestWarningsUnusedParam(t *testing.T) {
+	checkReference(t, "testdata/unusedparam.kt", Options{Warnings: true, ExtraWarnings: true})
+}
+
+// TestWarningsLateinit checks the UNNECESSARY_LATEINIT warnings of
+// testdata/lateinit.kt.
+func TestWarningsLateinit(t *testing.T) {
+	checkReference(t, "testdata/lateinit.kt", Options{Warnings: true})
+}
+
+// TestWarningsDslMarkerTarget checks the
+// DSL_MARKER_APPLIED_TO_WRONG_TARGET warnings of testdata/dslmarker.kt.
+func TestWarningsDslMarkerTarget(t *testing.T) {
+	checkReference(t, "testdata/dslmarker.kt", Options{Warnings: true})
+}
+
+// TestWarningsAnyOverride checks the POTENTIALLY_NON_REPORTED_ANNOTATION
+// warnings of testdata/anyoverride.kt.
+func TestWarningsAnyOverride(t *testing.T) {
+	checkReference(t, "testdata/anyoverride.kt", Options{Warnings: true})
+}
+
+// TestWarningsMultipleDefaults checks the
+// MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING
+// warnings of testdata/multipledefaults.kt.
+func TestWarningsMultipleDefaults(t *testing.T) {
+	checkReference(t, "testdata/multipledefaults.kt", Options{Warnings: true})
+}
+
+// TestWarningsVarargNothing checks the
+// ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING warnings of
+// testdata/varargnothing.kt.
+func TestWarningsVarargNothing(t *testing.T) {
+	checkReference(t, "testdata/varargnothing.kt", Options{Warnings: true})
 }

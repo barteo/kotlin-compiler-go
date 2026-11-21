@@ -25,7 +25,7 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.InPlace, d.AtLeastOnce, d.Implies = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.AtLeastOnce, d.Implies, d.Calls = c.dropContract(d.Body, imported, o)
 					c.misplacedContracts(d.Body, d.ExprBody, imported)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
@@ -193,9 +193,9 @@ func (c *Checker) addContractCall(b *syntax.Block, p syntax.Pos) {
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
 // place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies, calls []syntax.CallsEffect) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -206,12 +206,12 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	if c.file != nil && c.file.Annotated != nil {
@@ -219,8 +219,17 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 			for _, a := range c.file.Annotated[n] {
 				c.errorf(a.P, "annotations are prohibited inside contracts")
 			}
+			// As kotlinc, they suppress what they name all the same.
+			if as, ok := c.file.Annotated[n]; ok {
+				c.contractSuppress = annotationsRange(c.contractSuppress, as, nodePos(n), nodeEnd(n))
+			}
 			return true
 		})
+		for _, n := range []any{b.Stmts[0], x} {
+			if as, ok := c.file.Annotated[n]; ok {
+				c.contractSuppress = annotationsRange(c.contractSuppress, as, nodePos(n), nodeEnd(n))
+			}
+		}
 	}
 	b.Stmts = b.Stmts[1:]
 	if c.contractAt == nil {
@@ -247,6 +256,7 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 			kind, ok3 = c.Args[1].(*syntax.Member)
 		}
 		if ok1 && ok2 && ok3 && fn.Name == "callsInPlace" {
+			calls = append(calls, syntax.CallsEffect{P: syntax.StartPos(c), Param: p.Name, Kind: kind.Name})
 			if inPlace == nil {
 				inPlace = map[string]bool{}
 			}
@@ -266,7 +276,7 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		}
 		return true
 	})
-	return once, inPlace, atLeast, implies
+	return once, inPlace, atLeast, implies, calls
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or

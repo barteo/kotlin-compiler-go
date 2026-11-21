@@ -134,6 +134,12 @@ type TypeRef struct {
 	// class's type arguments, Outer<A>.Inner: Outer<A>. Name is then the
 	// qualified name, Outer.Inner, and Args the inner class's own.
 	Outer *TypeRef
+	// Parts are the positions of the names Name adds to its Outer's, or
+	// of all its names if it has no Outer, and ArgsP that of the < of
+	// its Args: where kotlinc reports misplaced type arguments of a
+	// callable reference's left side.
+	Parts []Pos
+	ArgsP Pos
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool
@@ -566,6 +572,8 @@ type FunDecl struct {
 	InPlace map[string]bool
 	// AtLeastOnce names those it says it calls at least once.
 	AtLeastOnce map[string]bool
+	// Calls are the contract's callsInPlace effects, in order.
+	Calls []CallsEffect
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
@@ -1241,6 +1249,15 @@ type Implies struct {
 	Negated bool // with Holds, implies (!p): p is false
 }
 
+// CallsEffect is a contract's callsInPlace(Param, InvocationKind.Kind)
+// effect, written at P: Kind is AT_MOST_ONCE, EXACTLY_ONCE,
+// AT_LEAST_ONCE or UNKNOWN, which is also the kind without an argument.
+type CallsEffect struct {
+	P     Pos
+	Param string
+	Kind  string
+}
+
 type BoolLit struct {
 	exprBase
 	Val bool
@@ -1660,6 +1677,10 @@ type Lambda struct {
 	// Composable is set by the checker on a composable lambda: its
 	// expected type is a composable function type, or it is Annotated.
 	Composable bool
+	// UnitCoerced is set by the checker on a lambda literal whose body it
+	// checked against an expected Unit result, as kotlinc's coercion to
+	// Unit: the value of its last statement is dropped.
+	UnitCoerced bool
 }
 
 // CallableRef is a callable reference: ::f, C::m, x::m, ::C, or the same

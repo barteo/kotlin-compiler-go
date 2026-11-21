@@ -100,6 +100,7 @@ func (c *Checker) suppressErrors() {
 		rs = suppressRanges(d, rs)
 	}
 	rs = c.codeSuppressRanges(rs)
+	rs = append(rs, c.contractSuppress...)
 	if len(rs) == 0 {
 		return
 	}

@@ -99,6 +99,17 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 	seen := map[repeatKey]bool{}
 	var applied []appliedAnnotation
 	defer func() { c.repeatedWithContainer(applied) }()
+	// A class with Java's @Target but not Kotlin's targets everything in
+	// Kotlin, of which kotlinc warns (ANNOTATION_TARGETS_ONLY_IN_JAVA).
+	var javaTarget *syntax.Annotation
+	kotlinTarget := false
+	if site.kind == siteClass {
+		defer func() {
+			if javaTarget != nil && !kotlinTarget {
+				c.warnf(javaTarget.P, "ANNOTATION_TARGETS_ONLY_IN_JAVA", "No Kotlin '@Target' annotation specified (implicitly targeting everything), but one exists for Java.")
+			}
+		}()
+	}
 	for i := range as {
 		a := &as[i]
 		if local && site.kind == siteLocal {
@@ -113,6 +124,15 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		if rec := c.u.rec; rec != nil {
 			rec.Annotation(c.file, a, cls)
+		}
+		c.dslMarkerTarget(a, cls, site)
+		switch cls.Name {
+		case "java/lang/annotation/Target":
+			if javaTarget == nil && a.Target == "" {
+				javaTarget = a
+			}
+		case "kotlin/annotation/Target":
+			kotlinTarget = true
 		}
 		if k := javaAnnotationReplacements[cls.Name]; k != "" && cls.External {
 			c.warnf(a.P, "DEPRECATED_JAVA_ANNOTATION", "This annotation is deprecated in Kotlin. Use '@%s' instead.", k)
@@ -647,6 +667,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.noFileTarget(d.Annotations)
 		c.publishedApi(&d.Modifiers)
 		fun(d, funSite(owner))
+		c.anyOverrideAnnotations(d, owner)
 		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
@@ -928,4 +949,85 @@ func (c *Checker) repeatedSetparam(d *syntax.PropDecl) {
 			}
 		}
 	}
+}
+
+// dslMarkerTarget warns, as kotlinc does, of annotation a of class cls on
+// site if cls is a DSL marker and site isn't a class, a typealias or a
+// type, where the marker has no effect (DSL_MARKER_APPLIED_TO_WRONG_TARGET).
+// kc leaves alone the annotations of expressions, among which kotlinc
+// warns of a lambda's.
+func (c *Checker) dslMarkerTarget(a *syntax.Annotation, cls *types.ClassSym, site annotSite) {
+	switch site.kind {
+	case siteUnchecked, siteClass, siteTypealias, siteType, siteExpr, siteInit:
+		return
+	}
+	if !isDslMarker(cls) && !declaredDslMarker(cls) {
+		return
+	}
+	target := site.name
+	switch {
+	case a.Accessor && a.Target == "set", a.Target == "set":
+		target = "setter"
+	case a.Accessor, a.Target == "get":
+		target = "getter"
+	case a.Target == "param", a.Target == "setparam":
+		target = "value parameter"
+	case a.Target == "field", a.Target == "delegate":
+		target = "field"
+	case a.Target == "file":
+		target = "file"
+	}
+	c.warnf(a.P, "DSL_MARKER_APPLIED_TO_WRONG_TARGET", "applying DSL marker annotation '%s' to target '%s' has no effect. DSL marker annotations must only be applied to types. See https://youtrack.jetbrains.com/issue/KT-81567 for further information.", simpleName(cls), target)
+}
+
+// anyOverrideAnnotations warns, as kotlinc does, of the deprecations and
+// opt-in markers on d, an override of equals, hashCode or toString of
+// Any in class owner, which calls through Any don't report
+// (POTENTIALLY_NON_REPORTED_ANNOTATION).
+func (c *Checker) anyOverrideAnnotations(d *syntax.FunDecl, owner *types.ClassSym) {
+	if !d.Override || owner == nil || d.Sym == nil || d.Recv != nil || len(d.Contexts) > 0 {
+		return
+	}
+	switch ps := d.Sym.Params; d.Name {
+	case "equals":
+		if len(ps) != 1 || ps[0].Type.K != types.Any || !ps[0].Type.N {
+			return
+		}
+	case "hashCode", "toString":
+		if len(ps) != 0 {
+			return
+		}
+	default:
+		return
+	}
+	for i := range d.Annotations {
+		a := &d.Annotations[i]
+		cls := a.Class
+		if cls == nil {
+			cls = a.Source
+		}
+		if cls == nil || a.Target != "" {
+			continue
+		}
+		switch {
+		case cls.Name == "kotlin/Deprecated" || cls.Name == "kotlin/SinceKotlin" || cls.Name == "java/lang/Deprecated":
+		case optInMarkerClass(cls):
+		default:
+			continue
+		}
+		c.warnf(a.P, "POTENTIALLY_NON_REPORTED_ANNOTATION", "Deprecations and opt-ins on a method overridden from 'Any' may not be reported.")
+	}
+}
+
+// optInMarkerClass reports whether annotation class cls is annotated
+// @RequiresOptIn.
+func optInMarkerClass(cls *types.ClassSym) bool {
+	if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		return d.Annotation && d.Find("", "RequiresOptIn") != nil
+	}
+	if cls.External {
+		cls.Ensure()
+		return cls.OptInLevel != ""
+	}
+	return false
 }

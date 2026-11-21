@@ -2,6 +2,7 @@ package check
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -124,6 +125,11 @@ type assignment struct {
 	// expressions the code is in, innermost last, on any path: maybe
 	// assigned in their catch blocks.
 	tries []map[*types.VarSym]bool
+	// lateinit are the class's lateinit properties, tracked to warn of
+	// those its constructor code needn't defer (UNNECESSARY_LATEINIT):
+	// lateRead are those it may read before assigning them, and
+	// lateOther those it assigns in a lambda or a local class.
+	lateinit, lateRead, lateOther map[*types.VarSym]bool
 }
 
 // daOnce records the states at the returns from a lambda that its
@@ -238,6 +244,23 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 			a.depth[pd.Sym] = 0
 		}
 	}
+	var lates []*syntax.PropDecl
+	if !d.Interface {
+		for _, m := range d.Members {
+			// Not a lateinit kotlinc rejects: a val, one with a value,
+			// or of a nullable or primitive type.
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Sym.Lateinit && pd.Recv == nil && pd.Field == nil &&
+				pd.Mutable && pd.Init == nil && pd.Getter == nil && !pd.Sym.Type.N && !pd.Sym.Type.IsPrimitive() &&
+				pd.Sym.Type.K != types.Invalid && pd.Sym.Type.K != types.TypeParam && !pd.Expect && !transient(pd) {
+				if a.lateinit == nil {
+					a.lateinit, a.lateRead, a.lateOther = map[*types.VarSym]bool{}, map[*types.VarSym]bool{}, map[*types.VarSym]bool{}
+				}
+				lates = append(lates, pd)
+				a.lateinit[pd.Sym] = true
+				a.depth[pd.Sym] = 0
+			}
+		}
+	}
 	a.trackInits(d.Members)
 	s := newDAState()
 	switch {
@@ -253,7 +276,7 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	a.entries = nil
 	missing := map[*syntax.PropDecl]bool{}
 	check := func(end *daState) {
-		for _, pd := range props {
+		for _, pd := range slices.Concat(props, lates) {
 			if !end.def[pd.Sym] {
 				missing[pd] = true
 			}
@@ -262,6 +285,14 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	secs := d.Secondaries()
 	if !d.HasPrimary {
 		for _, sc := range secs {
+			if !sc.ToThis && sc.Body == nil || sc.ToThis && !delegatesToSuper(sc, secs) {
+				// constructor() assigns nothing, and kotlinc doesn't
+				// judge constructors whose this(...) calls loop or don't
+				// resolve.
+				for _, pd := range lates {
+					missing[pd] = true
+				}
+			}
 			if sc.ToThis || sc.Body == nil {
 				continue
 			}
@@ -291,6 +322,40 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 			c.errorf(pd.P, "property must be initialized or be abstract")
 		}
 	}
+	for _, pd := range lates {
+		if !missing[pd] && !a.lateRead[pd.Sym] && !a.lateOther[pd.Sym] {
+			c.warnf(pd.PosOf("lateinit", pd.P), "UNNECESSARY_LATEINIT", "'lateinit' is unnecessary: definitely initialized in constructors.")
+		}
+	}
+}
+
+// delegatesToSuper reports whether secondary constructor sc, which calls
+// this(...), reaches through secs one that calls the superclass's.
+func delegatesToSuper(sc *syntax.SecondaryCtor, secs []*syntax.SecondaryCtor) bool {
+	seen := map[*syntax.SecondaryCtor]bool{}
+	for sc.ToThis {
+		if seen[sc] || sc.Delegation == nil || sc.Delegation.Sym == nil {
+			return false
+		}
+		seen[sc] = true
+		i := slices.IndexFunc(secs, func(o *syntax.SecondaryCtor) bool { return o.Sym == sc.Delegation.Sym })
+		if i < 0 {
+			return false
+		}
+		sc = secs[i]
+	}
+	return true
+}
+
+// transient reports whether property pd is annotated @Transient, whose
+// lateinit kotlinc doesn't judge.
+func transient(pd *syntax.PropDecl) bool {
+	for _, a := range pd.Annotations {
+		if n := a.Name; n == "Transient" || strings.HasSuffix(n, ".Transient") {
+			return true
+		}
+	}
+	return false
 }
 
 // fileAssignment checks that a file's top-level properties aren't read
@@ -380,6 +445,14 @@ func (a *assignment) tracked(v *types.VarSym) bool {
 
 // read checks a read of v.
 func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
+	if v != nil && a.lateinit[v] {
+		// A read in a lambda that may run later doesn't count, as in
+		// kotlinc; in one that runs in place, or a local class, it does.
+		if !s.def[v] && !s.dead && (a.lambdas == 0 || a.inPlaceLambdas > 0 || len(a.once) > 0 || a.foreign > 0) {
+			a.lateRead[v] = true
+		}
+		return
+	}
 	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] || a.foreign > 0 {
 		return
 	}
@@ -400,6 +473,9 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	}
 	if a.inited[v] {
 		return // assigned by its initializer, as other checks report
+	}
+	if a.lateinit[v] && (a.lambdas > 0 || a.foreign > 0 || a.inPlaceLambdas > 0 || len(a.once) > 0 || a.inlined > 0) {
+		a.lateOther[v] = true
 	}
 	if a.foreign > 0 {
 		if !v.Mutable && v.Kind == types.Local && a.lambdas > a.depth[v] && a.quiet == 0 && !s.dead {

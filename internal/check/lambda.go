@@ -522,6 +522,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, nothingTail: whenTailReturn(x)}
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], lr)
 	unit := w.ret.K == types.Unit
+	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon
 	var bt types.Type
 	if unit {
 		if len(c.stubs) > 0 {

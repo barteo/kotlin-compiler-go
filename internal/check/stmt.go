@@ -118,7 +118,8 @@ func stmtJumps(s syntax.Stmt) bool {
 	case *syntax.For:
 		return jumps(s.Range)
 	case *syntax.While:
-		return !s.Do && jumps(s.Cond)
+		// A do-while loop whose condition jumps only ends by a break.
+		return jumps(s.Cond) && (!s.Do || !hasBreak(s.Body, s))
 	}
 	return false
 }

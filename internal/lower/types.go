@@ -225,6 +225,7 @@ func (l *lowerer) functionTypeParamExtras(p psi.NodeRef) {
 func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 	type seg struct {
 		name string
+		pos  syntax.Pos
 		args psi.NodeRef
 	}
 	var segs []seg
@@ -239,7 +240,7 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 				if t := first(c); t.Text() != "_" || l.typeArgDepth == 0 {
 					l.underscoreRef(t)
 				}
-				s.name = ident(first(c))
+				s.name, s.pos = ident(first(c)), l.pos(first(c))
 			case psi.KindTYPE_ARGUMENT_LIST:
 				s.args = c
 			case psi.KindDOT:
@@ -250,24 +251,28 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 		segs = append(segs, s)
 	}
 	flatten(n)
-	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name}
+	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name, Parts: []syntax.Pos{segs[0].pos}}
 	i := 0
 	for segs[i].args == (psi.NodeRef{}) && i+1 < len(segs) {
 		i++
 		ref.Name += "." + segs[i].name
+		ref.Parts = append(ref.Parts, segs[i].pos)
 	}
 	if segs[i].args.Valid() {
+		ref.ArgsP = l.pos(segs[i].args)
 		ref.Args = l.typeArgs(segs[i].args)
 	}
 	for ref.Args != nil && i+1 < len(segs) {
 		outer := ref
 		i++
-		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer}
+		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer, Parts: []syntax.Pos{segs[i].pos}}
 		for !segs[i].args.Valid() && i+1 < len(segs) {
 			i++
 			ref.Name += "." + segs[i].name
+			ref.Parts = append(ref.Parts, segs[i].pos)
 		}
 		if segs[i].args.Valid() {
+			ref.ArgsP = l.pos(segs[i].args)
 			ref.Args = l.typeArgs(segs[i].args)
 		}
 	}

@@ -12,7 +12,10 @@ own tests.
 
 - Warnings: `kc` reports only `DEPRECATION`, `OVERRIDE_DEPRECATION`,
   `TYPEALIAS_EXPANSION_DEPRECATION`, `DEPRECATED_JAVA_ANNOTATION`,
-  `INLINE_CLASS_DEPRECATED`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
+  `INLINE_CLASS_DEPRECATED`, `OPT_IN_USAGE`, `OPT_IN_OVERRIDE`,
+  `ANNOTATION_TARGETS_ONLY_IN_JAVA`, `DSL_MARKER_APPLIED_TO_WRONG_TARGET`
+  (not on a lambda), `POTENTIALLY_NON_REPORTED_ANNOTATION`,
+  `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
   `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION`,
   `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE`, `USELESS_CAST`,
@@ -47,6 +50,22 @@ own tests.
   `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION`,
   `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL`, `REDUNDANT_NULLABLE`,
   `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING`,
+  `LEAKED_IN_PLACE_LAMBDA` and `WRONG_INVOCATION_KIND` (not of a
+  parameter used in a callable reference, a safe call or a context
+  argument, nor the invocation kind where its calls are in a loop that
+  jumps, a lambda that jumps, or a `when` without `else` that isn't
+  exhaustive, or in a function that never returns normally),
+  `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` (not
+  of a class that doesn't override the function),
+  `UNNECESSARY_LATEINIT` (not where an object expression or a local
+  class reads the property, nor of a type parameter's type, nor for
+  constructors whose `this(...)` calls loop),
+  `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` and
+  `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` (not
+  through a typealias, nor of an inner class of a generic nested
+  class, nor of a local class inside a generic class),
+  `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` (not of a
+  constructor call),
   `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
   types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
   (of smart-cast values, not of enums nor an identity comparison of a
@@ -61,8 +80,11 @@ own tests.
   what `kotlinc` compiles: the null checks never of a platform type, a type parameter
   or a type it couldn't resolve, and `UNCHECKED_CAST` only of a cast to
   a type parameter that isn't reified, to a generic type from `Any`
-  or a star-projected supertype, or to a function type from another of
-  its class. Parameter names are compared only where they are stable,
+  or a star-projected supertype, to a function type from another of
+  its class, or to a generic type whose type arguments its operand's
+  type doesn't tell, judged as `kotlinc` does but only where that
+  type's arguments map to the target class's type parameters one by one,
+  without projections, and the operand isn't smart cast. Parameter names are compared only where they are stable,
   of the program's and Kotlin libraries' functions, not Java methods,
   and `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
   `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` only of the program's
@@ -91,8 +113,11 @@ own tests.
   `VARIABLE_NEVER_READ`, `ASSIGNED_VALUE_IS_NEVER_READ` and
   `VARIABLE_INITIALIZER_IS_REDUNDANT`, the last two only where no
   statement that may read the value comes before it is overwritten or
-  out of scope, through `if` and `when` but not loops or `try`, and
-  never for a variable a lambda or a local function uses,
+  out of scope, through `if` and `when` but not loops or `try`, and,
+  for a variable a lambda, a local function or a local class uses,
+  only before the first of them and outside loops,
+  `UNUSED_ANONYMOUS_PARAMETER`, but not of a parameter whose name the
+  lambda's body uses for another variable,
   `REDUNDANT_VISIBILITY_MODIFIER`, but not on an override property, nor
   on an override of a member that inherits its visibility, and
   `USELESS_CALL_ON_NOT_NULL`, but not of a callable reference; and with

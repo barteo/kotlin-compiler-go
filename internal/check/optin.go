@@ -1208,9 +1208,9 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Override && owner != nil && d.Sym != nil && !w.suppressed("OPT_IN_OVERRIDE_ERROR") {
 		for _, o := range w.c.overridden(owner, d.Sym) {
 			if fd, ok := o.Decl.(*syntax.FunDecl); ok {
-				w.overrideOf(d.P, w.o.annMarkers(fd.Annotations, ""))
+				w.overrideOf(d.P, w.o.annMarkers(fd.Annotations, ""), o.Owner)
 			} else if o.Decl == nil && o.Owner != nil && o.Owner.External {
-				w.overrideOf(d.P, w.o.descMarkers(o.Annotations))
+				w.overrideOf(d.P, w.o.descMarkers(o.Annotations), o.Owner)
 			}
 		}
 	}
@@ -1236,17 +1236,20 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 	w.pop()
 }
 
-// overrideOf reports an override at p of a member with markers ms that
-// the scope doesn't opt in to.
-func (w *optWalker) overrideOf(p syntax.Pos, ms []*optMarker) {
+// overrideOf reports an override at p of a member of class super with
+// markers ms that the scope doesn't opt in to: an error, or for a
+// warning-level marker, kotlinc's warning OPT_IN_OVERRIDE.
+func (w *optWalker) overrideOf(p syntax.Pos, ms []*optMarker, super *types.ClassSym) {
 	if w.suppressed("OPT_IN_OVERRIDE_ERROR") {
 		return
 	}
 	for _, m := range ms {
-		// A warning-level marker's override is a warning kc doesn't
-		// report (OPT_IN_OVERRIDE).
-		if m.err && !w.o.optsIn(w.scope, m, false) {
+		switch {
+		case w.o.optsIn(w.scope, m, false):
+		case m.err:
 			w.errorf(p, "this override needs opt-in: the overridden declaration is marked with '@%s'", m.simple)
+		case super != nil:
+			w.warnf(p, "OPT_IN_OVERRIDE", "base declaration of supertype '%s' needs opt-in. The declaration override should be annotated with '@%s' or '@OptIn(%s::class)'", simpleName(super), m.simple, m.simple)
 		}
 	}
 }
@@ -1259,12 +1262,12 @@ func (w *optWalker) propOverride(cls *types.ClassSym, p *types.VarSym, pos synta
 		}
 		if s.External {
 			if kp := s.KProps[p.Name]; kp != nil {
-				w.overrideOf(pos, slices.Concat(w.o.descMarkers(kp.Getter.Annotations), w.o.descMarkers(kp.Getter.PropAnnotations)))
+				w.overrideOf(pos, slices.Concat(w.o.descMarkers(kp.Getter.Annotations), w.o.descMarkers(kp.Getter.PropAnnotations)), s)
 			}
 			return true
 		}
 		if sp := s.Prop(p.Name); sp != nil {
-			w.overrideOf(pos, w.propMarkers(sp, false))
+			w.overrideOf(pos, w.propMarkers(sp, false), s)
 		}
 		return true
 	})

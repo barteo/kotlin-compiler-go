@@ -190,3 +190,29 @@ fun u6_a8() {
     null!!
     bar() // UNREACHABLE_CODE
 }
+fun dw1() {
+    do {
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}
+fun dw2(b: Boolean) {
+    do {
+        if (b) break
+    } while (todo())
+    bar()
+}
+fun dw3(b: Boolean) {
+    do {
+        if (b) continue
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}
+fun dw4(): Int {
+    do { } while (todo())
+}
+fun dw5(b: Boolean) {
+    do {
+        while (b) { break }
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}

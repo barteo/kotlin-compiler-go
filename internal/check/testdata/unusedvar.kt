@@ -107,3 +107,109 @@ fun a4(c: Boolean) {
     f = 2; f = 3 // ASSIGNED_VALUE_IS_NEVER_READ
     use(f)
 }
+// Captured variables: kotlinc judges their writes before the first
+// lambda, local function or local class that uses them.
+fun later3(block: () -> Unit) {}
+inline fun inl3(block: () -> Unit) { block() }
+interface I3 { fun f() }
+
+fun cap1(c: Boolean) {
+    var x = 1
+    use(x)
+    while (c) {
+        x = 2
+        x = 3
+        later3 { use(x) }
+    }
+}
+fun cap2(c: Boolean) {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    x = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    if (c) {
+        x = 3
+        later3 { use(x) }
+    } else {
+        x = 4
+    }
+    use(x)
+}
+fun cap3(c: Boolean) {
+    var x = 1
+    if (c) {
+        x = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+        x = 3
+    }
+    val o = object : I3 { override fun f() { use(x) } }
+    o.f()
+}
+fun cap4() {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    x = 2
+    class L { fun g() = x }
+    L().g()
+}
+fun cap5() {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    x = 2
+    inl3 { use(x) }
+    x = 3
+    use(x)
+}
+fun cap6() {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    later3 { x = 4 }
+    x = 2
+    use(x)
+}
+fun cap7(c: Boolean) {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    when {
+        c -> { x = 2; x = 3 } // ASSIGNED_VALUE_IS_NEVER_READ
+        else -> x = 4
+    }
+    later3 { use(x) }
+}
+fun cap8() {
+    var x = 1
+    x++ // ASSIGNED_VALUE_IS_NEVER_READ
+    x = 5
+    later3 { use(x) }
+}
+fun cap9() {
+    var x = 1
+    try {
+        x = 2
+        x = 3
+    } finally {
+        later3 { use(x) }
+    }
+}
+fun cap10() {
+    var x = 1
+    val f = fun() { use(x) }
+    x = 2
+    f()
+}
+fun cap12() {
+    var x = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    x = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    fun g() { x = 9 }
+    x = 3
+    g()
+    use(x)
+}
+fun cap13() {
+    var x = 1
+    x += 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    x = 3
+    later3 { use(x) }
+}
+fun cap14() {
+    val x = 1
+    later3 {
+        var y = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+        y = 2
+        use(y)
+        use(x)
+    }
+}
