@@ -45,3 +45,49 @@ fun j10(a: Long, n: Number) = a === n // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
 fun <T : Comparable<Int>> j11(t: T, i: Int) = t === i // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
 fun <T : Any?> j12(t: T, i: Int) = t === i // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
 fun <T : Number?> j13(t: T, i: Int) = t === i // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
+@JvmInline value class Vc(val i: Int)
+@JvmInline value class Vd(val b: Boolean)
+interface Ib
+fun fa1(a: Int?, b: Int?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa2(a: Int?, b: Int) = a === b // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
+fun fa7(a: Int?, b: Any?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa8(a: Long?, b: Long?) = a !== b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa9(a: Char?, b: Char?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa10(a: Boolean?, b: Boolean?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa11(a: Double?, b: Double?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fa14(a: String?, b: String?) = a === b
+fun fs1(x: Any, y: Any) = x is Float && y is Double && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs2(c: Any?, d: Any?) = c is Vc && d is Vd && c === d // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs3(a: Any?, b: Any?) = a is Int? && b is String? && a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs4(c: Any?, d: Any?) = c is Vc? && d is Vd? && c === d // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs5(x: Any, y: Any) = x is Int && y is Int && x === y // DEPRECATED_IDENTITY_EQUALS
+fun fs6(x: Any, y: Any) = x is Int && y is String && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs7(x: Any, y: Any) = x is Int && y is Ib && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs8(x: Any?, y: Int?) = x is String && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fs9(x: Any, y: Int) = x is String && x === y // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
+fun fs10(x: Int?, y: Any?) = x != null && y is Long && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int, K : Boolean> ft1(a: T, b: K) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int?, K : Boolean?> ft2(a: T, b: K) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int> ft3(a: T, b: T) = a === b // DEPRECATED_IDENTITY_EQUALS
+fun <T : Int?> ft4(a: T, b: Int?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb1(a: Int?, b: Any) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb2(a: Int?, b: Number?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb3(a: Int?, b: Comparable<Int>?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T> fb4(a: Int?, b: T) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Any> fb5(a: Int?, b: T) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb6(a: Int?, b: Nothing?) = a === b
+fun fb7(a: Int?, b: Number) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb8(a: Any?, b: Int?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fb9(a: java.io.Serializable?, b: Int?) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int, K : Boolean> fc1(a: T, b: K) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int?> fc4(a: T, b: T) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int?, K : Int?> fc5(a: T, b: K) = a === b // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun <T : Int?> fc6(a: T, b: Int) = a === b // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
+fun <T : Int> fc7(a: T, b: Int?) = a === b // IMPLICIT_BOXING_IN_IDENTITY_EQUALS
+fun fd1(x: Any, y: Any) = x is Vc && y is Vc && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fd2(x: Any?, y: Int?) = x is Int && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fd3(x: Any?, y: Any?) = x is Int? && y is Int? && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fd4(x: Any?, y: Any?) = x is Int && y is Ib && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fd5(x: Number?, y: Any?) = x is Int && y is String && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fd6(x: Any?, y: Int?) = x is Long && x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
+fun fe1(x: Long?, y: Long?) = x === y // FORBIDDEN_IDENTITY_EQUALS_WARNING
