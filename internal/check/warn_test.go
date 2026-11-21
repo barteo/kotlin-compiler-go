@@ -625,3 +625,9 @@ func TestWarningsLHSArgs(t *testing.T) {
 func TestWarningsJavaTarget(t *testing.T) {
 	checkReference(t, "testdata/javatarget.kt", Options{Warnings: true})
 }
+
+// TestWarningsOptInOverride checks the OPT_IN_OVERRIDE warnings of
+// testdata/optinoverride.kt.
+func TestWarningsOptInOverride(t *testing.T) {
+	checkReference(t, "testdata/optinoverride.kt", Options{Warnings: true})
+}
