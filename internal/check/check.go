@@ -237,6 +237,9 @@ type Checker struct {
 	// took out of the functions' bodies, by body, whose opt-in
 	// optInErrors checks.
 	contractAt map[*syntax.Block]syntax.Pos
+	// contractSuppress are the ranges of the @Suppress annotations on the
+	// contract { } calls that dropContract removes, and in them.
+	contractSuppress []suppressRange
 	// contractCalls are, by body, the calls of the contract's builder
 	// functions, returns, implies, callsInPlace and the like, which are
 	// @ExperimentalContracts too.
@@ -2118,6 +2121,16 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		sym.AtLeastOnce = make([]bool, len(d.Params))
 		for i, p := range d.Params {
 			sym.AtLeastOnce[i] = d.AtLeastOnce[p.Name]
+		}
+	}
+	for _, e := range d.Calls {
+		for i, p := range d.Params {
+			if p.Name == e.Param && e.Kind == "AT_MOST_ONCE" {
+				if sym.AtMostOnce == nil {
+					sym.AtMostOnce = make([]bool, len(d.Params))
+				}
+				sym.AtMostOnce[i] = true
+			}
 		}
 	}
 	c.contractEffects(d, sym)

@@ -47,6 +47,11 @@ own tests.
   `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION`,
   `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL`, `REDUNDANT_NULLABLE`,
   `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING`,
+  `LEAKED_IN_PLACE_LAMBDA` and `WRONG_INVOCATION_KIND` (not of a
+  parameter used in a callable reference, a safe call or a context
+  argument, nor the invocation kind where its calls are in a loop that
+  jumps, a lambda that jumps, or a `when` without `else` that isn't
+  exhaustive, or in a function that never returns normally),
   `CONTEXTUAL_OVERLOAD_SHADOWED` (not where the context parameters'
   types mention type parameters), `EQUALITY_NOT_APPLICABLE_WARNING`
   (of smart-cast values, not of enums nor an identity comparison of a

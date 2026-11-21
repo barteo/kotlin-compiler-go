@@ -18,6 +18,7 @@ func (c *Checker) localWarnings() {
 	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
 	c.shadowWarnings()
 	c.dangerousNames()
+	c.inPlaceWarnings()
 	var deadClasses map[*syntax.ClassDecl]bool
 	if c.u.extraWarnings {
 		c.unusedVarWarnings()

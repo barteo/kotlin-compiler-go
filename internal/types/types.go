@@ -692,6 +692,9 @@ type FunSym struct {
 	// once, callsInPlace(f, AT_LEAST_ONCE): what the lambda's body surely
 	// assigns is assigned after the call.
 	AtLeastOnce []bool
+	// AtMostOnce marks those it calls at most once, callsInPlace(f,
+	// AT_MOST_ONCE).
+	AtMostOnce []bool
 
 	// Implies are the effects of the function's contract that say what a
 	// parameter is if it returns: returns(false) implies (this != null)

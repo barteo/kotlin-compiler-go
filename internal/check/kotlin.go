@@ -976,6 +976,12 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			}
 			sym.AtLeastOnce[ip.Param] = true
 		}
+		if ip.Kind == kmeta.AtMostOnce {
+			if sym.AtMostOnce == nil {
+				sym.AtMostOnce = make([]bool, len(f.Params))
+			}
+			sym.AtMostOnce[ip.Param] = true
+		}
 	}
 	for _, im := range f.Implies {
 		// A context parameter's index follows the value parameters'.

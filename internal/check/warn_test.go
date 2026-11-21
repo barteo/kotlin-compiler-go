@@ -607,3 +607,9 @@ func TestWarningsUselessCallOnNotNull(t *testing.T) {
 func TestWarningsDangerousCharacters(t *testing.T) {
 	checkReference(t, "testdata/dangerous.kt", Options{Warnings: true})
 }
+
+// TestWarningsInPlace checks the LEAKED_IN_PLACE_LAMBDA and
+// WRONG_INVOCATION_KIND warnings of testdata/inplace.kt.
+func TestWarningsInPlace(t *testing.T) {
+	checkReference(t, "testdata/inplace.kt", Options{Warnings: true})
+}

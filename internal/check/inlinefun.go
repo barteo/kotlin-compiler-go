@@ -299,6 +299,13 @@ func inspectClass(d *syntax.ClassDecl, f func(any) bool) {
 			fun(m.Setter)
 		case *syntax.InitBlock:
 			syntax.Inspect(m.Body, f)
+		case *syntax.SecondaryCtor:
+			if m.Delegation != nil {
+				syntax.Inspect(m.Delegation, f)
+			}
+			if m.Body != nil {
+				syntax.Inspect(m.Body, f)
+			}
 		case *syntax.ClassDecl:
 			inspectClass(m, f)
 		}

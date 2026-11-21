@@ -566,6 +566,8 @@ type FunDecl struct {
 	InPlace map[string]bool
 	// AtLeastOnce names those it says it calls at least once.
 	AtLeastOnce map[string]bool
+	// Calls are the contract's callsInPlace effects, in order.
+	Calls []CallsEffect
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
@@ -1239,6 +1241,15 @@ type Implies struct {
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
 	Negated bool // with Holds, implies (!p): p is false
+}
+
+// CallsEffect is a contract's callsInPlace(Param, InvocationKind.Kind)
+// effect, written at P: Kind is AT_MOST_ONCE, EXACTLY_ONCE,
+// AT_LEAST_ONCE or UNKNOWN, which is also the kind without an argument.
+type CallsEffect struct {
+	P     Pos
+	Param string
+	Kind  string
 }
 
 type BoolLit struct {
