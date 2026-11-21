@@ -19,14 +19,15 @@ fun unitResult(): Unit = myRun {
 
 // A member of a builder's variable that nothing gives a type yet is an
 // error where it is, though the other lambda gives it one later, as in
-// K2 (which reports length as unresolved).
+// K2, which reports length as unresolved, as nothing of its name may be
+// called.
 class Container<A> {
     fun consume(arg: A) {}
 }
 fun <B> build(funcA: (Container<B>) -> ((B) -> Unit), funcB: (Container<B>) -> Unit) {}
 fun twoLambdas() {
     build(
-        { container -> { arg -> arg.length } }, // ERROR the type of a receiver hasn't been inferred yet
+        { container -> { arg -> arg.length } }, // ERROR unresolved reference: length
         { container -> container.consume("") },
     )
 }

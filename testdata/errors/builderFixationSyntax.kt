@@ -1,8 +1,9 @@
 // Of the syntax that K2 fixes a builder's variable on demand for, a bare
 // type in an is or as check takes its arguments from the variable's value,
-// an increment or decrement fixes nothing (KT-71778), and a smart cast of a
-// value of the variable's type is an intersection with it, whose members
-// fix it.
+// an increment or decrement fixes nothing (KT-71778), though an element's
+// compound assignment fixes the receiver's for get and set, and a smart
+// cast of a value of the variable's type is an intersection with it, whose
+// members fix it.
 class TypeVariableOwner<T> {
     fun constrain(subtypeValue: T) {}
     fun provide(): T = null!!
@@ -24,6 +25,7 @@ class ScopeOwner : BaseType {
     operator fun inc(): ScopeOwner = this
     operator fun get(index: Index): ScopeOwner = this
     operator fun set(index: Index, value: ScopeOwner) {}
+    operator fun plus(other: ScopeOwner): ScopeOwner = this
 }
 
 object Interloper : BaseType
@@ -58,5 +60,13 @@ fun smartCastIntersection() {
             otvValue.function()
         }
         otvOwner.constrain(Interloper) // ERROR type mismatch: inferred type is Interloper but OpenScopeOwner was expected
+    }
+}
+
+fun indexedCompound() {
+    pcla { otvOwner ->
+        otvOwner.constrain(ScopeOwner())
+        otvOwner.immutableReference[Index] += ScopeOwner()
+        otvOwner.constrain(Interloper) // ERROR type mismatch: inferred type is Interloper but ScopeOwner was expected
     }
 }

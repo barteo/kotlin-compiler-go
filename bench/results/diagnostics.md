@@ -151,9 +151,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 187 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 132 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 71 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 70 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |

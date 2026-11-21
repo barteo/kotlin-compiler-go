@@ -326,7 +326,9 @@ func tempRef(vs *syntax.VarStmt, p syntax.Pos) *syntax.Ident {
 // element read. It returns a function that makes another read of the
 // element, to check after the statements.
 func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string, arg syntax.Expr, value func(read syntax.Expr) syntax.Expr) ([]syntax.Stmt, func() syntax.Expr, bool) {
-	xt := c.value(ix.X, noWant)
+	// A builder's variable is fixed for get and set (see fixedStub), not in
+	// an increment, as K2 doesn't fix it there (KT-71778).
+	xt := c.fixedStub(c.value(ix.X, noWant))
 	ix.X = checked(ix.X, xt)
 	if xt.K == types.Invalid {
 		return nil, nil, false

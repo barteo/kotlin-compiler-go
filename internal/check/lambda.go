@@ -2718,6 +2718,10 @@ type stubRun struct {
 type stubRecv struct {
 	p syntax.Pos
 	v *types.TypeParamSym
+	// unresolved is the member's name, at namePos, if nothing of its
+	// name may be called: K2 reports it as unresolved.
+	unresolved string
+	namePos    syntax.Pos
 }
 
 // joinRun returns the run that s, a call's system about to complete in a
@@ -3094,13 +3098,20 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	if !r.demandable(v.Param()) {
 		return t
 	}
+	var val types.Type
 	_, trial, ok := r.solve()
-	if !ok {
-		return t
-	}
-	val := trial.apply(v)
-	if val.HasVars() || val.K == types.Invalid {
-		return t
+	switch {
+	case ok:
+		if val = trial.apply(v); val.HasVars() || val.K == types.Invalid {
+			return t
+		}
+	default:
+		// Where the others can't be fixed yet, v alone may be: K2
+		// semi-fixes F of id(prop) to In<E> for its call(""), with E
+		// not yet known.
+		if val, ok = r.semiFixed(v.Param()); !ok {
+			return t
+		}
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
 	r.demanded = true
@@ -3108,6 +3119,9 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	// fixes the variables one depends on: FOTv <: SOTv, from
 	// nestedPCLA(fotvOwner.provide()), and ScopeOwner <: FOTv fix FOTv
 	// to ScopeOwner for sotvOwner.provide().function().
+	if trial == nil {
+		trial = r.s
+	}
 	if tv := trial.byVar[v.Param()]; tv != nil {
 		for _, l := range tv.lower {
 			if q := c.stub(l.Flex().NonNull()); q != nil && q != r && q.depth < r.depth {
@@ -3128,6 +3142,31 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		val = val.NonNull() // x!!, or x after x != null, of a T & Any
 	}
 	return val
+}
+
+// semiFixed returns the value K2 semi-fixes v to where r's other variables
+// can't be fixed yet: its one lower bound, a type of builders' variables,
+// In<E> for F of id(prop) with E not yet known.
+func (r *stubRun) semiFixed(v *types.TypeParamSym) (types.Type, bool) {
+	c := r.s.c
+	saved := c.stubs
+	c.stubs = nil
+	trial, _ := r.build(saved)
+	c.stubs = saved
+	tv := trial.byVar[v]
+	if tv == nil || tv.fixed || len(tv.lower) != 1 || len(tv.lits) > 0 {
+		return types.InvalidType, false
+	}
+	l := trial.apply(tv.lower[0])
+	if !l.HasVars() || l.K == types.TypeVar || !c.onlyStubs(l) {
+		return types.InvalidType, false
+	}
+	for _, u := range tv.upper {
+		if u = trial.apply(u); !u.HasVars() && !c.subtype(l, u) {
+			return types.InvalidType, false
+		}
+	}
+	return l, true
 }
 
 // demandable reports whether variable v of r can be fixed on demand, as
@@ -3194,7 +3233,7 @@ func (c *Checker) demandStubs(t types.Type) types.Type {
 // is a stub that nothing fixes yet (see stubRun.recvs). Not if an
 // extension of a type parameter, which takes any receiver, may be called:
 // it checkType { } for fun <T> T.checkType(f: ...).
-func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
+func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string, namePos syntax.Pos) {
 	r := c.stub(t.Flex())
 	if r == nil {
 		return
@@ -3214,8 +3253,16 @@ func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
 	if slices.ContainsFunc(c.extCallees(name, t), func(cl callee) bool { return cl.f.Recv.Flex().NonNull().K == types.TypeParam }) {
 		return
 	}
-	r.recvs = append(r.recvs, stubRecv{x.Pos(), v})
+	rv := stubRecv{p: x.Pos(), v: v}
+	if !anyMember[name] && !slices.ContainsFunc(c.kotlinFunLevels(name, true), func(fs []*types.FunSym) bool { return len(fs) > 0 }) {
+		// Without a candidate of the name, K2 reports the member as
+		// unresolved: get().length, but get().toString() reports the
+		// receiver.
+		rv.unresolved, rv.namePos = name, namePos
+	}
+	r.recvs = append(r.recvs, rv)
 }
+
 
 // constrains reports whether a constraint of r, or of a call that joined
 // it, mentions variable v.
@@ -3253,9 +3300,12 @@ func (c *Checker) stubReceivers(r *stubRun) {
 			c.stubRecvAt = map[syntax.Pos]bool{}
 		}
 		c.stubRecvAt[rv.p] = true
-		msg := stubReceiverError(rv.v)
-		if !slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return e.Pos == rv.p && e.Msg == msg }) {
-			c.errorf(rv.p, "%s", msg)
+		msg, at := stubReceiverError(rv.v), rv.p
+		if rv.unresolved != "" {
+			msg, at = "unresolved reference: "+rv.unresolved, rv.namePos
+		}
+		if !slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return e.Pos == at && e.Msg == msg }) {
+			c.errorf(at, "%s", msg)
 		}
 	}
 }
