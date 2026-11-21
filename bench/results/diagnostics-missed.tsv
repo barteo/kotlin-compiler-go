@@ -180,7 +180,6 @@ tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariabl
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	earlyReturn.kt:12	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/issues/kt47989a.kt	kt47989a.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/issues/kt47989b.kt	kt47989b.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/pcla/issues/kt49263.kt	kt49263.kt:7	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/issues/kt55281.kt	kt55281.kt:12	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:61	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:81	ARGUMENT_TYPE_MISMATCH	nearby
@@ -457,7 +456,6 @@ testsWithStdLib/inference/subAtomAlreadyInitialized2.kt	subAtomAlreadyInitialize
 testsWithStdLib/kt9078.kt	kt9078.kt:7	UNRESOLVED_REFERENCE	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:36	LATEINIT_INTRINSIC_CALL_ON_NON_LITERAL	missing-check
 testsWithStdLib/lateinit/isInitialized.kt	test.kt:44	LATEINIT_INTRINSIC_CALL_IN_INLINE_FUNCTION	missing-check
-testsWithStdLib/pcla/typeVariableShouldNotBeFixed.kt	spr/foo.kt:18	CANNOT_INFER_PARAMETER_TYPE	missing-check
 testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	backingFieldWithContextParameter.kt:4	CONTEXT_PARAMETERS_WITH_BACKING_FIELD	nearby
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:12	OPT_IN_MARKER_ON_WRONG_TARGET	missing-check
 testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:17	OPT_IN_USAGE_ERROR	missing-check

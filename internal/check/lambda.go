@@ -3489,6 +3489,47 @@ func (c *Checker) stub(t types.Type) *stubRun {
 	return c.stubs[t.Param()]
 }
 
+// uninferredRecv returns the name of the variable that a lambda's
+// receiver, of type p (orig before inference), can't be inferred for, if
+// it can't: its own, tv, or a variable of another call whose value the
+// receiver's variable has, as T of materialize().apply { } for a
+// materialize(): Processor<M> that nothing gives M, which K2 doesn't
+// infer either.
+func (c *Checker) uninferredRecv(s *system, errs0 int, tv *tvar, orig, p types.Type) string {
+	switch {
+	case tv != nil && p.K == types.Invalid:
+		if slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+			return tv.v.Name
+		}
+	case orig.K == types.TypeVar && s.byVar[orig.Param()] != nil && p.Has(func(u types.Type) bool { return u.K == types.Invalid }):
+		if slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return strings.HasPrefix(e.Msg, "cannot infer type for type parameter") }) {
+			return orig.Param().Name
+		}
+	}
+	return ""
+}
+
+// receiverArgs returns the explicit this of l's receiver, this or
+// this@label, that are arguments of calls in l's body, outside its
+// lambdas and classes.
+func receiverArgs(l *syntax.Lambda) []*syntax.This {
+	var out []*syntax.This
+	syntax.Inspect(l.Body, func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Lambda, *syntax.ObjectExpr, *syntax.ClassDecl, *syntax.FunDecl:
+			return false
+		case *syntax.Call:
+			for _, a := range n.Args {
+				if th, ok := a.(*syntax.This); ok && (th.Label == "" || th.Label == l.Label) {
+					out = append(out, th)
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
 // stubIn returns the run of the first variable stubInference is
 // inferring that t mentions, if any.
 func (c *Checker) stubIn(t types.Type) *stubRun {
@@ -3725,6 +3766,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	}
 	c.stubInference(s, l, params, ft)
 	errs0 := len(s.errs)
+	origParams := slices.Clone(params)
 	vars := make([]*tvar, len(params))
 	for i, q := range params {
 		if q = s.apply(q); q.K == types.TypeVar && !q.N {
@@ -3743,6 +3785,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			i < len(l.Params) && l.Params[i].Type == nil &&
 			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
 			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
+		// And so is this, of a receiver whose variable a builder's run
+		// can't infer, where it is an argument: consume(this) in
+		// build { } for a build(block: PTV.() -> Unit).
+		if ft.Flex().E && i == ft.Flex().Contexts() && l.Ref == nil {
+			if name := c.uninferredRecv(s, errs0, vars[i], origParams[i], params[i]); name != "" {
+				for _, th := range receiverArgs(l) {
+					s.errs = append(s.errs, inferError{th.P, "cannot infer type for type parameter '" + name + "'. Specify it explicitly."})
+				}
+			}
 		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
