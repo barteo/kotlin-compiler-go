@@ -221,7 +221,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			continue
 		}
 		saved, savedLookup := c.state, c.lookupCls
-		c.state = state{scope: &scope{}, staticCls: owner}
+		c.state = state{scope: &scope{}, staticCls: annotationStatics(owner, site)}
 		if site.header && site.kind != siteCtor {
 			for _, p := range c.headerParams {
 				c.scope.declare(p)
