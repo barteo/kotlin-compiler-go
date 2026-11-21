@@ -17,16 +17,16 @@ fun unitResult(): Unit = myRun {
     materializeNumber() // ERROR cannot infer type for type parameter 'N'. Specify it explicitly.
 }
 
-// A builder lambda that doesn't check with the variable unfixed, for a
-// reason other than an ambiguous call, leaves it uninferred: the other
-// lambda doesn't give it a type for a second check.
+// A member of a builder's variable that nothing gives a type yet is an
+// error where it is, though the other lambda gives it one later, as in
+// K2 (which reports length as unresolved).
 class Container<A> {
     fun consume(arg: A) {}
 }
 fun <B> build(funcA: (Container<B>) -> ((B) -> Unit), funcB: (Container<B>) -> Unit) {}
 fun twoLambdas() {
-    build( // ERROR cannot infer type for type parameter 'B'
-        { container -> { arg -> arg.length } },
+    build(
+        { container -> { arg -> arg.length } }, // ERROR the type of a receiver hasn't been inferred yet
         { container -> container.consume("") },
     )
 }

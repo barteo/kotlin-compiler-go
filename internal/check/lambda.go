@@ -444,10 +444,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			case w.known && i < len(params):
 				t = params[i]
 				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
-					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+					c.errorf(p.P, cannotInferParamMsg)
 				}
 			case !w.recover && ok:
-				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+				c.errorf(p.P, cannotInferParamMsg)
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
 			syms = append(syms, p.Sym)
@@ -457,7 +457,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	case w.known && len(params) == 1:
 		x.It = &types.VarSym{Name: "it", Type: params[0], Kind: types.Param}
 		if params[0] == cyclicParamType && ok && len(c.errs) == errs0 {
-			c.errorf(x.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+			c.errorf(x.P, cannotInferParamMsg)
 		}
 	case w.known && len(params) > 1:
 		c.errorf(x.P, "expected %s, but 0 were declared", paramsString(params))
@@ -2340,7 +2340,6 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		c.stubs = map[*types.TypeParamSym]*stubRun{}
 	}
 	r := &stubRun{s: s, vars: vars, depth: c.stubDepth}
-	c.stubRuns++
 	c.stubDepth++
 	defer func() { c.stubDepth-- }()
 	for _, v := range vars {
@@ -2349,11 +2348,16 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// A lambda of the group whose only errors with the variables unfixed
 	// are ambiguous calls, as Entry(it) whose constructors they make
 	// ambiguous, takes them from the others: what it recorded is dropped.
-	// Any other error leaves the variables uninferred, as in Kotlin.
-	clean := false
+	// Other errors don't stop the inference: as in K2's PCLA, whose
+	// constraint system keeps what the calls before and after an error
+	// add, the variables are inferred from what was recorded, and the
+	// check that counts reports what disagrees with them where it is:
+	// constrain(Interloper) after provide().function() fixed OTv to
+	// ScopeOwner.
+	var stateErrs []*syntax.Error
 	for _, sl := range group {
-		nc, nj, ne, nr, nruns := len(r.cons), len(r.joined), len(r.extra), len(c.stubRejected), c.stubRuns
-		ok, ambiguous, msgs, unresolved := c.stubCheck(s, sl, r)
+		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
+		ok, ambiguous, errs, unresolved := c.stubCheck(s, sl, r)
 		if !ok && !ambiguous && unresolved.Line > 0 && c.poisons(sl.l, unresolved) {
 			if c.pclaPoison == nil {
 				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
@@ -2362,17 +2366,13 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		} else {
 			delete(c.pclaPoison, sl.l)
 		}
-		if ok || !ambiguous && rejectedOnly(msgs, c.stubRejected[nr:]) && c.stubRuns == nruns {
-			// Errors that are each a constraint that disagrees with
-			// those recorded (see rejectedOnly). Not in a lambda with
-			// builders of its own, whose errors kc doesn't infer
-			// through.
-			clean = true
-			continue
+		for _, e := range errs {
+			if pclaStateError(e.Msg) {
+				stateErrs = append(stateErrs, e)
+			}
 		}
-		if !ambiguous {
-			clean = false
-			break
+		if ok || !ambiguous {
+			continue
 		}
 		for _, v := range r.extra[ne:] {
 			delete(c.stubs, v)
@@ -2383,16 +2383,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		delete(c.stubs, v)
 	}
 	c.stubReceivers(r)
-	if !clean && !r.demanded {
-		// Code that doesn't check with the variables unfixed, as a
-		// member of a value of one of them that nothing fixes yet,
-		// which Kotlin rejects: they stay uninferred. Once a member
-		// fixed one on demand, as K2 does, the variables are inferred
-		// from what was recorded, and the check that counts reports
-		// what disagrees with them where it is: constrain(Interloper)
-		// after provide().memberFunction() fixed OTv to ScopeOwner.
-		return
-	}
+	c.reportStateErrors(stateErrs)
 	if useful, trial, ok := r.solve(); ok {
 		for _, k := range useful {
 			s.sub(k[0], k[1])
@@ -2486,7 +2477,7 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, msgs []string, unresolved syntax.Pos) {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, errs []*syntax.Error, unresolved syntax.Pos) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
@@ -2522,14 +2513,55 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	if clean && bt.K != types.Invalid && bt.K != types.Unit && (ret.Has(ours) || ret.Has(unfixed) && bt.Has(ours)) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
-	for _, e := range c.errs[n:] {
-		msgs = append(msgs, e.Msg)
+	errs = slices.Clone(c.errs[n:])
+	for _, e := range errs {
 		if unresolved.Line == 0 && strings.HasPrefix(e.Msg, "unresolved reference") {
 			unresolved = e.Pos
 		}
 	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean, ambiguous, msgs, unresolved
+	return clean, ambiguous, errs, unresolved
+}
+
+// pclaStateError reports whether msg, an error of a builder's lambda
+// checked with the builder's variables unfixed (see stubCheck), is one K2
+// reports from the state of its shared constraint system where the code
+// is, though what comes after gives the variables: a member of a receiver
+// whose type nothing gives yet (BUILDER_INFERENCE_STUB_RECEIVER), and a
+// lambda's parameter whose type nothing gives yet, as of a lambda that
+// return@build returns before container.consume({ arg: String -> }). The
+// check that counts, with the variables fixed, wouldn't find them.
+func pclaStateError(msg string) bool {
+	return strings.HasPrefix(msg, stubReceiverMsg) || msg == cannotInferParamMsg
+}
+
+// cannotInferParamMsg is the error of a lambda's parameter whose type
+// can't be inferred.
+const cannotInferParamMsg = "cannot infer a type for this parameter. Please specify it explicitly."
+
+// stubReceiverMsg starts the error of a receiver whose type is a builder's
+// variable that nothing fixes yet, kotlinc's BUILDER_INFERENCE_STUB_RECEIVER.
+const stubReceiverMsg = "the type of a receiver hasn't been inferred yet."
+
+// stubReceiverError returns the error of a receiver of builder variable v's
+// type that nothing fixes yet.
+func stubReceiverError(v *types.TypeParamSym) string {
+	return fmt.Sprintf("%s Specify type argument for generic parameter '%s' explicitly.", stubReceiverMsg, v.Name)
+}
+
+// reportStateErrors reports errs, errors of a builder's lambda that K2
+// reports from the state where the code is (see pclaStateError), once.
+// Not in a check that a run around it throws away: the check that counts
+// finds them again.
+func (c *Checker) reportStateErrors(errs []*syntax.Error) {
+	if c.trial != nil {
+		return
+	}
+	for _, e := range errs {
+		if !slices.ContainsFunc(c.errs, func(f *syntax.Error) bool { return f.Pos == e.Pos && f.Msg == e.Msg }) {
+			c.errorf(e.Pos, "%s", e.Msg)
+		}
+	}
 }
 
 // poisonedRecv reports a call f() at p on the receiver r of a builder
@@ -2601,26 +2633,6 @@ func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
 		return !found
 	})
 	return found
-}
-
-// rejectedOnly reports whether msgs, the errors of a lambda that
-// stubInference checks, are each a mismatch of an argument with the bound
-// of a constraint among rejected, which stubRun.add rejected: Kotlin
-// infers the variables from the others, and the check that counts
-// reports the argument, consumeDifferentType(get()) after
-// set(TargetType()).
-func rejectedOnly(msgs []string, rejected [][2]types.Type) bool {
-	if len(msgs) == 0 || len(msgs) != len(rejected) {
-		return false
-	}
-	for _, m := range msgs {
-		if !strings.HasPrefix(m, "type mismatch") || !slices.ContainsFunc(rejected, func(k [2]types.Type) bool {
-			return strings.HasSuffix(m, " but "+k[1].String()+" was expected")
-		}) {
-			return false
-		}
-	}
-	return true
 }
 
 // stubRun is a check of stubInference's: the system of the call whose
@@ -2724,10 +2736,6 @@ func (r *stubRun) add(t, u types.Type) bool {
 	trial, _ := r.fixAll()
 	if !trial.ok || slices.ContainsFunc(trial.errs[len(r.s.errs):], func(e inferError) bool { return !strings.HasPrefix(e.msg, "cannot infer") }) {
 		r.cons = r.cons[:len(r.cons)-1]
-		k := [2]types.Type{t, u}
-		if !slices.Contains(r.s.c.stubRejected, k) {
-			r.s.c.stubRejected = append(r.s.c.stubRejected, k)
-		}
 		return false
 	}
 	return true
@@ -2970,8 +2978,8 @@ func (c *Checker) demandStubs(t types.Type) types.Type {
 	return c.fixedStub(t)
 }
 
-// stubReceiver records x, of type t, as the receiver of member name, of
-// Any, if t is a stub that nothing fixes yet (see stubRun.recvs). Not if an
+// stubReceiver records x, of type t, as the receiver of member name if t
+// is a stub that nothing fixes yet (see stubRun.recvs). Not if an
 // extension of a type parameter, which takes any receiver, may be called:
 // it checkType { } for fun <T> T.checkType(f: ...).
 func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
@@ -2979,14 +2987,10 @@ func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
 	if r == nil {
 		return
 	}
-	switch name {
-	case "hashCode", "toString", "equals":
-		// Members of Any, which a stub has, so the check passes. Others,
-		// which it hasn't, fail the check, and leave the variables
-		// uninferred (see stubInference).
-	default:
-		return
-	}
+	// Members of Any, which a stub has, so the check passes, and others,
+	// which it hasn't: K2 reports the receiver for both, as K2 can't fix
+	// the variable for the member. it.extensionProduceConcreteType() in
+	// letForTypeVariable { } before setTypeVariable(TargetType()).
 	v := t.Flex().Param()
 	if !slices.Contains(r.vars, v) || r.constrains(v) {
 		// Only one of the builder's own variables that nothing constrains
@@ -3033,7 +3037,11 @@ func (c *Checker) stubReceivers(r *stubRun) {
 		return
 	}
 	for _, rv := range r.recvs {
-		msg := fmt.Sprintf("the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", rv.v.Name)
+		if c.stubRecvAt == nil {
+			c.stubRecvAt = map[syntax.Pos]bool{}
+		}
+		c.stubRecvAt[rv.p] = true
+		msg := stubReceiverError(rv.v)
 		if !slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return e.Pos == rv.p && e.Msg == msg }) {
 			c.errorf(rv.p, "%s", msg)
 		}

@@ -383,7 +383,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		// As kotlinc's BUILDER_INFERENCE_STUB_RECEIVER, an element of a
 		// builder's type doesn't fix it here, as it does in get(0) + "K":
 		// this[0] += "K" in buildList { add("O") } is an error.
-		c.errorf(ix.P, "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", et.Flex().Param().Name)
+		c.errorf(ix.P, "%s", stubReceiverError(et.Flex().Param()))
 		return stmts, elem, true
 	}
 	if assignOp != "" && !builtinOperand(et) && c.hasFun(et.NonNull(), assignOp, &syntax.Call{Args: []syntax.Expr{arg}}) {

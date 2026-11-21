@@ -48,6 +48,12 @@ func (c *Checker) conversionWarning(x *syntax.Call) {
 	if x.Sym == nil && x.Builtin == types.NotBuiltin {
 		return
 	}
+	if c.stubRecvAt[m.X.Pos()] {
+		// A receiver of a builder's variable that nothing gave a type
+		// where it is, an error (see stubReceivers): K2 converts no
+		// String, though the variable is String later.
+		return
+	}
 	t := m.X.Type()
 	if m.Safe {
 		t = t.NonNull()

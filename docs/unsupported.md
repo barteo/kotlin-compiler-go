@@ -252,8 +252,14 @@ own tests.
   from Kotlin metadata, not from Java generic signatures: a Java class's
   method that names the other class keeps the first class.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
-  its variables unfixed and then again with them fixed. A call in a
-  nested builder that combines both builders' variables, as
+  its variables unfixed and then again with them fixed. An error in the
+  first check doesn't stop the inference, as in K2, but only two kinds
+  of its errors are kept where the second finds none, as K2 reports them
+  from the state where the code is: a member of a receiver whose type
+  nothing gives yet, which kc reports as
+  `BUILDER_INFERENCE_STUB_RECEIVER` where K2 may report the member as
+  unresolved, and a lambda's parameter whose type nothing gives yet. A
+  call in a nested builder that combines both builders' variables, as
   `select(this@outer.get(), get())`, is inferred with the inner
   builder's first, the outer one's in the system but left unfixed, and
   again with the outer one's. A fork of the constraint system over a
@@ -272,13 +278,13 @@ own tests.
   first does; K2's own order of fixation isn't modeled otherwise, but
   for KT-58232: a builder call returned by the one-branch `when` a
   lambda ends with can't infer its variables, which are `Nothing`. A
-  builder's lambda that casts its receiver to a
-  star-projected subtype, `this as DerivedBuildee<*>`, infers the
-  variable as `Unit`, where K2 infers a captured type. Of the errors a
-  call adds to K2's shared constraint system, only one shape is carried
-  to the calls after it: a generic extension called on an unresolved
-  receiver with the lambda's `this`, `Unresolved().bar(this)`, after
-  which the extension calls on the builder's receiver are inapplicable.
+  builder's lambda that casts its receiver to a star-projected subtype,
+  `this as DerivedBuildee<*>`, infers the variable as `Unit`, where K2
+  infers a captured type. Of the errors a call adds to K2's shared
+  constraint system, only one shape is carried to the calls after it: a
+  generic extension called on an unresolved receiver with the lambda's
+  `this`, `Unresolved().bar(this)`, after which the extension calls on
+  the builder's receiver are inapplicable.
 
 ## Without the standard library
 
