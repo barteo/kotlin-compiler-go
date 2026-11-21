@@ -292,6 +292,11 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 		if x.Bound || x.Class.IsParam() {
 			return x // v::class, T::class
 		}
+		for t := x.Class; t.K == types.Class && t.C == types.ArrayClass; {
+			if t = types.ArrayElem(t); t.IsParam() {
+				return x // Array<T>::class, also of a reified T
+			}
+		}
 		return nil
 	case *syntax.Spread:
 		return nonConst(x.X, depth+1)

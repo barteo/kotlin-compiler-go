@@ -1579,6 +1579,34 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 			}
 		}
 	}
+	// An internal abstract member of another module's superclass can't be
+	// implemented here, as kotlinc's INVISIBLE_ABSTRACT_MEMBER_FROM_SUPER:
+	// unless a subclass in that module implements it, the class can't be
+	// instantiated.
+	seen := map[string]bool{}
+invisible:
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		sc.Ensure()
+		for _, key := range slices.Sorted(maps.Keys(sc.InvisibleMembers)) {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			name, _, _ := strings.Cut(strings.TrimPrefix(key, "prop "), "/")
+			// A member of the class of that name is an error of its own,
+			// CANNOT_OVERRIDE_INVISIBLE_MEMBER, instead.
+			declares := slices.ContainsFunc(cls.Methods[name], func(f *types.FunSym) bool { return f.Owner == cls }) ||
+				cls.Prop(name) != nil && cls.Prop(name).Owner == cls
+			if sc.InvisibleMembers[key] && !d.Enum && !declares {
+				what := "class '" + cls.DisplayName() + "'"
+				if cls.Object {
+					what = "object '" + cls.DisplayName() + "'"
+				}
+				c.errorf(d.P, "%s inherits invisible abstract member '%s' of %s, which it can't implement", what, name, sc.DisplayName())
+				break invisible
+			}
+		}
+	}
 	// A class that implements Kotlin's collection types implements the
 	// abstract methods of Java's collection classes it extends with their
 	// Kotlin members, under other names: Java's AbstractList.size() with

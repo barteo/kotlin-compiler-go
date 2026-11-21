@@ -522,12 +522,26 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 		return slices.ContainsFunc(all, subOfAll), subOfAll(t)
 	}
 	reported := map[string]bool{}
+	// A member delegation implements can't override a superclass's final
+	// one (OVERRIDING_FINAL_MEMBER_BY_DELEGATION), reported once.
+	finalReported := false
+	overridesFinal := func(kind, name string) {
+		if !finalReported {
+			finalReported = true
+			c.errorf(d.P, "%s '%s', which delegation implements, overrides a final member of a superclass", kind, name)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
 		for _, f := range cls.Methods[name] {
 			if _, ok := f.Decl.(*syntax.Delegated); !ok || f.Ext || reported[name] {
 				continue
 			}
 			over := c.overridden(cls, f)
+			for _, o := range over {
+				if !o.Owner.Interface && !o.Abstract && o.Final {
+					overridesFinal("fun", name)
+				}
+			}
 			for i := range f.Params {
 				n := 0
 				for _, o := range over {
@@ -570,6 +584,9 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 		var ts []types.Type
 		mutable := false
 		for _, o := range c.overriddenProps(cls, p) {
+			if !o.owner.Interface && !o.abstract && o.final {
+				overridesFinal("property", p.Name)
+			}
 			if o.owner.External {
 				ts = nil
 				break

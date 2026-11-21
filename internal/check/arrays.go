@@ -60,7 +60,7 @@ func (c *Checker) arrayCall(x *syntax.Call, f *types.FunSym, want types.Type, si
 	case types.EnumValues, types.EnumValueOf:
 		c.enumIntrinsic(x, t)
 	default:
-		c.reified(x, t)
+		c.reified(x, t, sink)
 	}
 	return t
 }
@@ -124,7 +124,7 @@ func (c *Checker) arrayConstruct(x *syntax.Call, cls *types.ClassSym, want types
 	if x.Sym != nil {
 		x.Builtin = x.Sym.Builtin
 	}
-	c.reified(x, t)
+	c.reified(x, t, sink)
 	return t
 }
 
@@ -149,13 +149,29 @@ func typedDeadLast(x *syntax.Call) bool {
 
 // reified checks the element type of an array a call creates, which must
 // be known when the program runs: not a type parameter, which is erased.
-func (c *Checker) reified(x *syntax.Call, t types.Type) {
-	if t.K != types.Class || t.C != types.ArrayClass || t.HasVars() {
+//
+// A call nested in another's arguments may have its type only from the
+// outer call's constraint system, sink: it is checked once that is fixed,
+// as with Pair(arrayOf(), arrayOf()) for a Pair<Array<T>, Array<T>>.
+func (c *Checker) reified(x *syntax.Call, t types.Type, sink *system) {
+	if t.K != types.Class || t.C != types.ArrayClass {
+		return
+	}
+	if t.HasVars() {
+		if sink != nil {
+			sink.fixups = append(sink.fixups, func(s *system) {
+				if f := s.final(t); !f.HasVars() {
+					c.reified(x, f, nil)
+				}
+			})
+		}
 		return
 	}
 	switch e := types.ArrayElem(t); {
 	case e.K == types.TypeParam && !e.Param().Reified:
 		c.errorf(x.P, "cannot use '%s' as reified type parameter: use a class instead", e.Param().Name)
+	case erasedArrayElem(e) != nil:
+		c.errorf(x.P, "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(e).Name)
 	case e.K == types.Nothing && !e.N && (len(x.TypeArgs) == 1 || !typedDeadLast(x)):
 		p := x.P
 		if len(x.TypeArgs) == 1 {
@@ -285,4 +301,21 @@ func (c *Checker) aliasArrayNothing(d *syntax.TypeAliasDecl) {
 	for _, ref := range refs {
 		c.errorf(ref.P, "'Array<Nothing?>' isn't supported on the JVM")
 	}
+}
+
+// erasedArrayElem returns the type parameter, not reified, that t is an
+// array of, directly or through arrays of arrays (Array<Array<T>>), or
+// nil. Such an array's class isn't known when the program runs, as
+// kotlinc's TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR has it.
+func erasedArrayElem(t types.Type) *types.TypeParamSym {
+	for t.K == types.Class && t.C == types.ArrayClass && !t.HasVars() {
+		t = types.ArrayElem(t)
+		if t.K == types.TypeParam {
+			if t.Param().Reified {
+				return nil
+			}
+			return t.Param()
+		}
+	}
+	return nil
 }

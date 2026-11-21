@@ -2367,8 +2367,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
-		if sym.JvmField && sym.JvmStatic {
-			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
+		// Also through a typealias of JvmStatic.
+		if a := c.findAnnotation(d.Annotations, "", "JvmStatic", "kotlin/jvm/JvmStatic"); a != nil && owner.Object && !owner.Anonymous && (sym.JvmField || d.Const) {
+			c.errorf(a.P, "'@JvmStatic' annotation is useless for const or '@JvmField' properties")
 		}
 
 	}
@@ -2397,6 +2398,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.Lateinit {
 		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
 		sym.Lateinit = true
+	}
+	if owner != nil && owner.Interface && d.Visibility == syntax.Private && !d.Abstract && d.Init == nil && d.Getter == nil && d.Field == nil {
+		// Abstract, as it has no value, but no class can implement it.
+		c.errorf(modPos(d.Written, "private", d.P), "abstract property in an interface cannot be private")
 	}
 	switch {
 	case d.Abstract && ext:

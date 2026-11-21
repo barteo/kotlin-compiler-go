@@ -1992,7 +1992,16 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			hidden[m.Name+m.Desc] = true
 		}
 	}
+	invisible := func(key string, flags kmeta.Flags) {
+		if cls.InvisibleMembers == nil {
+			cls.InvisibleMembers = map[string]bool{}
+		}
+		cls.InvisibleMembers[key] = flags.Modality() == kmeta.Abstract
+	}
 	for _, f := range kc.Funcs {
+		if f.Flags.Visibility() == kmeta.Internal && !friend && f.Flags.MemberKind() != 1 && f.Recv == nil {
+			invisible(f.Name+"/"+strconv.Itoa(len(f.Params)), f.Flags)
+		}
 		if !visibleOutside(f.Flags.Visibility(), friend) || f.Flags.MemberKind() == 1 /* fake override */ {
 			continue
 		}
@@ -2058,6 +2067,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	for _, p := range kc.Props {
+		if p.Flags.Visibility() == kmeta.Internal && !friend && p.Flags.MemberKind() != 1 && p.Recv == nil {
+			invisible("prop "+p.Name, p.Flags)
+		}
 		if p.Getter == nil && p.Field != nil && p.Recv == nil && public(p.Flags.Visibility(), friend) && instanceFields[p.Field.Name] {
 			// A @JvmField property: a public field and no accessors, as
 			// Buffer.UnsafeCursor's offset.
