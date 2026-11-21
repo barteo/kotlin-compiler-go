@@ -31,10 +31,11 @@
 //              daemon's builds must name one directory with one libkc.so: after an upgrade of
 //              kc, restart the daemon.
 //              Checked with the KSP Gradle plugin 2.3.12 and 2.3.13.
-//   KC_KSP_KEEP  1: KSP on kc keeps the processors' classes loaded between the tasks and builds
-//              of a daemon, for as long as the processors' jars stay the same. KSP's Gradle
-//              plugin loads them anew for every task, so every run starts on code the JVM has
-//              not compiled yet. A processor then keeps its static state between runs.
+//   KC_KSP_KEEP  0: KSP on kc loads the processors' classes anew for every task, as KSP's Gradle
+//              plugin does. Otherwise it keeps them loaded between the tasks and builds of a
+//              daemon, for as long as the processors' jars stay the same, so that a run doesn't
+//              start on code the JVM has not compiled yet. A processor then keeps its static
+//              state between runs.
 //   KC_KSP_FORGET  1: KSP on kc keeps nothing of a module in memory for the daemon's next build.
 //              Without it, the modules whose KSP tasks ran last keep their parsed files, models
 //              and class paths, so that a build after an edit reads only what changed: gigabytes
