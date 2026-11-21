@@ -29,7 +29,9 @@ key and detail. Flags after the mode go to the harness:
   (the first field of a TSV line; `#` starts a comment).
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
-  file and line, and the message.
+  file and line, and the message. It leaves out errors of a kind the
+  test's `DIAGNOSTICS` directive switches off, where `kc`'s message names
+  the kind (`check.IsNamed`).
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
   diagnostic and its severity, and `hit` if `kc` reported on its line an
