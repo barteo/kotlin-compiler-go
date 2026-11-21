@@ -109,3 +109,47 @@ fun n7() {
     +0 // UNUSED_EXPRESSION
     -(1 - 1)
 }
+// Lambdas whose body is checked against an expected Unit result, whose
+// last statement is unused too, and anonymous functions.
+fun uRun(block: () -> Unit) {}
+fun <T> uConsume(block: () -> T) {}
+fun interface UF { fun f() }
+fun uTake(f: UF) {}
+fun uDef(f: () -> Unit = { 1; 2 }) {}
+class UK(val f: () -> Unit = { 3 }) {
+    val p = uRun { "" } // UNUSED_EXPRESSION
+    init { uRun { 'c' } } // UNUSED_EXPRESSION
+}
+fun u1(c: Boolean, sb: StringBuilder, a: String) {
+    uRun { 1 } // UNUSED_EXPRESSION
+    uRun { val y = 2; y } // UNUSED_EXPRESSION
+    uRun { uRun { 'c' } } // UNUSED_EXPRESSION
+    uConsume<Unit> { 2.0 } // UNUSED_EXPRESSION
+    uConsume { 3 }
+    val f: () -> Unit = { "" } // UNUSED_EXPRESSION
+    f()
+    uRun { if (c) "" else "a" } // UNUSED_EXPRESSION
+    uRun { fun() = 1 } // UNUSED_EXPRESSION
+    uRun { null } // UNUSED_EXPRESSION
+    uRun { "x" + 1 }
+    uRun { String::class } // UNUSED_EXPRESSION
+    uTake { 2 } // UNUSED_EXPRESSION
+    sb.also { it } // UNUSED_EXPRESSION
+    sb.let { it }
+    uConsume { when (a) { "" -> "" } } // UNUSED_EXPRESSION
+    uConsume { when (a) { "" -> ""; else -> "b" } }
+    listOf(1).map { it }
+}
+fun u2(c: Boolean) {
+    fun() = 1 // UNUSED_EXPRESSION
+    if (c) fun() = 1 else fun() {} // UNUSED_EXPRESSION
+    when (1) {
+        0 -> fun() = 2 // UNUSED_EXPRESSION
+        else -> fun() = 3 // UNUSED_EXPRESSION
+    }
+    val h = if (c) fun() = 1 else fun() = 2
+    h()
+    uConsume { fun() = 1 }
+    try { fun() = 1 } finally { fun() = 2 } // UNUSED_EXPRESSION
+    String::class // UNUSED_EXPRESSION
+}

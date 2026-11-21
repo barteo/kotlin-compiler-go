@@ -15,7 +15,7 @@ import (
 // checker didn't find are never not null here. A wrong warning breaks a
 // build with -Werror.
 func (c *Checker) localWarnings() {
-	u := &unusedWarnings{usedBlocks: map[*syntax.Block]bool{}, unused: map[syntax.Expr]bool{}}
+	u := newUnusedWarnings(c.file.Decls)
 	c.shadowWarnings()
 	c.dangerousNames()
 	c.inPlaceWarnings()

@@ -1677,6 +1677,10 @@ type Lambda struct {
 	// Composable is set by the checker on a composable lambda: its
 	// expected type is a composable function type, or it is Annotated.
 	Composable bool
+	// UnitCoerced is set by the checker on a lambda literal whose body it
+	// checked against an expected Unit result, as kotlinc's coercion to
+	// Unit: the value of its last statement is dropped.
+	UnitCoerced bool
 }
 
 // CallableRef is a callable reference: ::f, C::m, x::m, ::C, or the same
