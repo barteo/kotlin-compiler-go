@@ -960,7 +960,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
 				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
 			} else {
-				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
+				cd.params[j] = cd.sub.ApplyParam(cl.argType(j, x.Args))
 			}
 			if targs != nil {
 				cd.params[j] = c.nullableUnitResult(cl.argType(j, x.Args), cd.params[j], cd.sub)
