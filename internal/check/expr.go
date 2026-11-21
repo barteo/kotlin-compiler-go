@@ -826,8 +826,16 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		} else {
 			c.scope.narrows = whenFalse
 		}
+		base := len(c.scope.narrows)
 		yt := c.value(x.Y, types.BoolType)
+		added := slices.Clone(c.scope.narrows[min(base, len(c.scope.narrows)):])
 		c.pop()
+		// The right side may not run: what it assigns, as an in-place
+		// lambda's r = null in q || r.also { r = null }!!, ends the
+		// smart casts that don't hold of its values too.
+		n := len(c.scope.narrows)
+		c.scope.narrows = append(c.scope.narrows, added...)
+		c.mayNotRun(n, nil)
 		c.wantBool(x.Y)
 		if yt.K == types.Nothing {
 			// a && throw E(), a || return: the code after it sees a false,

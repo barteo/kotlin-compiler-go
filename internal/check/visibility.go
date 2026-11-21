@@ -559,18 +559,47 @@ func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax
 		if t.K == types.Invalid || t.IsIntersection() {
 			return true
 		}
-		return c.protectedViaClass(owner, f, c.classOf(t.NonNull()))
+		rc := c.classOf(t.NonNull())
+		// As in K2, an override of a member the code sees is visible on
+		// the override's class only through a smart cast from a type
+		// whose member the code sees, which K2 falls back to:
+		// other.kind() of other: Shape smart-cast to Square, in Shape's
+		// code, but not x.kind() of x: Square, nor of x: Any smart-cast
+		// to Square. Java's rule is by package, not by the override.
+		via := c.castFromClass(x)
+		if isJavaClass(owner) {
+			via = rc
+		}
+		return c.protectedViaClass(owner, f, rc, via)
 	}
 }
 
+// castFromClass returns, for a variable x whose smart cast changes its
+// class, the class of its declared type, and nil otherwise.
+func (c *Checker) castFromClass(x syntax.Expr) *types.ClassSym {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		if x.Cast && x.Sym != nil {
+			return c.classOf(x.Sym.Type.NonNull())
+		}
+	case *syntax.Member:
+		if x.Cast && x.Prop != nil {
+			return c.classOf(x.Prop.Type.NonNull())
+		}
+	}
+	return nil
+}
+
 // protectedViaClass is protectedVia1 for a receiver of class rc, nil if
-// it isn't known.
-func (c *Checker) protectedViaClass(owner *types.ClassSym, f *types.FunSym, rc *types.ClassSym) bool {
+// it isn't known. A member of owner that overrides one the code sees is
+// visible too if the receiver's class is also via, nil for none: the
+// class of the type a smart cast is from.
+func (c *Checker) protectedViaClass(owner *types.ClassSym, f *types.FunSym, rc, via *types.ClassSym) bool {
 	if rc == nil {
 		return true
 	}
 	for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
-		if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
+		if (k == owner || k.IsSubclassOf(owner) || via != nil && (via == k || via.IsSubclassOf(k)) && owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
 			return true
 		}
 		if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
@@ -593,7 +622,8 @@ func (c *Checker) protectedSetterVia(p *types.VarSym, x syntax.Expr) bool {
 		return true
 	}
 	if d, ok := c.smartCastFrom(x, x.Type()); ok && !d.N && p.Owner != nil && p.Owner.CompanionOf == nil && !p.Owner.Object && !c.javaPackage(p.Owner) {
-		return c.protectedViaClass(p.Owner, nil, c.classOf(d.NonNull()))
+		dc := c.classOf(d.NonNull())
+		return c.protectedViaClass(p.Owner, nil, dc, dc)
 	}
 	return true
 }
