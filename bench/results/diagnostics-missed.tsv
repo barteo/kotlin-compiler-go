@@ -174,8 +174,6 @@ tests/inference/kt49658.kt	kt49658.kt:15	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658.kt	kt49658.kt:6	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658Strict.kt	kt49658Strict.kt:15	RETURN_TYPE_MISMATCH	nearby
 tests/inference/kt49658Strict.kt	kt49658Strict.kt:6	RETURN_TYPE_MISMATCH	nearby
-tests/inference/pcla/csForks/relatedToOuter.kt	relatedToOuter.kt:28	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/inference/pcla/csForks/relatedToOuter.kt	relatedToOuter.kt:48	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	ContravariantTypeVariableCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	CovariantTypeVariableCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	TypeVariableStarCapture.kt:10	UNRESOLVED_REFERENCE	nearby

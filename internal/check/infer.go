@@ -1308,7 +1308,16 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 // writes the results into the tree.
 func (s *system) finish() {
 	if r := s.c.joinRun(s); r != nil {
-		if !slices.Contains(r.joined, s) {
+		switch {
+		case slices.Contains(r.joined, s):
+		case len(s.forks) > 0 && !r.agrees(s):
+			// As in K2, a call that contradicts the builder's constraints
+			// isn't applicable: baz(a, 1) for Controller<F>.baz(A<F>, F)
+			// with a smart cast to B & A<T> where an earlier baz(a, w)
+			// gave the builder's variable T. Completed on its own, it
+			// leaves the builder's variable to the others.
+			s.complete()
+		default:
 			r.join(s)
 		}
 	} else {

@@ -2811,6 +2811,19 @@ func (r *stubRun) join(s *system) {
 	}
 }
 
+// agrees reports whether r's constraints, with those of s, a call's
+// system, still agree, if they did without them.
+func (r *stubRun) agrees(s *system) bool {
+	if _, _, ok := r.solve(); !ok {
+		return true
+	}
+	joined := r.joined
+	r.joined = append(r.joined[:len(r.joined):len(r.joined)], s)
+	defer func() { r.joined = joined }()
+	_, _, ok := r.solve()
+	return ok
+}
+
 // add records t <: u in r, and reports whether it agrees with the
 // constraints recorded so far and the variables' declared bounds: as in
 // Kotlin, a candidate that would make them disagree isn't applicable.

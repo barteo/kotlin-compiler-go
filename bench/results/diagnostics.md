@@ -66,11 +66,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21545 of 22026 expected errors (97.8%) on their lines.
+kc reports 21547 of 22026 expected errors (97.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1434 | 57 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1436 | 55 |
 | `UNRESOLVED_REFERENCE` | 2553 | 2498 | 55 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
@@ -142,7 +142,7 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | syntax-error | 74 | 15.4% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 58 | 12.1% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `UNRESOLVED_REFERENCE` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 315 | 65.5% | `ARGUMENT_TYPE_MISMATCH` 40, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
+| missing-check | 313 | 65.3% | `ARGUMENT_TYPE_MISMATCH` 38, `UNRESOLVED_REFERENCE` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `OVERLOAD_RESOLUTION_AMBIGUITY` 13, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10 |
 
 ## Errors kotlinc doesn't report
 
@@ -153,7 +153,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved reference: _` | 185 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
 | `type mismatch: inferred type is _ but _ was expected` | 128 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 70 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 68 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
