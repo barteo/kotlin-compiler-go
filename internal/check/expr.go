@@ -888,7 +888,13 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 					yw = sup
 				}
 			}
+			// The left's type is a hint, not a type expected of the
+			// right side: a lambda's nullable result there makes the
+			// elvis nullable, as in a ?: b.let { it.firstOrNull() }.
+			saved := c.operator
+			c.operator = x
 			yt = c.elvisRight(x.Y, yw, xt, true) // see expected.go
+			c.operator = saved
 		} else {
 			yt = c.elvisRight(x.Y, want, xt, false)
 		}
