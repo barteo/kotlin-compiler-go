@@ -2,6 +2,7 @@ package check
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -22,7 +23,25 @@ func (c *Checker) paramNameWarnings(fd *syntax.FunDecl, over []*types.FunSym) {
 				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", o.Owner.DisplayName(), q)
 			}
 		}
+		// Context parameters too, an anonymous one's name being _.
+		for i, p := range fd.Contexts {
+			if len(o.Contexts) != len(fd.Contexts) {
+				break
+			}
+			if q := contextName(o.Contexts[i]); q != "" && p.Name != "" && p.Name != q {
+				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", o.Owner.DisplayName(), q)
+			}
+		}
 	}
+}
+
+// contextName returns the name of context parameter p as written: _ for
+// an anonymous one.
+func contextName(p *types.VarSym) string {
+	if strings.HasPrefix(p.Name, "$context-") {
+		return "_"
+	}
+	return p.Name
 }
 
 // stableParamNames reports whether function f's parameter names are
@@ -56,12 +75,26 @@ func overriddenByAnother(o *types.FunSym, over []*types.FunSym) bool {
 // parameters differently. A Java method among them has no stable names,
 // and then nothing is reported.
 func (c *Checker) supertypeParamNameWarnings(d *syntax.ClassDecl, gr []*types.FunSym) {
-	if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !stableParamNames(g) || len(g.Params) != len(gr[0].Params) }) {
+	if slices.ContainsFunc(gr, func(g *types.FunSym) bool {
+		return !stableParamNames(g) || len(g.Params) != len(gr[0].Params) || len(g.Contexts) != len(gr[0].Contexts)
+	}) {
 		return
 	}
-	for i := range gr[0].Params {
+	// The context parameters, then the parameters.
+	names := func(g *types.FunSym) []string {
+		var out []string
+		for _, p := range g.Contexts {
+			out = append(out, contextName(p))
+		}
+		for _, p := range g.Params {
+			out = append(out, p.Name)
+		}
+		return out
+	}
+	first := names(gr[0])
+	for i := range first {
 		for _, g := range gr[1:] {
-			if a, b := gr[0].Params[i].Name, g.Params[i].Name; a != b {
+			if a, b := first[i], names(g)[i]; a != b && (i >= len(g.Contexts) || a != "" && b != "") {
 				c.warnf(d.P, "DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES", "Names '%s' and '%s' of parameter #%d conflict in the following members of supertypes: '%s' defined in '%s', '%s' defined in '%s'. This may cause problems when calling this function with named arguments.",
 					a, b, i, gr[0].Name, gr[0].Owner.DisplayName(), g.Name, g.Owner.DisplayName())
 				return

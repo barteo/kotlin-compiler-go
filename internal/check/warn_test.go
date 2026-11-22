@@ -850,3 +850,18 @@ func TestWarningsIncompatibleTargets(t *testing.T) {
 func TestWarningsContextualShadowingGeneric(t *testing.T) {
 	checkReference(t, "testdata/ctxshadow_generic.kt", Options{Warnings: true})
 }
+
+// TestWarningsAliasExpansionDeprecated checks the warnings of typealiases
+// whose expansions use deprecated classes, in types, bounds, class
+// literals and constructor calls, against kotlinc's of
+// testdata/alias_deprecated.kt.
+func TestWarningsAliasExpansionDeprecated(t *testing.T) {
+	checkReference(t, "testdata/alias_deprecated.kt", Options{Warnings: true})
+}
+
+// TestWarningsContextParameterNames checks the warnings of context
+// parameters named otherwise in an override, or in two supertypes,
+// against kotlinc's of testdata/ctxnames.kt.
+func TestWarningsContextParameterNames(t *testing.T) {
+	checkReference(t, "testdata/ctxnames.kt", Options{Warnings: true})
+}
