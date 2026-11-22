@@ -41,24 +41,16 @@ own tests.
     `EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING`.
   - Those of annotations: `WRONG_ANNOTATION_TARGET_WARNING`,
     `INAPPLICABLE_TARGET_ON_PROPERTY_WARNING`,
-    `INCOMPATIBLE_ANNOTATION_TARGETS`,
     `ANNOTATION_WILL_BE_APPLIED_ALSO_TO_PROPERTY_OR_FIELD`,
     `ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE`,
-    `REDUNDANT_ANNOTATION`, `REDUNDANT_ANNOTATION_TARGET`,
-    `REDUNDANT_REPEATABLE_ANNOTATION`, `REPEATED_ANNOTATION_WARNING`,
-    `INAPPLICABLE_JVM_FIELD_WARNING`, `OVERLOADS_PRIVATE`,
-    `OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS`,
+    `REDUNDANT_ANNOTATION`, `REPEATED_ANNOTATION_WARNING`,
+    `INAPPLICABLE_JVM_FIELD_WARNING`,
     `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION`,
-    `USELESS_JVM_EXPOSE_BOXED`, `NEWER_VERSION_IN_SINCE_KOTLIN` and
-    `DSL_MARKER_PROPAGATES_TO_MANY`, and of opt-in markers:
-    `OPT_IN_WITHOUT_ARGUMENTS`, `OPT_IN_ARGUMENT_IS_NOT_MARKER`,
-    `OPT_IN_MARKER_ON_OVERRIDE_WARNING` and `OPT_IN_TO_INHERITANCE`.
+    `NEWER_VERSION_IN_SINCE_KOTLIN` and
+    `OPT_IN_MARKER_ON_OVERRIDE_WARNING`.
   - Those of modifiers: `DEPRECATED_MODIFIER_PAIR`,
-    `DEPRECATED_MODIFIER_FOR_TARGET`,
     `DEPRECATED_MODIFIER_CONTAINING_DECLARATION`,
-    `REDUNDANT_MODIFIER_FOR_TARGET`,
     `INAPPLICABLE_OPERATOR_MODIFIER_WARNING`,
-    `OPERATOR_RENAMED_ON_IMPORT`,
     `CANNOT_CHANGE_ACCESS_PRIVILEGE_WARNING` and
     `CANNOT_INFER_VISIBILITY_WARNING`.
   - Those of deprecated forms: `DEPRECATED_ACCESS_TO_ENTRIES_PROPERTY`,
@@ -86,7 +78,6 @@ own tests.
     `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING`,
-    `TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER`,
     `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS_WARNING`,
     `CONFLICTING_PROJECTION_IN_CALLABLE_REFERENCE_WARNING`,
     `LOCAL_VARIABLE_WITH_TYPE_PARAMETERS_WARNING`,
@@ -110,16 +101,24 @@ own tests.
     `UNNAMED_PROPERTY_WITH_IMPLICIT_IGNORABLE_TYPE`,
     `RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER`, `LABEL_NAME_CLASH`,
     `REDUNDANT_LABEL_WARNING`, `REDUNDANT_RETURN`,
-    `ESCAPING_CAPTURED_VARIABLE`, `TRIM_MARGIN_BLANK_PREFIX`,
+    `ESCAPING_CAPTURED_VARIABLE`,
     `INEFFICIENT_EQUALS_OVERRIDING_IN_VALUE_CLASS`,
     `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY`, and those of
     the return value checker: `RETURN_VALUE_NOT_USED`,
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
   - With `-Wextra`: `CAN_BE_VAL`, `CAN_BE_VAL_DELAYED_INITIALIZATION`,
-    `CAN_BE_VAL_LATEINIT`, `REDUNDANT_MODALITY_MODIFIER`,
-    `REDUNDANT_RETURN_UNIT_TYPE`, `REDUNDANT_SETTER_PARAMETER_TYPE` and
-    `REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE`.
+    `CAN_BE_VAL_LATEINIT` and `REDUNDANT_MODALITY_MODIFIER`.
+
+  Of a program with a syntax error, which `kc` checks without the
+  statements and declarations that have the errors, only the warnings
+  that what is left out can't be the reason for are reported: those
+  judged by the syntax and modifiers of what is kept, by the types of a
+  declaration's header, or by two declarations that are both kept, such
+  as `REDUNDANT_MODIFIER` and `FINAL_UPPER_BOUND`; not those of what
+  isn't used or reached, of an expression's type, of what a name
+  resolves to, or of overrides. `kotlinc`'s command line prints no
+  warnings at all with an error.
 
   These are reported only in part:
   - The null checks, such as `UNNECESSARY_SAFE_CALL`,
@@ -186,8 +185,18 @@ own tests.
     class, nor of a local class inside a generic class.
   - `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` not of a
     constructor call.
-  - `CONTEXTUAL_OVERLOAD_SHADOWED` not where the context parameters'
-    types mention type parameters.
+  - `CONTEXTUAL_OVERLOAD_SHADOWED` not where a platform type or a type
+    `kc` couldn't resolve is involved, nor between overloads with more
+    than sixteen pairs of context parameters to compare.
+  - `REDUNDANT_ANNOTATION_TARGET` not of an annotation in a bracketed
+    list, as `@param:[A B]`.
+  - `INCOMPATIBLE_ANNOTATION_TARGETS` only where Java's `@Target` names
+    the entries of `ElementType`, not constants of its own.
+  - `DEPRECATED_MODIFIER_FOR_TARGET` only of `external` on an enum entry
+    or a constructor's property, and `REDUNDANT_MODIFIER_FOR_TARGET`
+    only of an `open interface`.
+  - `OPERATOR_RENAMED_ON_IMPORT` of top-level functions and objects'
+    members, the program's and the class path's Kotlin ones.
   - `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` only of an inherited var's
     setter.
   - `INFERRED_INVISIBLE_RETURN_TYPE_WARNING`,
