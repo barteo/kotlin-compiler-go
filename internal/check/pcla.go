@@ -338,8 +338,45 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	live := pclaWrite(l, sub)
 	savedSub, savedLive := c.pclaSub, c.pclaLive
 	c.pclaSub, c.pclaLive = sub, live
-	for _, q := range k.postponed {
+	// A call whose variable is bounded by one of another's, as flatMap's
+	// R by the L of the listOf(it) in its lambda, completes after it,
+	// with what its completion inferred.
+	pending := slices.Clone(k.postponed)
+	for len(pending) > 0 {
+		waits := func(q *system) bool {
+			theirs := func(u types.Type) bool {
+				if u.K != types.TypeVar || q.byVar[u.Param()] != nil {
+					return false
+				}
+				if _, known := sub[u.Param()]; known {
+					return false
+				}
+				return slices.ContainsFunc(pending, func(o *system) bool { return o != q && o.byVar[u.Param()] != nil })
+			}
+			for _, tv := range q.vars {
+				if !tv.fixed && (slices.ContainsFunc(tv.lower, func(t types.Type) bool { return t.Has(theirs) }) ||
+					slices.ContainsFunc(tv.upper, func(t types.Type) bool { return t.Has(theirs) })) {
+					return true
+				}
+			}
+			return false
+		}
+		i := slices.IndexFunc(pending, func(q *system) bool { return !waits(q) })
+		if i < 0 {
+			i = 0
+		}
+		q := pending[i]
+		pending = slices.Delete(pending, i, i+1)
 		q.pclaComplete(sub)
+		for _, tv := range q.vars {
+			if _, known := sub[tv.v]; known || !tv.fixed {
+				continue
+			}
+			if a, ok := q.vals[tv.v]; ok && !sub.Apply(a.T).HasVars() {
+				a.T = sub.Apply(a.T)
+				sub[tv.v] = a
+			}
+		}
 	}
 	c.pclaSub, c.pclaLive = savedSub, savedLive
 	pclaWrite(l, sub)
