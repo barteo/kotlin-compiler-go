@@ -265,12 +265,12 @@ own tests.
   variables from being inferred. The inferred types are then written
   into the lambda's tree. What differs
   from K2:
-  - Of the errors a call adds to K2's shared constraint system, only
-    one shape is carried to the calls after it: a generic extension
-    called on an unresolved receiver with the lambda's `this`,
-    `Unresolved().bar(this)`, after which the extension calls on the
-    builder's receiver are inapplicable. K2 fails every later call of
-    the lambda, with an error on each argument.
+  - A call that fails K2's shared constraint system, a generic
+    extension called on an unresolved receiver with a lambda or the
+    lambda's `this` (`Unresolved().apply { }`), fails the calls after
+    it as K2 does, but leaves the builder's variables uninferred even
+    where a call before it gave them a type, and words the errors of
+    the members of a value whose type wasn't inferred differently.
   - A variable that is a component of a smart cast's intersection,
     `OTv & A` after `x is A`, isn't fixed for a member, and one that a
     projection captures is, where K2 leaves its member unresolved. kc

@@ -2418,12 +2418,12 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// recorded, and the errors reported where they are. But a lambda whose only errors are ambiguous
 	// calls, as Entry(it) whose constructors the unfixed variables make
 	// ambiguous, takes the variables from the others: what it recorded
-	// is dropped. And an unresolved reference that poisons the system
-	// (see poisons) leaves them uninferred.
+	// is dropped. And a call that fails the shared system (see
+	// pclaFailedCall) leaves them uninferred.
 	clean := false
 	for _, sl := range group {
 		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
-		ok, ambiguous, unresolved, errs := c.stubCheck(s, sl, r)
+		ok, ambiguous, errs := c.stubCheck(s, sl, r)
 		for _, e := range errs {
 			pclaLogf("PCLA %s first check: %s: %s\n", sl.l.P, e.Pos, e.Msg)
 		}
@@ -2432,7 +2432,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			switch {
 			case ambiguous:
 				how = "ambiguous"
-			case !ok && unresolved.Line > 0 && c.poisons(sl.l, unresolved):
+			case r.failed.Line > 0:
 				how = "poisoned"
 			case !ok:
 				how = "errors"
@@ -2453,11 +2453,11 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			r.cons, r.joined, r.extra = r.cons[:nc], r.joined[:nj], r.extra[:ne]
 			continue
 		}
-		if !ok && unresolved.Line > 0 && c.poisons(sl.l, unresolved) {
+		if r.failed.Line > 0 {
 			if c.pclaPoison == nil {
 				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
 			}
-			c.pclaPoison[sl.l] = unresolved
+			c.pclaPoison[sl.l] = r.failed
 			clean = false
 			break
 		}
@@ -2587,7 +2587,7 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, unresolved syntax.Pos, errs []*syntax.Error) {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool, errs []*syntax.Error) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
@@ -2629,14 +2629,9 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	if clean && bt.K != types.Invalid && bt.K != types.Unit && (ret.Has(ours) || ret.Has(unfixed) && bt.Has(ours)) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
-	for _, e := range c.errs[n:] {
-		if unresolved.Line == 0 && strings.HasPrefix(e.Msg, "unresolved reference") {
-			unresolved = e.Pos
-		}
-	}
 	errs = slices.Clone(c.errs[n:])
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean, ambiguous, unresolved, errs
+	return clean, ambiguous, errs
 }
 
 // poisonedRecv reports a call f() at p on the receiver r of a builder
@@ -2675,52 +2670,6 @@ func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id
 	c.errorf(p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", name)
 }
 
-// poisons reports whether the unresolved reference at p in builder
-// lambda l is the receiver of a call of a generic extension that takes
-// the lambda's this, MyUnresolvedClass().bar(this) for fun <V, Y>
-// V.bar(y: Y): K2 adds the call, which can't infer V, to the builder's
-// shared constraint system, and its error makes the extension calls on
-// the receiver after it inapplicable (see poisonedRecv). Another
-// unresolved reference, as MyUnresolvedClass().bar(1) or baz(this,
-// MyUnresolvedClass()), leaves them alone.
-func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
-	head := func(e syntax.Expr) syntax.Pos {
-		for {
-			switch y := e.(type) {
-			case *syntax.Call:
-				e = y.Fun
-			case *syntax.Member:
-				e = y.X
-			case *syntax.Ident:
-				return y.P
-			default:
-				return syntax.Pos{}
-			}
-		}
-	}
-	found := false
-	syntax.Inspect(l.Body, func(n any) bool {
-		x, ok := n.(*syntax.Call)
-		if !ok || found {
-			return !found
-		}
-		m, ok := x.Fun.(*syntax.Member)
-		if !ok || head(m.X) != p || !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool {
-			t, ok := a.(*syntax.This)
-			return ok && t.Label == ""
-		}) {
-			return true
-		}
-		for _, cl := range c.extCalleesFor(m.Name, types.Type{K: types.Any}.Nullable(), nil) {
-			if cl.f.Recv.K == types.TypeParam {
-				found = true
-			}
-		}
-		return !found
-	})
-	return found
-}
-
 // stubRun is a check of stubInference's: the system of the call whose
 // lambda it checks, the variables it infers, and the constraints recorded
 // on them.
@@ -2747,8 +2696,11 @@ type stubRun struct {
 	// were inferred in. postponed are the systems that finished in the
 	// lambdas, whose fixups run again with the variables inferred, and
 	// defers what the check decides again then.
-	checks    []pclaCheck
-	solved    *system
+	checks []pclaCheck
+	solved *system
+	// failed is where a call failed the shared system, if one did (see
+	// pclaFailedCall).
+	failed    syntax.Pos
 	postponed []*system
 	defers    []func(types.Subst)
 	// subs are what the variables of the lambdas in r's whose checks

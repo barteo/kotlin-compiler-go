@@ -372,8 +372,8 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		}
 	}
 	// As in K2, the calls of extensions on the receiver after an
-	// unresolved reference that left the variables uninferred (see
-	// poisons) are inapplicable.
+	// call that failed the shared system (see pclaFailedCall) are
+	// inapplicable.
 	if at, ok := c.pclaPoison[l]; ok {
 		for _, x := range c.pclaPoisoned[l] {
 			if (x.p.Line > at.Line || x.p.Line == at.Line && x.p.Col > at.Col) && sub.Apply(x.t).Has(func(u types.Type) bool { return u.K == types.Invalid }) {

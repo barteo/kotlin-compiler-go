@@ -2747,6 +2747,14 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	t := c.call1(x, want, sink)
+	if len(c.pclaRuns) > 0 {
+		t = c.pclaFailedCall(x, t)
+	}
+	return t
+}
+
+func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
 	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
 		// its chain.
