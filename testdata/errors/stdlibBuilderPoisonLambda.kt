@@ -75,3 +75,20 @@ fun inferredBefore(k: Int) {
     }
     val t: List<String> = m
 }
+
+// A range with a result the call couldn't infer the type of, and a
+// member of the result of the call with the unresolved reference that a
+// function returns.
+fun rangesAndReturns(k: Int) {
+    build { // ERROR cannot infer
+        val a = Unknown234(1).app { } // ERROR unresolved reference: Unknown234
+        val s = scope { k } // ERROR cannot infer type for type parameter 'R'
+        for (t in s + 1..k) {} // ERROR argument type mismatch
+        for (t in k..s) {} // ERROR argument type mismatch
+        val r = k..<s // ERROR argument type mismatch
+        fun first(): Int {
+            val i = a[1] // ERROR cannot infer type for type parameter 'V'
+            return i // ERROR return type mismatch
+        }
+    }
+}

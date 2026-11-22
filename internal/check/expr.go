@@ -830,6 +830,9 @@ func isRangeOp(k syntax.Kind) bool {
 }
 
 func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) types.Type {
+	if x.Op == syntax.RANGE || x.Op == syntax.RANGE_LT {
+		c.poisonedRange(x)
+	}
 	switch x.Op {
 	case syntax.AND, syntax.OR:
 		c.value(x.X, types.BoolType)
@@ -5134,6 +5137,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
 			c.assignable(c.returnValue(x.X, c.retType), c.retType, syntax.StartPos(x.X))
+			c.poisonedReturn(x.X, c.retType)
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
 			c.errorf(x.P, "this function must return a value of type %s", c.retType)
 		}

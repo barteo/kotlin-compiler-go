@@ -2802,7 +2802,7 @@ func (c *Checker) poisonedCall(x *syntax.Call, n int) {
 			if len(c.errs) == n {
 				c.errorf(m.P, "unresolved reference: %s: %s", m.Name, why)
 			}
-			mark(1)
+			mark(3) // its result is of no candidate's type: see poisonedVal
 			return
 		}
 		if f == nil {
@@ -2905,11 +2905,61 @@ func (c *Checker) poisonedValue(a syntax.Expr) bool {
 	return found
 }
 
+// poisonedReturn reports x, the value a function in a poisoned builder
+// lambda returns for a type, if it is a local whose value is a member
+// of the result of the call with the unresolved reference (see
+// poisonedVal): K2 gives it the type of a candidate it tried for the
+// member, which isn't the function's.
+func (c *Checker) poisonedReturn(x syntax.Expr, want types.Type) {
+	id, ok := x.(*syntax.Ident)
+	if !ok || c.poisonIn == nil || c.trial != nil || id.Sym == nil || c.poisonVals[id.Sym] != 4 {
+		return
+	}
+	if want.K == types.Invalid || want.K == types.Unit || want.NonNull().K == types.Any || c.hasErrorAt(id.P, "return type mismatch") {
+		return
+	}
+	c.errorf(id.P, "return type mismatch: expected %s, but the value's type can't be inferred, as the builder's type arguments can't", want)
+}
+
+// poisonedRange reports the operands of range x, a..b or a..<b, in a
+// poisoned builder lambda that have a local whose type a call there
+// couldn't infer (see poisonedVal): K2 checks the range with the
+// builder's system, and the operand is a mismatch, k of s + 1..k.
+func (c *Checker) poisonedRange(x *syntax.Binary) {
+	if c.poisonIn == nil || c.trial != nil || len(c.poisonVals) == 0 {
+		return
+	}
+	has := func(e syntax.Expr) bool {
+		found := false
+		syntax.Inspect(e, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Lambda:
+				return false
+			case *syntax.Ident:
+				// Before the operands are checked: by name.
+				if sym, _ := c.scope.find(n.Name); sym != nil && c.poisonVals[sym] == 1 {
+					found = true
+				}
+			}
+			return !found
+		})
+		return found
+	}
+	if !has(x.X) && !has(x.Y) {
+		return
+	}
+	if p := syntax.StartPos(x.Y); !c.hasErrorAt(p, "argument type mismatch") {
+		c.errorf(p, "argument type mismatch: the builder's type arguments can't be inferred, and this range is checked with them")
+	}
+}
+
 // poisonedVal records local s of a builder lambda that an unresolved
 // reference poisoned (see poisonedCall), if it has no type because of
 // that: its value is the result of a call that couldn't infer its type
-// parameter there (1), of the call with the unresolved reference (2), or
-// a member of the builder's receiver that has the builder's type (3).
+// parameter there (1), of the call with the unresolved reference (2), a
+// member of the builder's receiver that has the builder's type (3), or
+// a member of a local that is the result of the call with the
+// unresolved reference (4).
 func (c *Checker) poisonedVal(s *syntax.VarStmt) {
 	if c.poisonIn == nil || c.trial != nil || s.Type != nil || s.Init == nil {
 		return
@@ -2923,11 +2973,16 @@ func (c *Checker) poisonedVal(s *syntax.VarStmt) {
 		return
 	}
 	x, ok := s.Init.(*syntax.Call)
+	if ix, index := s.Init.(*syntax.Index); index && ix.Call != nil {
+		x, ok = ix.Call, true
+	}
 	if !ok {
 		return
 	}
 	kind := 0
 	switch _, member := x.Fun.(*syntax.Member); {
+	case c.poisonCalls[x] == 3:
+		kind = 4
 	case c.poisonCalls[x] == 2:
 		kind = 1
 	case member && exprHead(x) == c.poisonAt:
