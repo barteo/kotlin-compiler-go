@@ -689,7 +689,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 	case nil:
 		return
 	case *syntax.Ident:
-		if a.comp != nil && (x.Object == a.comp || x.Sym != nil && x.Sym.Kind == types.Prop && x.Sym.Owner == a.comp && !x.Sym.Const) {
+		if a.comp != nil && (x.Object == a.comp || x.Sym != nil && x.Sym.Kind == types.Prop && x.Sym.Owner == a.comp) {
 			a.companion(x.P)
 		}
 		if x.Sym == nil && x.Member != nil {
@@ -732,6 +732,11 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		a.expr(x.X, s)
 	case *syntax.Member:
 		if x.Prop != nil && x.Prop.Const {
+			if a.comp != nil && x.Prop.Owner == a.comp {
+				// As kotlinc, a constant of the companion too, though
+				// its value is inlined: A(C), A(E.C).
+				a.companion(x.P)
+			}
 			break // inlined
 		}
 		if a.comp != nil && x.Object == a.comp {
