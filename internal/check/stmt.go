@@ -668,6 +668,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		}
 	}
 	s.Sym = &types.VarSym{Name: s.Name, Type: t, Kind: types.Local, Mutable: s.Mutable, Decl: s, Deferred: s.Init == nil && !s.Lateinit}
+	c.poisonedVal(s)
 	if s.Lateinit {
 		c.lateinitChecks(s.LateinitP, s.Mutable, s.Init != nil, false, t)
 		s.Sym.Lateinit = true

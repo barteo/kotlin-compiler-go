@@ -310,7 +310,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			name := strings.TrimPrefix(w.C.Name, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
+		n := len(c.errs)
 		t := c.call(x, want, sink)
+		c.poisonedCall(x, n)
 		c.arrayNothingExpr(x, t)
 		return t
 	case *syntax.Index:

@@ -441,6 +441,17 @@ type Checker struct {
 	// couldn't infer because of an unresolved reference, by where the
 	// first one is (see poisonedRecv).
 	pclaPoison map[*syntax.Lambda]syntax.Pos
+	// poisonIn is the builder lambda of pclaPoison whose body is being
+	// checked, and poisonAt where its unresolved reference is.
+	// poisonCalls are the calls in such lambdas that poisonedCall
+	// reported, 2 for those that can't infer their result's type, and
+	// poisonVals the locals there whose types the error
+	// leaves uninferred: 1 for the result of a call that can't infer its
+	// type parameter, 2 for the result of the call that has the error.
+	poisonIn    *syntax.Lambda
+	poisonAt    syntax.Pos
+	poisonCalls map[syntax.Expr]int
+	poisonVals  map[*types.VarSym]int
 	// keptAmbiguity is set by byLambdaResult when the candidates stay
 	// ambiguous whatever the builder's variables are inferred to be (see
 	// variableBelow): the ambiguity isn't one of those stubCheck drops

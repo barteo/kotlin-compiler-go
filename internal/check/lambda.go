@@ -344,6 +344,11 @@ func paramsString(ps []types.Type) string {
 // returns the parameter types and the result type, and false if the
 // parameters don't match the expected ones.
 func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
+	if at, ok := c.pclaPoison[x]; ok && c.trial == nil {
+		in, saved := c.poisonIn, c.poisonAt
+		c.poisonIn, c.poisonAt = x, at
+		defer func() { c.poisonIn, c.poisonAt = in, saved }()
+	}
 	if c.file.Annotated != nil {
 		// A lambda argument is checked here, not by expr, which checks
 		// the annotations of the others: list.map @A { }.
@@ -2581,26 +2586,12 @@ func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id
 // poisons reports whether the unresolved reference at p in builder
 // lambda l is the receiver of a call of a generic extension that takes
 // the lambda's this, MyUnresolvedClass().bar(this) for fun <V, Y>
-// V.bar(y: Y): K2 adds the call, which can't infer V, to the builder's
+// V.bar(y: Y), or a lambda, MyUnresolvedClass().apply { }: K2 adds the call, which can't infer V, to the builder's
 // shared constraint system, and its error makes the extension calls on
 // the receiver after it inapplicable (see poisonedRecv). Another
 // unresolved reference, as MyUnresolvedClass().bar(1) or baz(this,
 // MyUnresolvedClass()), leaves them alone.
 func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
-	head := func(e syntax.Expr) syntax.Pos {
-		for {
-			switch y := e.(type) {
-			case *syntax.Call:
-				e = y.Fun
-			case *syntax.Member:
-				e = y.X
-			case *syntax.Ident:
-				return y.P
-			default:
-				return syntax.Pos{}
-			}
-		}
-	}
 	found := false
 	syntax.Inspect(l.Body, func(n any) bool {
 		x, ok := n.(*syntax.Call)
@@ -2608,7 +2599,10 @@ func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
 			return !found
 		}
 		m, ok := x.Fun.(*syntax.Member)
-		if !ok || head(m.X) != p || !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool {
+		if !ok || exprHead(m.X) != p || !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool {
+			if _, ok := a.(*syntax.Lambda); ok {
+				return true
+			}
 			t, ok := a.(*syntax.This)
 			return ok && t.Label == ""
 		}) {
@@ -2622,6 +2616,149 @@ func (c *Checker) poisons(l *syntax.Lambda, p syntax.Pos) bool {
 		return !found
 	})
 	return found
+}
+
+// exprHead returns where the name that expression e starts with is: a
+// of a.b().c, f of f(x).y.
+func exprHead(e syntax.Expr) syntax.Pos {
+	for {
+		switch y := e.(type) {
+		case *syntax.Call:
+			e = y.Fun
+		case *syntax.Member:
+			e = y.X
+		case *syntax.Ident:
+			return y.P
+		default:
+			return syntax.Pos{}
+		}
+	}
+}
+
+// poisonedCall reports call x, checked with the errors since n, of a
+// builder lambda whose variables an unresolved reference before it left
+// uninferred (see poisons), as K2 does. The error is in the constraint
+// system that the calls of the builder's lambda share, and a call that
+// is checked with that system has it too:
+//
+//   - a call with a lambda, an anonymous function or a callable
+//     reference for an argument, and a call of a member of the builder's
+//     receiver whose parameters have the builder's type: each argument is
+//     a type mismatch, k and the lambda of IntArray(k) { it }, and the
+//     call can't infer a type parameter that is its result's type, R of
+//     scope { 1 } for a fun <R> scope(block: () -> R): R;
+//   - a call with such a call's result for an argument, or a local
+//     that is one: the argument is a mismatch;
+//   - a call of a member of a local that is the result of the call with
+//     the unresolved reference: it has none.
+//
+// Other calls, take(k) or listOf(k), are checked on their own and have
+// no error. The lambda has an error already, so this rejects nothing
+// kotlinc compiles.
+func (c *Checker) poisonedCall(x *syntax.Call, n int) {
+	l := c.poisonIn
+	if l == nil || c.trial != nil || !before(c.poisonAt, x.P) || c.poisonCalls[x] != 0 {
+		return
+	}
+	if h := exprHead(x); h == c.poisonAt {
+		return // the call with the unresolved reference itself
+	}
+	mark := func(kind int) {
+		if c.poisonCalls == nil {
+			c.poisonCalls = map[syntax.Expr]int{}
+		}
+		c.poisonCalls[x] = kind
+	}
+	const why = "the builder's type arguments can't be inferred, and this call is checked with them"
+	mismatch := func(a syntax.Expr) {
+		if p := syntax.StartPos(a); !c.hasErrorAt(p, "argument type mismatch") {
+			c.errorf(p, "argument type mismatch: %s", why)
+		}
+	}
+	shared := slices.ContainsFunc(x.Args, func(a syntax.Expr) bool {
+		switch a := a.(type) {
+		case *syntax.Lambda:
+			return true
+		case *syntax.Ident:
+			return a.Sym != nil && c.poisonVals[a.Sym] != 0
+		}
+		return false
+	})
+	f := x.Sym
+	if m, ok := x.Fun.(*syntax.Member); ok {
+		if id, ok := m.X.(*syntax.Ident); ok && id.Sym != nil && c.poisonVals[id.Sym] == 2 {
+			if len(c.errs) == n {
+				c.errorf(m.P, "unresolved reference: %s: %s", m.Name, why)
+			}
+			mark(1)
+			return
+		}
+		if f == nil {
+			// A receiver whose type is an error has no call to report.
+			return
+		}
+	}
+	if f != nil && !shared && f.Owner != nil && l.Recv != nil && l.Recv.Type.K == types.Class && l.Recv.Type.C.IsSubclassOf(f.Owner) {
+		// A member of the builder's receiver, as yield(x) or add(x).
+		recv := true
+		if m, ok := x.Fun.(*syntax.Member); ok {
+			_, recv = m.X.(*syntax.This)
+		}
+		shared = recv && len(x.Args) > 0 && (f.Ret.HasParams() || slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.HasParams() }))
+	}
+	if shared {
+		for _, a := range x.Args {
+			mismatch(a)
+		}
+		if f != nil && f.Ret.K == types.TypeParam && slices.Contains(f.TypeParams, f.Ret.Param()) {
+			if !c.hasErrorAt(x.P, "cannot infer type for type parameter") {
+				c.errorf(x.P, "cannot infer type for type parameter '%s'. Specify it explicitly.", f.Ret.Param().Name)
+			}
+			mark(2) // its result is of no type: see poisonedVal
+			return
+		}
+		mark(1)
+		return
+	}
+	for _, a := range x.Args {
+		// The result of a call that has the error.
+		r := a
+		if ix, ok := a.(*syntax.Index); ok && ix.Call != nil {
+			r = ix.Call
+		}
+		if c.poisonCalls[r] != 0 {
+			mismatch(a)
+			mark(1)
+		}
+	}
+}
+
+// poisonedVal records local s of a builder lambda that an unresolved
+// reference poisoned (see poisonedCall), if it has no type because of
+// that: its value is the result of a call that couldn't infer its type
+// parameter there, or of the call with the unresolved reference.
+func (c *Checker) poisonedVal(s *syntax.VarStmt) {
+	if c.poisonIn == nil || c.trial != nil || s.Type != nil || s.Init == nil {
+		return
+	}
+	x, ok := s.Init.(*syntax.Call)
+	if !ok {
+		return
+	}
+	kind := 0
+	switch _, member := x.Fun.(*syntax.Member); {
+	case c.poisonCalls[x] == 2:
+		kind = 1
+	case member && exprHead(x) == c.poisonAt:
+		kind = 2
+	}
+	if kind == 0 {
+		return
+	}
+	if c.poisonVals == nil {
+		c.poisonVals = map[*types.VarSym]int{}
+	}
+	c.poisonVals[s.Sym] = kind
 }
 
 // stubRun is a check of stubInference's: the system of the call whose
