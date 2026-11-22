@@ -444,6 +444,15 @@ type Checker struct {
 	// pclaErrs are the errors of builder lambdas' first checks that their
 	// second checks report where they have none (see replayPCLAErrors).
 	pclaErrs map[*syntax.Lambda]pclaKept
+	// pclaSub is what the variables of a builder's lambda whose check is
+	// being committed (see pclaCommit) were inferred as, while the
+	// fixups of the systems that finished in it run again.
+	pclaSub types.Subst
+	// pclaLive are the nodes of that lambda's tree.
+	pclaLive map[any]bool
+	// pclaRuns are the runs of stubInference whose lambdas are being
+	// checked, the innermost last, with $KC_PCLA=single.
+	pclaRuns []*stubRun
 	// pclaFirst are the errors of builder lambdas' first checks, kept
 	// for $KC_PCLA_STATS only.
 	pclaFirst map[*syntax.Lambda][]*syntax.Error
@@ -4384,6 +4393,11 @@ func funTypeParams(f *types.FunSym, cls *types.ClassSym) []*types.TypeParamSym {
 }
 
 func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
+	if c.pclaSub != nil {
+		// A fixup run again with what a builder's variables were inferred
+		// as (see pclaCommit) has the types it was made with.
+		from, to = c.pclaSub.Apply(from), c.pclaSub.Apply(to)
+	}
 	if !c.subtype(from, to) {
 		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
 	}

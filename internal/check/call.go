@@ -1215,6 +1215,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	c.declaredCastArgs(x, best, ts, partials, ret, want)
 	sys := best.sys
+	fixups0 := len(sys.fixups)
 	params := best.params
 	for _, i := range lambdas {
 		l := x.Args[i].(*syntax.Lambda)
@@ -1323,6 +1324,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 	})
+	if c.pclaRun() != nil {
+		// Run again once a builder's variables are inferred (see
+		// pclaCommit), the fixups are of this resolution of the call,
+		// which another may have replaced since.
+		for i := fixups0; i < len(sys.fixups); i++ {
+			fix := sys.fixups[i]
+			sys.fixups[i] = func(s *system) {
+				if !c.pclaStale(x, f) {
+					fix(s)
+				}
+			}
+		}
+	}
 	if sink != nil && sink == c.tailSink && hasLambda(x.Args) && !c.lambdasReady(sys) {
 		// A call taking a lambda whose parameter types aren't known yet,
 		// a builder's, is inferred on its own (see endsWithCall).

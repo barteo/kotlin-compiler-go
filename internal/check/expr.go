@@ -4513,7 +4513,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 				continue
 			}
 			c.scope = pl.scope
-			c.stubInference(p.sys, pl.l, params, ft)
+			c.stubInference(p.sys, pl.l, params, ft, false)
 			p.open = p.open || !slices.ContainsFunc(params, p.sys.known)
 		}
 	}

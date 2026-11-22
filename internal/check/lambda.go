@@ -2287,18 +2287,22 @@ func noInputs(t types.Type) bool {
 // trial): l is checked again once the variables are fixed, and the
 // errors of this check are reported where that one has none (see
 // replayPCLAErrors).
-func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type, ft types.Type) {
+//
+// With $KC_PCLA=single and keep set, the check isn't discarded at once:
+// stubInference returns the run that keeps it, for pclaCommit, which
+// keeps it for good if it can.
+func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type, ft types.Type, keep bool) *stubRun {
 	if c.nothingTail {
 		// The value of a lambda's nothingTail: its variables aren't
 		// inferred from l, but are Nothing.
 		c.nothingTail = false
 		s.nothingFix = true
-		return
+		return nil
 	}
 	group := []stubLambda{{l, params, ft, c.scope}}
 	vars := c.stubVars(s, params, nil)
 	if !stubbable(s, group[0]) || len(vars) == 0 {
-		return
+		return nil
 	}
 	// The call's other lambdas whose parameter types have the variables
 	// are checked with them unfixed too, as in Kotlin, before any is
@@ -2319,7 +2323,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		}
 		sl := stubLambda{pl.l, ps, pft, pl.scope}
 		if !stubbable(s, sl) {
-			return
+			return nil
 		}
 		group = append(group, sl)
 		vars = c.stubVars(s, ps, vars)
@@ -2383,6 +2387,13 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			c.pclaFirst[sl.l] = errs
 		}
 		if ambiguous {
+			if n := len(r.checks); n > 0 {
+				// What it recorded is dropped, and so is its check.
+				c.pclaStat("rollback", sl.l.P, "ambiguous")
+				c.endTrial(r.checks[n-1].t)
+				r.checks = r.checks[:n-1]
+				c.pclaDeny("nested:ambiguous")
+			}
 			delete(c.pclaErrs, sl.l)
 			delete(c.pclaPoison, sl.l)
 			for _, v := range r.extra[ne:] {
@@ -2414,7 +2425,8 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		// was recorded, and the check that counts reports what
 		// disagrees with them where it is, constrain(Interloper) after
 		// provide().memberFunction() fixed OTv to ScopeOwner.
-		return
+		c.pclaRollback(r, "uninferred")
+		return nil
 	}
 	useful, trial, ok := r.solve()
 	if pclaDebug && ok {
@@ -2447,6 +2459,20 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			}
 		}
 	}
+	switch {
+	case len(r.checks) == 0:
+		return nil
+	case !ok:
+		c.pclaRollback(r, "unsolved")
+	case !keep:
+		c.pclaRollback(r, "branch")
+	case len(group) > 1:
+		c.pclaRollback(r, "group")
+	default:
+		r.solved = trial
+		return r
+	}
+	return nil
 }
 
 // stubHintKey is a variable of a call: its type parameter, and the
@@ -2550,8 +2576,19 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	}
 	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
 	c.trial = t
+	if pclaSingle {
+		w.stars = starParams(ft)
+		c.pclaRuns = append(c.pclaRuns, r)
+	}
 	_, bt, _ := c.checkLambda(sl.l, w)
-	c.endTrial(t)
+	if pclaSingle {
+		// The check is kept until the variables are inferred.
+		c.pclaRuns = c.pclaRuns[:len(c.pclaRuns)-1]
+		c.trial = t.outer
+		r.checks = append(r.checks, pclaCheck{l: sl.l, t: t, errs: slices.Clone(c.errs[n:]), w: w, bt: bt})
+	} else {
+		c.endTrial(t)
+	}
 	clean = len(c.errs) == n
 	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
 	// So does one with the call's other variables, for a result of the
@@ -2663,6 +2700,17 @@ type stubRun struct {
 	// forks are the system's forks over r's variables alone (see
 	// system.stubFork), which fixAll resolves.
 	forks []fork
+	// With $KC_PCLA=single: checks are the checks of r's lambdas, kept
+	// until r's variables are fixed (see pclaCommit), and solved the
+	// shared system they were inferred in. deny is why the checks can't
+	// be kept, if set. postponed are the systems that finished in the
+	// lambdas, whose fixups run again with the variables inferred, and
+	// defers what the check decides again then.
+	checks    []pclaCheck
+	solved    *system
+	deny      string
+	postponed []*system
+	defers    []func()
 }
 
 // joinRun returns the run that s, a call's system about to complete in a
@@ -3295,7 +3343,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			s.fixVarsIn(q)
 		}
 	}
-	c.stubInference(s, l, params, ft)
+	run := c.stubInference(s, l, params, ft, true)
 	errs0 := len(s.errs)
 	vars := make([]*tvar, len(params))
 	for i, q := range params {
@@ -3374,7 +3422,15 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	}
 	var bt types.Type
 	nerrs := len(c.errs)
-	if pre, ok := c.checked[l]; ok {
+	committed := false
+	if run != nil {
+		bt, committed = c.pclaCommit(s, run, l, w, r, params)
+	}
+	if committed {
+		// The check with the variables unfixed is the lambda's.
+		delete(c.pclaErrs, l)
+		delete(c.pclaFirst, l)
+	} else if pre, ok := c.checked[l]; ok {
 		// Checked to choose the overload, with these parameter types.
 		bt = pre
 		if w.check && w.ret.K != types.Unit {

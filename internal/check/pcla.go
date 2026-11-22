@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -43,6 +44,271 @@ func pclaLogf(format string, args ...any) {
 	if pclaDebug {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
+}
+
+// pclaSingle, from $KC_PCLA, says how a builder's lambda is checked:
+// "single" keeps the check with the variables unfixed where it can (see
+// pclaCommit), and "recheck", the default, always checks the lambda again
+// once they are fixed. bench/pcla-diff.sh compares the two.
+var pclaSingle = os.Getenv("KC_PCLA") == "single"
+
+// pclaCheck is the check of a builder's lambda with the builder's
+// variables unfixed, kept until the variables are inferred: it is then
+// committed, the types it gave the tree written with what they were
+// inferred as, or undone, and the lambda checked again.
+type pclaCheck struct {
+	l *syntax.Lambda
+	// t has what the check changed outside the lambda.
+	t *trial
+	// errs are the check's errors, which a commit reports.
+	errs []*syntax.Error
+	// w is what the lambda was checked against, and bt the type the
+	// check gave its body.
+	w  lambdaWant
+	bt types.Type
+}
+
+// pclaRun returns the innermost run whose lambda is being checked, if
+// any.
+func (c *Checker) pclaRun() *stubRun {
+	if n := len(c.pclaRuns); n > 0 {
+		return c.pclaRuns[n-1]
+	}
+	return nil
+}
+
+// pclaDeny records that the lambdas being checked for builder inference
+// can't keep their checks, because of why: something the check decided
+// from a type with a variable, which only a check with the variable
+// fixed decides as kotlinc does.
+func (c *Checker) pclaDeny(why string) {
+	for _, r := range c.pclaRuns {
+		if r.deny == "" {
+			r.deny = why
+		}
+	}
+}
+
+// pclaPostpone records s, the system of a call or another expression
+// that finished in a builder's lambda being checked: its fixups, which
+// ran with the builder's variables unfixed, run again once they are
+// inferred (see pclaCommit), as K2 completes a postponed call with the
+// builder's.
+func (c *Checker) pclaPostpone(s *system) {
+	if r := c.pclaRun(); r != nil && len(s.fixups) > 0 {
+		r.postponed = append(r.postponed, s)
+	}
+}
+
+// pclaStale reports whether a fixup of a resolution of call x to f,
+// run again by pclaCommit, is of a resolution that the check dropped:
+// the call was resolved again, to another function, or isn't in the
+// lambda's tree, as the call of an operator that another replaced.
+func (c *Checker) pclaStale(x *syntax.Call, f *types.FunSym) bool {
+	return c.pclaLive != nil && (!c.pclaLive[x] || x.Sym != f)
+}
+
+// pclaRollback undoes the checks that r keeps, last first: their lambdas
+// are checked again.
+func (c *Checker) pclaRollback(r *stubRun, why string) {
+	for i := len(r.checks) - 1; i >= 0; i-- {
+		k := r.checks[i]
+		c.pclaStat("rollback", k.l.P, why)
+		c.endTrial(k.t)
+	}
+	if len(r.checks) > 0 {
+		// The lambda is checked again in the lambdas around it, which
+		// their checks don't follow yet.
+		c.pclaDeny("nested:" + why)
+	}
+	r.checks = nil
+}
+
+// pclaCommit keeps the check of lambda l that run r kept, if it can: l,
+// an argument of the call with system s, whose variables in l's
+// parameter types are fixed, isn't checked again. w is what a check now
+// would check l against, params its parameter types and ret its result
+// type. The types the check gave the tree are written with what the
+// variables were inferred as (see pclaWrite), and the fixups of the
+// systems that finished in l run again, with them. It returns the type
+// of l's body, or false if l is to be checked again: the check is then
+// undone.
+func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWant, ret types.Type, params []types.Type) (types.Type, bool) {
+	k := r.checks[0]
+	deny := func(why string) (types.Type, bool) {
+		c.pclaRollback(r, why)
+		return types.InvalidType, false
+	}
+	_, pre := c.checked[l]
+	switch {
+	case len(r.checks) != 1 || k.l != l:
+		return deny("group")
+	case r.deny != "":
+		return deny(r.deny)
+	case len(k.errs) > 0:
+		return deny("errors")
+	case pre:
+		return deny("prechecked")
+	case k.w.ret != w.ret || k.w.check != w.check:
+		return deny("result")
+	case ret.HasVars() && w.ret.K == types.Invalid && (endsWithCall(l.Body) || returnsCall(l) || endsWithBranches(l.Body)):
+		return deny("tail")
+	case len(k.w.params) != len(params):
+		return deny("params")
+	}
+	if why := pclaScan(l); why != "" {
+		return deny(why)
+	}
+	// What the variables were inferred as: the builder's in the call's
+	// system, and those of the calls in the lambda in the shared one.
+	sub := types.Subst{}
+	for _, v := range r.vars {
+		if tv := s.byVar[v]; tv != nil && tv.fixed {
+			if a := s.vals[v]; !a.T.HasVars() && a.T.K != types.Invalid {
+				sub[v] = a
+			}
+		}
+	}
+	for _, v := range r.extra {
+		if tv := r.solved.byVar[v]; tv != nil && tv.fixed {
+			if a := r.solved.vals[v]; !a.T.HasVars() && a.T.K != types.Invalid {
+				sub[v] = a
+			}
+		}
+	}
+	for i, p := range k.w.params {
+		if sub.Apply(p) != params[i] {
+			return deny("params")
+		}
+	}
+	saved := c.trial
+	c.trial = k.t
+	n := len(c.errs)
+	// The types first: a fixup reads those of the nodes it checks.
+	live := pclaWrite(l, sub)
+	savedSub, savedLive := c.pclaSub, c.pclaLive
+	c.pclaSub, c.pclaLive = sub, live
+	for _, q := range r.postponed {
+		q.pclaComplete(sub)
+	}
+	c.pclaSub, c.pclaLive = savedSub, savedLive
+	pclaWrite(l, sub)
+	for _, f := range r.defers {
+		f()
+	}
+	c.trial = saved
+	ours := func(u types.Type) bool {
+		return u.K == types.TypeVar && (slices.Contains(r.vars, u.Param()) || slices.Contains(r.extra, u.Param()))
+	}
+	for _, t := range pclaLeft(l) {
+		if t.Has(ours) {
+			// A variable that nothing inferred: the check with the
+			// builder's fixed reports it, or infers it on its own.
+			c.errs = c.errs[:n]
+			return deny("open")
+		}
+	}
+	if len(c.errs) > n {
+		c.pclaStat("commit-errors", l.P, c.errs[n].Msg)
+	}
+	c.pclaStat("commit", l.P)
+	if o := k.t.outer; o != nil {
+		o.undo = append(o.undo, k.t.undo...)
+		maps.Copy(o.classes, k.t.classes)
+	}
+	c.errs = append(c.errs, k.errs...)
+	if o := c.pclaRun(); o != nil {
+		// What still has a variable of the builder around is its to
+		// complete.
+		o.postponed = append(o.postponed, r.postponed...)
+		o.defers = append(o.defers, r.defers...)
+	}
+	r.checks = nil
+	return sub.Apply(k.bt), true
+}
+
+// pclaComplete runs the fixups of s, a system that finished in a
+// builder's lambda while the builder's variables were unfixed, again,
+// with sub, what they and the variables of s that joined the builder's
+// run were inferred as.
+func (s *system) pclaComplete(sub types.Subst) {
+	if s.vals == nil {
+		s.vals = types.Subst{}
+	}
+	for v, a := range sub {
+		if tv := s.byVar[v]; tv != nil {
+			if tv.fixed {
+				continue
+			}
+			tv.fixed = true
+		}
+		s.vals[v] = a
+	}
+	n := len(s.errs)
+	for i := 0; i < len(s.fixups); i++ {
+		s.fixups[i](s)
+	}
+	for ; n < len(s.errs); n++ {
+		s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
+	}
+}
+
+// pclaScan returns why the check of builder lambda l with the builder's
+// variables unfixed can't be kept, if it can't: the first node in it
+// whose types mention a variable for which the checker decides
+// something from them that the writer of the inferred types (see
+// pclaWrite) doesn't decide again. The others only have types, which it
+// writes.
+func pclaScan(l *syntax.Lambda) string {
+	why := ""
+	literal := func(a syntax.Expr) bool {
+		if u, ok := a.(*syntax.Unary); ok {
+			a = u.X
+		}
+		_, ok := a.(*syntax.IntLit)
+		return ok
+	}
+	syntax.Inspect(l.Body, func(n any) bool {
+		if why != "" {
+			return false
+		}
+		ok := false
+		switch n := n.(type) {
+		case *syntax.Ident:
+			ok = !n.Cast
+		case *syntax.This:
+			ok = !n.Cast
+		case *syntax.Member:
+			ok = !n.Cast && !n.Safe
+		case *syntax.Call:
+			ok = len(n.Reified) == 0 && n.Builtin == 0 && !slices.ContainsFunc(n.Args, literal)
+		case *syntax.Lambda:
+			ok = !n.Anon && n.Ref == nil
+		case *syntax.VarStmt:
+			ok = n.Delegate == nil
+		case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit:
+			ok = true
+		case *syntax.LocalClass, *syntax.ObjectExpr, *syntax.LocalFun:
+			// Their declarations are checked for the types they have.
+			why = fmt.Sprintf("%T", n)
+			return false
+		}
+		if !ok && pclaTouches(n) {
+			why = fmt.Sprintf("%T", n)
+			if x, isCall := n.(*syntax.Call); isCall {
+				switch {
+				case x.Builtin != 0:
+					why += ":builtin"
+				case len(x.Reified) > 0:
+					why += ":reified"
+				default:
+					why += ":literal"
+				}
+			}
+		}
+		return why == ""
+	})
+	return strings.TrimPrefix(why, "*syntax.")
 }
 
 // pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'

@@ -534,6 +534,7 @@ func (s *system) subArgs(sup, b types.Type) {
 								s.c.stubCapts = map[stubHintKey]bool{}
 							}
 							s.c.stubCapts[k] = true
+							s.c.pclaDeny("capture")
 						} else if s.c.stubCapts[k] && len(s.c.stubs) == 0 && !slices.ContainsFunc(s.errs, func(e inferError) bool { return e.pos == tv.pos }) {
 							s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 						}
@@ -1366,6 +1367,7 @@ func (s *system) finish() {
 		s.fixups[i](s)
 	}
 	report()
+	s.c.pclaPostpone(s)
 }
 
 // final returns t with all variables replaced: those that could not be
