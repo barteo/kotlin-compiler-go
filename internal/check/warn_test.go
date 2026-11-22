@@ -865,3 +865,27 @@ func TestWarningsAliasExpansionDeprecated(t *testing.T) {
 func TestWarningsContextParameterNames(t *testing.T) {
 	checkReference(t, "testdata/ctxnames.kt", Options{Warnings: true})
 }
+
+// TestWarningsUnsignedVararg checks the warnings of vararg parameters of
+// unsigned types, whose arrays need opt-in, against kotlinc's of
+// testdata/unsigned_vararg.kt.
+func TestWarningsUnsignedVararg(t *testing.T) {
+	checkReference(t, "testdata/unsigned_vararg.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantTypes checks the warnings of a Unit return type, a
+// setter parameter's type and a template of one String against those
+// kotlinc reports with -Wextra of testdata/redundant_types.kt, and that
+// there are none without it.
+func TestWarningsRedundantTypes(t *testing.T) {
+	checkReference(t, "testdata/redundant_types.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/redundant_types.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.Contains(g, ":REDUNDANT_") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}

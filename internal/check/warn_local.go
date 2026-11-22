@@ -50,6 +50,12 @@ func (c *Checker) localWarnings() {
 		c.divisionWarning(n)
 		if lf, ok := n.(*syntax.LocalFun); ok {
 			c.extShadowed(lf.Decl)
+			if c.u.extraWarnings {
+				c.redundantDeclTypes(lf.Decl)
+			}
+		}
+		if s, ok := n.(*syntax.StringLit); ok && c.u.extraWarnings {
+			c.redundantTemplate(s)
 		}
 		switch n := n.(type) {
 		case *syntax.NotNull:

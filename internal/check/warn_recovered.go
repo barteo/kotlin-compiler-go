@@ -40,6 +40,8 @@ var recoveredWarnings = map[string]bool{
 	"DSL_MARKER_PROPAGATES_TO_MANY":       true,
 	"OPERATOR_RENAMED_ON_IMPORT":          true,
 	"INCOMPATIBLE_ANNOTATION_TARGETS":     true,
+	"REDUNDANT_RETURN_UNIT_TYPE":          true,
+	"REDUNDANT_SETTER_PARAMETER_TYPE":     true,
 	"REDUNDANT_REPEATABLE_ANNOTATION":     true,
 	"NON_FINAL_MEMBER_IN_FINAL_CLASS":     true,
 	"NON_FINAL_MEMBER_IN_OBJECT":          true,

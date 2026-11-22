@@ -1093,10 +1093,27 @@ func (w *optWalker) params(ps []*syntax.Param) {
 		w.markerTargetErrors(p.Annotations, true)
 		w.push(p.Annotations)
 		w.typeRef(p.Type)
+		w.unsignedVararg(p)
 		if p.Default != nil {
 			w.node(p.Default)
 		}
 		w.pop()
+	}
+}
+
+// unsignedVararg reports vararg parameter p of an unsigned type, which is
+// an array of them, UIntArray for UInt: the array classes need opt-in.
+func (w *optWalker) unsignedVararg(p *syntax.Param) {
+	if !p.Vararg || p.Type == nil || p.Sym == nil {
+		return
+	}
+	t := p.Sym.Type
+	if t.K != types.Class || t.C == nil || t.N {
+		return
+	}
+	switch t.C.Name {
+	case "kotlin/UByteArray", "kotlin/UShortArray", "kotlin/UIntArray", "kotlin/ULongArray":
+		w.require(p.Type.P, w.o.classMarkers(t.C))
 	}
 }
 
@@ -1148,6 +1165,7 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 		w.markerTargetErrors(p.Modifiers.Annotations, param)
 		w.push(p.Modifiers.Annotations)
 		w.typeRef(p.Type)
+		w.unsignedVararg(&p.Param)
 		if p.Default != nil {
 			w.node(p.Default)
 		}
