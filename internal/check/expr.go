@@ -2753,7 +2753,28 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	type mark struct{ cons, joined, extra int }
+	var marks []mark
+	amb := c.ambiguities
+	for _, r := range c.pclaRuns {
+		marks = append(marks, mark{len(r.cons), len(r.joined), len(r.extra)})
+	}
 	t := c.call1(x, want, sink)
+	if c.ambiguities > amb {
+		// An ambiguous call in a builder's lambda gives the builder's
+		// variables nothing, as in kotlinc: what its candidates
+		// recorded is dropped, what the calls before it did stays.
+		for i, r := range c.pclaRuns[:len(marks)] {
+			m := marks[i]
+			if len(r.cons) < m.cons || len(r.joined) < m.joined || len(r.extra) < m.extra {
+				continue
+			}
+			for _, v := range r.extra[m.extra:] {
+				delete(c.stubs, v)
+			}
+			r.cons, r.joined, r.extra = r.cons[:m.cons], r.joined[:m.joined], r.extra[:m.extra]
+		}
+	}
 	if len(c.pclaRuns) > 0 {
 		t = c.pclaFailedCall(x, t)
 	}

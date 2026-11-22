@@ -1142,12 +1142,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			// which the builder's other lambdas resolve (see
 			// stubInference): Entry(key: T, id: Any = key) and
 			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			// Not candidates whose parameter types have no stub, as
+			// extensions' of their own type parameters: those stay
+			// ambiguous, T1.fooExt(vararg T1) and fooExt(Inv<T2>).
+			stubbed := false
 			for _, cd := range match {
 				if !cd.usesVararg() {
 					maximal = append(maximal, cd)
 				}
+				for i := range x.Args {
+					stubbed = stubbed || c.hasStub(cd.recv.ApplyIn(cd.argType(i, x.Args)))
+				}
 			}
-			if len(maximal) != 1 {
+			if len(maximal) != 1 || !stubbed {
 				maximal = nil
 			}
 		}

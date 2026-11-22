@@ -2443,14 +2443,11 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			}
 			c.pclaStat("lambda", sl.l.P, fmt.Sprint(r.depth), fs, how)
 		}
-		if ambiguous {
-			// What it recorded is dropped. Its check is kept, with its
-			// errors.
+		if ambiguous && len(r.cons) == nc && len(r.joined) == nj && len(r.extra) == ne {
+			// It recorded nothing: what the ambiguous calls did is
+			// dropped where they are (see call). Its check is kept,
+			// with its errors.
 			delete(c.pclaPoison, sl.l)
-			for _, v := range r.extra[ne:] {
-				delete(c.stubs, v)
-			}
-			r.cons, r.joined, r.extra = r.cons[:nc], r.joined[:nj], r.extra[:ne]
 			continue
 		}
 		if r.failed.Line > 0 {
