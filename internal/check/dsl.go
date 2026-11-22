@@ -102,7 +102,17 @@ func (c *Checker) annotationMarkers(as []syntax.Annotation) []string {
 // annotations are.
 func declaredDslMarker(a *types.ClassSym) bool {
 	d, _ := a.Decl.(*syntax.ClassDecl)
-	return d != nil && slices.ContainsFunc(d.Annotations, func(m syntax.Annotation) bool { return m.Is("DslMarker") })
+	if d == nil {
+		return false
+	}
+	// By index: another file's goroutine may be setting the annotations'
+	// Class and Values, which copying them would read.
+	for i := range d.Annotations {
+		if d.Annotations[i].Is("DslMarker") {
+			return true
+		}
+	}
+	return false
 }
 
 // dslMarkers returns the names of the DSL markers of values of type t:

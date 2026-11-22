@@ -66,8 +66,9 @@ type Universe struct {
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
 	// optInValues holds the checked arguments of each @OptIn, which
-	// class files don't keep, for the opt-in pass.
-	optInValues map[*syntax.Annotation][]syntax.AnnotationValue
+	// class files don't keep, for the opt-in pass: *syntax.Annotation ->
+	// []syntax.AnnotationValue. Files are checked in parallel.
+	optInValues sync.Map
 	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
 	// Options.ExplicitReturnTypes.
 	explicitAPI, explicitReturnTypes APIMode
@@ -1023,7 +1024,6 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
 		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
-		optInValues: map[*syntax.Annotation][]syntax.AnnotationValue{},
 		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, notMultiplatform: opts.NotMultiplatform, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
 	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil

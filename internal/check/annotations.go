@@ -222,7 +222,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 				vrec.AnnotationValues(c.file, a, values)
 			}
 			if optIn && ok {
-				c.u.optInValues[a] = values
+				c.u.optInValues.Store(a, values)
 			}
 			if quiet {
 				c.errs = c.errs[:before]
@@ -250,7 +250,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			vrec.AnnotationValues(c.file, a, values)
 		}
 		if optIn && ok {
-			c.u.optInValues[a] = values
+			c.u.optInValues.Store(a, values)
 		}
 		if quiet {
 			c.errs = c.errs[:before]
