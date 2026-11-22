@@ -30,6 +30,9 @@ type callee struct {
 	dispatchRecv *implicitRecv
 	amap         []int        // the parameter each argument is passed to; nil: the one at its position
 	ctx          []contextArg // the context arguments, if the function has context parameters
+	// errRecv is set on an extension called on a receiver whose type has
+	// an error: see errorRecvExt.
+	errRecv bool
 	// names are the call's argument names, with amap: a named argument
 	// of a vararg parameter is its array.
 	names []string
@@ -775,31 +778,42 @@ func (c *Checker) errorTypeArgs(x *syntax.Call, cd *candidate, ts []types.Type) 
 	}
 	isInvalid := func(u types.Type) bool { return u.K == types.Invalid }
 	var reported []*types.TypeParamSym
+	report := func(p *types.TypeParamSym) {
+		j := slices.Index(cd.tparams, p)
+		if j < 0 || slices.Contains(reported, p) {
+			return
+		}
+		reported = append(reported, p)
+		pos := x.P
+		if len(x.TypeArgs) == len(cd.tparams) {
+			if x.TypeArgs[j].Underscore {
+				return
+			}
+			pos = x.TypeArgs[j].P
+		}
+		c.errorf(pos, "cannot infer type for type parameter '%s'. Specify it explicitly.", p.Name)
+		c.uninferredErrs++
+		if v := cd.sub[p].T; v.K == types.TypeVar {
+			if c.errorVars == nil {
+				c.errorVars = map[*types.TypeParamSym]bool{}
+			}
+			c.errorVars[v.Param()] = true
+		}
+	}
+	if cd.errRecv && cd.f.Recv.K == types.TypeParam {
+		// The receiver's own type is an error (see errorRecvExt): its
+		// type parameter isn't inferred, whatever else would give it
+		// a type, as o of x.eq(1) for a T.eq(o: T).
+		report(cd.f.Recv.Param())
+	}
 	var walk func(p, a types.Type, depth int)
 	walk = func(p, a types.Type, depth int) {
 		if a.K == types.Invalid || depth > 16 {
 			return
 		}
 		if p.K == types.TypeParam {
-			j := slices.Index(cd.tparams, p.Param())
-			if j < 0 || !a.Has(isInvalid) || slices.Contains(reported, p.Param()) {
-				return
-			}
-			reported = append(reported, p.Param())
-			pos := x.P
-			if len(x.TypeArgs) == len(cd.tparams) {
-				if x.TypeArgs[j].Underscore {
-					return
-				}
-				pos = x.TypeArgs[j].P
-			}
-			c.errorf(pos, "cannot infer type for type parameter '%s'. Specify it explicitly.", p.Param().Name)
-			c.uninferredErrs++
-			if v := cd.sub[p.Param()].T; v.K == types.TypeVar {
-				if c.errorVars == nil {
-					c.errorVars = map[*types.TypeParamSym]bool{}
-				}
-				c.errorVars[v.Param()] = true
+			if a.Has(isInvalid) {
+				report(p.Param())
 			}
 			return
 		}

@@ -2374,7 +2374,7 @@ func (c *Checker) errorRecvExt(fn *syntax.Member) []callee {
 	if len(cs) != 1 || len(cs[0].f.TypeParams) == 0 {
 		return nil
 	}
-	cs[0].ext = types.InvalidType
+	cs[0].ext, cs[0].errRecv = types.InvalidType, true
 	return cs
 }
 

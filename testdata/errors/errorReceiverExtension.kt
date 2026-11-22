@@ -13,6 +13,12 @@ fun <X> MyFlow<X>.over(a: Int) {}
 fun <X> Other<X>.over(a: Int) {}
 fun String.plainExt() {}
 fun <T> T.gen() {}
+fun <T> T.genLambda(f: (T) -> Unit) {}
+fun <T> T.eq(o: T) {}
+fun <T> Other<T>.put(o: T) {}
+class Inv<I>
+fun <E> Inv<E>.under() {}
+infix fun <T> T.checkType(f: Inv<T>.() -> Unit) {}
 
 val x = nonExistingFunction() // ERROR unresolved reference: nonExistingFunction
 
@@ -26,4 +32,11 @@ fun main() {
     x.member()
     x.nope()
     x?.one() // ERROR cannot infer type for type parameter 'X'
+
+    // A type parameter that is the receiver's type isn't inferred from
+    // anything else; one of its type arguments is.
+    x.eq(1) // ERROR cannot infer type for type parameter 'T'
+    x.genLambda { it } // ERROR cannot infer type for type parameter 'T'
+    x checkType { under<String>() } // ERROR cannot infer type for type parameter 'T'
+    x.put("")
 }

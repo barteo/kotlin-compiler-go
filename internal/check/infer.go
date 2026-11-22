@@ -1358,6 +1358,9 @@ func (s *system) finish() {
 	n := 0
 	report := func() {
 		for ; n < len(s.errs); n++ {
+			if s.c.uninferredErrs > 0 && s.c.hasErrorAt(s.errs[n].pos, s.errs[n].msg) {
+				continue // reported by errorTypeArgs already
+			}
 			s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
 		}
 	}
