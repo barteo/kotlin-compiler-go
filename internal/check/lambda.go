@@ -2014,7 +2014,11 @@ func endsInLambda(l *syntax.Lambda) bool {
 	if !ok {
 		return false
 	}
-	_, ok = es.X.(*syntax.Lambda)
+	x := es.X
+	if j, ok := x.(*syntax.Jump); ok && j.Kind == syntax.RETURN && j.Label != "" && j.Label == l.Label {
+		x = j.X // return@l { }
+	}
+	_, ok = x.(*syntax.Lambda)
 	return ok
 }
 
