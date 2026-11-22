@@ -481,6 +481,19 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	if x.It != nil {
 		syms = append(syms, x.It)
 	}
+	if semi := c.semiLambdas[x]; semi != nil {
+		if c.semiSyms == nil {
+			c.semiSyms = map[*types.VarSym]bool{}
+		}
+		for i, p := range x.Params {
+			if i < len(semi) && semi[i] && p.Type == nil && p.Sym != nil {
+				c.semiSyms[p.Sym] = true
+			}
+		}
+		if x.It != nil && len(semi) == 1 && semi[0] {
+			c.semiSyms[x.It] = true
+		}
+	}
 
 	if x.Suspend && !x.Inline && x.Class == "" {
 		// A suspend lambda is an object of a class of its own, and so is
@@ -2646,6 +2659,49 @@ func exprHead(e syntax.Expr) syntax.Pos {
 			return y.P
 		default:
 			return syntax.Pos{}
+		}
+	}
+}
+
+// semiValue reports whether e is a parameter of a lambda that had no
+// type when the lambda's result chose the overload it is passed to, but
+// a variable of the call (see upperSemiFixed). As in K2, where its type
+// is that variable, the lambda may pass it on, compare it, cast it or
+// give it to a declaration, but a member, an extension or an operator of
+// it is an error, and so is passing it for a parameter of another type
+// than Any?: semiReceiver and semiArgs report those.
+func (c *Checker) semiValue(e syntax.Expr) bool {
+	id, ok := e.(*syntax.Ident)
+	return ok && id.Sym != nil && c.semiSyms[id.Sym]
+}
+
+func (c *Checker) semiReceiver(e syntax.Expr, p syntax.Pos) {
+	if len(c.semiSyms) == 0 || !c.semiValue(e) || c.hasErrorAt(p, "the type of a receiver") {
+		return
+	}
+	c.errorf(p, "the type of a receiver hasn't been inferred yet: it is a variable of the call whose overload the lambda's result chooses")
+}
+
+func (c *Checker) semiArgs(x *syntax.Call) {
+	if len(c.semiSyms) == 0 {
+		return
+	}
+	if m, ok := x.Fun.(*syntax.Member); ok {
+		c.semiReceiver(m.X, m.P)
+	}
+	f := x.Sym
+	if f == nil || len(x.Names) > 0 {
+		return
+	}
+	for i, a := range x.Args {
+		if i >= len(f.Params) || !c.semiValue(a) {
+			continue
+		}
+		if t := f.Params[i].Type; t.K == types.TypeParam || t.NonNull().K == types.Any {
+			continue
+		}
+		if p := syntax.StartPos(a); !c.hasErrorAt(p, "argument type mismatch") {
+			c.errorf(p, "argument type mismatch: its type hasn't been inferred yet, but %s was expected", f.Params[i].Type)
 		}
 	}
 }

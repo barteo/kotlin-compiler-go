@@ -33,3 +33,49 @@ fun main() {
         w.add("") // ERROR type mismatch: inferred type is String but Int was expected
     }
 }
+
+fun tkI(i: Int) {}
+fun tkA(a: Any?) {}
+fun Any?.ext() {}
+
+// The lambda's parameter is of that variable's type until the call is
+// inferred: it is passed on, compared, cast or given to a declaration,
+// but has no members, extensions or operators, and is no argument for a
+// parameter of another type than Any?.
+fun parameter() {
+    myCombine(materializeFlow2()) { w ->
+        w.myMapWithArg(materializeFlow3(), materializeFlow4()) { x ->
+            val y: Int = x
+            tkA(x)
+            tkA("$x")
+            tkA(x == 1)
+            tkA(x as Int)
+            MyPair<String, Int>()
+        }
+        w.add(123)
+    }
+    myCombine(materializeFlow2()) { w ->
+        w.myMapWithArg(materializeFlow3(), materializeFlow4()) { x: Int -> MyPair<String, Int>() }
+        w.add(123)
+    }
+    myCombine(materializeFlow2()) { w ->
+        w.myMapWithArg(materializeFlow3(), materializeFlow4()) { x ->
+            x.toString() // ERROR the type of a receiver hasn't been inferred yet
+            x.hashCode() // ERROR the type of a receiver hasn't been inferred yet
+            x?.toString() // ERROR the type of a receiver hasn't been inferred yet
+            x.ext() // ERROR the type of a receiver hasn't been inferred yet
+            x.plus(1) // ERROR the type of a receiver hasn't been inferred yet
+            x + 1 // ERROR the type of a receiver hasn't been inferred yet
+            tkI(x) // ERROR argument type mismatch
+            MyPair<String, Int>()
+        }
+        w.add(123)
+    }
+    myCombine(materializeFlow2()) { w ->
+        w.myMapWithArg(materializeFlow3(), materializeFlow4()) {
+            it.toString() // ERROR the type of a receiver hasn't been inferred yet
+            MyPair<String, Int>()
+        }
+        w.add(123)
+    }
+}

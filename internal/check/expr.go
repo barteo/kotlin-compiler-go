@@ -297,8 +297,16 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			c.operator = x
 			defer func() { c.operator = saved }()
 		}
+		switch x.Op {
+		case syntax.ELVIS, syntax.AND, syntax.OR, syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+		default:
+			// An operator is a member's or an extension's call.
+			c.semiReceiver(x.X, x.P)
+			c.semiReceiver(x.Y, x.P)
+		}
 		return c.binary(x, want, allowRange)
 	case *syntax.Member:
+		c.semiReceiver(x.X, x.P)
 		return c.member(x)
 	case *syntax.Call:
 		if w := want.Flex().NonNull(); x.Literal && w.K == types.Class && w.C.Array && w.C.Elem.IsPrimitive() {
@@ -315,6 +323,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		t := c.call(x, want, sink)
 		c.poisonMark(x, pre, n)
 		c.poisonedCall(x, n)
+		c.semiArgs(x)
 		c.arrayNothingExpr(x, t)
 		return t
 	case *syntax.Index:

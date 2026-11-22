@@ -1766,6 +1766,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 	}
 	l := x.Args[li].(*syntax.Lambda)
 	var params []types.Type
+	var semis []bool
 	inl := true
 	for k, cd := range match {
 		sys := cd.sys.clone()
@@ -1776,7 +1777,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 		n := len(sys.errs)
 		semi := make([]bool, len(ps)) // see upperSemiFixed
 		for i, p := range ps {
-			if semi[i] = len(l.Params) == 0 && !mentions(l.Body, "it") && c.upperSemiFixed(sys, p); !semi[i] {
+			if semi[i] = c.upperSemiFixed(sys, p); !semi[i] {
 				sys.fixVarsIn(p)
 			}
 		}
@@ -1802,12 +1803,18 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 			}
 		}
 		if k == 0 {
-			params = ps
+			params, semis = ps, semi
 		} else if !slices.Equal(ps, params) {
 			return nil, nil
 		}
 		b, err := inlineBody(cd.f, cd.omitted(len(x.Args)) > 0)
 		inl = inl && err == nil && b != nil && inlinable(cd.f, b, cd.paramIndex(li))
+	}
+	if slices.Contains(semis, true) {
+		if c.semiLambdas == nil {
+			c.semiLambdas = map[*syntax.Lambda][]bool{}
+		}
+		c.semiLambdas[l] = semis
 	}
 	if inl {
 		for _, cd := range match {
@@ -1861,8 +1868,8 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 // several variables, one of them the builder's, which have no common
 // supertype yet, as T1 of w.myMapWithArg(materializeFlow3(),
 // materializeFlow4()) { ... } with U of w and F3 below it and F4 above.
-// kc has no type for such a parameter: only a lambda that doesn't use it
-// is checked so.
+// The parameter's type is that variable until the call is inferred: the
+// lambda may pass it on, but not call its members (see semiValue).
 func (c *Checker) upperSemiFixed(sys *system, p types.Type) bool {
 	tv := sys.unfixedVar(p)
 	if tv == nil || len(c.stubs) == 0 || len(tv.lower) < 2 || len(tv.lits) > 0 {

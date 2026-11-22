@@ -457,6 +457,12 @@ type Checker struct {
 	poisonAt    syntax.Pos
 	poisonCalls map[syntax.Expr]int
 	poisonVals  map[*types.VarSym]int
+	// semiLambdas are the lambdas whose results chose an overload with a
+	// parameter that had no type but a variable above it (see
+	// upperSemiFixed), by which parameters those are, and semiSyms those
+	// parameters: see semiValue.
+	semiLambdas map[*syntax.Lambda][]bool
+	semiSyms    map[*types.VarSym]bool
 	// keptAmbiguity is set by byLambdaResult when the candidates stay
 	// ambiguous whatever the builder's variables are inferred to be (see
 	// variableBelow): the ambiguity isn't one of those stubCheck drops

@@ -40,4 +40,14 @@ fun main() {
         w.add(5)
     }
     println(b.sum())
+    // The lambda's parameter is passed on before it has a type.
+    val c = myCombine(materializeFlow()) { w ->
+        w.myMapWithArg(materializeFlow(), materializeFlow()) { x ->
+            val y: Int = x
+            println("$x $y")
+            MyPair<String, Int>()
+        }
+        w.add(6)
+    }
+    println(c)
 }
