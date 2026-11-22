@@ -24,6 +24,10 @@ func (c *Checker) isExpr(x *syntax.Is) types.Type {
 		orig = declared // kotlinc checks the type before smart casts
 	}
 	c.impossibleIs(x.P, orig, st, x.Target, x.Not)
+	if orig.HasVars() || st.HasVars() {
+		// Of a builder's variable: checked again once it is inferred.
+		c.pclaDefer(func(sub types.Subst) { c.impossibleIs(x.P, sub.Apply(orig), sub.Apply(st), x.Target, x.Not) })
+	}
 	c.noteTypeFacts(x, x.X, st)
 	return types.BoolType
 }
@@ -38,6 +42,9 @@ func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Ty
 		}
 	}
 	c.impossibleIs(cond.P, orig, st, cond.Target, cond.NotIs)
+	if orig.HasVars() || st.HasVars() {
+		c.pclaDefer(func(sub types.Subst) { c.impossibleIs(cond.P, sub.Apply(orig), sub.Apply(st), cond.Target, cond.NotIs) })
+	}
 	if x.SubjVar == "" {
 		c.noteTypeFacts(cond, x.Subject, st)
 	} else {

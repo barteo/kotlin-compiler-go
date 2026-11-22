@@ -69,7 +69,7 @@ type pclaCheck struct {
 	bt types.Type
 	// postponed and defers are the run's that the check added.
 	postponed []*system
-	defers    []func()
+	defers    []func(types.Subst)
 }
 
 // pclaRun returns the innermost run whose lambda is being checked, if
@@ -79,6 +79,15 @@ func (c *Checker) pclaRun() *stubRun {
 		return c.pclaRuns[n-1]
 	}
 	return nil
+}
+
+// pclaDefer has f called with what the variables of the builder's lambda
+// being checked were inferred as, if its check is kept: f decides again
+// what the check decided from a type with a variable.
+func (c *Checker) pclaDefer(f func(sub types.Subst)) {
+	if r := c.pclaRun(); r != nil {
+		r.defers = append(r.defers, f)
+	}
 }
 
 // pclaDeny records that the lambdas being checked for builder inference
@@ -333,7 +342,19 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	c.pclaSub, c.pclaLive = savedSub, savedLive
 	pclaWrite(l, sub)
 	for _, f := range k.defers {
-		f()
+		f(sub)
+	}
+	// What the checks of type checks and casts knew of their operands,
+	// for the warnings about them.
+	for n := range live {
+		if f, ok := c.typeFacts[n]; ok {
+			f.orig = sub.Apply(f.orig)
+			f.casts = slices.Clone(f.casts)
+			for i, t := range f.casts {
+				f.casts[i] = sub.Apply(t)
+			}
+			c.typeFacts[n] = f
+		}
 	}
 	c.trial = saved
 	for _, t := range pclaLeft(l) {
@@ -458,7 +479,7 @@ func pclaNode(n any) string {
 	case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
 		*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
 		*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
-		*syntax.NotNull:
+		*syntax.NotNull, *syntax.Is:
 		// What the check decides for them from a type with a
 		// variable, it decides once the variable is fixed on demand
 		// (see fixedStub), or in a fixup, which runs again.

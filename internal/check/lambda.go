@@ -2741,7 +2741,7 @@ type stubRun struct {
 	solved    *system
 	deny      string
 	postponed []*system
-	defers    []func()
+	defers    []func(types.Subst)
 	// subs are what the variables of the lambdas in r's whose checks
 	// were kept were inferred as, in terms of r's variables, and handed
 	// those variables: r's commit writes them.
