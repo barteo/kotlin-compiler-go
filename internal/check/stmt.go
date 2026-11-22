@@ -1647,6 +1647,16 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return t
 	}
 	if ix, ok := u.X.(*syntax.Index); ok {
+		xt := c.value(ix.X, noWant)
+		ix.X = checked(ix.X, xt)
+		if c.stub(xt.Flex()) != nil {
+			// As in K2, which doesn't fix a builder's variable for the
+			// element that x[i]++ reads and writes: its get and its set
+			// aren't found.
+			c.errorf(ix.P, "unresolved reference: get")
+			c.errorf(ix.P, "unresolved reference: set")
+			return types.InvalidType
+		}
 		// An element of a list or a map: x.set(i, x.get(i).inc()).
 		inc := func(read syntax.Expr) syntax.Expr {
 			if builtinIncDec(read.Type()) {

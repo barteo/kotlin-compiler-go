@@ -335,15 +335,14 @@ func pclaScan(l *syntax.Lambda) string {
 			ok = !n.Cast
 		case *syntax.This:
 			ok = !n.Cast
-		case *syntax.Member:
-			ok = !n.Cast && !n.Safe
 		case *syntax.Call:
-			ok = len(n.Reified) == 0 && n.Builtin == 0
-		case *syntax.Lambda:
-			ok = !n.Anon && n.Ref == nil
-		case *syntax.VarStmt:
-			ok = n.Delegate == nil
-		case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit:
+			ok = len(n.Reified) == 0
+		case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
+			*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
+			*syntax.For, *syntax.Jump, *syntax.Destructure:
+			// What the check decides for them from a type with a
+			// variable, it decides once the variable is fixed on demand
+			// (see fixedStub), or in a fixup, which runs again.
 			ok = true
 		case *syntax.LocalClass, *syntax.ObjectExpr, *syntax.LocalFun:
 			// Their declarations are checked for the types they have.
@@ -353,10 +352,7 @@ func pclaScan(l *syntax.Lambda) string {
 		if !ok && pclaTouches(n) {
 			why = fmt.Sprintf("%T", n)
 			if x, isCall := n.(*syntax.Call); isCall {
-				switch {
-				case x.Builtin != 0:
-					why += ":builtin"
-				case len(x.Reified) > 0:
+				if len(x.Reified) > 0 {
 					why += ":reified"
 				}
 			}
