@@ -2952,16 +2952,31 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 
 // fixDeclaredStub fixes, as fixedStub does, the builder's variable that
 // is the declared type of x, a receiver of type t, if x is a variable
-// that an assignment narrowed: in kotlinc the receiver's type is still
-// the variable's, so var v = get(); v = Target(); v.member() fixes it
-// to Target, and a v = Other() after it is a mismatch (KT-63841).
-func (c *Checker) fixDeclaredStub(x syntax.Expr, t types.Type) {
+// that an assignment or a type check narrowed: in kotlinc the receiver's
+// type is still the variable's, so var v = get(); v = Target();
+// v.member() fixes it to Target, and a v = Other() after it is a
+// mismatch (KT-63841). It returns the type to look member name up in:
+// the variable's value, if t has no such member and the value has, as
+// castView sees a variable narrowed to an unrelated type with its
+// declared one (v.function() for a v known to be an Other, of a
+// variable fixed to Scope: an Other & Scope in kotlinc), and else t.
+func (c *Checker) fixDeclaredStub(x syntax.Expr, t types.Type, name string) types.Type {
 	if len(c.stubs) == 0 || c.stub(t.Flex()) != nil {
-		return
+		return t
 	}
-	if id, ok := x.(*syntax.Ident); ok && id.Sym != nil && c.stub(id.Sym.Type.Flex()) != nil {
-		c.fixedStub(id.Sym.Type)
+	id, ok := x.(*syntax.Ident)
+	if !ok || id.Sym == nil || c.stub(id.Sym.Type.Flex()) == nil {
+		return t
 	}
+	declared := c.fixedStub(id.Sym.Type)
+	if types.MayBeNull(declared) && !types.MayBeNull(t) {
+		declared = declared.NonNull()
+	}
+	if name == "" || t.NonNull().K != types.Class || declared.NonNull().K != types.Class || c.subtype(t, declared) ||
+		c.hasNamed(t, name) || !c.hasNamed(declared, name) {
+		return t
+	}
+	return declared
 }
 
 // demandStubs returns t, a parameter type of a lambda of a call in a
