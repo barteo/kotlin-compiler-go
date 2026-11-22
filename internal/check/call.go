@@ -1157,8 +1157,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if best == nil && len(match) > 1 {
 			best = c.byRefShape(x, match)
 		}
+		var lambdaTried *syntax.Lambda // the lambda byLambdaResult checked
 		if best == nil && len(match) > 1 {
-			best = c.byLambdaResult(x, match)
+			best, lambdaTried = c.byLambdaResult(x, match)
 		}
 		if best == nil {
 			names := make([]string, len(ts))
@@ -1173,6 +1174,21 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
+			}
+			// As kotlinc, the lambdas of a call that has no single
+			// candidate are checked without an expected type, so
+			// without the receiver a candidate would give them:
+			// add("") in buildL { add(""); "" } is unresolved. An
+			// ambiguous call's are the ambiguity's errors (see
+			// stubCheck).
+			n := len(c.errs)
+			for _, a := range x.Args {
+				if l, ok := a.(*syntax.Lambda); ok && l != lambdaTried {
+					c.checkLambda(l, lambdaWant{ret: noWant, recover: true})
+				}
+			}
+			if len(match) > 0 {
+				c.ambiguities += len(c.errs) - n
 			}
 			return types.InvalidType
 		}
@@ -1642,19 +1658,20 @@ func (c *Checker) unitResult(decl, r types.Type) types.Type {
 // standard library's functions marked @OverloadResolutionByLambdaReturnType,
 // such as maxOf and sumOf: the lambda is checked first, with the parameter
 // types all candidates give it, and the candidates whose result type it
-// doesn't fit are dropped. The lambda isn't checked again.
-func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate {
+// doesn't fit are dropped. The lambda isn't checked again: it is returned
+// too if it was checked, whether or not a candidate is chosen.
+func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate, *syntax.Lambda) {
 	li := -1
 	for i, a := range x.Args {
 		if _, ok := a.(*syntax.Lambda); ok {
 			if li >= 0 {
-				return nil
+				return nil, nil
 			}
 			li = i
 		}
 	}
 	if li < 0 || !slices.ContainsFunc(match, func(cd *candidate) bool { return !sourceNotByLambdaResult(cd.f) }) {
-		return nil
+		return nil, nil
 	}
 	l := x.Args[li].(*syntax.Lambda)
 	var params []types.Type
@@ -1663,7 +1680,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		sys := cd.sys.clone()
 		ps, _, ok := funcParts(sys.apply(cd.params[li]))
 		if !ok {
-			return nil
+			return nil, nil
 		}
 		n := len(sys.errs)
 		for _, p := range ps {
@@ -1673,17 +1690,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			// As in K2, a lambda whose parameter types need its body to
 			// infer, as a builder's MutableList<E1> receiver, doesn't
 			// choose: buildL { add(""); "" } is ambiguous.
-			return nil
+			return nil, nil
 		}
 		for i := range ps {
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {
-				return nil
+				return nil, nil
 			}
 		}
 		if k == 0 {
 			params = ps
 		} else if !slices.Equal(ps, params) {
-			return nil
+			return nil, nil
 		}
 		b, err := inlineBody(cd.f, cd.omitted(len(x.Args)) > 0)
 		inl = inl && err == nil && b != nil && inlinable(cd.f, b, cd.paramIndex(li))
@@ -1695,11 +1712,11 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		}
 	}
 	if cd := c.byLambdaResultClass(l, li, match, params); cd != nil {
-		return cd
+		return cd, nil
 	}
 	_, bt, _ := c.checkLambda(l, lambdaWant{params: params, known: true, recv: match[0].params[li].Flex().E, ctx: match[0].params[li].Flex().Contexts(), suspend: isSuspendFunc(match[0].params[li]), composable: isComposableFunc(match[0].params[li]), ret: noWant})
 	if bt.K == types.Invalid {
-		return nil
+		return nil, l
 	}
 	var fit []*candidate
 	byLit := map[*candidate]bool{}
@@ -1725,12 +1742,12 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		}
 	}
 	if len(maximal) != 1 {
-		return nil
+		return nil, l
 	}
 	if !byLit[maximal[0]] {
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
-	return maximal[0]
+	return maximal[0], l
 }
 
 // sourceNotByLambdaResult reports whether f is a function of the program
