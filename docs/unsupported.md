@@ -278,19 +278,26 @@ own tests.
     of a member of the builder's receiver with the builder's type in
     its signature, one that takes a member of the builder's
     receiver, a local of the builder's type or the result of such a
-    call, and a member of the result of the call with the error. K2
-    also reports some operators with the result of such a call for
-    an operand (`k..s`, not `s + 1`), and gives the members of the
-    result of the call with the error the types of the standard
-    library's candidates it tried (`MatchGroup?` for an index); kc
-    doesn't.
+    call, a member of the result of the call with the error, a range
+    (`k..s`) with the result of a call whose type parameter couldn't
+    be inferred for an operand, and a `return` of a local that is a
+    member of the result of the call with the error. K2 gives the
+    members of the result of the call with the error the types of
+    the standard library's candidates it tried (`MatchGroup?` for an
+    index); kc doesn't.
   - A call of a Java generic method between the variables of two
-    nested builders, `select(Test.foo(get()),
-    Test.foo(this@outer.getInv()))`, is accepted where K2 reports its
-    argument. K2 reports it only when the inner builder's variable
-    is under the Java method's flexible `T!` and the outer one's is
-    in an invariant position of the same call; kc has no rule for
-    it.
+    nested builders is accepted where K2 reports its argument. With
+    `R1` the outer builder's variable and `R2` the inner one's, K2
+    reports a call that needs `R2 <: R1` through an invariant
+    argument, `select(get(), this@outer.getInv())`, only when a call
+    before it passed a value of type `R1` through the Java method's
+    flexible `T!` (`Test.foo(this@outer.get())`), and then only for
+    some shapes of that earlier call; with the two in the other
+    order it reports the Java call instead. Neither call is an error
+    alone, and the same calls with a Kotlin function for the Java
+    one are accepted. kc has no rule for it: the four errors of
+    `inference/pcla/stubTypes/commonSuperTypeInvariant.kt` are
+    missed.
   - An overload chosen by a lambda's result type
     (`@OverloadResolutionByLambdaReturnType`) whose lambda parameter is
     a variable with only variables below it is chosen through the
