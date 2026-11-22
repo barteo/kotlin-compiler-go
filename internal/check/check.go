@@ -3542,6 +3542,18 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		if pclaSingle && c.pclaRun() != nil && pclaOpenClass(d) {
+			// The bridges its members need are decided from their
+			// types: again once they are inferred. The errors are those
+			// of the types as written, as in K2, which checks an
+			// override before the builder's variables are fixed.
+			c.pclaDefer(func(types.Subst) {
+				n := len(c.errs)
+				pclaResetBridges(d)
+				c.checkInheritance(d)
+				c.errs = c.errs[:n]
+			})
+		}
 		c.classRules(d)
 		c.openMembers(d)
 		if d.Interface {

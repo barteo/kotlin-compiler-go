@@ -483,33 +483,14 @@ func pclaNode(n any) string {
 		// (see fixedStub), or in a fixup, which runs again.
 		ok = true
 	case *syntax.LocalFun, *syntax.LocalClass, *syntax.ObjectExpr, *syntax.FunDecl, *syntax.PropDecl,
-		*syntax.Param, *syntax.CtorParam, *syntax.InitBlock, *syntax.LambdaParam:
+		*syntax.Param, *syntax.CtorParam, *syntax.InitBlock, *syntax.LambdaParam, *syntax.SuperType:
 		// A declaration's symbols have the types the writer gives them.
 		ok = true
 	case *syntax.ClassDecl:
-		// But what a class's members override, and the bridges they
-		// need, is decided from their types when the class is checked
-		// (see checkInheritance).
-		if n.Sym == nil {
-			return "ClassDecl"
-		}
-		overrides := len(n.Supers) > 0 || slices.ContainsFunc(n.CtorParams, func(p *syntax.CtorParam) bool { return p.Override })
-		for _, m := range n.Members {
-			switch m := m.(type) {
-			case *syntax.FunDecl:
-				overrides = overrides || m.Override
-			case *syntax.PropDecl:
-				overrides = overrides || m.Override
-			}
-		}
-		if !overrides {
-			return ""
-		}
-		open := false
-		w := &pclaWriter{seen: map[any]bool{}, left: func(types.Type) { open = true }}
-		w.classSym(n.Sym)
-		if open {
-			return "ClassDecl:overrides"
+		// The members of an interface a class delegates are declared
+		// from the interface's type.
+		if (len(n.Delegated) > 0 || slices.ContainsFunc(n.Supers, func(st *syntax.SuperType) bool { return st.Delegate != nil })) && pclaOpenClass(n) {
+			return "ClassDecl:delegation"
 		}
 		return ""
 	case *types.VarSym, *types.FunSym, *types.ClassSym:
@@ -519,6 +500,50 @@ func pclaNode(n any) string {
 		return ""
 	}
 	return strings.TrimPrefix(fmt.Sprintf("%T", n), "*syntax.")
+}
+
+// pclaOpenClass reports whether a type of class d's symbol has a
+// variable of a builder whose lambda is being checked.
+func pclaOpenClass(d *syntax.ClassDecl) bool {
+	if d.Sym == nil {
+		return false
+	}
+	open := false
+	w := &pclaWriter{seen: map[any]bool{}, left: func(types.Type) { open = true }}
+	w.classSym(d.Sym)
+	return open
+}
+
+// pclaResetBridges forgets the bridges that checkInheritance recorded
+// for class d's members, for it to record them again.
+func pclaResetBridges(d *syntax.ClassDecl) {
+	reset := func(f *types.FunSym) {
+		if f != nil {
+			f.Bridges, f.BridgeOf, f.BoxingBridges = nil, nil, nil
+		}
+	}
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			reset(m.Sym)
+		case *syntax.PropDecl:
+			if m.Getter != nil {
+				reset(m.Getter.Sym)
+			}
+			if m.Setter != nil {
+				reset(m.Setter.Sym)
+			}
+			if m.Sym != nil && m.Recv == nil {
+				m.Sym.Bridges, m.Sym.SetterBridges = nil, nil
+			}
+		}
+	}
+	for _, p := range d.CtorParams {
+		if p.PropSym != nil {
+			p.PropSym.Bridges, p.PropSym.SetterBridges = nil, nil
+		}
+	}
+	d.InheritedBridges = nil
 }
 
 // pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'
