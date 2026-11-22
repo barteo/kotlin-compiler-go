@@ -441,6 +441,11 @@ type Checker struct {
 	// couldn't infer because of an unresolved reference, by where the
 	// first one is (see poisonedRecv).
 	pclaPoison map[*syntax.Lambda]syntax.Pos
+	// keptAmbiguity is set by byLambdaResult when the candidates stay
+	// ambiguous whatever the builder's variables are inferred to be (see
+	// variableBelow): the ambiguity isn't one of those stubCheck drops
+	// with what the lambda recorded.
+	keptAmbiguity bool
 	// uninferredRecv are the lambdas whose receiver's type is a type
 	// variable of their call that couldn't be inferred, with its name:
 	// this in them is reported, as kotlinc reports it.

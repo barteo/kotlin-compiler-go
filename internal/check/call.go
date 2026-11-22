@@ -1165,6 +1165,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		var lambdaTried *syntax.Lambda // the lambda byLambdaResult checked
 		if best == nil && len(match) > 1 {
+			c.keptAmbiguity = false
 			best, lambdaTried = c.byLambdaResult(x, match)
 		}
 		if best == nil {
@@ -1179,8 +1180,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				c.errorf(x.P, "none of the %d candidates for '%s' takes (%s)", len(cs), name, strings.Join(names, ", "))
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
-				c.ambiguities++
+				if !c.keptAmbiguity {
+					c.ambiguities++
+				}
 			}
+			c.keptAmbiguity = false
 			// As kotlinc, the lambdas of a call that has no single
 			// candidate are checked without an expected type, so
 			// without the receiver a candidate would give them:
@@ -1700,6 +1704,10 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 		}
 		for i := range ps {
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {
+				return nil, nil
+			}
+			if c.variableBelow(ps[i]) {
+				c.keptAmbiguity = true
 				return nil, nil
 			}
 		}

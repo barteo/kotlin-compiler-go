@@ -371,6 +371,42 @@ func (r *stubRun) semiFixIn(trial *system, saved map[*types.TypeParamSym]*stubRu
 	return show.Apply(val), true
 }
 
+// variableBelow reports whether t is a builder's variable that, so far,
+// only other variables are below: U of myCombine(materializeFlow()) { w ->
+// w.myMap { "" } } for a flows: MyFlow<out U>, a materializeFlow():
+// MyFlow<F> and a w: MutableCollection<U>. K2 gives a call's variable T1
+// with U below it F as well, and has no type for the two of them
+// (KT-81254): the parameter of myMap's lambda has no type, and its
+// result doesn't choose an overload. A variable nothing is below yet, or
+// one with a type below it, is the type of such a parameter.
+func (c *Checker) variableBelow(t types.Type) bool {
+	r := c.stub(t)
+	if r == nil {
+		return false
+	}
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	trial, _ := r.buildShared(saved)
+	if pclaDebug {
+		pclaLogf("PCLA %s as a lambda's parameter in:\n", t.Param().Name)
+		trial.pclaDump()
+	}
+	tv := trial.byVar[t.Param()]
+	if tv == nil || !trial.ok {
+		return false
+	}
+	if tv.fixed {
+		return trial.unfixedVar(types.VarType(tv.v)) != nil
+	}
+	for _, l := range tv.lower {
+		if trial.unfixedVar(l) == nil {
+			return false
+		}
+	}
+	return len(tv.lower) > 0
+}
+
 // capturedStub reports whether x, a receiver of member name whose type t
 // is a builder's variable, has it through a projection: the result of a
 // member declared as its class's T, of a receiver whose argument for T
