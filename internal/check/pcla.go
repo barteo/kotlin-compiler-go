@@ -138,6 +138,35 @@ func (c *Checker) pclaLate(e *syntax.Error, format string, args []any) {
 	c.pclaMsgs[e] = pclaMsg{format, slices.Clone(args)}
 }
 
+// pclaAmbiguous records that the error just reported, of an ambiguous
+// call with arguments of types ts, is of a builder's variable if one of
+// them is one: as in K2, it isn't reported if the variable isn't
+// inferred, which is the error.
+func (c *Checker) pclaAmbiguous(ts []types.Type) {
+	if c.pclaRun() == nil || len(c.errs) == 0 {
+		return
+	}
+	var vars []*types.TypeParamSym
+	for _, t := range ts {
+		if u := t.Flex(); u.K == types.TypeVar && c.stubs[u.Param()] != nil {
+			vars = append(vars, u.Param())
+		}
+	}
+	if len(vars) > 0 {
+		if c.pclaVarErrs == nil {
+			c.pclaVarErrs = map[*syntax.Error][]*types.TypeParamSym{}
+		}
+		c.pclaVarErrs[c.errs[len(c.errs)-1]] = vars
+	}
+}
+
+// pclaRecvCall is a call of extension name at p on a receiver of type t.
+type pclaRecvCall struct {
+	p    syntax.Pos
+	name string
+	t    types.Type
+}
+
 // pclaReword words the errors in errs that pclaLate recorded again,
 // with sub.
 func (c *Checker) pclaReword(errs []*syntax.Error, sub types.Subst) {
@@ -404,6 +433,25 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 			return deny("open")
 		}
 	}
+	// As in K2, the calls of extensions on the receiver after an
+	// unresolved reference that left the variables uninferred (see
+	// poisons) are inapplicable.
+	if at, ok := c.pclaPoison[l]; ok {
+		for _, x := range c.pclaPoisoned[l] {
+			if (x.p.Line > at.Line || x.p.Line == at.Line && x.p.Col > at.Col) && sub.Apply(x.t).Has(func(u types.Type) bool { return u.K == types.Invalid }) {
+				c.errorf(x.p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", x.name)
+			}
+		}
+	}
+	delete(c.pclaPoisoned, l)
+	// An error that a value of a variable that nothing inferred caused
+	// isn't reported: that the variable isn't inferred is.
+	k.errs = slices.DeleteFunc(k.errs, func(e *syntax.Error) bool {
+		return slices.ContainsFunc(c.pclaVarErrs[e], func(v *types.TypeParamSym) bool {
+			a, ok := sub[v]
+			return ok && a.T.K == types.Invalid
+		})
+	})
 	// An error that the fixups find again is the check's own.
 	late := c.errs[n:]
 	c.errs = c.errs[:n:n]
@@ -512,7 +560,7 @@ func pclaScan(l *syntax.Lambda) string {
 // or symbol n, in it can't be kept, if n is why (see pclaScan).
 func pclaNode(n any) string {
 	ok := false
-	switch n := n.(type) {
+	switch n.(type) {
 	case *syntax.Call, *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
 		*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
 		*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
@@ -522,16 +570,9 @@ func pclaNode(n any) string {
 		// (see fixedStub), or in a fixup, which runs again.
 		ok = true
 	case *syntax.LocalFun, *syntax.LocalClass, *syntax.ObjectExpr, *syntax.FunDecl, *syntax.PropDecl,
-		*syntax.Param, *syntax.CtorParam, *syntax.InitBlock, *syntax.LambdaParam, *syntax.SuperType:
+		*syntax.Param, *syntax.CtorParam, *syntax.InitBlock, *syntax.LambdaParam, *syntax.SuperType, *syntax.ClassDecl:
 		// A declaration's symbols have the types the writer gives them.
 		ok = true
-	case *syntax.ClassDecl:
-		// The members of an interface a class delegates are declared
-		// from the interface's type.
-		if (len(n.Delegated) > 0 || slices.ContainsFunc(n.Supers, func(st *syntax.SuperType) bool { return st.Delegate != nil })) && pclaOpenClass(n) {
-			return "ClassDecl:delegation"
-		}
-		return ""
 	case *types.VarSym, *types.FunSym, *types.ClassSym:
 		return ""
 	}

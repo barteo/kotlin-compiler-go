@@ -2461,13 +2461,8 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			c.pclaFirst[sl.l] = errs
 		}
 		if ambiguous {
-			if n := len(r.checks); n > 0 {
-				// What it recorded is dropped, and so is its check.
-				c.pclaStat("rollback", sl.l.P, "ambiguous")
-				c.endTrial(r.checks[n-1].t)
-				r.checks = r.checks[:n-1]
-				c.pclaDeny("nested:ambiguous")
-			}
+			// What it recorded is dropped. Its check is kept, with its
+			// errors.
 			delete(c.pclaErrs, sl.l)
 			delete(c.pclaPoison, sl.l)
 			for _, v := range r.extra[ne:] {
@@ -2499,8 +2494,12 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		// was recorded, and the check that counts reports what
 		// disagrees with them where it is, constrain(Interloper) after
 		// provide().memberFunction() fixed OTv to ScopeOwner.
-		c.pclaRollback(r, "uninferred")
-		return nil
+		if !pclaSingle || len(r.checks) == 0 {
+			c.pclaRollback(r, "uninferred")
+			return nil
+		}
+		// The checks are kept, with the variables uninferred.
+		return c.pclaKeep(r, l, keep)
 	}
 	useful, trial, ok := r.solve()
 	if pclaDebug && ok {
@@ -2540,9 +2539,14 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// Not solved, the constraints disagree: solved is nil, and the
 	// call's system alone gives its variables.
 	r.solved = trial
-	// The checks of the call's other lambdas, and of the lambda of an
-	// if's or a when's branch (see openLast), are kept for when their
-	// turn comes (see postponedLambda).
+	return c.pclaKeep(r, l, keep)
+}
+
+// pclaKeep returns r, whose lambdas' checks are kept, for the commit of
+// l's if keep is set. The checks of the call's other lambdas, and of the
+// lambda of an if's or a when's branch (see openLast), are kept for when
+// their turn comes (see postponedLambda).
+func (c *Checker) pclaKeep(r *stubRun, l *syntax.Lambda, keep bool) *stubRun {
 	for _, k := range r.checks {
 		if k.l != l || !keep {
 			if c.pclaKept == nil {
@@ -2665,9 +2669,11 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	if pclaSingle {
 		w.stars = starParams(ft)
 		c.pclaRuns = append(c.pclaRuns, r)
+		r.checking = append(r.checking, sl.l)
 	}
 	_, bt, _ := c.checkLambda(sl.l, w)
 	if pclaSingle {
+		r.checking = r.checking[:len(r.checking)-1]
 		// The check is kept until the variables are inferred.
 		c.pclaRuns = c.pclaRuns[:len(c.pclaRuns)-1]
 		c.trial = t.outer
@@ -2707,6 +2713,17 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id *syntax.Ident) {
 	name, p := id.Name, id.P
 	l, ok := r.owner.(*syntax.Lambda)
+	if ok && pclaSingle && c.pclaRun() != nil && slices.ContainsFunc(c.pclaRun().checking, func(o *syntax.Lambda) bool { return o == l }) {
+		// In the check of l with the variables unfixed, which is kept:
+		// its commit reports the call, if they stay uninferred.
+		if !c.memberFun(t, name, x) && !c.hasFunProp(t, name, x) {
+			if c.pclaPoisoned == nil {
+				c.pclaPoisoned = map[*syntax.Lambda][]pclaRecvCall{}
+			}
+			c.pclaPoisoned[l] = append(c.pclaPoisoned[l], pclaRecvCall{p, name, t})
+		}
+		return
+	}
 	if !ok || c.trial != nil || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
 		return
 	}
@@ -2803,6 +2820,9 @@ type stubRun struct {
 	// those variables: r's commit writes them.
 	subs   []types.Subst
 	handed []*types.TypeParamSym
+	// checking are the lambdas whose check with the variables unfixed is
+	// under way.
+	checking []*syntax.Lambda
 }
 
 // joinRun returns the run that s, a call's system about to complete in a

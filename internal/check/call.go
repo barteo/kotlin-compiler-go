@@ -1173,6 +1173,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
 			}
 			return types.InvalidType
 		}
@@ -2108,6 +2109,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
 			}
 			return types.InvalidType
 		}

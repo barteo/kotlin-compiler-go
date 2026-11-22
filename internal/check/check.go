@@ -452,6 +452,13 @@ type Checker struct {
 	// keeps whose messages name a type with a variable: how to word
 	// them again once it is inferred.
 	pclaMsgs map[*syntax.Error]pclaMsg
+	// pclaVarErrs are the errors of those checks that a value of a
+	// builder's variable caused, an ambiguous pr(get()): they aren't
+	// reported if the variable isn't inferred. pclaPoisoned are the
+	// calls of extensions on a builder lambda's receiver that such a
+	// check saw (see poisonedRecv).
+	pclaVarErrs  map[*syntax.Error][]*types.TypeParamSym
+	pclaPoisoned map[*syntax.Lambda][]pclaRecvCall
 	// pclaLive are the nodes of that lambda's tree.
 	pclaLive map[any]bool
 	// pclaRuns are the runs of stubInference whose lambdas are being
