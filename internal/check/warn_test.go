@@ -843,3 +843,10 @@ func TestWarningsSuperQualifier(t *testing.T) {
 func TestWarningsIncompatibleTargets(t *testing.T) {
 	checkReference(t, "testdata/javatargets.kt", Options{Warnings: true})
 }
+
+// TestWarningsContextualShadowingGeneric checks
+// CONTEXTUAL_OVERLOAD_SHADOWED of overloads with type parameters against
+// kotlinc's warnings of testdata/ctxshadow_generic.kt.
+func TestWarningsContextualShadowingGeneric(t *testing.T) {
+	checkReference(t, "testdata/ctxshadow_generic.kt", Options{Warnings: true})
+}
