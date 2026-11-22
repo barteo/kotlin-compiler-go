@@ -1429,7 +1429,12 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if s.Op != syntax.ASSIGN {
 		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
 		// element's type (see fixedStub).
-		tt = c.fixedStub(tt)
+		if ft := c.fixedStub(tt); ft != tt {
+			// What x op= v is, x.opAssign(v) or x = x op v, is decided
+			// here from x's type, which the tree doesn't have yet.
+			c.pclaDeny("compound")
+			tt = ft
+		}
 	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {

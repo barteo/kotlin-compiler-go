@@ -299,6 +299,16 @@ func (s *system) pclaComplete(sub types.Subst) {
 		s.vals[v] = a
 	}
 	n := len(s.errs)
+	if s.unfixed() {
+		// A variable that the shared system didn't infer, as one of a
+		// call that didn't check, which said nothing in it: the call's
+		// own bounds give it, with the builder's variables inferred.
+		if pclaDebug {
+			pclaLogf("PCLA completes:\n")
+			s.pclaDump()
+		}
+		s.complete()
+	}
 	for i := 0; i < len(s.fixups); i++ {
 		s.fixups[i](s)
 	}
@@ -315,13 +325,6 @@ func (s *system) pclaComplete(sub types.Subst) {
 // writes.
 func pclaScan(l *syntax.Lambda) string {
 	why := ""
-	literal := func(a syntax.Expr) bool {
-		if u, ok := a.(*syntax.Unary); ok {
-			a = u.X
-		}
-		_, ok := a.(*syntax.IntLit)
-		return ok
-	}
 	syntax.Inspect(l.Body, func(n any) bool {
 		if why != "" {
 			return false
@@ -335,7 +338,7 @@ func pclaScan(l *syntax.Lambda) string {
 		case *syntax.Member:
 			ok = !n.Cast && !n.Safe
 		case *syntax.Call:
-			ok = len(n.Reified) == 0 && n.Builtin == 0 && !slices.ContainsFunc(n.Args, literal)
+			ok = len(n.Reified) == 0 && n.Builtin == 0
 		case *syntax.Lambda:
 			ok = !n.Anon && n.Ref == nil
 		case *syntax.VarStmt:
@@ -355,8 +358,6 @@ func pclaScan(l *syntax.Lambda) string {
 					why += ":builtin"
 				case len(x.Reified) > 0:
 					why += ":reified"
-				default:
-					why += ":literal"
 				}
 			}
 		}

@@ -343,6 +343,24 @@ func paramsString(ps []types.Type) string {
 // checkLambda declares a lambda's parameters and checks its body. It
 // returns the parameter types and the result type, and false if the
 // parameters don't match the expected ones.
+// pclaTree lists the expressions of n with their types, for $KC_PCLA_DEBUG.
+func pclaTree(what string, n any) {
+	if !pclaDebug {
+		return
+	}
+	pclaLogf("PCLA tree %s:\n", what)
+	syntax.Inspect(n, func(n any) bool {
+		if x, ok := n.(syntax.Expr); ok && x != nil {
+			extra := ""
+			if id, ok := x.(*syntax.Ident); ok && id.Sym != nil {
+				extra = fmt.Sprintf(" %s: %v", id.Name, id.Sym.Type)
+			}
+			pclaLogf("  %v %T %v%s\n", x.Pos(), x, x.Type(), extra)
+		}
+		return true
+	})
+}
+
 func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
 	if c.file.Annotated != nil {
 		// A lambda argument is checked here, not by expr, which checks
@@ -3449,6 +3467,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	c.replayPCLAErrors(s, l, nerrs)
+	pclaTree("checked", l)
 	// A lambda ending in a statement gives R := Unit. Not if a parameter
 	// declared with a type contradicts it, as String does R's Int in
 	// foo { s: String -> 1 } for (R) -> R: the result is then checked
