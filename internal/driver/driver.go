@@ -402,7 +402,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	start = time.Now()
 
 	if broken {
-		return checkRecovered(files, errLists, softLists, r.lib, opts.Jobs, major, diags)
+		return checkRecovered(files, errLists, softLists, r.lib, opts, major, diags, warnings)
 	}
 	if opts.Metro && opts.MetroOptions["enabled"] != "false" && slices.ContainsFunc(files, check.UsesMetro) {
 		r.lib.MetroOptions = opts.MetroOptions
@@ -920,11 +920,13 @@ func lowerRecovering(s *psi.Snapshot) (f *syntax.File, errs []*syntax.Error) {
 // errors, diags, with the checker's errors on the lines without one. A
 // declaration or statement with a syntax error is left out of its file,
 // so the checker's errors on its lines would be about what parsing left.
-// Its warnings are left out, as many are about what isn't used, which a
-// declaration left out may use. The errors of softLists, kc's parser's
-// where kotlinc's parser reports none, are reported only on lines the
-// checker reports no error on: there, the checker's is kotlinc's error.
-func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error, lib *check.Library, jobs int, major uint16, diags []error) error {
+// Of its warnings, added to warnings, only those are reported that what
+// is left out can't be the reason for (check.Options.Recovered): many
+// are about what isn't used, which a declaration left out may use. The
+// errors of softLists, kc's parser's where kotlinc's parser reports
+// none, are reported only on lines the checker reports no error on:
+// there, the checker's is kotlinc's error.
+func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error, lib *check.Library, opts Options, major uint16, diags []error, warnings *[]*syntax.Error) error {
 	syntaxLines := map[string]map[int]bool{}
 	for i, es := range errLists {
 		for _, e := range es {
@@ -934,10 +936,15 @@ func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error,
 			syntaxLines[files[i].Path][e.Pos.Line] = true
 		}
 	}
-	checked, _ := check.CheckOptions(context.Background(), files, lib, jobs, nil, check.Options{JVMTarget: major})
+	checked, _ := check.CheckOptions(context.Background(), files, lib, opts.Jobs, nil, check.Options{JVMTarget: major,
+		Warnings: true, Recovered: true, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings})
 	checkerLines := map[string]map[int]bool{}
 	for _, e := range checked {
-		if !e.IsWarning() && !syntaxLines[e.File][e.Pos.Line] {
+		if e.IsWarning() {
+			*warnings = append(*warnings, e)
+			continue
+		}
+		if !syntaxLines[e.File][e.Pos.Line] {
 			diags = append(diags, e)
 			if checkerLines[e.File] == nil {
 				checkerLines[e.File] = map[int]bool{}

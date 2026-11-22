@@ -169,6 +169,9 @@ func lowerFile(s *psi.Snapshot, recovering bool) (*syntax.File, *Provenance, []*
 		}
 	}
 	f.Errors = l.later
+	if recovering {
+		f.RedundantPrefixes = l.redundantPrefixes()
+	}
 	f.SuppressInvisible = l.suppressInvisible
 	f.SuppressShadowed = l.suppressShadowed
 	f.SuppressDSL = l.suppressDSL

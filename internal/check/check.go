@@ -839,6 +839,10 @@ type Options struct {
 	// file of a higher version is an error, as kotlinc's
 	// INLINE_FROM_HIGHER_PLATFORM.
 	JVMTarget uint16
+	// Recovered says that the files are those of a program with syntax
+	// errors, as far as the parser recovered them: of the warnings, only
+	// recoveredWarnings are reported.
+	Recovered bool
 	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
 	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
 	ExtraWarnings bool
@@ -971,6 +975,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		warns = append(warns, c.warns...)
 	}
 	errs = dropBackendErrors(errs)
+	if opts.Recovered {
+		warns = slices.DeleteFunc(warns, func(w *syntax.Error) bool { return !recoveredWarnings[w.Name] })
+	}
 	if opts.Warnings {
 		errs = append(errs, warns...)
 	}

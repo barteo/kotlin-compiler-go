@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"regexp"
+	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -35,6 +36,11 @@ type File struct {
 	// does: context parameters where Kotlin doesn't allow them, which the
 	// checker reports.
 	Errors []*Error
+	// RedundantPrefixes are, in a file with syntax errors, the string
+	// literals with a redundant interpolation prefix, among them those of
+	// the statements and declarations left out of the file, which
+	// kotlinc reports all the same (REDUNDANT_INTERPOLATION_PREFIX).
+	RedundantPrefixes []Pos
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
@@ -1319,18 +1325,21 @@ var redundantPrefix = regexp.MustCompile("(\\$+)(\\w|\\{|`[^`])")
 // warning says: a single $, or a longer prefix of a literal without
 // template entries none of whose text looks like one.
 func (s *StringLit) RedundantPrefix() bool {
+	entries := slices.ContainsFunc(s.Parts, func(p TmplPart) bool { return p.X != nil })
+	return RedundantPrefixOf(s.Prefix, entries, s.Src)
+}
+
+// RedundantPrefixOf is RedundantPrefix of a string literal with an
+// interpolation prefix of prefix $, whose source after it is src, and
+// which has template entries if entries.
+func RedundantPrefixOf(prefix int, entries bool, src string) bool {
 	switch {
-	case s.Prefix == 1:
+	case prefix == 1:
 		return true
-	case s.Prefix == 0:
+	case prefix == 0 || entries:
 		return false
 	}
-	for _, p := range s.Parts {
-		if p.X != nil {
-			return false
-		}
-	}
-	return !redundantPrefix.MatchString(s.Src)
+	return !redundantPrefix.MatchString(src)
 }
 
 type Unary struct {

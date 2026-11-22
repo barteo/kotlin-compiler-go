@@ -34,6 +34,13 @@ func (c *Checker) localWarnings() {
 			c.classDeadCode(d, deadClasses)
 		}
 	}
+	if c.u.experimentalWarnings {
+		// Those of a file with syntax errors, read from its tree: the
+		// literals that are kept are reported once, by the walk too.
+		for _, p := range c.file.RedundantPrefixes {
+			c.warnf(p, "REDUNDANT_INTERPOLATION_PREFIX", "redundant interpolation prefix")
+		}
+	}
 	callees := map[*syntax.Member]bool{} // the members called, which reflectionWarning judges with the call
 	// refCalls are the calls that callable references are lambdas of, as
 	// s.toString() of s::toString, which aren't written.
