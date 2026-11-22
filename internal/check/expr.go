@@ -2402,11 +2402,48 @@ func (c *Checker) untypedMember(x *syntax.Member, call bool) {
 func (c *Checker) errorRecvExt(fn *syntax.Member) []callee {
 	// Nothing is taken by every receiver type.
 	cs := c.extCallees(fn.Name, types.NothingType)
-	if len(cs) != 1 || len(cs[0].f.TypeParams) == 0 {
+	if len(cs) == 1 && len(cs[0].f.TypeParams) == 0 {
 		return nil
 	}
-	cs[0].ext, cs[0].errRecv = types.InvalidType, true
+	for i := range cs {
+		cs[i].ext, cs[i].errRecv = types.InvalidType, true
+	}
 	return cs
+}
+
+// errorRecvFit returns the one of the extensions cs of a name, for call
+// x of a receiver whose type has an error (see errorRecvExt), that x is
+// a call of: the only one, or of several the only one that may take
+// the arguments, if it is generic and its receiver type isn't its bare
+// type parameter, as m[1] for an unresolved m is a call of the
+// standard library's Map<out K, V>.get(key: K), which can't infer V,
+// not of MatchGroupCollection.get(name: String). Not with an argument
+// whose type has an error too, which is what its parameter's type
+// parameter is given: m[k] = 1 for an unresolved k is no error.
+func (c *Checker) errorRecvFit(cs []callee, x *syntax.Call) []callee {
+	if len(cs) == 1 {
+		if c.mayTake(cs[0].f, x) {
+			return cs
+		}
+		return nil
+	}
+	var fit []callee
+	for _, cl := range cs {
+		if c.mayTake(cl.f, x) {
+			fit = append(fit, cl)
+		}
+	}
+	if len(fit) != 1 || len(fit[0].f.TypeParams) == 0 || fit[0].f.Recv.K == types.TypeParam {
+		return nil
+	}
+	for _, a := range x.Args {
+		if id, ok := a.(*syntax.Ident); ok {
+			if _, t, ok := c.scope.lookup(id.Name); ok && t.Has(func(u types.Type) bool { return u.K == types.Invalid }) {
+				return nil
+			}
+		}
+	}
+	return fit
 }
 
 // callReceiver checks the receiver of a member call, expecting want. A
@@ -3271,8 +3308,8 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		}
 		rt, nullExts, ok := c.callReceiver(fn, rw)
 		if !ok {
-			if len(nullExts) == 1 && c.mayTake(nullExts[0].f, x) {
-				return c.resolve(x, nullExts, want, sink) // see errorRecvExt
+			if fit := c.errorRecvFit(nullExts, x); fit != nil {
+				return c.resolve(x, fit, want, sink) // see errorRecvExt
 			}
 			c.args(x, nil)
 			return types.InvalidType
