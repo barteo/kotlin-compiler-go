@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -191,4 +193,71 @@ func prevIsEq(p, n psi.NodeRef) bool {
 	}
 	q := prev(n)
 	return q.Valid() && q.NumericKind() == psi.KindEQ
+}
+
+// redundantPrefixes returns the positions of the string literals of the
+// file whose interpolation prefix is redundant, as
+// syntax.StringLit.RedundantPrefix says, read from the tree: those of
+// the statements and declarations that recovery leaves out too, which
+// kotlinc's experimental REDUNDANT_INTERPOLATION_PREFIX is reported of
+// as of the others. A literal is one whose entries are all text and
+// escapes; with any other, a syntax error among them, kotlinc's is a
+// concatenation, of which only a single $ is redundant.
+//
+// A literal inside a syntax error has no expression in kotlinc's tree,
+// and one under an annotation that may suppress the warning is left
+// out: the checker knows only the annotations of what is kept.
+func (l *lowerer) redundantPrefixes() []syntax.Pos {
+	var ps []syntax.Pos
+	for id := psi.NodeID(1); int(id) <= l.s.NodeCount(); id++ {
+		n := l.s.Node(id)
+		if n.NumericKind() != psi.KindSTRING_TEMPLATE {
+			continue
+		}
+		p := child(n, psi.KindSTRING_INTERPOLATION_PREFIX)
+		if !p.Valid() {
+			continue
+		}
+		prefix := len(p.Text())
+		entries := false
+		for _, e := range kids(n) {
+			switch e.NumericKind() {
+			case psi.KindSTRING_INTERPOLATION_PREFIX, psi.KindOPEN_QUOTE, psi.KindCLOSING_QUOTE,
+				psi.KindLITERAL_STRING_TEMPLATE_ENTRY, psi.KindESCAPE_STRING_TEMPLATE_ENTRY:
+			default:
+				entries = true
+			}
+		}
+		if syntax.RedundantPrefixOf(prefix, entries, n.Text()[prefix:]) && !prefixWarningOff(n) {
+			ps = append(ps, l.pos(n))
+		}
+	}
+	return ps
+}
+
+// prefixWarningOff reports whether string template n is inside a syntax
+// error, or under an annotation that may suppress its
+// REDUNDANT_INTERPOLATION_PREFIX warning: a @Suppress of that name or of
+// all warnings.
+func prefixWarningOff(n psi.NodeRef) bool {
+	off := func(a psi.NodeRef) bool {
+		t := strings.ToLower(a.Text())
+		return strings.Contains(t, "suppress") && (strings.Contains(t, "redundant_interpolation_prefix") || strings.Contains(t, `"warnings"`))
+	}
+	for a := n.Parent(); a.Valid(); a = a.Parent() {
+		switch a.NumericKind() {
+		case psi.KindERROR_ELEMENT:
+			return true
+		case psi.KindANNOTATED_EXPRESSION:
+			if off(a) {
+				return true
+			}
+		}
+		for _, k := range []psi.Kind{psi.KindMODIFIER_LIST, psi.KindFILE_ANNOTATION_LIST} {
+			if m := child(a, k); m.Valid() && off(m) {
+				return true
+			}
+		}
+	}
+	return false
 }

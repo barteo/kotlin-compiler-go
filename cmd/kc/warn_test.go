@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 )
 
 // TestWarnings compiles a program with a warning: it is printed and the
@@ -85,5 +87,63 @@ func TestWarningsExtra(t *testing.T) {
 		if tc.want == "" && got != "" || !strings.Contains(got, tc.want) {
 			t.Errorf("%v: output %q, want %q", tc.flags, got, tc.want)
 		}
+	}
+}
+
+// TestWarningsSyntaxErrors compiles a program with syntax errors: of its
+// warnings, kc reports those that the statements left out for their
+// errors can't be the reason for, and the redundant interpolation
+// prefixes of the statements left out too, each once.
+func TestWarningsSyntaxErrors(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "w.kt")
+	const program = `annotation class A(val s: String)
+
+@A($"x")
+class C {
+    open fun f() {}
+}
+fun g(x: Int) {
+    $"${}"
+    $"kept"
+    $$"${}"
+    $$"kept"
+    val unused = 1
+    @Suppress("REDUNDANT_INTERPOLATION_PREFIX") $"s"
+    val y = x!!
+}
+@Suppress("warnings")
+fun h() { $"${}" }
+fun <T : Int> k() { println($"a" + ) }
+`
+	if err := os.WriteFile(src, []byte(program), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The files are checked only with a class path.
+	if _, err := classpath.FindJDK(); err != nil {
+		t.Skip(err)
+	}
+	var stderr strings.Builder
+	code, err := compile([]string{"-features", "-Wextra", "-Xuse-fir-experimental-checkers", "-d", filepath.Join(dir, "out"), src}, &stderr, nil)
+	if code != 1 || err == nil {
+		t.Errorf("exit %d, error %v, want 1 and the syntax errors", code, err)
+	}
+	var got []string
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if f := strings.Split(line, "\t"); len(f) > 3 && f[2] == "warning" {
+			got = append(got, f[1]+" "+f[3])
+		}
+	}
+	want := []string{
+		"3:4 REDUNDANT_INTERPOLATION_PREFIX",
+		"5:5 NON_FINAL_MEMBER_IN_FINAL_CLASS",
+		"8:5 REDUNDANT_INTERPOLATION_PREFIX", // of a statement left out
+		"9:5 REDUNDANT_INTERPOLATION_PREFIX",
+		"11:5 REDUNDANT_INTERPOLATION_PREFIX",
+		"18:10 FINAL_UPPER_BOUND",
+		"18:29 REDUNDANT_INTERPOLATION_PREFIX",
+	}
+	if strings.Join(got, ", ") != strings.Join(want, ", ") {
+		t.Errorf("warnings:\ngot  %v\nwant %v\noutput:\n%s", got, want, stderr.String())
 	}
 }

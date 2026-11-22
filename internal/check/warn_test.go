@@ -774,3 +774,118 @@ func TestWarningsVarargNothing(t *testing.T) {
 func TestWarningsOrderDependent(t *testing.T) {
 	checkReference(t, "testdata/orderdependent.kt", Options{Warnings: true})
 }
+
+// TestWarningsOptInArguments checks the warnings of @OptIn annotations
+// that opt in to nothing, and of subclasses of classes whose
+// @SubclassOptInRequired marker has level WARNING, against kotlinc's of
+// testdata/optin_args.kt.
+func TestWarningsOptInArguments(t *testing.T) {
+	checkReference(t, "testdata/optin_args.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantRepeatable checks the warnings of Kotlin's
+// @Repeatable beside Java's against kotlinc's of testdata/repeatable.kt.
+func TestWarningsRedundantRepeatable(t *testing.T) {
+	checkReference(t, "testdata/repeatable.kt", Options{Warnings: true})
+}
+
+// TestWarningsDslMarkerPropagation checks the warnings of DSL markers on
+// function types with several receivers and context parameters against
+// kotlinc's of testdata/dsl_many.kt.
+func TestWarningsDslMarkerPropagation(t *testing.T) {
+	checkReference(t, "testdata/dsl_many.kt", Options{Warnings: true})
+}
+
+// TestWarningsModifierTarget checks the warnings of open on an interface
+// and of external on an enum entry or a constructor's property against
+// kotlinc's of testdata/modtarget.kt.
+func TestWarningsModifierTarget(t *testing.T) {
+	checkReference(t, "testdata/modtarget.kt", Options{Warnings: true})
+}
+
+// TestWarningsUselessOverloads checks the warnings of @JvmOverloads that
+// adds no overloads, and of @param: on a constructor parameter that is
+// no property, against kotlinc's of testdata/jvmoverloads.kt.
+func TestWarningsUselessOverloads(t *testing.T) {
+	checkReference(t, "testdata/jvmoverloads.kt", Options{Warnings: true})
+}
+
+// TestWarningsUselessExposeBoxed checks the warnings of @JvmExposeBoxed
+// on declarations without value classes against kotlinc's of
+// testdata/exposeboxed.kt.
+func TestWarningsUselessExposeBoxed(t *testing.T) {
+	checkReference(t, "testdata/exposeboxed.kt", Options{Warnings: true})
+}
+
+// TestWarningsTrimMargin checks the warnings of trimMargin with a blank
+// prefix against kotlinc's of testdata/trimmargin.kt.
+func TestWarningsTrimMargin(t *testing.T) {
+	checkReference(t, "testdata/trimmargin.kt", Options{Warnings: true})
+}
+
+// TestWarningsOperatorRenamed checks the warnings of operator functions
+// imported under another operator's name against kotlinc's of
+// testdata/oprename.kt.
+func TestWarningsOperatorRenamed(t *testing.T) {
+	checkReference(t, "testdata/oprename.kt", Options{Warnings: true})
+}
+
+// TestWarningsSuperQualifier checks the warnings of type arguments in an
+// outer class's super qualifier against kotlinc's of
+// testdata/superqualifier.kt.
+func TestWarningsSuperQualifier(t *testing.T) {
+	checkReference(t, "testdata/superqualifier.kt", Options{Warnings: true})
+}
+
+// TestWarningsIncompatibleTargets checks the warnings of Java's @Target
+// that lacks a counterpart of Kotlin's against kotlinc's of
+// testdata/javatargets.kt.
+func TestWarningsIncompatibleTargets(t *testing.T) {
+	checkReference(t, "testdata/javatargets.kt", Options{Warnings: true})
+}
+
+// TestWarningsContextualShadowingGeneric checks
+// CONTEXTUAL_OVERLOAD_SHADOWED of overloads with type parameters against
+// kotlinc's warnings of testdata/ctxshadow_generic.kt.
+func TestWarningsContextualShadowingGeneric(t *testing.T) {
+	checkReference(t, "testdata/ctxshadow_generic.kt", Options{Warnings: true})
+}
+
+// TestWarningsAliasExpansionDeprecated checks the warnings of typealiases
+// whose expansions use deprecated classes, in types, bounds, class
+// literals and constructor calls, against kotlinc's of
+// testdata/alias_deprecated.kt.
+func TestWarningsAliasExpansionDeprecated(t *testing.T) {
+	checkReference(t, "testdata/alias_deprecated.kt", Options{Warnings: true})
+}
+
+// TestWarningsContextParameterNames checks the warnings of context
+// parameters named otherwise in an override, or in two supertypes,
+// against kotlinc's of testdata/ctxnames.kt.
+func TestWarningsContextParameterNames(t *testing.T) {
+	checkReference(t, "testdata/ctxnames.kt", Options{Warnings: true})
+}
+
+// TestWarningsUnsignedVararg checks the warnings of vararg parameters of
+// unsigned types, whose arrays need opt-in, against kotlinc's of
+// testdata/unsigned_vararg.kt.
+func TestWarningsUnsignedVararg(t *testing.T) {
+	checkReference(t, "testdata/unsigned_vararg.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantTypes checks the warnings of a Unit return type, a
+// setter parameter's type and a template of one String against those
+// kotlinc reports with -Wextra of testdata/redundant_types.kt, and that
+// there are none without it.
+func TestWarningsRedundantTypes(t *testing.T) {
+	checkReference(t, "testdata/redundant_types.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/redundant_types.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.Contains(g, ":REDUNDANT_") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}

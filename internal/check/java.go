@@ -1,6 +1,7 @@
 package check
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -947,6 +948,7 @@ func (c *Checker) resolveImports() {
 				classifiers[alias] = append(classifiers[alias], imp.P)
 			}
 			if fs := user.Funs[simple]; len(fs) > 0 {
+				c.operatorRenamed(imp, simple, fs)
 				// Functions of one name imported from several packages
 				// are overloads: clikt's options.convert and
 				// arguments.convert.
@@ -1007,6 +1009,7 @@ func (c *Checker) resolveImports() {
 		// several packages are overloads, as the program's own above. As
 		// in K2, one function of two modules, by its package, name and
 		// signature, is one candidate.
+		c.operatorRenamed(imp, simple, fs)
 		for _, f := range fs {
 			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return sameDeclaration(f, g) }) {
 				c.funImports[alias] = append(c.funImports[alias], f)
@@ -1043,10 +1046,24 @@ func (c *Checker) resolveImports() {
 			} else if a := owner.Aliases[simple]; a != nil {
 				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
 				classifiers[alias] = append(classifiers[alias], imp.P)
-			} else if mi := (memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}); c.memberImports[alias].owner != nil {
-				c.moreMemberImports[alias] = append(c.moreMemberImports[alias], mi)
 			} else {
-				c.memberImports[alias] = mi
+				if cd, _ := owner.Decl.(*syntax.ClassDecl); cd != nil && owner.Object {
+					// Its members aren't declared yet.
+					var fs []*types.FunSym
+					for _, m := range cd.Members {
+						if fd, ok := m.(*syntax.FunDecl); ok && fd.Name == simple {
+							fs = append(fs, &types.FunSym{Name: simple, Operator: fd.Operator})
+						}
+					}
+					c.operatorRenamed(imp, simple, fs)
+				} else if owner.Object {
+					c.operatorRenamed(imp, simple, ensured(owner).Methods[simple])
+				}
+				if mi := (memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}); c.memberImports[alias].owner != nil {
+					c.moreMemberImports[alias] = append(c.moreMemberImports[alias], mi)
+				} else {
+					c.memberImports[alias] = mi
+				}
 			}
 			continue
 		}
@@ -1150,6 +1167,25 @@ var optionalExpectations = map[string]bool{
 	"kotlin.native.RefinesInSwift":             true,
 	"kotlin.native.concurrent.SharedImmutable": true,
 	"kotlin.native.concurrent.ThreadLocal":     true,
+}
+
+// conventionName matches the names operators call functions by, of which
+// kotlinc's OPERATOR_RENAMED_ON_IMPORT warns.
+var conventionName = regexp.MustCompile(`^(plus|minus|times|div|rem|rangeTo|rangeUntil|unaryPlus|unaryMinus|not|inc|dec|(plus|minus|times|div|rem)Assign|get|set|invoke|contains|compareTo|equals|iterator|next|hasNext|getValue|setValue|provideDelegate|of|component\d+)$`)
+
+// operatorRenamed warns of import imp of the functions named simple among
+// fs under another name that an operator calls, if one of them is an
+// operator function: the name doesn't make it that name's operator.
+func (c *Checker) operatorRenamed(imp *syntax.Import, simple string, fs []*types.FunSym) {
+	if imp.Alias == "" || imp.Alias == simple || !conventionName.MatchString(imp.Alias) {
+		return
+	}
+	if slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+		d, _ := f.Decl.(*syntax.FunDecl) // its symbol isn't resolved yet
+		return f.Name == simple && (f.Operator || d != nil && d.Operator)
+	}) {
+		c.warnf(imp.P, "OPERATOR_RENAMED_ON_IMPORT", "renaming an operator function on import to '%s' doesn't make it that operator's function", imp.Alias)
+	}
 }
 
 // importOwner resolves the qualified name of a class in an import, a.b.C

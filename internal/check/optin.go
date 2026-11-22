@@ -725,11 +725,49 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 			} else if k.Decl == nil {
 				w.deprecatedUse(r.P, k.Name, deprecationLevel(k.Deprecated))
 			}
-			if cls := w.expansionDeprecated(k.Type, 0); cls != nil && !w.deprecated() && !w.suppressed("TYPEALIAS_EXPANSION_DEPRECATION_ERROR") {
-				w.errorf(r.P, "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
+			if cls := w.expansionDeprecated(k.Type, true, 0); cls != nil {
+				if !w.deprecated() && !w.suppressed("TYPEALIAS_EXPANSION_DEPRECATION_ERROR") {
+					w.errorf(r.P, "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
+				}
+			} else if cls := w.expansionDeprecated(k.Type, false, 0); cls != nil && !w.deprecated() {
+				w.warnf(r.P, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
 			}
 		}
 	})
+}
+
+// classLitDeprecation reports the class of class literal n, A::class, a
+// class named by its simple name or by a typealias of the program's, if
+// it is deprecated, or if the typealias's expansion is.
+func (w *optWalker) classLitDeprecation(n *syntax.ClassLit) {
+	id, ok := n.X.(*syntax.Ident)
+	if !ok || w.deprecated() {
+		return
+	}
+	cls := n.Class.C
+	if _, ok := cls.Decl.(*syntax.ClassDecl); ok && cls.Outer == nil && id.Name == cls.DisplayName() {
+		if d := classDepr(cls); d.level != "" && !d.isError() {
+			w.deprecatedUse(id.P, cls.DisplayName(), d)
+		}
+		return
+	}
+	for _, a := range w.o.aliases[id.Name] {
+		if _, ok := a.Decl.(*syntax.TypeAliasDecl); ok && a.Class() == cls && w.expansionDeprecated(a.Type, true, 0) == nil {
+			if dep := w.expansionDeprecated(a.Type, false, 0); dep != nil {
+				w.warnf(id.P, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", a.Name, dep.DisplayName())
+			}
+			return
+		}
+	}
+}
+
+// typeParams walks the bounds of type parameters tps.
+func (w *optWalker) typeParams(tps []*syntax.TypeParam) {
+	for _, tp := range tps {
+		for _, b := range tp.Bounds {
+			w.typeRef(b)
+		}
+	}
 }
 
 // annotationAsType reports a type that names RequiresOptIn or OptIn, or
@@ -770,18 +808,19 @@ func (w *optWalker) annotationAsType(p syntax.Pos, k any, markers bool) {
 	}
 }
 
-// expansionDeprecated returns a class deprecated with level ERROR or
-// HIDDEN that type t is made of, or nil.
-func (w *optWalker) expansionDeprecated(t types.Type, depth int) *types.ClassSym {
+// expansionDeprecated returns a class that type t is made of that is
+// deprecated with level ERROR or HIDDEN, or, unless errors, with level
+// WARNING; or nil.
+func (w *optWalker) expansionDeprecated(t types.Type, errors bool, depth int) *types.ClassSym {
 	if t.K != types.Class || t.C == nil || depth > 16 {
 		return nil
 	}
-	if classDeprecation(t.C) != "" {
+	if d := classDepr(t.C); d.level != "" && d.isError() == errors {
 		return t.C
 	}
 	if t.A != nil {
 		for i := range t.A.Len() {
-			if cls := w.expansionDeprecated(t.A.Get(i).T, depth+1); cls != nil {
+			if cls := w.expansionDeprecated(t.A.Get(i).T, errors, depth+1); cls != nil {
 				return cls
 			}
 		}
@@ -807,9 +846,13 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 	w.pop()
 	for i := range as {
 		a := &as[i]
-		if cls := w.o.annClass(a); cls != nil {
+		cls := w.o.annClass(a)
+		if cls != nil {
 			// A deprecated annotation class, used as an annotation.
 			w.deprecatedUse(a.P, cls.DisplayName(), notHidden(classDepr(cls)))
+		}
+		if a.Is("OptIn") && !a.Implicit {
+			w.optInArgs(a)
 		}
 		var versions []*syntax.AnnotationArg
 		switch {
@@ -833,6 +876,29 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			if ok && !kotlinVersion.MatchString(s) {
 				w.errorf(arg.Toks[0].Pos, "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
 			}
+		}
+	}
+}
+
+// optInArgs warns of an @OptIn that opts in to nothing: one without
+// arguments, and its arguments that aren't the classes of opt-in
+// requirement markers.
+func (w *optWalker) optInArgs(a *syntax.Annotation) {
+	values, ok := w.o.u.optInValues[a]
+	if !ok {
+		return // not kotlin.OptIn, or its arguments have errors
+	}
+	if len(a.Args) == 0 {
+		w.c.warnf(a.P, "OPT_IN_WITHOUT_ARGUMENTS", "'@OptIn' without arguments has no effect")
+		return
+	}
+	for _, v := range values {
+		for _, e := range v.Elems {
+			lit, ok := e.X.(*syntax.ClassLit)
+			if !ok || lit.Class.K != types.Class || lit.Class.C == nil || lit.Class.C.Missing || w.o.marker(lit.Class.C) != nil {
+				continue
+			}
+			w.c.warnf(lit.P, "OPT_IN_ARGUMENT_IS_NOT_MARKER", "annotation '%s' is not annotated with '@RequiresOptIn'. '@OptIn' has no effect", lit.Class.C.DisplayName())
 		}
 	}
 }
@@ -994,6 +1060,7 @@ func (w *optWalker) decl(d syntax.Decl) {
 		}
 		w.annotationErrors(d.Annotations)
 		w.push(d.Annotations)
+		w.typeParams(d.TypeParams)
 		w.typeRef(d.Type)
 		w.pop()
 	case *syntax.SecondaryCtor:
@@ -1026,10 +1093,27 @@ func (w *optWalker) params(ps []*syntax.Param) {
 		w.markerTargetErrors(p.Annotations, true)
 		w.push(p.Annotations)
 		w.typeRef(p.Type)
+		w.unsignedVararg(p)
 		if p.Default != nil {
 			w.node(p.Default)
 		}
 		w.pop()
+	}
+}
+
+// unsignedVararg reports vararg parameter p of an unsigned type, which is
+// an array of them, UIntArray for UInt: the array classes need opt-in.
+func (w *optWalker) unsignedVararg(p *syntax.Param) {
+	if !p.Vararg || p.Type == nil || p.Sym == nil {
+		return
+	}
+	t := p.Sym.Type
+	if t.K != types.Class || t.C == nil || t.N {
+		return
+	}
+	switch t.C.Name {
+	case "kotlin/UByteArray", "kotlin/UShortArray", "kotlin/UIntArray", "kotlin/ULongArray":
+		w.require(p.Type.P, w.o.classMarkers(t.C))
 	}
 }
 
@@ -1050,6 +1134,7 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 	if d.Sym != nil {
 		w.classes = append(w.classes, d.Sym)
 	}
+	w.typeParams(d.TypeParams)
 	for _, st := range d.Supers {
 		if st == nil {
 			continue
@@ -1080,6 +1165,7 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 		w.markerTargetErrors(p.Modifiers.Annotations, param)
 		w.push(p.Modifiers.Annotations)
 		w.typeRef(p.Type)
+		w.unsignedVararg(&p.Param)
 		if p.Default != nil {
 			w.node(p.Default)
 		}
@@ -1209,7 +1295,13 @@ func (w *optWalker) inheritance(st *syntax.SuperType) {
 		}
 	}
 	for _, m := range ms {
-		if m == nil || !m.err || w.o.optsIn(w.scope, m, true) {
+		if m == nil || w.o.optsIn(w.scope, m, true) {
+			continue
+		}
+		if !m.err {
+			if st.Type != nil {
+				w.warnf(st.Type.P, "OPT_IN_TO_INHERITANCE", "this class or interface requires opt-in to be implemented. Its usage should be marked with '@%s', '@OptIn(%s::class)' or '@SubclassOptInRequired(%s::class)'", m.simple, m.simple, m.simple)
+			}
 			continue
 		}
 		if st.Type != nil {
@@ -1234,6 +1326,7 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 			}
 		}
 	}
+	w.typeParams(d.TypeParams)
 	w.typeRef(d.Recv)
 	w.params(d.Params)
 	w.typeRef(d.Ret)
@@ -1304,6 +1397,7 @@ func (w *optWalker) prop(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.Override && owner != nil && d.Sym != nil {
 		w.propOverride(owner, d.Sym, d.P)
 	}
+	w.typeParams(d.TypeParams)
 	w.typeRef(d.Recv)
 	w.typeRef(d.Type)
 	if d.Field != nil {
@@ -1409,6 +1503,7 @@ func (w *optWalker) visit(n any) bool {
 		if n.Ref == nil && n.X != nil && !n.Bound && n.Class.K == types.Class {
 			// A class named as an expression, RequiresOptIn::class.
 			w.annotationAsType(n.X.Pos(), n.Class.C, false)
+			w.classLitDeprecation(n)
 		}
 	case *syntax.CallableRef:
 		w.typeRef(n.Type)
@@ -1508,6 +1603,11 @@ func (w *optWalker) call(n *syntax.Call) {
 				w.warnf(p, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", alias.Name, n.Ctor.DisplayName())
 			}
 			level = depr{}
+		} else if alias != nil && level.level == "" && w.expansionDeprecated(alias.Type, true, 0) == nil {
+			// One of its type arguments, as ArrayList<Deprecated>.
+			if dep := w.expansionDeprecated(alias.Type, false, 0); dep != nil && !w.deprecated() {
+				w.warnf(p, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", alias.Name, dep.DisplayName())
+			}
 		}
 		w.deprecatedUse(p, n.Ctor.DisplayName(), level.or(aliasLevel))
 		return

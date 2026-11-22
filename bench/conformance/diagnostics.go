@@ -169,8 +169,10 @@ type diagConfig struct {
 	// expect them to, or "".
 	strayWarns string
 	// missed are the expected errors kc didn't report on their lines,
-	// as missed-errors TSV lines (missedLines), once the tests have run.
-	missed []string
+	// as missed-errors TSV lines (missedLines), once the tests have run,
+	// and missedWarns the expected warnings (missedWarningLines).
+	missed      []string
+	missedWarns []string
 }
 
 // missedLines returns the expected errors of the tests kc checked that
@@ -192,6 +194,39 @@ func missedLines(rs []*result, dts []*diagTest) []string {
 	return ls
 }
 
+// missedWarningLines returns the expected warnings of the tests kc
+// compiled that it didn't report on their lines, as TSV lines like
+// missedLines': the cause is that kc's parser rejected the test, which
+// leaves out the warnings of what it didn't recover, that the warning is
+// in a module that wasn't compiled, or neither.
+func missedWarningLines(sev map[string]string, rs []*result, dts []*diagTest) []string {
+	var ls []string
+	for i, dt := range dts {
+		if !compiled(rs[i], dt) {
+			continue
+		}
+		for _, m := range dt.marks {
+			if sev[m.name] == sevWarning && !dt.warnHit(m) {
+				ls = append(ls, fmt.Sprintf("%s\t%s:%d\t%s\t%s", rs[i].path, m.file, m.line, m.name, dt.warnMissCause(m)))
+			}
+		}
+	}
+	slices.Sort(ls)
+	return ls
+}
+
+// warnMissCause returns why kc didn't report the expected warning m on
+// its line: the first of the causes that applies.
+func (dt *diagTest) warnMissCause(m mark) string {
+	switch {
+	case dt.parseErrs:
+		return causeParse
+	case dt.tried != nil && !dt.tried[m.file]:
+		return causeModule
+	}
+	return causeMissingCheck
+}
+
 // marksChecked reports whether a test in category has its marks checked
 // against kc's errors: whether kc type-checked it.
 func marksChecked(category string) bool {
@@ -210,8 +245,9 @@ const missedHeader = "path\tfile:line\tname\tcause"
 // missed. The baseline is a missed-errors TSV file, read from path, and
 // cats are the baseline's categories of the tests (its results TSV); a
 // test whose marks weren't checked then, or aren't now, is left out. It
-// returns an error if an error is missed that wasn't.
-func compareMissed(path string, data []byte, cats map[string]string, rs []*result, missed []string) error {
+// returns an error if an error is missed that wasn't. what is "errors",
+// or "warnings" for the files of missed warnings.
+func compareMissed(what, path string, data []byte, cats map[string]string, rs []*result, missed []string) error {
 	key := func(line string) (string, string) {
 		f := strings.SplitN(line, "\t", 4)
 		if len(f) < 3 {
@@ -251,12 +287,12 @@ func compareMissed(path string, data []byte, cats map[string]string, rs []*resul
 		}
 	}
 	slices.Sort(worse)
-	fmt.Printf("missed errors %s: %d newly missed, %d newly reported\n", path, len(worse), better)
+	fmt.Printf("missed %s %s: %d newly missed, %d newly reported\n", what, path, len(worse), better)
 	for _, s := range worse {
 		fmt.Println("  newly missed:", s)
 	}
 	if len(worse) > 0 {
-		return fmt.Errorf("%d expected errors are no longer reported on their lines (see %s)", len(worse), path)
+		return fmt.Errorf("%d expected %s are no longer reported on their lines (see %s)", len(worse), what, path)
 	}
 	return nil
 }
@@ -361,13 +397,15 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 		}
 	}
 	c.missed = missedLines(results, dts)
+	c.missedWarns = missedWarningLines(c.sev, results, dts)
 	return results, reportDiagnostics(c, results, dts, tag), nil
 }
 
 // writeMarks writes each expected diagnostic of the tests kc compiled as
 // TSV: the test's path, its category, file:line, the diagnostic's name,
 // its severity, and hit if kc reported an error on its line, or miss,
-// followed for a missed error by its cause (missCause).
+// followed for a missed error by its cause (missCause), and for a missed
+// warning by its (warnMissCause).
 func writeMarks(name string, sev map[string]string, rs []*result, dts []*diagTest) error {
 	var sb strings.Builder
 	for i, dt := range dts {
@@ -383,8 +421,11 @@ func writeMarks(name string, sev map[string]string, rs []*result, dts []*diagTes
 			if s == "" {
 				s = "-"
 			}
-			if hit == "miss" && s == sevError {
+			switch {
+			case hit == "miss" && s == sevError:
 				hit += "\t" + dt.missCause(rs[i].category, m)
+			case hit == "miss" && s == sevWarning:
+				hit += "\t" + dt.warnMissCause(m)
 			}
 			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\t%s\t%s\n", rs[i].path, rs[i].category, m.file, m.line, m.name, s, hit)
 		}

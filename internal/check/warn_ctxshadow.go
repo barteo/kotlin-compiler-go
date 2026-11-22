@@ -32,6 +32,12 @@ func (c *Checker) propOverloads(out []overload, decls []syntax.Decl, owner *synt
 			g := d.Getter.Sym
 			t := g.Recv
 			o.recv, o.tparams = &t, g.TypeParams
+		} else if len(d.TypeParams) > 0 {
+			// Those of a property with context parameters.
+			if d.Getter == nil || d.Getter.Sym == nil {
+				continue
+			}
+			o.tparams = d.Getter.Sym.TypeParams
 		}
 		for _, p := range d.Sym.Contexts {
 			o.ctx = append(o.ctx, p.Type)
@@ -64,19 +70,21 @@ func contextualShadowing(ovs []overload, ordered bool) {
 				a.hidden || b.hidden, a.low != b.low:
 				continue
 			}
-			s, ok := signatureMatch(a, b, false)
-			if !ok {
+			if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.params) != len(b.params) || a.vararg != b.vararg {
 				continue
 			}
-			bctx := make([]types.Type, len(b.ctx))
-			for k, t := range b.ctx {
-				bctx[k] = s.Apply(t)
-			}
-			bShadowsA, ok1 := a.c.ctxCovers(bctx, a.ctx)
-			aShadowsB, ok2 := a.c.ctxCovers(a.ctx, bctx)
-			if !ok1 || !ok2 || bShadowsA == aShadowsB {
+			// The same signature but for the contexts: each takes what
+			// the other does.
+			if ok1, ok2 := a.c.ctxTakes(a, b, false), a.c.ctxTakes(b, a, false); ok1 != certainly || ok2 != certainly {
 				continue
 			}
+			// The one whose contexts the other's satisfy can be called
+			// wherever the other can.
+			ab, ba := a.c.ctxTakes(a, b, true), a.c.ctxTakes(b, a, true)
+			if ab == uncertain || ba == uncertain || ab == ba {
+				continue
+			}
+			bShadowsA := ab == certainly
 			o := b
 			if bShadowsA {
 				if ordered {
@@ -103,21 +111,68 @@ func (c *Checker) localShadowing(s *scope, f *types.FunSym, d *syntax.FunDecl) {
 	}
 }
 
-// ctxCovers reports whether context parameters of types ctx shadow those
-// of types other: each of ctx has one of other that is at least as
-// specific. ok is false where that isn't certain, of a type parameter or
-// a type that doesn't resolve.
-func (c *Checker) ctxCovers(ctx, other []types.Type) (covers, ok bool) {
-	uncertain := func(t types.Type) bool {
-		return t.K == types.Invalid || t.P || hasInvalid(t, 0) || t.Has(func(t types.Type) bool { return t.IsParam() || t.K == types.TypeVar })
+// How certain ctxTakes is.
+const (
+	uncertain = iota
+	certainlyNot
+	certainly
+)
+
+// ctxTakes reports whether g can be called wherever f can: with f's type
+// parameters kept and g's inferred within their bounds, g takes f's
+// receiver and parameters, and, with ctx, each of g's context parameters
+// takes one of f's. It is uncertain of types that don't resolve, of
+// platform types, and of too many context parameters to try.
+func (c *Checker) ctxTakes(f, g *overload, ctx bool) int {
+	all := slices.Concat(f.ctx, f.params, g.ctx, g.params)
+	if f.recv != nil {
+		all = append(all, *f.recv, *g.recv)
 	}
-	if slices.ContainsFunc(ctx, uncertain) || slices.ContainsFunc(other, uncertain) {
-		return false, false
+	if slices.ContainsFunc(all, func(t types.Type) bool { return t.K == types.Invalid || t.P || hasInvalid(t, 0) }) {
+		return uncertain
 	}
-	for _, t := range ctx {
-		if !slices.ContainsFunc(other, func(u types.Type) bool { return c.subtype(u, t) }) {
-			return false, true
+	// from[k] is the context parameter of f that g's k-th takes.
+	var from []int
+	if ctx {
+		if len(g.ctx) > 0 && len(f.ctx) == 0 {
+			return certainlyNot
+		}
+		if n := len(f.ctx) * len(g.ctx); n > 16 {
+			return uncertain
+		}
+		from = make([]int, len(g.ctx))
+	}
+	for {
+		sys := newSystem(c)
+		sub := sys.fresh(g.tparams, nil, syntax.Pos{})
+		for _, p := range g.tparams {
+			v := sub[p].T
+			for _, b := range v.Param().Bounds {
+				sys.sub(v, sub.ApplyIn(b))
+			}
+		}
+		for i := range f.params {
+			sys.sub(f.params[i], sub.ApplyIn(g.params[i]))
+		}
+		if f.recv != nil {
+			sys.sub(*f.recv, sub.ApplyIn(*g.recv))
+		}
+		for k, j := range from {
+			sys.sub(f.ctx[j], sub.ApplyIn(g.ctx[k]))
+		}
+		if sys.ok {
+			return certainly
+		}
+		// The next way to pair them.
+		k := 0
+		for ; k < len(from); k++ {
+			if from[k]++; from[k] < len(f.ctx) {
+				break
+			}
+			from[k] = 0
+		}
+		if k == len(from) {
+			return certainlyNot
 		}
 	}
-	return true, true
 }

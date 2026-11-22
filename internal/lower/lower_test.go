@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -124,5 +125,40 @@ func TestOutOfRangeFloats(t *testing.T) {
 	}
 	if d := syntax.Diff(want, got, false); d != "" {
 		t.Errorf("ASTs differ:\n%s", d)
+	}
+}
+
+// TestRedundantPrefixes checks the string literals with a redundant
+// interpolation prefix that recovery reads from the tree of a file with
+// syntax errors: those of statements it leaves out too, but not those
+// inside a syntax error or under an annotation that may suppress the
+// warning.
+func TestRedundantPrefixes(t *testing.T) {
+	src := "fun f() {\n" +
+		"    $\"${}\"\n" + // 2: an error in a template entry
+		"    $\"a\"\n" + // 3
+		"    $$\"${}\"\n" + // 4: text that looks like an entry
+		"    $$\"a\"\n" + // 5
+		"    $$\"$${}\"\n" + // 6: an entry, with an error
+		"    $$\"\\$a\"\n" + // 7: an escaped $ looks like one too
+		"    \"a\"\n" +
+		"    @Suppress(\"REDUNDANT_INTERPOLATION_PREFIX\") $\"a\"\n" +
+		"    @Suppress(\"UNUSED_VARIABLE\") $\"a\"\n" + // 10
+		"}\n" +
+		"@Suppress(\"warnings\") fun g() { $\"a\" }\n" +
+		"val x = $\"a\" +\n" // 13: left out with its declaration
+	f, _, errs := FileRecovering(psi.Parse("a.kt", src))
+	if len(errs) == 0 {
+		t.Fatal("no syntax errors")
+	}
+	var got []int
+	for _, p := range f.RedundantPrefixes {
+		got = append(got, p.Line)
+	}
+	if want := []int{2, 3, 5, 10, 13}; !slices.Equal(got, want) {
+		t.Errorf("lines of redundant prefixes: got %v, want %v", got, want)
+	}
+	if f, _, errs := File(psi.Parse("a.kt", "val x = $\"a\"\n")); len(errs) > 0 || f.RedundantPrefixes != nil {
+		t.Errorf("a file without syntax errors: errors %v, prefixes %v", errs, f.RedundantPrefixes)
 	}
 }

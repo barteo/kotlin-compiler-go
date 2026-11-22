@@ -108,6 +108,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			if javaTarget != nil && !kotlinTarget {
 				c.warnf(javaTarget.P, "ANNOTATION_TARGETS_ONLY_IN_JAVA", "No Kotlin '@Target' annotation specified (implicitly targeting everything), but one exists for Java.")
 			}
+			if javaTarget != nil && kotlinTarget && owner != nil {
+				c.incompatibleTargets(javaTarget, owner.Targets)
+			}
 		}()
 	}
 	for i := range as {
@@ -179,7 +182,10 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		// ValueRecorder.
 		vrec, _ := c.u.rec.(ValueRecorder)
 		quiet := source && !cls.Annotation
-		if quiet && vrec == nil {
+		// The classes @OptIn names are kept for the opt-in pass, which
+		// warns of those that aren't markers.
+		optIn := quiet && cls.Name == "kotlin/OptIn"
+		if quiet && vrec == nil && !optIn {
 			continue
 		}
 		before := len(c.errs)
@@ -211,9 +217,12 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			continue
 		}
 		if local {
-			values, _ := c.annotationValues(cls, a.TypeArgs, args, a.P)
+			values, ok := c.annotationValues(cls, a.TypeArgs, args, a.P)
 			if vrec != nil {
 				vrec.AnnotationValues(c.file, a, values)
+			}
+			if optIn && ok {
+				c.u.optInValues[a] = values
 			}
 			if quiet {
 				c.errs = c.errs[:before]
@@ -240,6 +249,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if vrec != nil {
 			vrec.AnnotationValues(c.file, a, values)
 		}
+		if optIn && ok {
+			c.u.optInValues[a] = values
+		}
 		if quiet {
 			c.errs = c.errs[:before]
 			continue
@@ -248,6 +260,57 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			// Class files keep it.
 			a.Class, a.Values = cls, values
 		}
+	}
+}
+
+// javaCounterparts are the entries of java.lang.annotation.ElementType
+// that Java needs to apply an annotation where Kotlin's targets do.
+var javaCounterparts = []struct {
+	kotlin types.Targets
+	java   string
+}{
+	{types.TargetClass, "TYPE"}, {types.TargetAnnotationClass, "ANNOTATION_TYPE"}, {types.TargetTypeParameter, "TYPE_PARAMETER"},
+	{types.TargetField, "FIELD"}, {types.TargetLocalVariable, "LOCAL_VARIABLE"}, {types.TargetValueParameter, "PARAMETER"},
+	{types.TargetConstructor, "CONSTRUCTOR"}, {types.TargetFunction | types.TargetGetter | types.TargetSetter, "METHOD"},
+	{types.TargetType, "TYPE_USE"},
+}
+
+// javaElementTypes are the other entries of ElementType, and the names an
+// entry is written with.
+var javaElementTypes = map[string]bool{"PACKAGE": true, "MODULE": true, "RECORD_COMPONENT": true,
+	"ElementType": true, "java": true, "lang": true, "annotation": true, "value": true}
+
+// incompatibleTargets warns of annotation a, Java's @Target of an
+// annotation class with Kotlin's targets kotlin, that lacks the
+// counterpart of one of them (INCOMPATIBLE_ANNOTATION_TARGETS). Its
+// arguments are read as written: with a name that is no entry, nothing is
+// reported.
+func (c *Checker) incompatibleTargets(a *syntax.Annotation, kotlin types.Targets) {
+	java := map[string]bool{}
+	for _, arg := range a.Args {
+		for _, t := range arg.Toks {
+			if t.Kind != syntax.IDENT {
+				continue
+			}
+			if !javaElementTypes[t.Text] && !slices.ContainsFunc(javaCounterparts, func(p struct {
+				kotlin types.Targets
+				java   string
+			}) bool {
+				return p.java == t.Text
+			}) {
+				return
+			}
+			java[t.Text] = true
+		}
+	}
+	var missing []string
+	for _, p := range javaCounterparts {
+		if kotlin&p.kotlin != 0 && !java[p.java] {
+			missing = append(missing, "'"+p.java+"'")
+		}
+	}
+	if len(missing) > 0 {
+		c.warnf(a.P, "INCOMPATIBLE_ANNOTATION_TARGETS", "annotation targets in Java and Kotlin differ: Java lacks %s for the Kotlin targets", strings.Join(missing, ", "))
 	}
 }
 
@@ -770,6 +833,11 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
 			if !cp.IsProp {
 				c.noAllTarget(cp.Modifiers.Annotations, ctorParamNoProp)
+				for _, a := range cp.Modifiers.Annotations {
+					if a.Target == "param" {
+						c.warnf(a.P, "REDUNDANT_ANNOTATION_TARGET", "redundant annotation target 'param'")
+					}
+				}
 			} else {
 				c.allTargets(cp.Modifiers.Annotations, true, cp.Mutable, !cls.Annotation)
 			}
@@ -796,6 +864,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.noFileTarget(m.Annotations)
 				c.publishedApi(&m.Modifiers)
 				c.annotations(m.Annotations, cls, ctorSite)
+				c.jvmMemberAnnotations(m, cls)
 				if m.Sym != nil {
 					c.headerParams = m.Sym.Params
 				}

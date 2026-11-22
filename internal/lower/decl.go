@@ -589,6 +589,7 @@ func (l *lowerer) noCarry() {
 func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 	l.syntaxError(n)
 	var anns []syntax.Annotation
+	var external syntax.Pos
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() {
 		for _, c := range kids(mods) {
 			switch c.NumericKind() {
@@ -597,6 +598,9 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 			case psi.KindANNOTATION:
 				anns = append(anns, l.bracketAnnotations(c)...)
 			case psi.KindEXTERNAL_KEYWORD:
+				if external == (syntax.Pos{}) {
+					external = l.pos(c)
+				}
 			case psi.KindCONTEXT_PARAMETER_LIST:
 				l.contextParams(c)
 				l.errorLater(l.pos(c), "context parameters on enum entries are unsupported")
@@ -609,7 +613,7 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 		}
 	}
 	name := child(n, psi.KindIDENTIFIER)
-	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns}, n)
+	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns, External: external}, n)
 	id := &syntax.Ident{Name: cd.Name}
 	id.P = e.P
 	e.Call = &syntax.Call{Fun: id}

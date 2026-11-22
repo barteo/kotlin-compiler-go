@@ -131,8 +131,12 @@ func overridable(m syntax.Modifiers, owner *types.ClassSym) bool {
 // class owner (nil at top level), that depend on what owner is.
 func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
+	case *syntax.SecondaryCtor:
+		if owner != nil && !owner.Annotation {
+			c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
+		}
 	case *syntax.FunDecl:
-		c.overloads(&d.Modifiers, owner)
+		c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
 		c.synchronized(&d.Modifiers, owner, "", d.Inline)
 		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
 			c.errorf(a.P, inapplicableJvmName)
@@ -169,6 +173,8 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.ClassDecl:
 		if a := d.CtorMods.Find("", "JvmOverloads"); a != nil && d.Annotation {
 			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on constructors of annotation classes")
+		} else if a != nil && d.Sym != nil && !localClass(d.Sym) {
+			c.uselessOverloads(a, &d.CtorMods, slices.ContainsFunc(d.CtorParams, func(p *syntax.CtorParam) bool { return p.Default != nil }))
 		}
 		for _, cp := range d.CtorParams {
 			if a := cp.Modifiers.Find("", "JvmStatic"); a != nil && cp.IsProp {
@@ -251,20 +257,37 @@ func (c *Checker) valueClassType(t types.Type) bool {
 	return t.K == types.Class && t.C != nil && !t.N && ensured(t.C).Value
 }
 
-// overloads checks the @JvmOverloads of a member function of owner with
-// modifiers m.
-func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym) {
+// overloads checks the @JvmOverloads of a function or a secondary
+// constructor of owner (nil at top level) with modifiers m, one of whose
+// parameters has a default value if defaults is set.
+func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym, defaults bool) {
 	a := m.Find("", "JvmOverloads")
-	if a == nil || owner == nil {
+	if a == nil {
 		return
 	}
 	switch {
+	case owner == nil:
+		c.uselessOverloads(a, m, defaults)
 	case owner.Interface:
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on interface methods")
 	case m.Abstract:
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on abstract methods")
 	case localClass(owner):
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
+	default:
+		c.uselessOverloads(a, m, defaults)
+	}
+}
+
+// uselessOverloads warns of @JvmOverloads annotation a, of a declaration
+// with modifiers m, that adds no overloads: a private declaration's, and
+// that of one without default values.
+func (c *Checker) uselessOverloads(a *syntax.Annotation, m *syntax.Modifiers, defaults bool) {
+	switch {
+	case m.Visibility == syntax.Private:
+		c.warnf(a.P, "OVERLOADS_PRIVATE", "'@JvmOverloads' annotation has no effect on private declarations")
+	case !defaults:
+		c.warnf(a.P, "OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS", "'@JvmOverloads' annotation has no effect for methods without default arguments")
 	}
 }
 
@@ -408,6 +431,14 @@ func (c *Checker) exposeBoxed(ds []syntax.Decl, owner *types.ClassSym, outer boo
 			for _, sc := range d.Secondaries() {
 				report(sc.Annotations, private || sc.Visibility == syntax.Private, "")
 			}
+			if a := d.CtorMods.Find("", "JvmExposeBoxed"); a != nil && d.Sym != nil {
+				c.uselessExposeBoxed(a, exposedFun{owner: d.Sym, params: varTypes(d.Sym.CtorParams)})
+			}
+			for _, sc := range d.Secondaries() {
+				if a := sc.Find("", "JvmExposeBoxed"); a != nil && sc.Sym != nil {
+					c.uselessExposeBoxed(a, exposedFun{owner: d.Sym, params: varTypes(sc.Sym.Params)})
+				}
+			}
 			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Interface {
 				c.errorf(a.P, exposeBoxedOpen)
 			}
@@ -448,8 +479,34 @@ func (f *exposedFun) overloadable() bool {
 	return slices.ContainsFunc(f.params, types.IsValue)
 }
 
+// varTypes returns the types of vs.
+func varTypes(vs []*types.VarSym) []types.Type {
+	ts := make([]types.Type, len(vs))
+	for i, v := range vs {
+		ts[i] = v.Type
+	}
+	return ts
+}
+
+// uselessExposeBoxed warns of annotation a, @JvmExposeBoxed, on f, a
+// function, an accessor or a constructor, that has no boxed form: it
+// isn't a value class's member, and none of its receiver, parameters and
+// result is a value class.
+func (c *Checker) uselessExposeBoxed(a *syntax.Annotation, f exposedFun) {
+	value := func(t types.Type) bool {
+		t = t.Flex()
+		return t.K == types.Class && (t.C == nil || ensured(t.C).Value)
+	}
+	if f.owner != nil && f.owner.Value || value(f.recv) || value(f.ret) ||
+		slices.ContainsFunc(f.params, value) || slices.ContainsFunc(f.contexts, func(p *types.VarSym) bool { return value(p.Type) }) {
+		return
+	}
+	c.warnf(a.P, "USELESS_JVM_EXPOSE_BOXED", "'@JvmExposeBoxed' is useless: the declaration has no value classes in its signature")
+}
+
 // exposeBoxedFun checks annotation a, @JvmExposeBoxed, on f.
 func (c *Checker) exposeBoxedFun(a *syntax.Annotation, f exposedFun) {
+	c.uselessExposeBoxed(a, f)
 	name, pos, named := exposedName(a)
 	overloadable := f.overloadable()
 	if !named && !overloadable && types.IsValue(f.ret) && f.owner == nil {

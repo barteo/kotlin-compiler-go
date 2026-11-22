@@ -190,6 +190,17 @@ func (c *Checker) checkModifiers() {
 	}
 }
 
+// deprecatedMod warns, as name, of the modifier mod among written, which
+// has no effect where it is.
+func (m *modChecker) deprecatedMod(written []syntax.Mod, mod, name, msg string) {
+	for _, w := range written {
+		if w.Name == mod {
+			m.c.warnf(w.P, name, "%s", msg)
+			return
+		}
+	}
+}
+
 func (m *modChecker) errorf(p syntax.Pos, format string, args ...any) {
 	if m.lines[p.Line] {
 		return
@@ -365,6 +376,9 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 	}
 	if !reported && !ea {
 		m.mods(cd.Written, targets, s.parent, true)
+		if cd.Interface {
+			m.deprecatedMod(cd.Written, "open", "REDUNDANT_MODIFIER_FOR_TARGET", "modifier 'open' is redundant for 'interface'")
+		}
 		if !hasExpectActual(&cd.CtorMods) {
 			m.mods(cd.CtorMods.Written, tCtor, targets, false)
 		}
@@ -382,6 +396,7 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 			if !ea {
 				m.mods(p.Written, tPropertyParam|tMemberProperty, targets, false,
 					"inline", "external", "abstract", "const", "lateinit", "noinline", "crossinline")
+				m.deprecatedMod(p.Written, "external", "DEPRECATED_MODIFIER_FOR_TARGET", "modifier 'external' is deprecated for 'value parameter'")
 			}
 		} else {
 			m.mods(p.Written, tValueParam, targets, false, "external")
@@ -399,7 +414,18 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 	for _, d := range cd.Members {
 		m.decl(d, in)
 	}
-	for _, e := range cd.Entries {
+	// kotlinc's @Suppress on an entry silences this warning on the
+	// entries before it too, so it is left to those after the last.
+	suppressed := -1
+	for i, e := range cd.Entries {
+		if slices.ContainsFunc(e.Annotations, func(a syntax.Annotation) bool { return a.Is("Suppress") }) {
+			suppressed = i
+		}
+	}
+	for i, e := range cd.Entries {
+		if e.External != (syntax.Pos{}) && i > suppressed {
+			m.c.warnf(e.External, "DEPRECATED_MODIFIER_FOR_TARGET", "modifier 'external' is deprecated for 'enum entry'")
+		}
 		if e.Call != nil {
 			for _, a := range e.Call.Args {
 				m.expr(a, in)

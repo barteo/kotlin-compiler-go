@@ -51,6 +51,7 @@ func (c *Checker) redundantVisibilities() {
 		}
 		for _, m := range d.Members {
 			c.redundantVisibility(m, d)
+			c.redundantDeclTypes(m)
 			if m, ok := m.(*syntax.ClassDecl); ok {
 				class(m)
 			}
@@ -58,6 +59,7 @@ func (c *Checker) redundantVisibilities() {
 	}
 	for _, d := range c.file.Decls {
 		c.redundantVisibility(d, nil)
+		c.redundantDeclTypes(d)
 		if d, ok := d.(*syntax.ClassDecl); ok {
 			class(d)
 		}
