@@ -117,15 +117,24 @@ that is an argument of another joins the outer system, as in K2, and so
 do the branches of an `if` or `when` used as a value. A lambda argument
 is checked after the other arguments, once the variables in its parameter
 types are fixed, and its body constrains the result. Builder inference
-(`buildList { add("x") }`) checks a lambda twice (`stubInference`).
-The first check follows K2's partially constrained lambda analysis
-(`internal/check/pcla.go`): the builder's variables are open, the calls
-in the lambda that mention them are postponed and join the builder's
-constraint system, shared with the builders around and in it, a
-variable is fixed on demand where a member of a value of its type is
-needed, and the check's errors are kept. The second, once the variables
-are fixed, types the tree; the first check's errors are reported where
-the second finds none. `KC_PCLA_DEBUG=1` logs the first checks.
+(`buildList { add("x") }`) checks a lambda once, with the builder's
+variables open (`stubInference`), following K2's partially constrained
+lambda analysis (`internal/check/pcla.go`): the calls in the lambda that
+mention the variables are postponed and join the builder's constraint
+system, shared with the builders around and in it, and a variable is
+fixed on demand where a member of a value of its type is needed. When
+the variables are inferred the check is kept (`pclaCommit`): a writer
+(`pclawrite.go`) substitutes the inferred types into the lambda's tree
+and the symbols declared in it, the postponed calls are completed and
+their fixups run again, and what the check decided from a type with a
+variable is decided again (`pclaDefer`). A nested builder whose
+variables depend on those of one around it leaves its lambda to that
+one's completion. A few lambdas can't be kept and are checked a second
+time with the variables fixed, the first check being undone
+(`pclaUndo`): docs/unsupported.md lists them. `KC_PCLA_DEBUG=1` logs
+the checks, `KC_PCLA_STATS=file` lists how each ended, and
+`KC_PCLA=recheck` checks every builder lambda a second time, as kc did
+before, for `bench/pcla-diff.sh` to compare the two.
 
 **Smart casts.** Stable values (`val`s, `this`, final `val` properties
 with fields, and local `var`s no closure assigns) are narrowed by `is`

@@ -173,12 +173,8 @@ tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/Contravaria
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	CovariantTypeVariableCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	IntersectedTypeVariable.kt:13	ARGUMENT_TYPE_MISMATCH	nearby
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	TypeVariableStarCapture.kt:10	UNRESOLVED_REFERENCE	nearby
-tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt	PostfixIncrementOperatorCall.kt:44	UNRESOLVED_REFERENCE	nearby
-tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt	PostfixIncrementOperatorCall.kt:44	UNRESOLVED_REFERENCE	nearby
-tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt	PrefixIncrementOperatorCall.kt:44	UNRESOLVED_REFERENCE	nearby
-tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt	PrefixIncrementOperatorCall.kt:44	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	differentBehaviorWhenSpecifiedArgument.kt:38	ARGUMENT_TYPE_MISMATCH	nearby
-tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	earlyReturn.kt:12	UNRESOLVED_REFERENCE	nearby
+tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	earlyReturn.kt:12	UNRESOLVED_REFERENCE	missing-check
 tests/inference/pcla/issues/kt47989a.kt	kt47989a.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/issues/kt47989b.kt	kt47989b.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/issues/kt49263.kt	kt49263.kt:7	CANNOT_INFER_PARAMETER_TYPE	missing-check

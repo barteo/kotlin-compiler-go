@@ -47,11 +47,13 @@ func pclaLogf(format string, args ...any) {
 	}
 }
 
-// pclaSingle, from $KC_PCLA, says how a builder's lambda is checked:
-// "single" keeps the check with the variables unfixed where it can (see
-// pclaCommit), and "recheck", the default, always checks the lambda again
-// once they are fixed. bench/pcla-diff.sh compares the two.
-var pclaSingle = os.Getenv("KC_PCLA") == "single"
+// pclaSingle, from $KC_PCLA, says how a builder's lambda is checked. By
+// default its check with the variables unfixed is the check: it is kept
+// where it can be (see pclaCommit), and the lambda is checked again,
+// with the variables fixed, only where it can't (see pclaUndo).
+// "recheck" always checks the lambda again: bench/pcla-diff.sh compares
+// the two.
+var pclaSingle = os.Getenv("KC_PCLA") != "recheck"
 
 // pclaCheck is the check of a builder's lambda with the builder's
 // variables unfixed, kept until the variables are inferred: it is then

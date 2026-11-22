@@ -9,7 +9,7 @@ import kotlin.experimental.ExperimentalTypeInference
 
 fun lambdaInput(x: List<String>) = buildList {
     add("")
-    addAll(flatMap { listOf(2) }) // ERROR none of the 3 candidates
+    addAll(flatMap { listOf(2) }) // ERROR inferred type is List<Int> but Collection<String> was expected
     addAll(flatMap { x })
 }
 

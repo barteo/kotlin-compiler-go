@@ -252,20 +252,29 @@ own tests.
   `A<Int>` isn't the first module's `A`. kc reads those type arguments only
   from Kotlin metadata, not from Java generic signatures: a Java class's
   method that names the other class keeps the first class.
-- Builder inference follows the rules of K2's PCLA, but not its single
-  pass: a builder's lambda is checked twice. The first check has the
-  builder's variables unfixed, on the constraint system that the
-  builder's call shares with the calls in the lambda and with the
-  builders around and in it. A call that mentions the variables is
-  postponed as K2's is, a variable is fixed on demand, for a member of a
-  value of its type or a type written without its arguments in an `is`
-  or `as`, only from the proper constraints it has at that statement,
-  and the errors of this check are the lambda's: a member of a value
-  whose variable can't be fixed yet is unresolved, whatever the
-  statements after it infer, and doesn't keep the variables from being
-  inferred. The second check, with the variables fixed, gives the tree
-  its types and reports what the checkers find on them. What differs
+- Builder inference follows the rules of K2's PCLA: a builder's lambda
+  is checked once, with the builder's variables unfixed, on the
+  constraint system that the builder's call shares with the calls in
+  the lambda and with the builders around and in it. A call that
+  mentions the variables is postponed as K2's is, a variable is fixed on
+  demand, for a member of a value of its type or a type written without
+  its arguments in an `is` or `as`, only from the proper constraints it
+  has at that statement, and the errors of this check are the lambda's:
+  a member of a value whose variable can't be fixed yet is unresolved,
+  whatever the statements after it infer, and doesn't keep the
+  variables from being inferred. The inferred types are then written
+  into the lambda's tree. What differs
   from K2:
+  - Some lambdas are still checked a second time, with the variables
+    fixed, and the first check is undone (18 of the 1406 builder lambdas
+    of kc's tests and the Kotlin conformance tests): a lambda whose only
+    errors are ambiguous calls, which gives the variables nothing; one
+    whose system an unresolved reference poisoned, whose variables stay
+    uninferred; one with a variable that a captured projection keeps
+    from being inferred; one whose variables are still those of a
+    builder that isn't being checked when it completes; and one with a
+    class that delegates an interface whose type has a variable.
+    `KC_PCLA_STATS=file` lists them.
   - Of the errors a call adds to K2's shared constraint system, only
     one shape is carried to the calls after it: a generic extension
     called on an unresolved receiver with the lambda's `this`,
