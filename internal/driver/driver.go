@@ -484,7 +484,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	w := newClassWriter(mkdir, major)
 	genOpts := codegen.Options{Stdlib: cp.HasKotlin(), Module: opts.ModuleName,
 		Spilling: cp.Has("kotlin/coroutines/jvm/internal/SpillingKt") && !opts.Debug, Compose: opts.Compose,
-		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}}
+		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}, Program: codegen.ProgramClasses(files), ClassFile: cp.Load}
 	if opts.Compose {
 		genOpts.ShouldExecute = hasMethod(cp, "androidx/compose/runtime/Composer", "shouldExecute", "(ZI)Z")
 	}

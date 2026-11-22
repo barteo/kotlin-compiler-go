@@ -49,6 +49,8 @@ type tableShared struct {
 	// decoded holds the Kotlin metadata markValue decoded, by class name,
 	// until load takes it.
 	decoded sync.Map
+	// arities caches arity's results, by class path and class name.
+	arities sync.Map
 
 	// kotlin is set when the Kotlin standard library is on the class path:
 	// Kotlin declarations are then read from metadata (see kotlin.go).

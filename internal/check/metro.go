@@ -344,16 +344,14 @@ func allCalls(file *syntax.File, f func(*syntax.Call)) {
 }
 
 // metroGraphCall returns the Kotlin expression that replaces a call of
-// createGraph (factory false) or createGraphFactory with type argument
-// cls, or "" if cls isn't a graph or a graph's factory.
-func metroGraphCall(cls *types.ClassSym, factory bool) string {
-	if !factory {
-		return fqName(cls) + ".Companion.invoke()"
-	}
-	g := cls.Outer
-	if g == nil {
-		return ""
-	}
+// createGraph with type argument cls.
+func metroGraphCall(cls *types.ClassSym) string {
+	return fqName(cls) + ".Companion.invoke()"
+}
+
+// metroFactoryCall returns the Kotlin expression that replaces a call of
+// createGraphFactory of a factory of graph g.
+func metroFactoryCall(g *types.ClassSym) string {
 	return "kotlin.run { " + fqName(g) + ".Companion }"
 }
 

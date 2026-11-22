@@ -7,7 +7,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -446,6 +448,13 @@ type Class struct {
 	// class itself if it is nested, and the nested classes it declares
 	// or refers to.
 	InnerClasses []InnerClassEntry
+	// Nested, if set, gives the entry of a class the class file names,
+	// whether it is nested: Bytes adds those the class's constants name,
+	// in descriptors and generic signatures too, as the JVM specification
+	// asks and kotlinc writes them. A Kotlin compiler reading the class
+	// file needs them to tell a nested class's name from a top-level one
+	// with $ in it, as in an annotation of a nested annotation class.
+	Nested func(name string) (InnerClassEntry, bool)
 	// Enclosing is set on a local or anonymous class declared in a
 	// method: the EnclosingMethod attribute's class, method name and
 	// descriptor.
@@ -699,30 +708,9 @@ func (c *Class) Bytes() []byte {
 	if c.SourceFile != "" {
 		classAttrs = append(classAttrs, attr{c.Utf8("SourceFile"), u2(nil, c.Utf8(c.SourceFile))})
 	}
-	if len(c.InnerClasses) > 0 {
-		// A class is listed once, which the JVM requires: the code
-		// generator may add it from both the class and its outer class.
-		var entries []InnerClassEntry
-		seen := map[string]bool{}
-		for _, e := range c.InnerClasses {
-			if !seen[e.Inner] {
-				seen[e.Inner] = true
-				entries = append(entries, e)
-			}
-		}
-		b := u2(nil, uint16(len(entries)))
-		for _, e := range entries {
-			var outer, simple uint16
-			if e.Outer != "" {
-				outer = c.Class(e.Outer)
-			}
-			if e.Simple != "" {
-				simple = c.Utf8(e.Simple)
-			}
-			b = u2(u2(u2(u2(b, c.Class(e.Inner)), outer), simple), e.Access)
-		}
-		classAttrs = append(classAttrs, attr{c.Utf8("InnerClasses"), b})
-	}
+	// The InnerClasses attribute's place: it is encoded last, as it lists
+	// the nested classes the other attributes' constants name.
+	innerAt := len(classAttrs)
 	if c.Signature != "" {
 		classAttrs = append(classAttrs, attr{c.Utf8("Signature"), u2(nil, c.Utf8(c.Signature))})
 	}
@@ -745,6 +733,10 @@ func (c *Class) Bytes() []byte {
 			}
 		}
 		classAttrs = append(classAttrs, attr{c.Utf8("BootstrapMethods"), b})
+	}
+
+	if b := c.innerClassesAttr(); b != nil {
+		classAttrs = slices.Insert(classAttrs, innerAt, attr{c.Utf8("InnerClasses"), b})
 	}
 
 	out := u4(nil, 0xCAFEBABE)
@@ -770,6 +762,110 @@ func (c *Class) Bytes() []byte {
 		out = appendAttrs(out, methodAttrs[i])
 	}
 	return appendAttrs(out, classAttrs)
+}
+
+// innerClassesAttr returns the InnerClasses attribute's contents, or nil
+// if it has no entries: InnerClasses, then the nested classes the
+// constants name that Nested knows, in the order of their names, which
+// puts a class after the classes it is nested in.
+func (c *Class) innerClassesAttr() []byte {
+	// A class is listed once, which the JVM requires: the code generator
+	// may add it from both the class and its outer class.
+	var entries []InnerClassEntry
+	seen := map[string]bool{}
+	for _, e := range c.InnerClasses {
+		if !seen[e.Inner] {
+			seen[e.Inner] = true
+			entries = append(entries, e)
+		}
+	}
+	if c.Nested != nil {
+		var named []InnerClassEntry
+		var add func(name string)
+		add = func(name string) {
+			if seen[name] || strings.IndexByte(name, '$') <= 0 {
+				return
+			}
+			seen[name] = true
+			e, ok := c.Nested(name)
+			if !ok {
+				return
+			}
+			named = append(named, e)
+			if e.Outer != "" {
+				add(e.Outer)
+			}
+		}
+		strs := make([]string, 0, len(c.utf8))
+		for s := range c.utf8 {
+			strs = append(strs, s)
+		}
+		slices.Sort(strs)
+		for _, s := range strs {
+			if of(c.classOf, c.utf8[s]) != 0 && !strings.HasPrefix(s, "[") {
+				add(s)
+			}
+			descriptorNames(s, add)
+		}
+		slices.SortFunc(named, func(a, b InnerClassEntry) int { return strings.Compare(a.Inner, b.Inner) })
+		entries = append(entries, named...)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	b := u2(nil, uint16(len(entries)))
+	for _, e := range entries {
+		var outer, simple uint16
+		if e.Outer != "" {
+			outer = c.Class(e.Outer)
+		}
+		if e.Simple != "" {
+			simple = c.Utf8(e.Simple)
+		}
+		b = u2(u2(u2(u2(b, c.Class(e.Inner)), outer), simple), e.Access)
+	}
+	return b
+}
+
+// descriptorNames calls add with the class names of s read as a
+// descriptor or a generic signature: Lp/A$B; and, in Lp/A<TT;>.B;, also
+// p/A$B. Another string gives names no class has.
+func descriptorNames(s string, add func(string)) {
+	var open []string // the classes whose type arguments s is in
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case 'L':
+			j := i + 1
+			for j < len(s) && s[j] != ';' && s[j] != '<' && s[j] != '.' {
+				j++
+			}
+			add(s[i+1 : j])
+			if j < len(s) && s[j] == '<' {
+				open = append(open, s[i+1:j])
+			}
+			i = j
+		case '>':
+			if len(open) == 0 {
+				continue
+			}
+			name := open[len(open)-1]
+			open = open[:len(open)-1]
+			for i+1 < len(s) && s[i+1] == '.' {
+				j := i + 2
+				for j < len(s) && s[j] != ';' && s[j] != '<' && s[j] != '.' {
+					j++
+				}
+				name += "$" + s[i+2:j]
+				add(name)
+				if j < len(s) && s[j] == '<' {
+					open = append(open, name)
+					i = j
+					break
+				}
+				i = j - 1
+			}
+		}
+	}
 }
 
 // codeAttr finishes a method's code and returns its Code attribute's
