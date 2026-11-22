@@ -433,7 +433,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			ok = false
 		}
 		for i, p := range x.Params {
-			t := types.InvalidType
+			t, untyped := types.InvalidType, false
 			switch {
 			case p.Type != nil:
 				t = c.resolveType(p.Type)
@@ -445,11 +445,20 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				t = params[i]
 				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
 					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+					untyped = true
 				}
 			case !w.recover && ok:
 				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+				untyped = true
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
+			if untyped {
+				// See untypedMember.
+				if c.untypedParams == nil {
+					c.untypedParams = map[*types.VarSym]bool{}
+				}
+				c.untypedParams[p.Sym] = true
+			}
 			syms = append(syms, p.Sym)
 		}
 	case w.recover:

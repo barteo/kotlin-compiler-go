@@ -2360,6 +2360,37 @@ func signedIntLit(x syntax.Expr) bool {
 	return false
 }
 
+// untypedMember reports member x, a function if call is set, of a
+// lambda's parameter declared without a type that nothing gives one:
+// arg.length in { arg -> arg.length } where no function type is
+// expected. As in kotlinc, such a parameter has Any's members, and takes
+// the extensions of the name, whatever their receiver: another name is
+// unresolved.
+func (c *Checker) untypedMember(x *syntax.Member, call bool) {
+	id, ok := x.X.(*syntax.Ident)
+	if !ok || id.Sym == nil || !c.untypedParams[id.Sym] {
+		return
+	}
+	switch {
+	case call && (x.Name == "hashCode" || x.Name == "toString" || x.Name == "equals"):
+		return
+	case call:
+		// Nothing is taken by every receiver type.
+		if len(c.extCallees(x.Name, types.NothingType)) > 0 {
+			return
+		}
+	default:
+		probe := &syntax.Member{X: checked(x.X, types.NothingType), Name: x.Name}
+		probe.P = x.P
+		n := len(c.errs)
+		_, ok := c.extProp(probe, types.NothingType)
+		if c.errs = c.errs[:n]; ok {
+			return
+		}
+	}
+	c.errorf(x.P, "unresolved reference: %s", x.Name)
+}
+
 // errorRecvExt returns the callee of call fn of a receiver whose type has
 // an error, if it is the only extension function of its name there and
 // is generic. As kotlinc, which has no members for such a receiver but
@@ -2390,6 +2421,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		t = c.fixedStub(t)
 	}
 	if t.K == types.Invalid {
+		c.untypedMember(fn, true)
 		return t, c.errorRecvExt(fn), false
 	}
 	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
@@ -2553,6 +2585,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		xt = c.fixedStub(xt)
 	}
 	if xt.K == types.Invalid {
+		c.untypedMember(x, false)
 		return xt
 	}
 	if c.unfixedReceiver(x.X, xt, x.Name, x.P) {

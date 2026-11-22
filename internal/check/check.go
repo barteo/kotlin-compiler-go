@@ -446,6 +446,10 @@ type Checker struct {
 	// variableBelow): the ambiguity isn't one of those stubCheck drops
 	// with what the lambda recorded.
 	keptAmbiguity bool
+	// untypedParams are the parameters of lambdas declared without a
+	// type that nothing gives one, which were reported: see
+	// untypedMember.
+	untypedParams map[*types.VarSym]bool
 	// uninferredErrs counts the errors of errorTypeArgs and thisExpr for
 	// types that couldn't be inferred before the call they are in.
 	uninferredErrs int
