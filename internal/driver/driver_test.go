@@ -1695,6 +1695,63 @@ func TestMetro(t *testing.T) {
 	}
 }
 
+// TestMetroClassPath compiles a library and a program that uses its
+// graphs and injected classes, each with kc's Metro plugin, and runs the
+// program. Each case is a module of its own, so the program's classes
+// leave the library's unloaded until Metro reads them.
+func TestMetroClassPath(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
+	}
+	const header = "import dev.zacsweers.metro.*\n\n"
+	for name, tc := range map[string]struct{ lib, app, want string }{
+		"lazy constructor parameter": {
+			lib:  "@Inject class Engine { fun power() = 7 }\n@Inject class Car(private val engine: Lazy<Engine>) { fun describe() = \"car \" + engine.value.power() }",
+			app:  "@DependencyGraph interface G { val car: Car }\nfun main() { println(createGraph<G>().car.describe()) }",
+			want: "car 7\n",
+		},
+		"graph factory": {
+			lib:  "@Inject class Service { fun name() = \"service\" }\n@DependencyGraph interface LibGraph {\nval service: Service\nval tag: String\n@DependencyGraph.Factory interface Factory { fun create(@Provides tag: String): LibGraph }\n}",
+			app:  "fun main() {\nval g = createGraphFactory<LibGraph.Factory>().create(\"t\")\nprintln(g.service.name() + \" \" + g.tag)\n}",
+			want: "service t\n",
+		},
+		"graph extension": {
+			lib:  "abstract class UserScope private constructor()\n@Inject @SingleIn(UserScope::class) class Session { val id = \"session\" }\n@GraphExtension(UserScope::class) interface UserGraph {\nval session: Session\n@ContributesTo(AppScope::class) @GraphExtension.Factory interface Factory { fun createUser(): UserGraph }\n}",
+			app:  "@DependencyGraph(AppScope::class) interface G\nfun main() {\nval u = (createGraph<G>() as UserGraph.Factory).createUser()\nprintln(u.session.id + \" \" + (u.session === u.session))\n}",
+			want: "session true\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			libDir, libOut, appDir, appOut := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+			libFile, appFile := filepath.Join(libDir, "lib.kt"), filepath.Join(appDir, "main.kt")
+			os.WriteFile(libFile, []byte("package lib\n\n"+header+tc.lib+"\n"), 0o644)
+			os.WriteFile(appFile, []byte("package app\n\n"+header+"import lib.*\n\n"+tc.app+"\n"), 0o644)
+			opts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib, rt}, ModuleName: "lib", Metro: true, JVMTarget: "17"}
+			if err := Compile([]string{libFile}, opts); err != nil {
+				t.Fatalf("compile lib: %v", err)
+			}
+			opts = Options{OutDir: appOut, Jobs: 1, ClassPath: []string{lib, rt, libOut}, ModuleName: "app", Metro: true, JVMTarget: "17"}
+			if err := Compile([]string{appFile}, opts); err != nil {
+				t.Fatalf("compile app: %v", err)
+			}
+			cp := strings.Join([]string{appOut, libOut, rt, lib}, string(os.PathListSeparator))
+			out, err := exec.Command(java, "-Xverify:all", "-cp", cp, "app.MainKt").CombinedOutput()
+			if err != nil {
+				t.Fatalf("java: %v\n%s", err, out)
+			}
+			if string(out) != tc.want {
+				t.Errorf("got %q, want %q", out, tc.want)
+			}
+		})
+	}
+}
+
 // The options that Metro's Gradle plugin passes by default, in either
 // spelling of companion-mode, and the options that only shape Metro's own
 // graph implementations or diagnostics compile as no options do.
