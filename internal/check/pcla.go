@@ -189,18 +189,11 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		c.pclaRollback(r, why)
 		return types.InvalidType, false
 	}
-	_, pre := c.checked[l]
 	switch {
 	case len(r.checks) != 1 || k.l != l:
 		return deny("group")
 	case r.deny != "":
 		return deny(r.deny)
-	case pre:
-		return deny("prechecked")
-	case k.w.ret != w.ret || k.w.check != w.check:
-		return deny("result")
-	case ret.HasVars() && w.ret.K == types.Invalid && (endsWithCall(l.Body) || returnsCall(l) || endsWithBranches(l.Body)):
-		return deny("tail")
 	case len(k.w.params) != len(params):
 		return deny("params")
 	}
@@ -229,11 +222,80 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 			}
 		}
 	}
+	ours := func(u types.Type) bool {
+		return u.K == types.TypeVar && (slices.Contains(r.vars, u.Param()) || slices.Contains(r.extra, u.Param()))
+	}
+	// A variable that the call's system gave a type with a variable of
+	// a builder around, which was since fixed on demand (see
+	// demandStubs), or is the builder's to infer, is what the parameter
+	// type now has in its place.
+	var bind func(p, q types.Type)
+	bind = func(p, q types.Type) {
+		if p == q {
+			return
+		}
+		if _, known := sub[p.Param()]; ours(p) && !p.N && !p.P && !p.D && !known {
+			if !q.Has(ours) && q.K != types.Invalid {
+				sub[p.Param()] = types.Arg{T: q}
+			}
+			return
+		}
+		if p.K == types.Class && q.K == types.Class && p.C == q.C && p.A.Len() == q.A.Len() {
+			for i := range p.A.Len() {
+				bind(p.A.Get(i).T, q.A.Get(i).T)
+			}
+		}
+	}
+	for i, p := range k.w.params {
+		bind(sub.Apply(p), params[i])
+	}
+	// And those of the lambdas in l that left theirs to this one.
+	for i := len(r.subs) - 1; i >= 0; i-- {
+		for v, a := range r.subs[i] {
+			if _, known := sub[v]; !known {
+				a.T = sub.Apply(a.T)
+				sub[v] = a
+			}
+		}
+	}
 	for i, p := range k.w.params {
 		if sub.Apply(p) != params[i] {
 			c.pclaStat("params-differ", l.P, fmt.Sprint(p), fmt.Sprint(sub.Apply(p)), fmt.Sprint(params[i]))
 			return deny("params")
 		}
+	}
+	keep := func() {
+		if o := k.t.outer; o != nil {
+			o.undo = append(o.undo, k.t.undo...)
+			maps.Copy(o.classes, k.t.classes)
+		}
+		c.errs = append(c.errs, k.errs...)
+		if o := c.pclaRun(); o != nil {
+			// What still has a variable of the builder around is its to
+			// complete.
+			o.postponed = append(o.postponed, r.postponed...)
+			o.defers = append(o.defers, r.defers...)
+		}
+		r.checks = nil
+	}
+	if slices.ContainsFunc(slices.Collect(maps.Values(sub)), func(a types.Arg) bool { return a.T.HasVars() }) {
+		// A variable of a builder around isn't inferred yet: its commit
+		// completes this check with its own.
+		o := c.pclaRun()
+		for _, a := range sub {
+			if o == nil || a.T.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == nil }) {
+				return deny("open")
+			}
+		}
+		pclaWrite(l, sub)
+		o.subs = append(append(o.subs, r.subs...), sub)
+		o.handed = append(append(append(o.handed, r.handed...), r.vars...), r.extra...)
+		c.pclaStat("commit", l.P, "handed")
+		keep()
+		return sub.Apply(k.bt), true
+	}
+	ours = func(u types.Type) bool {
+		return u.K == types.TypeVar && (slices.Contains(r.vars, u.Param()) || slices.Contains(r.extra, u.Param()) || slices.Contains(r.handed, u.Param()))
 	}
 	saved := c.trial
 	c.trial = k.t
@@ -251,9 +313,6 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		f()
 	}
 	c.trial = saved
-	ours := func(u types.Type) bool {
-		return u.K == types.TypeVar && (slices.Contains(r.vars, u.Param()) || slices.Contains(r.extra, u.Param()))
-	}
 	for _, t := range pclaLeft(l) {
 		if t.Has(ours) {
 			// A variable that nothing inferred: the check with the
@@ -276,18 +335,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	}
 	c.pclaReword(k.errs, sub)
 	c.pclaStat("commit", l.P)
-	if o := k.t.outer; o != nil {
-		o.undo = append(o.undo, k.t.undo...)
-		maps.Copy(o.classes, k.t.classes)
-	}
-	c.errs = append(c.errs, k.errs...)
-	if o := c.pclaRun(); o != nil {
-		// What still has a variable of the builder around is its to
-		// complete.
-		o.postponed = append(o.postponed, r.postponed...)
-		o.defers = append(o.defers, r.defers...)
-	}
-	r.checks = nil
+	keep()
 	return sub.Apply(k.bt), true
 }
 
@@ -360,15 +408,12 @@ func pclaScan(l *syntax.Lambda) string {
 		}
 		ok := false
 		switch n := n.(type) {
-		case *syntax.Ident:
-			ok = !n.Cast
-		case *syntax.This:
-			ok = !n.Cast
 		case *syntax.Call:
 			ok = len(n.Reified) == 0
 		case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
 			*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
-			*syntax.For, *syntax.Jump, *syntax.Destructure:
+			*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
+			*syntax.NotNull:
 			// What the check decides for them from a type with a
 			// variable, it decides once the variable is fixed on demand
 			// (see fixedStub), or in a fixup, which runs again.

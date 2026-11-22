@@ -2729,6 +2729,11 @@ type stubRun struct {
 	deny      string
 	postponed []*system
 	defers    []func()
+	// subs are what the variables of the lambdas in r's whose checks
+	// were kept were inferred as, in terms of r's variables, and handed
+	// those variables: r's commit writes them.
+	subs   []types.Subst
+	handed []*types.TypeParamSym
 }
 
 // joinRun returns the run that s, a call's system about to complete in a
