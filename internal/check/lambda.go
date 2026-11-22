@@ -3289,8 +3289,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			s.fixVarsIn(q)
 		}
 	}
+	delete(c.uninferredRecv, l)
 	for i := range params {
 		params[i] = c.demandStubs(s.final(params[i]))
+		if tv := vars[i]; tv != nil && params[i].K == types.Invalid && ft.Flex().E && i == ft.Flex().Contexts() &&
+			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+			// The receiver's: see thisExpr.
+			if c.uninferredRecv == nil {
+				c.uninferredRecv = map[*syntax.Lambda]string{}
+			}
+			c.uninferredRecv[l] = tv.v.Name
+		}
 		// As kotlinc, a parameter declared without a type whose variable
 		// can't be inferred is reported too: x of foo { x -> 43 } for a
 		// foo(block: (T) -> R).

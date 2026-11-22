@@ -101,6 +101,15 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		}
 		t := c.scope.narrowed(r.sym)
 		x.Cast = needsCast(r.sym.Type, t)
+		if l, ok := r.owner.(*syntax.Lambda); ok && !x.Implicit && t.K == types.Invalid {
+			if name, ok := c.uninferredRecv[l]; ok {
+				// As kotlinc, this of a lambda whose receiver is a type
+				// variable that couldn't be inferred is reported as
+				// the variable is: consume(this) in build { } for a
+				// build(block: T.() -> Unit).
+				c.errorf(x.P, "cannot infer type for type parameter '%s'. Specify it explicitly.", name)
+			}
+		}
 		return t
 	}
 	if c.cls == nil {
