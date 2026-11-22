@@ -149,3 +149,72 @@ func (c *Checker) pclaFailedCall(x *syntax.Call, t types.Type) types.Type {
 	}
 	return t
 }
+
+// uninferredValue reports whether t, the type of init, a local
+// variable's initializer, has a type argument that the call init
+// couldn't infer: the checks of init reported the errors after the
+// first n, one of them that a type parameter of the call's function
+// can't be inferred, where the call is, and the call takes a lambda, as
+// a builder's, or such a variable (see uninferredArg). A type with
+// another error, as of an argument, isn't one kotlinc reports the uses
+// of.
+func (c *Checker) uninferredValue(init syntax.Expr, t types.Type, n int) bool {
+	x, ok := init.(*syntax.Call)
+	invalid := func(u types.Type) bool { return u.K == types.Invalid }
+	if !ok || x.Sym == nil || t.K == types.Invalid || !t.Has(invalid) {
+		return false
+	}
+	if c.uninferredCall == x {
+		return true
+	}
+	if !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok }) {
+		return false
+	}
+	return slices.ContainsFunc(c.errs[n:], func(e *syntax.Error) bool {
+		return e.Pos.Line == x.Fun.Pos().Line && slices.ContainsFunc(x.Sym.TypeParams, func(v *types.TypeParamSym) bool {
+			return e.Msg == "cannot infer type for type parameter '"+v.Name+"'. Specify it explicitly."
+		})
+	})
+}
+
+// uninferredArg reports generic call x if an argument for a parameter
+// with one of its type parameters is a local variable whose type has a
+// type argument that nothing inferred, buildee of val buildee = build { }:
+// as kotlinc, whose type for it has an error no type equals, the call
+// can't infer the type parameter either, id(buildee) and
+// id<Buildee<String>>(buildee). The error is at the type argument, if
+// it is written.
+func (c *Checker) uninferredArg(x *syntax.Call) {
+	f := x.Sym
+	if f == nil || len(f.TypeParams) == 0 {
+		return
+	}
+	for i, a := range x.Args {
+		id, ok := a.(*syntax.Ident)
+		if !ok || id.Sym == nil || !c.uninferred[id.Sym] {
+			continue
+		}
+		pi := i
+		if x.ArgMap != nil {
+			pi = x.ArgMap[i]
+		}
+		if pi < 0 || pi >= len(f.Params) {
+			continue
+		}
+		for j, v := range f.TypeParams {
+			if !f.Params[pi].Type.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == v }) {
+				continue
+			}
+			p := x.Fun.Pos()
+			if j < len(x.TypeArgs) && !x.TypeArgs[j].Underscore {
+				p = x.TypeArgs[j].P
+			}
+			msg := "cannot infer type for type parameter '" + v.Name + "'. Specify it explicitly."
+			if !c.hasErrorAt(p, msg) {
+				c.errorf(p, "%s", msg)
+			}
+			c.uninferredCall = x
+			return
+		}
+	}
+}

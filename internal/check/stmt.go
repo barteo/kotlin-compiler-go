@@ -651,6 +651,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	var t types.Type
 	narrowed := types.InvalidType
+	uninferred := false
 	switch {
 	case s.Init == nil:
 		t = c.resolveType(s.Type)
@@ -659,8 +660,10 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
 		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
+		nerrs := len(c.errs)
 		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
 		c.elvisFull = nil
+		uninferred = c.uninferredValue(s.Init, t, nerrs)
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.
@@ -668,6 +671,12 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		}
 	}
 	s.Sym = &types.VarSym{Name: s.Name, Type: t, Kind: types.Local, Mutable: s.Mutable, Decl: s, Deferred: s.Init == nil && !s.Lateinit}
+	if uninferred {
+		if c.uninferred == nil {
+			c.uninferred = map[*types.VarSym]bool{}
+		}
+		c.uninferred[s.Sym] = true
+	}
 	if s.Lateinit {
 		c.lateinitChecks(s.LateinitP, s.Mutable, s.Init != nil, false, t)
 		s.Sym.Lateinit = true

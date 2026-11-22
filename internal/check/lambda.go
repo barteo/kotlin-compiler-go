@@ -2797,8 +2797,43 @@ func (r *stubRun) solve() ([][2]types.Type, *system, bool) {
 		pclaLogf("PCLA not solved:\n")
 		trial.pclaDump()
 	}
-	if !trial.ok || len(trial.errs) > len(r.s.errs) {
+	if !trial.ok && slices.ContainsFunc(trial.errs, func(e inferError) bool { return strings.HasPrefix(e.msg, "type argument is not within its bounds") }) {
+		// As in K2, a call in the lambda whose variable's declared
+		// bound the others' constraints contradict is that call's
+		// error, which it reported: consumeDifferentTypeSubtype(
+		// getTypeVariable()) for a T : DifferentType, after
+		// setTypeVariable(TargetType()). It says nothing of the
+		// variables (see build).
+		for i := len(r.joined) - 1; i >= 0 && !trial.ok; i-- {
+			if j := r.joined[i]; j.ok {
+				j.ok = false
+				if t, u := r.fixAll(); t.ok {
+					trial, useful = t, u
+				} else {
+					j.ok = true
+				}
+			}
+		}
+	}
+	if !trial.ok {
 		return nil, nil, false
+	}
+	// A joined call's variable that nothing infers is that call's
+	// error, which it reports: r's own are inferred all the same, as
+	// K2 fixes PTV to TargetType in setTypeVariable(TargetType());
+	// consumeDifferentTypeSubtype(getTypeVariable()).
+	for _, e := range trial.errs[len(r.s.errs):] {
+		if !slices.ContainsFunc(r.extra, func(v *types.TypeParamSym) bool {
+			tv := trial.byVar[v]
+			return tv != nil && tv.pos == e.pos && e.msg == "cannot infer type for type parameter '"+v.Name+"'. Specify it explicitly."
+		}) {
+			return nil, nil, false
+		}
+	}
+	for _, v := range r.vars {
+		if tv := trial.byVar[v]; tv == nil || !tv.fixed || trial.vals[v].T.K == types.Invalid {
+			return nil, nil, false
+		}
 	}
 	return r.project(trial, useful), trial, true
 }
@@ -3302,6 +3337,13 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			i < len(l.Params) && l.Params[i].Type == nil &&
 			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
 			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		}
+		if tv := vars[i]; tv != nil && i == 0 && params[i].K == types.Invalid && ft.Flex().E &&
+			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+			if c.uninferredRecv == nil {
+				c.uninferredRecv = map[*syntax.Lambda]string{}
+			}
+			c.uninferredRecv[l] = tv.v.Name
 		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}

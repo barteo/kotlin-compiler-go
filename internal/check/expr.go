@@ -2751,6 +2751,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 	if len(c.pclaRuns) > 0 {
 		t = c.pclaFailedCall(x, t)
 	}
+	if len(c.uninferred) > 0 {
+		c.uninferredArg(x)
+	}
 	return t
 }
 

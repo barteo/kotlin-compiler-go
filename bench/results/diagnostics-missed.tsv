@@ -175,10 +175,6 @@ tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/Intersected
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	TypeVariableStarCapture.kt:10	UNRESOLVED_REFERENCE	nearby
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	differentBehaviorWhenSpecifiedArgument.kt:38	ARGUMENT_TYPE_MISMATCH	nearby
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	earlyReturn.kt:12	UNRESOLVED_REFERENCE	missing-check
-tests/inference/pcla/issues/kt47989a.kt	kt47989a.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/pcla/issues/kt47989b.kt	kt47989b.kt:13	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/pcla/issues/kt49263.kt	kt49263.kt:7	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/pcla/issues/kt55281.kt	kt55281.kt:12	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/issues/kt63841.kt	kt63841.kt:31	ASSIGNMENT_TYPE_MISMATCH	nearby
 tests/inference/pcla/issues/kt63841.kt	kt63841.kt:38	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:61	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check

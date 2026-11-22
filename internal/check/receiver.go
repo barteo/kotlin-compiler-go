@@ -95,6 +95,13 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		return obj.This()
 	}
 	if r != nil {
+		if l, ok := r.owner.(*syntax.Lambda); ok {
+			// As kotlinc, this of a lambda whose receiver's type its
+			// call couldn't infer is reported too.
+			if name, ok := c.uninferredRecv[l]; ok {
+				c.errorf(x.P, "cannot infer type for type parameter '%s'. Specify it explicitly.", name)
+			}
+		}
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)

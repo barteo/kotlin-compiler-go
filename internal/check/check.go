@@ -450,6 +450,13 @@ type Checker struct {
 	// pclaKept are the runs that keep the check of a lambda whose turn
 	// to be checked for good hasn't come.
 	pclaKept map[*syntax.Lambda]*stubRun
+	// uninferred are the local variables whose type has a type argument
+	// that their initializer's call couldn't infer (see uninferredArg),
+	// and uninferredRecv the lambdas whose receiver's type is a type
+	// parameter that their call couldn't infer, by its name.
+	uninferred     map[*types.VarSym]bool
+	uninferredCall *syntax.Call // the last call that uninferredArg reported
+	uninferredRecv map[*syntax.Lambda]string
 	// elvisCall is the call on the left of an elvis being checked, and
 	// elvisWant the type that the right side gives it (see elvisHint).
 	elvisCall *syntax.Call
