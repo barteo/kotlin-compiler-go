@@ -3309,6 +3309,14 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	delete(c.uninferredRecv, l)
+	if i := ft.Flex().Contexts(); ft.Flex().E && i < len(params) && params[i].K == types.TypeVar && c.errorVars[params[i].Param()] {
+		// The receiver's variable has a type, but one made of a type
+		// with an error (see errorTypeArgs): this is reported too.
+		if c.uninferredRecv == nil {
+			c.uninferredRecv = map[*syntax.Lambda]string{}
+		}
+		c.uninferredRecv[l] = params[i].Param().Name
+	}
 	for i := range params {
 		params[i] = c.demandStubs(s.final(params[i]))
 		if tv := vars[i]; tv != nil && params[i].K == types.Invalid && ft.Flex().E && i == ft.Flex().Contexts() &&

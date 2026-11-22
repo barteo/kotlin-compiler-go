@@ -446,6 +446,12 @@ type Checker struct {
 	// variableBelow): the ambiguity isn't one of those stubCheck drops
 	// with what the lambda recorded.
 	keptAmbiguity bool
+	// uninferredErrs counts the errors of errorTypeArgs and thisExpr for
+	// types that couldn't be inferred before the call they are in.
+	uninferredErrs int
+	// errorVars are the variables of calls that errorTypeArgs reported:
+	// those given a type made of one with an error.
+	errorVars map[*types.TypeParamSym]bool
 	// uninferredRecv are the lambdas whose receiver's type is a type
 	// variable of their call that couldn't be inferred, with its name:
 	// this in them is reported, as kotlinc reports it.

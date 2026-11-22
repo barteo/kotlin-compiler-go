@@ -760,6 +760,72 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 	}
 }
 
+// errorTypeArgs reports the type parameters of cd, the candidate of call
+// x with arguments of types ts, that an argument gives a type made of one
+// that has an error: T of id(buildee) or id<Buildee<String>>(buildee) for
+// a buildee whose type is a Buildee of a type argument that couldn't be
+// inferred. As in kotlinc, such a type parameter can't be inferred,
+// whether or not its type argument is written; one that the type with
+// the error itself is for is given no type by it: bt<String>(buildee)
+// for a bt(x: Buildee<T>) is not an error. An extension's receiver gives
+// its type as an argument does: buildee.apply { } for a T.apply.
+func (c *Checker) errorTypeArgs(x *syntax.Call, cd *candidate, ts []types.Type) {
+	if len(cd.tparams) == 0 {
+		return
+	}
+	isInvalid := func(u types.Type) bool { return u.K == types.Invalid }
+	var reported []*types.TypeParamSym
+	var walk func(p, a types.Type, depth int)
+	walk = func(p, a types.Type, depth int) {
+		if a.K == types.Invalid || depth > 16 {
+			return
+		}
+		if p.K == types.TypeParam {
+			j := slices.Index(cd.tparams, p.Param())
+			if j < 0 || !a.Has(isInvalid) || slices.Contains(reported, p.Param()) {
+				return
+			}
+			reported = append(reported, p.Param())
+			pos := x.P
+			if len(x.TypeArgs) == len(cd.tparams) {
+				if x.TypeArgs[j].Underscore {
+					return
+				}
+				pos = x.TypeArgs[j].P
+			}
+			c.errorf(pos, "cannot infer type for type parameter '%s'. Specify it explicitly.", p.Param().Name)
+			c.uninferredErrs++
+			if v := cd.sub[p.Param()].T; v.K == types.TypeVar {
+				if c.errorVars == nil {
+					c.errorVars = map[*types.TypeParamSym]bool{}
+				}
+				c.errorVars[v.Param()] = true
+			}
+			return
+		}
+		if p.K != types.Class || p.A == nil || a.K != types.Class {
+			return
+		}
+		sup, ok := c.asSuper(a, p.C)
+		if !ok || sup.A == nil || sup.A.Len() != p.A.Len() {
+			return
+		}
+		for i := range p.A.Len() {
+			if pa, sa := p.A.Get(i), sup.A.Get(i); pa.V != types.Star && sa.V != types.Star {
+				walk(pa.T, sa.T, depth+1)
+			}
+		}
+	}
+	if cd.ext.Has(isInvalid) {
+		walk(cd.f.Recv, cd.ext, 0)
+	}
+	for i, t := range ts {
+		if t.Has(isInvalid) {
+			walk(cd.argType(i, x.Args), t, 0)
+		}
+	}
+}
+
 func countArgs(n int) string {
 	switch n {
 	case 0:
@@ -1304,6 +1370,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		})
 	}
+	c.errorTypeArgs(x, best, ts)
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}

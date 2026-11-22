@@ -2986,8 +2986,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if fit {
 				// Resolving checks the arguments; lambdas are checked once.
-				n := len(c.errs)
-				if t := c.resolve(x, methodCallees(fs, nil), want, sink); len(c.errs) == n {
+				n, u := len(c.errs), c.uninferredErrs
+				if t := c.resolve(x, methodCallees(fs, nil), want, sink); len(c.errs)-n == c.uninferredErrs-u {
+					// Without errors, or with those of types that
+					// couldn't be inferred only, which no other
+					// function would be without.
 					return t
 				}
 				c.errs = c.errs[:n]
