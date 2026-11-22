@@ -371,6 +371,52 @@ func (r *stubRun) semiFixIn(trial *system, saved map[*types.TypeParamSym]*stubRu
 	return show.Apply(val), true
 }
 
+// capturedStub reports whether x, a receiver of member name whose type t
+// is a builder's variable, has it through a projection: the result of a
+// member declared as its class's T, of a receiver whose argument for T
+// is projected where the receiver's type is written, as provide() of a
+// TypeVariableOwner<OT, out OT> with a provide(): CT. kotlinc's type of
+// it is a captured type, which, unlike the variable, isn't fixed for
+// its members, and has none but Any's (KT-71843, KT-71844, KT-71845).
+func (c *Checker) capturedStub(x syntax.Expr, t types.Type, name string) bool {
+	if c.stub(t.Flex()) == nil || name == "hashCode" || name == "toString" || name == "equals" || c.extCallees(name, t) != nil {
+		return false
+	}
+	var ret types.Type
+	var recv syntax.Expr
+	switch x := x.(type) {
+	case *syntax.Call:
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || x.Sym == nil || x.Invoke {
+			return false
+		}
+		ret, recv = x.Sym.Ret, m.X
+	case *syntax.Member:
+		if x.Prop == nil {
+			return false
+		}
+		ret, recv = x.Prop.Type, x.X
+	default:
+		return false
+	}
+	if ret.K != types.TypeParam {
+		return false
+	}
+	p := ret.Param()
+	owner, ok := p.Owner.(*types.ClassSym)
+	if !ok || recv.Type().NonNull().K != types.Class {
+		return false
+	}
+	sup, ok := c.asSuper(recv.Type(), owner)
+	i := slices.Index(owner.TypeParams, p)
+	if !ok || i < 0 || sup.A == nil || i >= sup.A.Len() {
+		return false
+	}
+	// Not a projection the parameter's own variance makes redundant.
+	a := sup.A.Get(i)
+	return a.V != types.Inv && a.V != p.Var
+}
+
 // unfixedReceiver reports whether t, the type of x, the receiver of
 // member name at p, after fixedStub, is still a builder's variable, and
 // the error if so: as K2's type variable, it has no members, and what

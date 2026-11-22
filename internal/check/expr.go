@@ -2365,7 +2365,10 @@ func signedIntLit(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
-	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
+	t := c.declaredIfNull(fn.X, vt)
+	if !c.capturedStub(fn.X, t, fn.Name) {
+		t = c.fixedStub(t)
+	}
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
@@ -2524,7 +2527,10 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		x.X = lit
 		return types.StringType
 	}
-	xt := c.fixedStub(c.declaredIfNull(x.X, c.value(x.X, noWant)))
+	xt := c.declaredIfNull(x.X, c.value(x.X, noWant))
+	if !c.capturedStub(x.X, xt, x.Name) {
+		xt = c.fixedStub(xt)
+	}
 	if xt.K == types.Invalid {
 		return xt
 	}
