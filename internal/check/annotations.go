@@ -779,6 +779,11 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
 			if !cp.IsProp {
 				c.noAllTarget(cp.Modifiers.Annotations, ctorParamNoProp)
+				for _, a := range cp.Modifiers.Annotations {
+					if a.Target == "param" {
+						c.warnf(a.P, "REDUNDANT_ANNOTATION_TARGET", "redundant annotation target 'param'")
+					}
+				}
 			} else {
 				c.allTargets(cp.Modifiers.Annotations, true, cp.Mutable, !cls.Annotation)
 			}
@@ -805,6 +810,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.noFileTarget(m.Annotations)
 				c.publishedApi(&m.Modifiers)
 				c.annotations(m.Annotations, cls, ctorSite)
+				c.jvmMemberAnnotations(m, cls)
 				if m.Sym != nil {
 					c.headerParams = m.Sym.Params
 				}

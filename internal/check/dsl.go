@@ -64,6 +64,16 @@ func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
 	if len(ms) == 0 {
 		return t
 	}
+	if n := len(ref.Contexts); ref.Ret != nil && (n > 1 || n == 1 && ref.Recv != nil) {
+		// The marker of a function type is that of its receiver and of
+		// its context parameters, all at once.
+		for i := range ref.Annotations {
+			if len(c.annotationMarkers(ref.Annotations[i:i+1])) > 0 {
+				c.warnf(ref.Annotations[i].P, "DSL_MARKER_PROPAGATES_TO_MANY", "the '@DslMarker' annotation is implicitly propagated to the extension receiver and all context parameters of this function type. Annotate each of them explicitly instead")
+				break
+			}
+		}
+	}
 	if i := len(ref.Contexts); ref.Recv != nil && t.IsExtFunc() && t.A != nil && i < t.A.Len() {
 		args := slices.Clone(t.A.List)
 		args[i].T = args[i].T.WithMarkers(ms)

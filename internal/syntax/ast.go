@@ -858,6 +858,9 @@ type EnumEntry struct {
 	Name        string
 	Call        *Call // the constructor call that creates it, with its arguments
 	Annotations []Annotation
+	// External is where the entry's external modifier is, which means
+	// nothing there and is deprecated; or the zero Pos.
+	External Pos
 	// Body is the class of an entry with a body, whose superclass's
 	// constructor call is Call; or nil.
 	Body *ClassDecl

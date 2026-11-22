@@ -2010,10 +2010,13 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 		for t := p.toks[j]; (t.Kind == IN || t.Kind == IDENT && (isModifier(t.Text) || isVisibility(t.Text) || t.Text == "out" || t.Text == "reified")) && p.toks[j+1].Kind == IDENT; t = p.toks[j] {
 			j++
 		}
+		var external Pos
 		if j > p.i && enumEntryEnd(p.toks[j+1].Kind) {
 			for p.i < j {
 				if t := p.next(); t.Text != "external" {
 					p.errorLater(t.Pos, "modifier '%s' is not applicable to 'enum entry'", t.Text)
+				} else if external == (Pos{}) {
+					external = t.Pos
 				}
 			}
 		}
@@ -2021,7 +2024,7 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 			return // a member
 		}
 		name := p.next()
-		e := &EnumEntry{P: name.Pos, Name: name.Text, Annotations: anns}
+		e := &EnumEntry{P: name.Pos, Name: name.Text, Annotations: anns, External: external}
 		id := &Ident{Name: cd.Name}
 		id.P = name.Pos
 		e.Call = &Call{Fun: id}

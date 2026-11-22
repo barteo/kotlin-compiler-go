@@ -788,3 +788,31 @@ func TestWarningsOptInArguments(t *testing.T) {
 func TestWarningsRedundantRepeatable(t *testing.T) {
 	checkReference(t, "testdata/repeatable.kt", Options{Warnings: true})
 }
+
+// TestWarningsDslMarkerPropagation checks the warnings of DSL markers on
+// function types with several receivers and context parameters against
+// kotlinc's of testdata/dsl_many.kt.
+func TestWarningsDslMarkerPropagation(t *testing.T) {
+	checkReference(t, "testdata/dsl_many.kt", Options{Warnings: true})
+}
+
+// TestWarningsModifierTarget checks the warnings of open on an interface
+// and of external on an enum entry or a constructor's property against
+// kotlinc's of testdata/modtarget.kt.
+func TestWarningsModifierTarget(t *testing.T) {
+	checkReference(t, "testdata/modtarget.kt", Options{Warnings: true})
+}
+
+// TestWarningsUselessOverloads checks the warnings of @JvmOverloads that
+// adds no overloads, and of @param: on a constructor parameter that is
+// no property, against kotlinc's of testdata/jvmoverloads.kt.
+func TestWarningsUselessOverloads(t *testing.T) {
+	checkReference(t, "testdata/jvmoverloads.kt", Options{Warnings: true})
+}
+
+// TestWarningsUselessExposeBoxed checks the warnings of @JvmExposeBoxed
+// on declarations without value classes against kotlinc's of
+// testdata/exposeboxed.kt.
+func TestWarningsUselessExposeBoxed(t *testing.T) {
+	checkReference(t, "testdata/exposeboxed.kt", Options{Warnings: true})
+}
