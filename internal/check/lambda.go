@@ -2374,6 +2374,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	// is dropped. And an unresolved reference that poisons the system
 	// (see poisons) leaves them uninferred.
 	clean := false
+	var poisoned *syntax.Lambda
 	for _, sl := range group {
 		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
 		ok, ambiguous, unresolved, errs := c.stubCheck(s, sl, r)
@@ -2396,6 +2397,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			}
 			c.pclaPoison[sl.l] = unresolved
 			clean = false
+			poisoned = sl.l
 			break
 		}
 		c.keepPCLAErrors(s, sl.l, errs)
@@ -2405,7 +2407,20 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, v := range append(vars, r.extra...) {
 		delete(c.stubs, v)
 	}
-	if !clean && !r.demanded {
+	delete(c.pclaPoisonKept, poisoned)
+	kept := false
+	if m := r.mark; poisoned != nil && m != nil && m[0] > 0 {
+		// As in K2, the constraints recorded before the unresolved
+		// reference still infer the variables: String for add("")
+		// before Unresolved().apply { }.
+		r.cons, r.joined, r.extra = r.cons[:m[0]], r.joined[:m[1]], r.extra[:m[2]]
+		if c.pclaPoisonKept == nil {
+			c.pclaPoisonKept = map[*syntax.Lambda]bool{}
+		}
+		c.pclaPoisonKept[poisoned] = true
+		kept = true
+	}
+	if !clean && !r.demanded && !kept {
 		// No lambda gave the variables anything, or one poisoned the
 		// system: they stay uninferred. Not once a member fixed one on
 		// demand, as K2 does: the variables are then inferred from what
@@ -2577,7 +2592,7 @@ func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id
 	if !ok || p.Line < at.Line || p.Line == at.Line && p.Col <= at.Col {
 		return
 	}
-	if !t.Has(func(u types.Type) bool { return u.K == types.Invalid }) {
+	if !c.pclaPoisonKept[l] && !t.Has(func(u types.Type) bool { return u.K == types.Invalid }) {
 		return
 	}
 	c.errorf(p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", name)
@@ -2631,6 +2646,45 @@ func exprHead(e syntax.Expr) syntax.Pos {
 			return y.P
 		default:
 			return syntax.Pos{}
+		}
+	}
+}
+
+// poisonSnapshot returns, for a call x that may poison the builders'
+// lambdas being checked with their variables unfixed (see poisons), what
+// each of their runs has recorded before it.
+func (c *Checker) poisonSnapshot(x *syntax.Call) map[*stubRun][3]int {
+	if len(c.stubs) == 0 {
+		return nil
+	}
+	if _, ok := x.Fun.(*syntax.Member); !ok {
+		return nil
+	}
+	pre := map[*stubRun][3]int{}
+	for _, r := range c.stubs {
+		if r.mark == nil {
+			pre[r] = [3]int{len(r.cons), len(r.joined), len(r.extra)}
+		}
+	}
+	return pre
+}
+
+// poisonMark records pre, of poisonSnapshot, on the runs if call x,
+// checked with the errors since n, has an unresolved reference for its
+// receiver: what was recorded before it still infers the variables.
+func (c *Checker) poisonMark(x *syntax.Call, pre map[*stubRun][3]int, n int) {
+	if len(pre) == 0 || len(c.errs) == n {
+		return
+	}
+	h := exprHead(x)
+	for _, e := range c.errs[n:] {
+		if e.Pos == h && strings.HasPrefix(e.Msg, "unresolved reference") {
+			for r, m := range pre {
+				if r.mark == nil {
+					r.mark = &m
+				}
+			}
+			return
 		}
 	}
 }
@@ -2777,6 +2831,10 @@ type stubRun struct {
 	// fixes a variable on demand: what the lambda does after it is
 	// checked with that type.
 	demanded bool
+	// mark is how many cons, joined and extra the run had before the
+	// first call with an unresolved reference that may poison it (see
+	// poisonMark).
+	mark *[3]int
 	// depth is the number of runs r is nested in.
 	depth int
 	// forks are the system's forks over r's variables alone (see

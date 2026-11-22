@@ -54,3 +54,24 @@ fun notPoisoned(k: Int) {
         scope { k }
     }
 }
+
+// What the lambda recorded before the unresolved reference still infers
+// the builder's variables.
+fun inferredBefore(k: Int) {
+    val l = build {
+        add("")
+        Unknown234(1).app { } // ERROR unresolved reference: Unknown234
+        add("") // ERROR argument type mismatch
+        add(1) // ERROR argument type mismatch
+        tk2(k) {} // ERROR argument type mismatch
+    }
+    val s: List<String> = l
+    val m = build {
+        add("")
+        if (k > 0) {
+            Unknown234(1).app { } // ERROR unresolved reference: Unknown234
+        }
+        add(1) // ERROR argument type mismatch
+    }
+    val t: List<String> = m
+}

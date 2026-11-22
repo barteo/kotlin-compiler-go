@@ -42,3 +42,16 @@ fun notPoisoned() {
         foo()
     }
 }
+
+// What the lambda recorded before it still infers the variables.
+fun inferredBefore() {
+    val s = generate {
+        yield("")
+        MyUnresolvedClass().bar(this) // ERROR unresolved reference: MyUnresolvedClass
+        foo() // ERROR no candidate takes the receiver
+        yield("") // ERROR argument type mismatch
+        yield(1) // ERROR argument type mismatch
+        member()
+    }
+    val t: String = s
+}

@@ -441,6 +441,10 @@ type Checker struct {
 	// couldn't infer because of an unresolved reference, by where the
 	// first one is (see poisonedRecv).
 	pclaPoison map[*syntax.Lambda]syntax.Pos
+	// pclaPoisonKept are those of pclaPoison whose variables are
+	// inferred all the same, from the constraints recorded before the
+	// unresolved reference (see poisonMark).
+	pclaPoisonKept map[*syntax.Lambda]bool
 	// poisonIn is the builder lambda of pclaPoison whose body is being
 	// checked, and poisonAt where its unresolved reference is.
 	// poisonCalls are the calls in such lambdas that poisonedCall
