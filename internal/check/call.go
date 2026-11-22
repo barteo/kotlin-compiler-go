@@ -1774,8 +1774,11 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 			return nil, nil
 		}
 		n := len(sys.errs)
-		for _, p := range ps {
-			sys.fixVarsIn(p)
+		semi := make([]bool, len(ps)) // see upperSemiFixed
+		for i, p := range ps {
+			if semi[i] = len(l.Params) == 0 && !mentions(l.Body, "it") && c.upperSemiFixed(sys, p); !semi[i] {
+				sys.fixVarsIn(p)
+			}
 		}
 		if len(sys.errs) > n {
 			// As in K2, a lambda whose parameter types need its body to
@@ -1784,6 +1787,12 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 			return nil, nil
 		}
 		for i := range ps {
+			if semi[i] {
+				// The variable has no type yet: the parameter's is
+				// an error's, which the lambda can't use.
+				ps[i] = types.InvalidType
+				continue
+			}
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {
 				return nil, nil
 			}
@@ -1843,6 +1852,38 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) (*candidate
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
 	return maximal[0], l
+}
+
+// upperSemiFixed reports whether p, the type of a parameter of a lambda
+// whose result chooses among overloads in a builder's lambda, is a
+// variable of the call that K2 gives its only upper bound, another
+// variable, for the lambda's analysis (KT-81254): its lower bounds are
+// several variables, one of them the builder's, which have no common
+// supertype yet, as T1 of w.myMapWithArg(materializeFlow3(),
+// materializeFlow4()) { ... } with U of w and F3 below it and F4 above.
+// kc has no type for such a parameter: only a lambda that doesn't use it
+// is checked so.
+func (c *Checker) upperSemiFixed(sys *system, p types.Type) bool {
+	tv := sys.unfixedVar(p)
+	if tv == nil || len(c.stubs) == 0 || len(tv.lower) < 2 || len(tv.lits) > 0 {
+		return false
+	}
+	stubs := false
+	for _, l := range tv.lower {
+		switch {
+		case c.stub(l) != nil:
+			stubs = true
+		case sys.unfixedVar(l) == nil:
+			return false
+		}
+	}
+	var ups []types.Type
+	for _, u := range tv.upper {
+		if !slices.Contains(tv.declUp, u) {
+			ups = append(ups, u)
+		}
+	}
+	return stubs && len(ups) == 1 && sys.unfixedVar(ups[0]) != nil
 }
 
 // sourceNotByLambdaResult reports whether f is a function of the program
