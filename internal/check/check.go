@@ -378,6 +378,9 @@ type Checker struct {
 	stubs map[*types.TypeParamSym]*stubRun
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
+	// resultChecked is the lambda last checked to choose a call's
+	// candidate by its result (see byLambdaResult).
+	resultChecked *syntax.Lambda
 	// origSAM is set while candidates compare by the fun interfaces
 	// lambdas convert to, not their function types (see funInterfaceView).
 	origSAM bool

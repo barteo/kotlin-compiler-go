@@ -179,7 +179,6 @@ tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyCons
 tests/inference/pcla/noCompilerAssertionWithErrorTypes.kt	noCompilerAssertionWithErrorTypes.kt:19	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/noCompilerAssertionWithErrorTypes.kt	noCompilerAssertionWithErrorTypes.kt:19	CANNOT_INFER_PARAMETER_TYPE	missing-check
 tests/inference/pcla/noCompilerAssertionWithErrorTypes.kt	noCompilerAssertionWithErrorTypes.kt:19	CANNOT_INFER_PARAMETER_TYPE	missing-check
-tests/inference/pcla/overloadResolutionByLambdaReturnType.kt	overloadResolutionByLambdaReturnType.kt:15	UNRESOLVED_REFERENCE	missing-check
 tests/inference/pcla/regresssions/exponentialErrorsInCSInitial.kt	exponentialErrorsInCSInitial.kt:25	RETURN_TYPE_MISMATCH	missing-check
 tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	main.kt:40	ARGUMENT_TYPE_MISMATCH	missing-check
 tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	main.kt:42	ARGUMENT_TYPE_MISMATCH	missing-check
@@ -316,7 +315,6 @@ tests/regressions/kt251.kt	kt251.kt:31	RETURN_TYPE_MISMATCH	nearby
 tests/regressions/kt251.kt	kt251.kt:6	ASSIGNMENT_TYPE_MISMATCH	missing-check
 tests/regressions/kt334.kt	kt334.kt:7	ARGUMENT_TYPE_MISMATCH	accepted
 tests/renderingOfTypesWithSameName.kt	renderingOfTypesWithSameName.kt:20	ARGUMENT_TYPE_MISMATCH	missing-check
-tests/resolve/ambiguityWithTwoCorrespondingFunctionTypes.kt	ambiguityWithTwoCorrespondingFunctionTypes.kt:10	NO_THIS	missing-check
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	2.kt:18	FUNCTION_CALL_EXPECTED	missing-check
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	2.kt:18	UNRESOLVED_REFERENCE	missing-check
 tests/resolve/invoke/wrongInvokeExtension.kt	wrongInvokeExtension.kt:15	CANNOT_INFER_PARAMETER_TYPE	missing-check
