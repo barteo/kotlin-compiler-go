@@ -2317,6 +2317,59 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		s.nothingFix = true
 		return nil
 	}
+	// As in K2, a lambda whose parameter is a variable itself, (T) ->
+	// Entry<T> or T.() -> Unit, isn't checked with it unfixed: it waits
+	// for the variable, which the call's lambdas with a parameter type
+	// that has it, Scope<T>.() -> Unit, are checked first to infer.
+	bare := func(ps []types.Type) bool {
+		found := false
+		for _, p := range ps {
+			switch q := s.apply(p); {
+			case !q.HasVars():
+			case q.Flex().K == types.TypeVar && s.isVar(q.Flex()):
+				found = true
+			default:
+				return false
+			}
+		}
+		return found
+	}
+	lambdaParams := func(pl pendingLambda) ([]types.Type, types.Type, bool) {
+		pft := s.apply(pl.p)
+		if !pft.Flex().IsFunc() {
+			if m, f := c.samTarget(pft); m != nil {
+				pft = f
+			}
+		}
+		ps, _, ok := funcParts(pft)
+		return ps, pft, ok
+	}
+	typed := false
+	if pclaSingle && bare(params) {
+		// Unless another of the call's lambdas declares the types of
+		// its parameters, which bound the variable: takeLambdas({ it },
+		// { x: Int -> x }) for a (T) -> Unit and an (R) -> Unit, T : R.
+		// They are then checked together, as before.
+		for _, pl := range s.lambdas {
+			ps, _, ok := lambdaParams(pl)
+			typed = typed || pl.l != l && ok && bare(ps) && len(pl.l.Params) > 0 && !slices.ContainsFunc(pl.l.Params, func(p *syntax.LambdaParam) bool { return p.Type == nil })
+		}
+	}
+	if pclaSingle && bare(params) && !typed {
+		for _, pl := range s.lambdas {
+			ps, pft, ok := lambdaParams(pl)
+			if pl.l == l || !ok || bare(ps) || !slices.ContainsFunc(ps, func(p types.Type) bool { return s.apply(p).HasVars() }) {
+				continue
+			}
+			if _, done := c.pclaKept[pl.l]; !done {
+				saved := c.scope
+				c.scope = pl.scope
+				c.stubInference(s, pl.l, ps, pft, false)
+				c.scope = saved
+			}
+		}
+		return nil
+	}
 	group := []stubLambda{{l, params, ft, c.scope}}
 	vars := c.stubVars(s, params, nil)
 	if !stubbable(s, group[0]) || len(vars) == 0 {
@@ -2334,6 +2387,9 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			}
 		}
 		ps, _, ok := funcParts(pft)
+		if pclaSingle && ok && bare(ps) && !typed {
+			continue
+		}
 		if pl.l == l || !ok || !slices.ContainsFunc(ps, func(p types.Type) bool {
 			return s.apply(p).Has(func(u types.Type) bool { return u.K == types.TypeVar && slices.Contains(vars, u.Param()) })
 		}) {
