@@ -4454,13 +4454,13 @@ tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	r
 tests/inference/pcla/fixationOnDemand/miscellaneous/NestedIndependentPCLACall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/PCLACandidateShape.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/ResolutionToMemberOverExtension.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/DefinitelyNonNullTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/FlexibleTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/NullableTypeVariable.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAccess.kt	rejects invalid	on an expected line	
@@ -4519,7 +4519,7 @@ tests/inference/pcla/fixingDependentVariablesForReceiversInitial.kt	accepts vali
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter3.kt	accepts valid		
-tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	rejects invalid	elsewhere	
+tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument20.kt	skip	LANGUAGE	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn20.kt	skip	LANGUAGE	
@@ -4659,7 +4659,7 @@ tests/inference/pcla/nestedLambdaWithNonLastYieldStatement.kt	accepts valid
 tests/inference/pcla/nestedLambdasWithOverloadResolutionByReturnType.kt	accepts valid		
 tests/inference/pcla/newTvFromLamdaAreNotCountedAsProper.kt	accepts valid		
 tests/inference/pcla/noBuilderInferenceRestrictionReceiverInconsistency.kt	skip	LANGUAGE	
-tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	elsewhere	
+tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	on an expected line	
 tests/inference/pcla/noCompilerAssertionWithErrorTypes.kt	rejects invalid	on an expected line	
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/AnonymousFunctionArgumentAndBuildeeReceiver.kt	accepts valid		
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/sourceSinkFeedContexts/ByAssignmentToALocalVariableMaterializeCase.kt	accepts valid		

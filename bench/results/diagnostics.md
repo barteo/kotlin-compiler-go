@@ -15,7 +15,7 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4414.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4419.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -67,26 +67,26 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21568 of 22025 expected errors (97.9%) on their lines.
+kc reports 21611 of 22025 expected errors (98.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1439 | 52 |
-| `UNRESOLVED_REFERENCE` | 2553 | 2502 | 51 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 598 | 37 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2511 | 42 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1453 | 38 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 608 | 27 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 239 | 12 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 148 | 11 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 76 | 11 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 240 | 11 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 145 | 10 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 150 | 9 |
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
-| `INAPPLICABLE_CANDIDATE` | 127 | 120 | 7 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 108 | 6 |
+| `INAPPLICABLE_CANDIDATE` | 127 | 121 | 6 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 422 | 6 |
 | `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 109 | 5 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
@@ -103,7 +103,6 @@ kc reports 21568 of 22025 expected errors (97.9%) on their lines.
 | `INVALID_TYPE_OF_ANNOTATION_MEMBER` | 30 | 27 | 3 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
 | `NON_LOCAL_RETURN_NOT_ALLOWED` | 25 | 22 | 3 |
-| `NO_SET_METHOD` | 11 | 8 | 3 |
 | `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
 | `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
@@ -131,6 +130,7 @@ kc reports 21568 of 22025 expected errors (97.9%) on their lines.
 | `OPT_IN_MARKER_ON_WRONG_TARGET` | 16 | 14 | 2 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 30 | 2 |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 30 | 28 | 2 |
+| `REDECLARATION` | 196 | 194 | 2 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -139,11 +139,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 7.4% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 74 | 16.2% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 34 | 8.2% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| syntax-error | 74 | 17.9% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 62 | 13.6% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE` 9, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4 |
-| missing-check | 287 | 62.8% | `ARGUMENT_TYPE_MISMATCH` 34, `CANNOT_INFER_PARAMETER_TYPE` 28, `UNRESOLVED_REFERENCE` 27, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 10 |
+| nearby | 50 | 12.1% | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `ARGUMENT_TYPE_MISMATCH` 6, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `NULL_FOR_NONNULL_TYPE` 3 |
+| missing-check | 256 | 61.8% | `UNRESOLVED_REFERENCE` 26, `ARGUMENT_TYPE_MISMATCH` 23, `CANNOT_INFER_PARAMETER_TYPE` 18, `OVERLOAD_RESOLUTION_AMBIGUITY` 9, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,10 +151,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 198 |
-| `type mismatch: inferred type is _ but _ was expected` | 148 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 133 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 88 |
+| `unresolved reference: _` | 191 |
+| `type mismatch: inferred type is _ but _ was expected` | 141 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 131 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 101 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `no function '_' takes n arguments` | 20 |
@@ -168,7 +168,6 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 11 |
 | `unresolved import: _` | 11 |
-| `ambiguous call: n candidates for '_' take (_)` | 10 |
 | `expected no parameters, but n were declared` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
@@ -177,10 +176,11 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
+| `ambiguous call: n candidates for '_' take (_)` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
+| `operator '_' cannot be applied to Any?` | 7 |
 | *108 more* | |
 
 ## Unsupported features
@@ -193,7 +193,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3249 of the 3667 warnings the tests expect (88.6%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3251 of the 3667 warnings the tests expect (88.7%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -205,7 +205,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_IS_CHECK` | 127 | 114 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 99 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 87 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 89 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 72 | 1 |
 | `USELESS_CAST` | 91 | 77 | 2 |

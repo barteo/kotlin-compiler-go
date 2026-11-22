@@ -266,25 +266,40 @@ own tests.
   inferred. The second check, with the variables fixed, gives the tree
   its types and reports what the checkers find on them. What differs
   from K2:
-  - Of the errors a call adds to K2's shared constraint system, only
-    one shape is carried to the calls after it: a generic extension
+  - Of the errors a call adds to K2's shared constraint system, two
+    shapes are carried to the calls after it: a generic extension
     called on an unresolved receiver with the lambda's `this`,
-    `Unresolved().bar(this)`, after which the extension calls on the
-    builder's receiver are inapplicable. K2 fails every later call of
-    the lambda, with an error on each argument.
-  - A variable that is a component of a smart cast's intersection,
-    `OTv & A` after `x is A`, isn't fixed for a member, and one that a
-    projection captures is, where K2 leaves its member unresolved. kc
-    fixes one for `++x[i]` and `x[i]++` too, which K2 doesn't
-    (KT-71778).
+    `Unresolved().bar(this)`, or with a lambda, `Unresolved().apply {
+    }`. The builder's variables are then uninferred, where K2 still
+    infers them from the constraints before the error. After it the
+    extension calls on the builder's receiver are inapplicable, and
+    the calls that K2 checks with the shared system are reported: one
+    with a lambda, an anonymous function or a callable reference for
+    an argument, one of a member of the builder's receiver with the
+    builder's type in its signature, one that takes the result of
+    such a call, and a member of the result of the call with the
+    error. K2 also reports some operators with such a result for an
+    operand (`k..s`, not `s + 1`), a property of the builder's
+    receiver passed as an argument, and gives the members of the
+    result of the call with the error the types of the standard
+    library's candidates it tried (`MatchGroup?` for an index); kc
+    doesn't.
   - A call of a Java generic method between the variables of two
-    nested builders, `select(get(), Test.foo(this@outer.getInv()))`, is
-    accepted where K2 reports its argument.
-  - A lambda that a builder's lambda returns, `return@build { arg ->
-    arg.length }`, an overload chosen by a lambda's result type with a
-    builder's variable in it, and the positions of K2's "cannot infer"
-    on a parameter or a type argument (`CANNOT_INFER_PARAMETER_TYPE`)
-    in a lambda with errors are kc's own.
+    nested builders, `select(Test.foo(get()),
+    Test.foo(this@outer.getInv()))`, is accepted where K2 reports its
+    argument. K2 reports it only when the inner builder's variable
+    is under the Java method's flexible `T!` and the outer one's is
+    in an invariant position of the same call; kc has no rule for
+    it.
+  - An overload chosen by a lambda's result type
+    (`@OverloadResolutionByLambdaReturnType`) whose lambda parameter is
+    a variable with only variables below it is chosen through the
+    variable above it, as K2 semi-fixes it, only if the lambda doesn't
+    use its parameter. Outside a builder kc calls such a call
+    ambiguous, where K2 chooses.
+  - The positions of K2's "cannot infer" on a parameter or a type
+    argument (`CANNOT_INFER_PARAMETER_TYPE`) in a lambda with errors
+    are kc's own.
   - A fork of the constraint system over a builder's variables waits
     for its lambda's constraints. A call's variable that captures an
     `out` projection of a builder's variable is reported as uninferred,
