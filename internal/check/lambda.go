@@ -2946,6 +2946,20 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	return val
 }
 
+// fixDeclaredStub fixes, as fixedStub does, the builder's variable that
+// is the declared type of x, a receiver of type t, if x is a variable
+// that an assignment narrowed: in kotlinc the receiver's type is still
+// the variable's, so var v = get(); v = Target(); v.member() fixes it
+// to Target, and a v = Other() after it is a mismatch (KT-63841).
+func (c *Checker) fixDeclaredStub(x syntax.Expr, t types.Type) {
+	if len(c.stubs) == 0 || c.stub(t.Flex()) != nil {
+		return
+	}
+	if id, ok := x.(*syntax.Ident); ok && id.Sym != nil && c.stub(id.Sym.Type.Flex()) != nil {
+		c.fixedStub(id.Sym.Type)
+	}
+}
+
 // demandStubs returns t, a parameter type of a lambda of a call in a
 // builder's lambda, with the builder's variable fixed on demand (see
 // fixedStub): as K2 fixes the input types of such a lambda to what the

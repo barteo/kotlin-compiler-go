@@ -1121,7 +1121,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	}
 	// A builder's element is its type, which may be a built-in one:
 	// get(0) + "y" in buildList { add("x") } (see fixedStub).
-	xt := c.fixedStub(c.value(x.X, opWant)).Flex()
+	xv := c.value(x.X, opWant)
+	c.fixDeclaredStub(x.X, xv)
+	xt := c.fixedStub(xv).Flex()
 	x.X, xt = builtinBound(x.X, xt)
 	if !builtinOperand(xt) {
 		switch x.Op {
@@ -2365,6 +2367,7 @@ func signedIntLit(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
+	c.fixDeclaredStub(fn.X, vt)
 	t := c.declaredIfNull(fn.X, vt)
 	if !c.capturedStub(fn.X, t, fn.Name) {
 		t = c.fixedStub(t)
@@ -2527,7 +2530,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		x.X = lit
 		return types.StringType
 	}
-	xt := c.declaredIfNull(x.X, c.value(x.X, noWant))
+	xt := c.value(x.X, noWant)
+	c.fixDeclaredStub(x.X, xt)
+	xt = c.declaredIfNull(x.X, xt)
 	if !c.capturedStub(x.X, xt, x.Name) {
 		xt = c.fixedStub(xt)
 	}
