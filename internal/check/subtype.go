@@ -12,6 +12,9 @@ import (
 // flexible: String! is both String and String?, and a Java List is both a
 // MutableList and a List.
 func (c *Checker) subtype(t, u types.Type) bool {
+	if c.pclaSub != nil {
+		t, u = c.pclaSub.Apply(t), c.pclaSub.Apply(u)
+	}
 	if c.subtype1(t, u) {
 		return true
 	}

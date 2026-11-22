@@ -49,11 +49,12 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl, jdk bool) [][]*types.F
 		if s == cls || s.Name == "java/lang/Object" {
 			return true
 		}
-		for name, fs := range s.Methods {
+		// By name: the diagnostics' order doesn't depend on the map's.
+		for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
 			if anyMember[name] {
 				continue
 			}
-			for _, g := range fs {
+			for _, g := range s.Methods[name] {
 				if g.Static || g.Private || g.Ext {
 					continue
 				}

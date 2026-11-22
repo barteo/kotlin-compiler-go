@@ -59,9 +59,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		call := &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 		null.P, m.P, call.P = s.P, s.P, s.P
 		if c.providesDelegate(dt, call) {
-			del := s.Delegate
 			s.Delegate = call
-			c.onUndo(func() { s.Delegate = del }) // see provideDelegate
 			dt = c.value(call, provided)
 		}
 	}

@@ -1320,11 +1320,9 @@ func (c *Checker) setKFun(x *syntax.Lambda, call *syntax.Call) {
 		// is a reference whose invoke calls the function instead.
 		cls := x.Class
 		x.KFunClass, x.Class = cls, ""
-		c.onUndo(func() { x.KFunClass, x.Class = "", cls })
 	}
 	if x.KFunClass == "" {
 		x.KFunClass = c.anonName()
-		c.onUndo(func() { x.KFunClass = "" })
 	}
 }
 

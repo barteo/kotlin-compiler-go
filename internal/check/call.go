@@ -1142,12 +1142,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			// which the builder's other lambdas resolve (see
 			// stubInference): Entry(key: T, id: Any = key) and
 			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			// Not candidates whose parameter types have no stub, as
+			// extensions' of their own type parameters: those stay
+			// ambiguous, T1.fooExt(vararg T1) and fooExt(Inv<T2>).
+			stubbed := false
 			for _, cd := range match {
 				if !cd.usesVararg() {
 					maximal = append(maximal, cd)
 				}
+				for i := range x.Args {
+					stubbed = stubbed || c.hasStub(cd.recv.ApplyIn(cd.argType(i, x.Args)))
+				}
 			}
-			if len(maximal) != 1 {
+			if len(maximal) != 1 || !stubbed {
 				maximal = nil
 			}
 		}
@@ -1173,6 +1180,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
+				c.ambiguousLambdas(x)
 			}
 			return types.InvalidType
 		}
@@ -1215,6 +1224,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	c.declaredCastArgs(x, best, ts, partials, ret, want)
 	sys := best.sys
+	fixups0 := len(sys.fixups)
 	params := best.params
 	for _, i := range lambdas {
 		l := x.Args[i].(*syntax.Lambda)
@@ -1323,6 +1333,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 	})
+	if c.pclaRun() != nil {
+		// Run again once a builder's variables are inferred (see
+		// pclaCommit), the fixups are of this resolution of the call,
+		// which another may have replaced since.
+		for i := fixups0; i < len(sys.fixups); i++ {
+			fix := sys.fixups[i]
+			sys.fixups[i] = func(s *system) {
+				if !c.pclaStale(x, f) {
+					fix(s)
+				}
+			}
+		}
+	}
 	if sink != nil && sink == c.tailSink && hasLambda(x.Args) && !c.lambdasReady(sys) {
 		// A call taking a lambda whose parameter types aren't known yet,
 		// a builder's, is inferred on its own (see endsWithCall).
@@ -1697,6 +1720,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if cd := c.byLambdaResultClass(l, li, match, params); cd != nil {
 		return cd
 	}
+	c.resultChecked = l
 	_, bt, _ := c.checkLambda(l, lambdaWant{params: params, known: true, recv: match[0].params[li].Flex().E, ctx: match[0].params[li].Flex().Contexts(), suspend: isSuspendFunc(match[0].params[li]), composable: isComposableFunc(match[0].params[li]), ret: noWant})
 	if bt.K == types.Invalid {
 		return nil
@@ -2094,6 +2118,8 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
+				c.ambiguousLambdas(x)
 			}
 			return types.InvalidType
 		}
@@ -3090,4 +3116,17 @@ func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Sub
 		out[p] = types.Arg{T: ra.T}
 	}
 	return out
+}
+
+// ambiguousLambdas checks the lambdas of x, a call that is ambiguous,
+// without an expected type, as kotlinc does: their bodies have no
+// receiver and no it, f { append("") } of f(StringBuilder.() -> Int) and
+// f(StringBuilder.() -> String). Not one that was checked to choose by
+// its result (see byLambdaResult) and fits no candidate.
+func (c *Checker) ambiguousLambdas(x *syntax.Call) {
+	for _, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref == nil && !l.Anon && l.T.K == types.Invalid && l != c.resultChecked {
+			c.lambda(l, noWant)
+		}
+	}
 }

@@ -325,8 +325,8 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,502 of the 22,025 expected errors (97.6%) on their lines, and 3,249 of
-the 3,667 expected warnings (88.6%), with 18 warnings on lines that expect
+21,603 of the 22,025 expected errors (98.1%) on their lines, and 3,252 of
+the 3,667 expected warnings (88.7%), with 18 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 6 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:

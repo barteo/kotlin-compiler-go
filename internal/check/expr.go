@@ -2365,6 +2365,12 @@ func signedIntLit(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
+	if id, ok := fn.X.(*syntax.Ident); ok && id.Sym != nil && len(c.stubs) > 0 && c.stub(vt.Flex()) == nil {
+		// A variable declared with a builder's variable for its type and
+		// smart-cast by an assignment is a PTV & TargetType: a member
+		// call on it fixes the variable, as one on the variable does.
+		c.fixedStub(id.Sym.Type)
+	}
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
 		return t, nil, false
@@ -2747,6 +2753,38 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	type mark struct{ cons, joined, extra int }
+	var marks []mark
+	amb := c.ambiguities
+	for _, r := range c.pclaRuns {
+		marks = append(marks, mark{len(r.cons), len(r.joined), len(r.extra)})
+	}
+	t := c.call1(x, want, sink)
+	if c.ambiguities > amb {
+		// An ambiguous call in a builder's lambda gives the builder's
+		// variables nothing, as in kotlinc: what its candidates
+		// recorded is dropped, what the calls before it did stays.
+		for i, r := range c.pclaRuns[:len(marks)] {
+			m := marks[i]
+			if len(r.cons) < m.cons || len(r.joined) < m.joined || len(r.extra) < m.extra {
+				continue
+			}
+			for _, v := range r.extra[m.extra:] {
+				delete(c.stubs, v)
+			}
+			r.cons, r.joined, r.extra = r.cons[:m.cons], r.joined[:m.joined], r.extra[:m.extra]
+		}
+	}
+	if len(c.pclaRuns) > 0 {
+		t = c.pclaFailedCall(x, t)
+	}
+	if len(c.uninferred) > 0 {
+		c.uninferredArg(x)
+	}
+	return t
+}
+
+func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
 	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
 		// its chain.
@@ -4513,7 +4551,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 				continue
 			}
 			c.scope = pl.scope
-			c.stubInference(p.sys, pl.l, params, ft)
+			c.stubInference(p.sys, pl.l, params, ft, false)
 			p.open = p.open || !slices.ContainsFunc(params, p.sys.known)
 		}
 	}

@@ -210,14 +210,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// inner or anonymous enclosing class, which come first, and
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
-		if prev := c.anon[d.Sym]; d.Sym != nil && c.redeclared[d.Sym] && prev != nil && prev.outer != nil {
-			// Declared again after a trial check of the lambda the class
-			// is in (see stubInference): it keeps the symbol, which the
-			// calls of the enclosing class's members that the trial
-			// rewrote onto it (see recvCall) refer to, as hasExpired() in
-			// an object in callbackFlow { }.
-			*prev.outer, outer = *outer, prev.outer
-		}
 		ctx.outer = outer
 		frame.Outer = outer
 		name := c.cls.DisplayName()
@@ -301,7 +293,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()
 
-	d.OuterThis = nil // a trial check's, if this check doesn't capture it
+	d.OuterThis = nil // an earlier check's, if this check doesn't capture it
 	for _, v := range frame.Captures {
 		if v == outer {
 			d.OuterThis = outer
@@ -309,8 +301,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		}
 	}
 	d.Captures = frame.Captures
-	n := len(c.file.Anon)
-	c.onUndo(func() { c.file.Anon = c.file.Anon[:n] })
 	c.file.Anon = append(c.file.Anon, d)
 	return sym
 }
@@ -449,7 +439,6 @@ func (c *Checker) anonName() string {
 	if c.file.Named == nil {
 		c.file.Named = map[string]bool{}
 	}
-	c.onUndo(func() { c.anonCount[base]--; delete(c.file.Named, name) })
 	c.file.Named[name] = true
 	return name
 }

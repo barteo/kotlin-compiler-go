@@ -292,10 +292,6 @@ func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (t
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}
 	m.P = x.Fun.Pos()
-	// A trial's check, as a builder lambda's with its variables unfixed,
-	// checks the call afresh: x's type is the trial's.
-	fun, op := x.Fun, x.Operator
-	c.onUndo(func() { x.Fun, x.Operator = fun, op })
 	x.Fun, x.Operator = m, true
 	return c.call(x, want, sink), true
 }

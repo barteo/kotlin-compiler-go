@@ -79,7 +79,7 @@ func kotlinParamNames(cls *types.ClassSym) {
 // kc names a Java method's parameters p, but for those Kotlin names (see
 // kotlinParamNames).
 func (c *Checker) javaNamedArgs(x *syntax.Call, f *types.FunSym) {
-	if c.trial != nil || f.Owner == nil || !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Name == "p" }) {
+	if f.Owner == nil || !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Name == "p" }) {
 		return
 	}
 	for i, a := range x.Args {

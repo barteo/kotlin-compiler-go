@@ -117,8 +117,7 @@ func (c *Checker) safeChainInvoke(x *syntax.Call, want types.Type, sink *system)
 	}
 	m := &syntax.Member{X: x.Fun, Name: "invoke", Safe: true}
 	m.P = x.Fun.Pos()
-	fun, op := x.Fun, x.Operator
-	c.onUndo(func() { x.Fun, x.Operator = fun, op })
+	fun := x.Fun
 	x.Fun, x.Operator = m, true
 	t := c.call(x, want, sink)
 	if rt := chainType(fun); rt.K != types.Invalid && types.MayBeNull(rt) && !rt.P {

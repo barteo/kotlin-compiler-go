@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"path"
 	"slices"
 	"strings"
@@ -95,6 +96,20 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		return obj.This()
 	}
 	if r != nil {
+		if l, ok := r.owner.(*syntax.Lambda); ok {
+			// As kotlinc, this of a lambda whose receiver's type its
+			// call couldn't infer is reported too.
+			// Once the lambda is checked (see postponedLambda): an
+			// error here would count against the call this is an
+			// argument of.
+			if name, ok := c.uninferredRecv[l]; ok && !slices.ContainsFunc(c.uninferredThis[l], func(e *syntax.Error) bool { return e.Pos == x.P }) {
+				if c.uninferredThis == nil {
+					c.uninferredThis = map[*syntax.Lambda][]*syntax.Error{}
+				}
+				c.uninferredThis[l] = append(c.uninferredThis[l], &syntax.Error{File: c.file.Path, Pos: x.P,
+					Msg: fmt.Sprintf("cannot infer type for type parameter '%s'. Specify it explicitly.", name)})
+			}
+		}
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)
@@ -201,8 +216,6 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 			continue
 		}
 		c.capture(r.sym, r.depth)
-		old := x.Member
-		c.onUndo(func() { x.Member = old })
 		x.Member = m
 		return t, true
 	}
@@ -437,14 +450,9 @@ func (c *Checker) rewriteFun(x *syntax.Call, m syntax.Expr) {
 	c.rewrite(&x.Fun, m)
 }
 
-// rewrite replaces the expression *p of the tree with e. A trial's
-// rewrite is undone: an object expression's receivers, which e may refer
-// to, are declared again after it.
+// rewrite replaces the expression *p of the tree with e.
 func (c *Checker) rewrite(p *syntax.Expr, e syntax.Expr) {
-	if old := *p; old != e {
-		c.onUndo(func() { *p = old })
-		*p = e
-	}
+	*p = e
 }
 
 // hasFun reports whether a receiver of type t has a member or extension

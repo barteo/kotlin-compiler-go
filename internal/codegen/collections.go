@@ -1,6 +1,8 @@
 package codegen
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -519,8 +521,9 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 				s[p] = st.A.Get(i)
 			}
 		}
-		for _, fs := range m.Methods {
-			for _, f := range fs {
+		// By name: the class file doesn't depend on the map's order.
+		for _, name := range slices.Sorted(maps.Keys(m.Methods)) {
+			for _, f := range m.Methods[name] {
 				if f.Static || f.Platform && !mutating[f.Name] || f.Owner != m {
 					continue
 				}

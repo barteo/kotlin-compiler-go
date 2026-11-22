@@ -651,6 +651,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	var t types.Type
 	narrowed := types.InvalidType
+	uninferred := false
 	switch {
 	case s.Init == nil:
 		t = c.resolveType(s.Type)
@@ -659,8 +660,10 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
 		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
+		nerrs := len(c.errs)
 		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
 		c.elvisFull = nil
+		uninferred = c.uninferredValue(s.Init, t, nerrs)
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.
@@ -668,6 +671,12 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		}
 	}
 	s.Sym = &types.VarSym{Name: s.Name, Type: t, Kind: types.Local, Mutable: s.Mutable, Decl: s, Deferred: s.Init == nil && !s.Lateinit}
+	if uninferred {
+		if c.uninferred == nil {
+			c.uninferred = map[*types.VarSym]bool{}
+		}
+		c.uninferred[s.Sym] = true
+	}
 	if s.Lateinit {
 		c.lateinitChecks(s.LateinitP, s.Mutable, s.Init != nil, false, t)
 		s.Sym.Lateinit = true
@@ -1361,14 +1370,6 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	// What the check writes into an assignment is the check's: one that
-	// stubInference throws away may take another branch than the one
-	// that counts, as y += 1 does for a var y of a builder's E, which
-	// would leave its rewrite in Stmts.
-	if c.trial != nil {
-		stmts, opType, value := s.Stmts, s.OpType, s.Value
-		c.onUndo(func() { s.Stmts, s.OpType, s.Value = stmts, opType, value })
-	}
 	if recv, build, ok := safeTarget(s.Target); ok {
 		c.safeAssign(s, recv, build)
 		return
@@ -1426,10 +1427,23 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if mutable && c.contextWrite(s) {
 		return
 	}
+	// stubTarget is the target's type with a builder's variable, which tt
+	// is what the constraints so far fix to.
+	stubTarget := types.InvalidType
 	if s.Op != syntax.ASSIGN {
 		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
 		// element's type (see fixedStub).
-		tt = c.fixedStub(tt)
+		if ft := c.fixedStub(tt); ft != tt {
+			// What x op= v is, x.opAssign(v) or x = x op v, is decided
+			// here from x's type, which the tree doesn't have yet:
+			// from what it has once the variable is written.
+			stubTarget = tt
+			if tt.P && !ft.P && ft.IsPrimitive() {
+				// A platform type of a primitive: Int!, not Int.
+				ft.N, ft.P = true, true
+			}
+			tt = ft
+		}
 	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {
@@ -1473,7 +1487,11 @@ func (c *Checker) assign(s *syntax.Assign) {
 		}
 		return
 	}
-	if rt := c.targetCast(s.Target, tt); mutable && builtinOperand(rt) && !classBound(rt) &&
+	rt := c.targetCast(s.Target, tt)
+	if rt == stubTarget {
+		rt = tt // no smart cast
+	}
+	if mutable && builtinOperand(rt) && !classBound(rt) &&
 		(rt != tt || s.Op == syntax.PLUS_EQ && types.MayBeNull(rt) && !rt.P && rt.NonNull() == types.StringType) {
 		// x op= v on an x that a smart cast narrows, an Int? known to be
 		// an Int, or on a String?, whose + is String?.plus: x = x op v,
@@ -1642,6 +1660,16 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return t
 	}
 	if ix, ok := u.X.(*syntax.Index); ok {
+		xt := c.value(ix.X, noWant)
+		ix.X = checked(ix.X, xt)
+		if c.stub(xt.Flex()) != nil {
+			// As in K2, which doesn't fix a builder's variable for the
+			// element that x[i]++ reads and writes: its get and its set
+			// aren't found.
+			c.errorf(ix.P, "unresolved reference: get")
+			c.errorf(ix.P, "unresolved reference: set")
+			return types.InvalidType
+		}
 		// An element of a list or a map: x.set(i, x.get(i).inc()).
 		inc := func(read syntax.Expr) syntax.Expr {
 			if builtinIncDec(read.Type()) {

@@ -376,26 +376,15 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
-	// stubHints are the values that stubInference gave the variables of
-	// the calls in a builder's lambda that it inferred with the builder's
-	// (see stubHint).
-	stubHints map[stubHintKey]types.Type
-	// stubCapts are the variables of calls in a builder's lambda that
-	// capture an out projection of one of the builder's variables: see
-	// system.subArgs.
-	stubCapts map[stubHintKey]bool
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
+	// resultChecked is the lambda last checked to choose a call's
+	// candidate by its result (see byLambdaResult).
+	resultChecked *syntax.Lambda
 	// origSAM is set while candidates compare by the fun interfaces
 	// lambdas convert to, not their function types (see funInterfaceView).
 	origSAM bool
-	// trial is set while stubInference checks a lambda, to undo what the
-	// check changes outside the lambda.
-	trial *trial
-	// redeclared are the classes that finished trials declared, which
-	// declareClass declares again.
-	redeclared map[*types.ClassSym]bool
-	sink       *system // set while checking an argument whose inference joins its call's
+	sink    *system // set while checking an argument whose inference joins its call's
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
@@ -437,16 +426,40 @@ type Checker struct {
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
-	// pclaPoison are the builder lambdas whose variables stubInference
-	// couldn't infer because of an unresolved reference, by where the
-	// first one is (see poisonedRecv).
-	pclaPoison map[*syntax.Lambda]syntax.Pos
-	// pclaErrs are the errors of builder lambdas' first checks that their
-	// second checks report where they have none (see replayPCLAErrors).
-	pclaErrs map[*syntax.Lambda]pclaKept
-	// pclaReplayed is where those errors were reported: no warning is
-	// reported there.
-	pclaReplayed map[filePos]bool
+	// pclaSub is what the variables of a builder's lambda whose check is
+	// being committed (see pclaCommit) were inferred as, while the
+	// fixups of the systems that finished in it run again.
+	pclaSub types.Subst
+	// pclaMsgs are the errors of the checks that builder inference
+	// keeps whose messages name a type with a variable: how to word
+	// them again once it is inferred.
+	pclaMsgs map[*syntax.Error]pclaMsg
+	// pclaVarErrs are the errors of those checks that a value of a
+	// builder's variable caused, an ambiguous pr(get()): they aren't
+	// reported if the variable isn't inferred. pclaPoisoned are the
+	// calls of extensions on a builder lambda's receiver that such a
+	// check saw, reported at its commit if they are after a call that
+	// failed the shared system (see poisonedRecv).
+	pclaVarErrs  map[*syntax.Error][]*types.TypeParamSym
+	pclaPoisoned map[*syntax.Lambda][]pclaRecvCall
+	// pclaLive are the nodes of that lambda's tree.
+	pclaLive map[any]bool
+	// pclaRuns are the runs of stubInference whose lambdas are being
+	// checked, the innermost last.
+	pclaRuns []*stubRun
+	// pclaKept are the runs that keep the check of a lambda whose turn
+	// to be checked for good hasn't come.
+	pclaKept map[*syntax.Lambda]*stubRun
+	// uninferred are the local variables whose type has a type argument
+	// that their initializer's call couldn't infer (see uninferredArg),
+	// and uninferredRecv the lambdas whose receiver's type is a type
+	// parameter that their call couldn't infer, by its name.
+	uninferred     map[*types.VarSym]bool
+	uninferredCall *syntax.Call // the last call that uninferredArg reported
+	uninferredRecv map[*syntax.Lambda]string
+	// uninferredThis are the errors of this in such a lambda, reported
+	// once it is checked.
+	uninferredThis map[*syntax.Lambda][]*syntax.Error
 	// elvisCall is the call on the left of an elvis being checked, and
 	// elvisWant the type that the right side gives it (see elvisHint).
 	elvisCall *syntax.Call
@@ -1141,7 +1154,11 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	e := &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)}
+	c.errs = append(c.errs, e)
+	if len(c.pclaRuns) > 0 {
+		c.pclaLate(e, format, args)
+	}
 }
 
 // warnf reports a warning, which kotlinc names name. It is for the passes
@@ -1151,7 +1168,7 @@ func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	k := warnKey{p, name, msg}
-	if c.warned[k] || c.pclaReplayed[filePos{c.file.Path, p}] {
+	if c.warned[k] {
 		return
 	}
 	if c.warned == nil {
@@ -1764,24 +1781,13 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	if d.Value {
 		c.valueClass(d)
 	}
-	sym := d.Sym
-	if sym != nil && c.redeclared[sym] {
-		// Declared by a trial check of the lambda the class is in, which
-		// constraints on the lambda's types may mention: the class is
-		// that one, declared again.
-		delete(c.redeclared, sym)
-	} else {
-		sym = new(types.ClassSym)
-	}
+	sym := new(types.ClassSym)
 	*sym = types.ClassSym{Name: name, Methods: map[string][]*types.FunSym{}, Decl: d, Annotation: d.Annotation,
 		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun, Data: d.Data,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
 		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,
 		File: c.file.Class()}
-	if c.trial != nil {
-		c.trial.classes[sym] = true
-	}
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
 		sym.TargetsKnown, sym.TargetsRead = true, true
@@ -3227,7 +3233,6 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 		// A reference re-entered it: the reference reports it
 		// (recursiveFunRef), or else, at the end, the declaration.
 		sym.Reentered++
-		c.onUndo(func() { sym.Reentered-- })
 		sym.Ret = types.InvalidType
 		return
 	}
@@ -3242,12 +3247,10 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	savedFrom := c.inferFrom
 	c.inferFrom = before + 1
 	defer func() { c.inferFrom = savedFrom }()
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(sym.Owner)
+	saved := c.state
 	c.checkFun(d, sym.Owner)
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
-	c.state, c.trial = saved, trial
+	c.state = saved
 	sym.InProgress = false
 	sym.Resolved = true
 	if sym.Reentered > 0 && sym.ReentryReported == 0 {
@@ -3278,7 +3281,6 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	if sym.InProgress {
 		// As in inferFun, recursiveVarRef reports it.
 		sym.Reentered++
-		c.onUndo(func() { sym.Reentered-- })
 		sym.Type = types.InvalidType
 		return
 	}
@@ -3290,8 +3292,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	savedFrom := c.inferFrom
 	c.inferFrom = before + 1
 	defer func() { c.inferFrom = savedFrom }()
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(sym.Owner)
+	saved := c.state
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
 		restore := getterKeepsAnon(d, sym.Owner)
@@ -3315,8 +3316,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
-	c.state, c.trial = saved, trial
+	c.state = saved
 	sym.InProgress = false
 	sym.Resolved = true
 	// A delegate's field, x$delegate, re-entered through x's getter, is
@@ -3345,12 +3345,9 @@ func (c *Checker) reportsRecursion(inProgress, cyclic bool) bool {
 // reports each reference in a cycle of omitted types.
 func (c *Checker) recursiveFunRef(f *types.FunSym, p syntax.Pos) {
 	if c.reportsRecursion(f.InProgress && !f.Resolved, f.Cyclic) {
-		// A trial's error is undone, and so is its count.
 		f.ReentryReported++
-		c.onUndo(func() { f.ReentryReported-- })
 		if f.InProgress {
 			c.u.reentries.Add(1)
-			c.onUndo(func() { c.u.reentries.Add(-1) })
 		}
 		c.errorf(p, "type checking has run into a recursive problem; specify the return type of '%s'", f.Name)
 	}
@@ -3363,12 +3360,9 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 		return // only its backing field's type is inferred
 	}
 	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
-		// A trial's error is undone, and so is its count.
 		v.ReentryReported++
-		c.onUndo(func() { v.ReentryReported-- })
 		if v.InProgress {
 			c.u.reentries.Add(1)
-			c.onUndo(func() { c.u.reentries.Add(-1) })
 		}
 		c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
 	}
@@ -3376,6 +3370,13 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
+	defer func() {
+		for l, r := range c.pclaKept {
+			if slices.ContainsFunc(r.checks, func(k pclaCheck) bool { return k.l == l }) {
+				c.errorf(l.P, "internal error: the check of a builder's lambda was never committed")
+			}
+		}
+	}()
 	c.allAnnotations()
 	done := c.u.ctx.Done()
 	for _, d := range c.file.Decls {
@@ -3512,6 +3513,18 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		if c.pclaRun() != nil && pclaOpenClass(d) {
+			// The bridges its members need are decided from their
+			// types: again once they are inferred. The errors are those
+			// of the types as written, as in K2, which checks an
+			// override before the builder's variables are fixed.
+			c.pclaDefer(func(types.Subst) {
+				n := len(c.errs)
+				pclaResetBridges(d)
+				c.checkInheritance(d)
+				c.errs = c.errs[:n]
+			})
+		}
 		c.classRules(d)
 		c.openMembers(d)
 		if d.Interface {
@@ -4138,11 +4151,7 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	if !c.providesDelegate(t, call) {
 		return t
 	}
-	init := d.Init
 	d.Init = call
-	// A builder's lambda that is checked again declares the property
-	// anew: provideDelegate is called on the delegate as written.
-	c.onUndo(func() { d.Init = init })
 	return c.value(call, want)
 }
 
@@ -4381,6 +4390,11 @@ func funTypeParams(f *types.FunSym, cls *types.ClassSym) []*types.TypeParamSym {
 }
 
 func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
+	if c.pclaSub != nil {
+		// A fixup run again with what a builder's variables were inferred
+		// as (see pclaCommit) has the types it was made with.
+		from, to = c.pclaSub.Apply(from), c.pclaSub.Apply(to)
+	}
 	if !c.subtype(from, to) {
 		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
 	}
