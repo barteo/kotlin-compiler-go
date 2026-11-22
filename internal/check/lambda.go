@@ -3342,6 +3342,10 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
 	c.elvisHint(s, params)
 	c.stubRelated(s, params)
+	recvVar := ""
+	if len(params) > 0 && params[0].K == types.TypeVar && !params[0].N {
+		recvVar = params[0].Param().Name
+	}
 	for _, q := range params {
 		if s.known(q) && s.apply(q).HasVars() && !c.hasStub(s.apply(q)) {
 			s.fixVarsIn(q)
@@ -3377,12 +3381,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
 			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 		}
-		if tv := vars[i]; tv != nil && i == 0 && params[i].K == types.Invalid && ft.Flex().E &&
-			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
+		// Or has a type argument that wasn't inferred: this of
+		// materialize().apply { plain(this) } for a Processor<M>.
+		invalid := func(u types.Type) bool { return u.K == types.Invalid }
+		if tv := vars[i]; i == 0 && ft.Flex().E &&
+			(tv != nil && params[i].K == types.Invalid && slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) ||
+				recvVar != "" && params[i].K != types.Invalid && params[i].Has(invalid)) {
 			if c.uninferredRecv == nil {
 				c.uninferredRecv = map[*syntax.Lambda]string{}
 			}
-			c.uninferredRecv[l] = tv.v.Name
+			c.uninferredRecv[l] = recvVar
 		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
@@ -3458,6 +3466,8 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		bt = c.checkTail(s, l, w, r)
 	}
 	pclaTree("checked", l)
+	c.errs = append(c.errs, c.uninferredThis[l]...)
+	delete(c.uninferredThis, l)
 	// A lambda ending in a statement gives R := Unit. Not if a parameter
 	// declared with a type contradicts it, as String does R's Int in
 	// foo { s: String -> 1 } for (R) -> R: the result is then checked

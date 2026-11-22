@@ -272,16 +272,20 @@ own tests.
     where a call before it gave them a type, and words the errors of
     the members of a value whose type wasn't inferred differently.
   - A variable that is a component of a smart cast's intersection,
-    `OTv & A` after `x is A`, isn't fixed for a member, and one that a
-    projection captures is, where K2 leaves its member unresolved. kc
-    fixes one for `++x[i]` and `x[i]++` too, which K2 doesn't
-    (KT-71778).
+    `OTv & A` after `x is A` or an assignment, is fixed for a member as
+    K2 fixes it, but where nothing bounds it yet K2 reports that the
+    receiver's type hasn't been inferred, and kc reports nothing there.
+    One that a projection captures is fixed too, where K2 leaves its
+    member unresolved (KT-71843). kc fixes one for `++x[i]` and
+    `x[i]++` too, which K2 doesn't (KT-71778).
   - A call of a Java generic method between the variables of two
     nested builders, `select(get(), Test.foo(this@outer.getInv()))`, is
     accepted where K2 reports its argument.
-  - A lambda that a builder's lambda returns, `return@build { arg ->
-    arg.length }`, an overload chosen by a lambda's result type with a
-    builder's variable in it, and the positions of K2's "cannot infer"
+  - A lambda that a builder's lambda returns before its end, `if (b)
+    return@build { arg -> arg.length }`, an overload chosen by a
+    lambda's result type with a builder's variable in it, which K2
+    finds ambiguous where only other variables bound that variable, and
+    the positions of K2's "cannot infer"
     on a parameter or a type argument (`CANNOT_INFER_PARAMETER_TYPE`)
     in a lambda with errors are kc's own.
   - A fork of the constraint system over a builder's variables waits

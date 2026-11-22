@@ -67,13 +67,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21602 of 22025 expected errors (98.1%) on their lines.
+kc reports 21603 of 22025 expected errors (98.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2507 | 46 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1453 | 38 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 604 | 31 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 605 | 30 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 76 | 11 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 240 | 11 |
@@ -139,11 +139,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 8.0% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| accepted | 34 | 8.1% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
 | syntax-error | 74 | 17.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
 | nearby | 54 | 12.8% | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `ARGUMENT_TYPE_MISMATCH` 7, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
-| missing-check | 261 | 61.7% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 22, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
+| missing-check | 260 | 61.6% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 21, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 

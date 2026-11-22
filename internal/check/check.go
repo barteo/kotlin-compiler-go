@@ -460,6 +460,9 @@ type Checker struct {
 	uninferred     map[*types.VarSym]bool
 	uninferredCall *syntax.Call // the last call that uninferredArg reported
 	uninferredRecv map[*syntax.Lambda]string
+	// uninferredThis are the errors of this in such a lambda, reported
+	// once it is checked.
+	uninferredThis map[*syntax.Lambda][]*syntax.Error
 	// elvisCall is the call on the left of an elvis being checked, and
 	// elvisWant the type that the right side gives it (see elvisHint).
 	elvisCall *syntax.Call

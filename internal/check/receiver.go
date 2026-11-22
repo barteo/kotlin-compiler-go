@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"path"
 	"slices"
 	"strings"
@@ -98,8 +99,15 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		if l, ok := r.owner.(*syntax.Lambda); ok {
 			// As kotlinc, this of a lambda whose receiver's type its
 			// call couldn't infer is reported too.
-			if name, ok := c.uninferredRecv[l]; ok {
-				c.errorf(x.P, "cannot infer type for type parameter '%s'. Specify it explicitly.", name)
+			// Once the lambda is checked (see postponedLambda): an
+			// error here would count against the call this is an
+			// argument of.
+			if name, ok := c.uninferredRecv[l]; ok && !slices.ContainsFunc(c.uninferredThis[l], func(e *syntax.Error) bool { return e.Pos == x.P }) {
+				if c.uninferredThis == nil {
+					c.uninferredThis = map[*syntax.Lambda][]*syntax.Error{}
+				}
+				c.uninferredThis[l] = append(c.uninferredThis[l], &syntax.Error{File: c.file.Path, Pos: x.P,
+					Msg: fmt.Sprintf("cannot infer type for type parameter '%s'. Specify it explicitly.", name)})
 			}
 		}
 		x.Recv = r.sym
