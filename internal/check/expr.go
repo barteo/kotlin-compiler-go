@@ -2360,6 +2360,24 @@ func signedIntLit(x syntax.Expr) bool {
 	return false
 }
 
+// errorRecvExt returns the callee of call fn of a receiver whose type has
+// an error, if it is the only extension function of its name there and
+// is generic. As kotlinc, which has no members for such a receiver but
+// takes it for any extension's, the call is that one's, and the type
+// parameters that only the receiver would give a type can't be
+// inferred: X and Y of x.myFlatMapLatest { y -> ... } for an unresolved
+// x. A call of a name that several extensions have, or none, is left
+// alone, as there.
+func (c *Checker) errorRecvExt(fn *syntax.Member) []callee {
+	// Nothing is taken by every receiver type.
+	cs := c.extCallees(fn.Name, types.NothingType)
+	if len(cs) != 1 || len(cs[0].f.TypeParams) == 0 {
+		return nil
+	}
+	cs[0].ext = types.InvalidType
+	return cs
+}
+
 // callReceiver checks the receiver of a member call, expecting want. A
 // nullable receiver can be called without ?. if extensions for nullable
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
@@ -2372,7 +2390,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		t = c.fixedStub(t)
 	}
 	if t.K == types.Invalid {
-		return t, nil, false
+		return t, c.errorRecvExt(fn), false
 	}
 	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
 		return types.InvalidType, nil, false
@@ -3220,6 +3238,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		}
 		rt, nullExts, ok := c.callReceiver(fn, rw)
 		if !ok {
+			if len(nullExts) == 1 && c.mayTake(nullExts[0].f, x) {
+				return c.resolve(x, nullExts, want, sink) // see errorRecvExt
+			}
 			c.args(x, nil)
 			return types.InvalidType
 		}
