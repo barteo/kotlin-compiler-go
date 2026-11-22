@@ -1426,13 +1426,23 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if mutable && c.contextWrite(s) {
 		return
 	}
+	// stubTarget is the target's type with a builder's variable, which tt
+	// is what the constraints so far fix to.
+	stubTarget := types.InvalidType
 	if s.Op != syntax.ASSIGN {
 		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
 		// element's type (see fixedStub).
 		if ft := c.fixedStub(tt); ft != tt {
 			// What x op= v is, x.opAssign(v) or x = x op v, is decided
-			// here from x's type, which the tree doesn't have yet.
-			c.pclaDeny("compound")
+			// here from x's type, which the tree doesn't have yet:
+			// from what it has once the variable is written.
+			if pclaSingle {
+				stubTarget = tt
+				if tt.P && !ft.P && ft.IsPrimitive() {
+					// A platform type of a primitive: Int!, not Int.
+					ft.N, ft.P = true, true
+				}
+			}
 			tt = ft
 		}
 	}
@@ -1478,7 +1488,11 @@ func (c *Checker) assign(s *syntax.Assign) {
 		}
 		return
 	}
-	if rt := c.targetCast(s.Target, tt); mutable && builtinOperand(rt) && !classBound(rt) &&
+	rt := c.targetCast(s.Target, tt)
+	if rt == stubTarget {
+		rt = tt // no smart cast
+	}
+	if mutable && builtinOperand(rt) && !classBound(rt) &&
 		(rt != tt || s.Op == syntax.PLUS_EQ && types.MayBeNull(rt) && !rt.P && rt.NonNull() == types.StringType) {
 		// x op= v on an x that a smart cast narrows, an Int? known to be
 		// an Int, or on a String?, whose + is String?.plus: x = x op v,

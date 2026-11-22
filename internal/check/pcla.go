@@ -474,9 +474,7 @@ func pclaScan(l *syntax.Lambda) string {
 func pclaNode(n any) string {
 	ok := false
 	switch n := n.(type) {
-	case *syntax.Call:
-		ok = len(n.Reified) == 0
-	case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
+	case *syntax.Call, *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
 		*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
 		*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
 		*syntax.NotNull, *syntax.Is:
@@ -520,11 +518,7 @@ func pclaNode(n any) string {
 	if ok || !pclaTouches(n) {
 		return ""
 	}
-	why := strings.TrimPrefix(fmt.Sprintf("%T", n), "*syntax.")
-	if x, isCall := n.(*syntax.Call); isCall && len(x.Reified) > 0 {
-		why += ":reified"
-	}
-	return why
+	return strings.TrimPrefix(fmt.Sprintf("%T", n), "*syntax.")
 }
 
 // pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'
