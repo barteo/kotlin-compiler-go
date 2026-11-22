@@ -15,7 +15,7 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4414.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4415.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -67,12 +67,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21601 of 22025 expected errors (98.1%) on their lines.
+kc reports 21602 of 22025 expected errors (98.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2507 | 46 |
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1452 | 39 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1453 | 38 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 604 | 31 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 76 | 11 |
@@ -142,8 +142,8 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | accepted | 34 | 8.0% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
 | syntax-error | 74 | 17.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 55 | 13.0% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
-| missing-check | 261 | 61.6% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 22, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
+| nearby | 54 | 12.8% | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `ARGUMENT_TYPE_MISMATCH` 7, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
+| missing-check | 261 | 61.7% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 22, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 
@@ -178,9 +178,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
 | `missing return statement in function '_'` | 7 |
 | `multiple labels are forbidden` | 7 |
+| `operator '_' cannot be applied to Any?` | 7 |
 | *105 more* | |
 
 ## Unsupported features
@@ -193,7 +193,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3250 of the 3667 warnings the tests expect (88.6%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3252 of the 3667 warnings the tests expect (88.7%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -205,7 +205,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_IS_CHECK` | 127 | 114 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 99 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 88 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 89 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 72 | 1 |
 | `USELESS_CAST` | 91 | 77 | 2 |
@@ -220,7 +220,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
 | `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 45 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
-| `USELESS_ELVIS` | 44 | 40 | 0 |
+| `USELESS_ELVIS` | 44 | 41 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |

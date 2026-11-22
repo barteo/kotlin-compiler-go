@@ -2023,7 +2023,12 @@ func endsInLambda(l *syntax.Lambda) bool {
 	if !ok {
 		return false
 	}
-	_, ok = es.X.(*syntax.Lambda)
+	x := es.X
+	if j, ok := x.(*syntax.Jump); ok && j.Kind == syntax.RETURN && j.Label != "" && j.X != nil {
+		// return@func { b -> } at its end is its result too.
+		x = j.X
+	}
+	_, ok = x.(*syntax.Lambda)
 	return ok
 }
 
@@ -2552,6 +2557,43 @@ func stubbable(s *system, sl stubLambda) bool {
 // bounds by a proper type added: only other variables, as T of
 // selectBuildee<T>(build { yield(x) }, build {}) bounds each build's PTV.
 func (c *Checker) stubVars(s *system, params []types.Type, vars []*types.TypeParamSym) []*types.TypeParamSym {
+	// As in kotlinc, a variable that bounds one of them and has proper
+	// constraints of its own is fixed first, and bounds it by a proper
+	// type then: two(Parent()) { it.put(Child()) } for two(a: A, lambda:
+	// (Container<B>) -> Unit) with B : A is a B of Parent, not of Child.
+	bounded := func(tv *tvar) bool {
+		proper := func(t types.Type) bool { return s.proper(s.apply(t)) }
+		return slices.ContainsFunc(tv.lower, proper) || slices.ContainsFunc(tv.upper, proper) || len(tv.lits) > 0
+	}
+	// fixBound fixes a bounded variable among tv's upper bounds, or
+	// theirs: A, then B, for a C : B, B : A.
+	var fixBound func(tv *tvar, depth int) bool
+	fixBound = func(tv *tvar, depth int) bool {
+		if depth > 8 {
+			return false
+		}
+		for _, b := range tv.upper {
+			bv := s.unfixedVar(b)
+			if bv == nil || bv == tv || c.stubs[bv.v] != nil {
+				continue
+			}
+			if bounded(bv) || fixBound(bv, depth+1) && bounded(bv) {
+				s.fixVarsIn(types.VarType(bv.v))
+				if s.unfixedVar(b) == nil {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for _, p := range params {
+		s.apply(p).Has(func(u types.Type) bool {
+			if tv := s.unfixedVar(u.NonNull()); tv != nil && !bounded(tv) && c.stubs[tv.v] == nil {
+				fixBound(tv, 0)
+			}
+			return false
+		})
+	}
 	for _, p := range params {
 		s.apply(p).Has(func(u types.Type) bool {
 			tv := s.unfixedVar(u.NonNull())
