@@ -2452,18 +2452,12 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			// It recorded nothing: what the ambiguous calls did is
 			// dropped where they are (see call). Its check is kept,
 			// with its errors.
-			delete(c.pclaPoison, sl.l)
 			continue
 		}
 		if r.failed.Line > 0 {
-			if c.pclaPoison == nil {
-				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
-			}
-			c.pclaPoison[sl.l] = r.failed
 			clean = false
 			break
 		}
-		delete(c.pclaPoison, sl.l)
 		clean = true
 	}
 	for _, v := range append(vars, r.extra...) {
@@ -2673,40 +2667,26 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	return clean, ambiguous, errs
 }
 
-// poisonedRecv reports a call f() at p on the receiver r of a builder
-// lambda whose variables stubInference couldn't infer because of an
-// unresolved reference before p, as K2 does: the error is in the shared
-// constraint system of the builder's calls (PCLA), and every later call
-// of an extension on the receiver, of the builder's type with them, adds
-// constraints to it and is inapplicable (UNRESOLVED_REFERENCE_WRONG_RECEIVER).
-// A member of the builder's type, add(arr) in buildList, still resolves.
-// The lambda has an error already, so this rejects nothing kotlinc
-// compiles.
+// poisonedRecv records a call f() at p of an extension on the receiver r
+// of a builder lambda that is being checked, for its commit (see
+// pclaCommit): as in K2, once a call has failed the shared constraint
+// system of the builder's calls (see pclaFailedCall), every later call of
+// an extension on the receiver, of the builder's type with its variables,
+// adds constraints to it and is inapplicable
+// (UNRESOLVED_REFERENCE_WRONG_RECEIVER). A member of the builder's type,
+// add(arr) in buildList, still resolves. The lambda has an error already,
+// so this rejects nothing kotlinc compiles.
 func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id *syntax.Ident) {
-	name, p := id.Name, id.P
 	l, ok := r.owner.(*syntax.Lambda)
-	if ok && c.pclaRun() != nil && slices.ContainsFunc(c.pclaRun().checking, func(o *syntax.Lambda) bool { return o == l }) {
-		// In the check of l with the variables unfixed, which is kept:
-		// its commit reports the call, if they stay uninferred.
-		if !c.memberFun(t, name, x) && !c.hasFunProp(t, name, x) {
-			if c.pclaPoisoned == nil {
-				c.pclaPoisoned = map[*syntax.Lambda][]pclaRecvCall{}
-			}
-			c.pclaPoisoned[l] = append(c.pclaPoisoned[l], pclaRecvCall{p, name, t})
+	if !ok || c.pclaRun() == nil || !slices.Contains(c.pclaRun().checking, l) {
+		return
+	}
+	if !c.memberFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) {
+		if c.pclaPoisoned == nil {
+			c.pclaPoisoned = map[*syntax.Lambda][]pclaRecvCall{}
 		}
-		return
+		c.pclaPoisoned[l] = append(c.pclaPoisoned[l], pclaRecvCall{id.P, id.Name, t})
 	}
-	if !ok || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
-		return
-	}
-	at, ok := c.pclaPoison[l]
-	if !ok || p.Line < at.Line || p.Line == at.Line && p.Col <= at.Col {
-		return
-	}
-	if !t.Has(func(u types.Type) bool { return u.K == types.Invalid }) {
-		return
-	}
-	c.errorf(p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", name)
 }
 
 // stubRun is a check of stubInference's: the system of the call whose

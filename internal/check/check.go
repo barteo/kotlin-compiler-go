@@ -426,10 +426,6 @@ type Checker struct {
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
-	// pclaPoison are the builder lambdas whose variables stubInference
-	// couldn't infer because of an unresolved reference, by where the
-	// first one is (see poisonedRecv).
-	pclaPoison map[*syntax.Lambda]syntax.Pos
 	// pclaSub is what the variables of a builder's lambda whose check is
 	// being committed (see pclaCommit) were inferred as, while the
 	// fixups of the systems that finished in it run again.
@@ -442,7 +438,8 @@ type Checker struct {
 	// builder's variable caused, an ambiguous pr(get()): they aren't
 	// reported if the variable isn't inferred. pclaPoisoned are the
 	// calls of extensions on a builder lambda's receiver that such a
-	// check saw (see poisonedRecv).
+	// check saw, reported at its commit if they are after a call that
+	// failed the shared system (see poisonedRecv).
 	pclaVarErrs  map[*syntax.Error][]*types.TypeParamSym
 	pclaPoisoned map[*syntax.Lambda][]pclaRecvCall
 	// pclaLive are the nodes of that lambda's tree.

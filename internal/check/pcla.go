@@ -374,7 +374,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	// As in K2, the calls of extensions on the receiver after an
 	// call that failed the shared system (see pclaFailedCall) are
 	// inapplicable.
-	if at, ok := c.pclaPoison[l]; ok {
+	if at := r.failed; at.Line > 0 {
 		for _, x := range c.pclaPoisoned[l] {
 			if (x.p.Line > at.Line || x.p.Line == at.Line && x.p.Col > at.Col) && sub.Apply(x.t).Has(func(u types.Type) bool { return u.K == types.Invalid }) {
 				c.errorf(x.p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", x.name)
