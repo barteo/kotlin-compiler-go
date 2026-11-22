@@ -72,6 +72,11 @@ func TestPCLAWrite(t *testing.T) {
 // TestPCLARefs checks that the fields the writer doesn't follow exist.
 func TestPCLARefs(t *testing.T) {
 	j := pclaTypeFields(syntax.Jump{})
+	for _, node := range []any{syntax.ClassDecl{}, syntax.Serial{}} {
+		for name := range pclaTypeFields(node) {
+			j[name] = true
+		}
+	}
 	for name := range pclaRefs {
 		if !j[name] {
 			t.Errorf("pclaRefs names %s, which isn't a field", name)

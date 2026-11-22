@@ -64,8 +64,10 @@ var (
 // part of theirs, which the writer doesn't follow: the lambda or the loop
 // that a jump leaves is around it.
 var pclaRefs = map[string]bool{
-	"Jump.Lambda": true,
-	"Jump.Loop":   true,
+	"Jump.Lambda":             true,
+	"Jump.Loop":               true,
+	"ClassDecl.EnclosingInit": true,
+	"Serial.Super":            true,
 }
 
 // typ returns t with the variables replaced.
@@ -103,9 +105,13 @@ func (w *pclaWriter) value(v reflect.Value) {
 		}
 		return
 	case pclaClassDecl:
-		// A class in the lambda: its members' types are its own
-		// declaration's (see the deny list of stubCheck).
-		return
+		// A class in the lambda: its symbol's members have the types the
+		// check gave them.
+		if !v.IsNil() {
+			if d := v.Interface().(*syntax.ClassDecl); d.Sym != nil {
+				w.classSym(d.Sym)
+			}
+		}
 	}
 	switch v.Kind() {
 	case reflect.Interface:
@@ -275,4 +281,44 @@ func pclaTouches(n any) bool {
 		return false
 	}
 	return has(v.Elem(), 0)
+}
+
+// classSym writes the types of the members of cls, a class that the
+// check declared.
+func (w *pclaWriter) classSym(cls *types.ClassSym) {
+	if w.seen[cls] {
+		return
+	}
+	w.seen[cls] = true
+	for i, t := range cls.Supers {
+		if u := w.typ(t); u != t {
+			cls.Supers[i] = u
+		}
+	}
+	for _, vs := range [][]*types.VarSym{cls.CtorParams, cls.Props} {
+		for _, p := range vs {
+			w.varSym(p)
+		}
+	}
+	for _, p := range cls.Fields {
+		w.varSym(p)
+	}
+	if cls.Underlying != nil {
+		w.varSym(cls.Underlying)
+	}
+	if cls.Ctor != nil {
+		w.funSym(cls.Ctor)
+	}
+	for _, fs := range [][]*types.FunSym{cls.Ctors, cls.InternalCtors} {
+		for _, f := range fs {
+			w.funSym(f)
+		}
+	}
+	for _, m := range []map[string][]*types.FunSym{cls.Methods, cls.ExtMethods, cls.ExtProps, cls.Statics} {
+		for _, fs := range m {
+			for _, f := range fs {
+				w.funSym(f)
+			}
+		}
+	}
 }

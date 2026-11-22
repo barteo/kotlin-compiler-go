@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -406,34 +407,80 @@ func pclaScan(l *syntax.Lambda) string {
 		if why != "" {
 			return false
 		}
-		ok := false
-		switch n := n.(type) {
-		case *syntax.Call:
-			ok = len(n.Reified) == 0
-		case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
-			*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
-			*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
-			*syntax.NotNull:
-			// What the check decides for them from a type with a
-			// variable, it decides once the variable is fixed on demand
-			// (see fixedStub), or in a fixup, which runs again.
-			ok = true
-		case *syntax.LocalClass, *syntax.ObjectExpr, *syntax.LocalFun:
-			// Their declarations are checked for the types they have.
-			why = fmt.Sprintf("%T", n)
-			return false
-		}
-		if !ok && pclaTouches(n) {
-			why = fmt.Sprintf("%T", n)
-			if x, isCall := n.(*syntax.Call); isCall {
-				if len(x.Reified) > 0 {
-					why += ":reified"
+		switch n.(type) {
+		case *syntax.LocalClass, *syntax.ObjectExpr:
+			// The walk doesn't see a class's members: the writer does.
+			w := &pclaWriter{seen: map[any]bool{}}
+			w.value(reflect.ValueOf(n))
+			for m := range w.seen {
+				// The first by name, whatever the map's order.
+				if y := pclaNode(m); y != "" && (why == "" || y < why) {
+					why = y
 				}
 			}
+		default:
+			why = pclaNode(n)
 		}
 		return why == ""
 	})
-	why = strings.TrimPrefix(why, "*syntax.")
+	return why
+}
+
+// pclaNode returns why the check of a builder's lambda that has node n,
+// or symbol n, in it can't be kept, if n is why (see pclaScan).
+func pclaNode(n any) string {
+	ok := false
+	switch n := n.(type) {
+	case *syntax.Call:
+		ok = len(n.Reified) == 0
+	case *syntax.Block, *syntax.ExprStmt, *syntax.StringLit, *syntax.VarStmt, *syntax.Member, *syntax.Lambda,
+		*syntax.Binary, *syntax.Unary, *syntax.Assign, *syntax.Index, *syntax.As, *syntax.If, *syntax.When,
+		*syntax.For, *syntax.Jump, *syntax.Destructure, *syntax.Ident, *syntax.This, *syntax.Checked,
+		*syntax.NotNull:
+		// What the check decides for them from a type with a
+		// variable, it decides once the variable is fixed on demand
+		// (see fixedStub), or in a fixup, which runs again.
+		ok = true
+	case *syntax.LocalFun, *syntax.LocalClass, *syntax.ObjectExpr, *syntax.FunDecl, *syntax.PropDecl,
+		*syntax.Param, *syntax.CtorParam, *syntax.InitBlock, *syntax.LambdaParam:
+		// A declaration's symbols have the types the writer gives them.
+		ok = true
+	case *syntax.ClassDecl:
+		// But what a class's members override, and the bridges they
+		// need, is decided from their types when the class is checked
+		// (see checkInheritance).
+		if n.Sym == nil {
+			return "ClassDecl"
+		}
+		overrides := len(n.Supers) > 0 || slices.ContainsFunc(n.CtorParams, func(p *syntax.CtorParam) bool { return p.Override })
+		for _, m := range n.Members {
+			switch m := m.(type) {
+			case *syntax.FunDecl:
+				overrides = overrides || m.Override
+			case *syntax.PropDecl:
+				overrides = overrides || m.Override
+			}
+		}
+		if !overrides {
+			return ""
+		}
+		open := false
+		w := &pclaWriter{seen: map[any]bool{}, left: func(types.Type) { open = true }}
+		w.classSym(n.Sym)
+		if open {
+			return "ClassDecl:overrides"
+		}
+		return ""
+	case *types.VarSym, *types.FunSym, *types.ClassSym:
+		return ""
+	}
+	if ok || !pclaTouches(n) {
+		return ""
+	}
+	why := strings.TrimPrefix(fmt.Sprintf("%T", n), "*syntax.")
+	if x, isCall := n.(*syntax.Call); isCall && len(x.Reified) > 0 {
+		why += ":reified"
+	}
 	return why
 }
 
