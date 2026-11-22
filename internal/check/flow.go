@@ -1592,7 +1592,6 @@ func (c *Checker) assignChecked(a *syntax.Assign, t types.Type) {
 		c.assignTypes = map[*syntax.Assign]types.Type{}
 	}
 	c.assignTypes[a] = t
-	c.onUndo(func() { delete(c.assignTypes, a) })
 }
 
 // frameAllows reports whether a smart cast to t of local var v, declared

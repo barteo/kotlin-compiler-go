@@ -628,7 +628,7 @@ func localClassNames(checkers []*Checker) {
 		for sym := range c.localClasses {
 			d, ok := sym.Decl.(*syntax.ClassDecl)
 			if !ok || d.Sym != sym {
-				continue // a trial's
+				continue // an earlier check's
 			}
 			if classes == nil {
 				classes = programClasses(checkers)

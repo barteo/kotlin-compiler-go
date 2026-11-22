@@ -161,10 +161,9 @@ func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
 		return // read in its own initializer: as the property's type
 	}
 	sym.InProgress = true
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(owner)
+	saved := c.state
 	t := c.fieldInit(d, owner, sym.Type, false)
-	c.state, c.trial = saved, trial
+	c.state = saved
 	sym.InProgress, sym.Resolved = false, true
 	d.BackingField.Redundant = c.sameFieldType(t, sym.Type)
 	if c.fieldNarrows(t, sym.Type, d.P) {
@@ -191,7 +190,6 @@ func (c *Checker) checkBackingField(d *syntax.PropDecl, cls *types.ClassSym) {
 // property's doesn't take is reported as such (fieldNarrows).
 func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.Type, assign bool) types.Type {
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
 	c.state = state{scope: &scope{}, cls: cls, this: newThis(cls), init: cls != nil, declName: d.Name}
 	if cls != nil {
 		c.scope = c.ctorScope(cls)

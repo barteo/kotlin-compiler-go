@@ -47,22 +47,12 @@ func pclaLogf(format string, args ...any) {
 	}
 }
 
-// pclaSingle, from $KC_PCLA, says how a builder's lambda is checked. By
-// default its check with the variables unfixed is the check: it is kept
-// where it can be (see pclaCommit), and the lambda is checked again,
-// with the variables fixed, only where it can't (see pclaUndo).
-// "recheck" always checks the lambda again: bench/pcla-diff.sh compares
-// the two.
-var pclaSingle = os.Getenv("KC_PCLA") != "recheck"
-
 // pclaCheck is the check of a builder's lambda with the builder's
 // variables unfixed, kept until the variables are inferred: it is then
 // committed, the types it gave the tree written with what they were
-// inferred as, or undone, and the lambda checked again.
+// inferred as.
 type pclaCheck struct {
 	l *syntax.Lambda
-	// t has what the check changed outside the lambda.
-	t *trial
 	// errs are the check's errors, which a commit reports.
 	errs []*syntax.Error
 	// w is what the lambda was checked against, and bt the type the
@@ -89,18 +79,6 @@ func (c *Checker) pclaRun() *stubRun {
 func (c *Checker) pclaDefer(f func(sub types.Subst)) {
 	if r := c.pclaRun(); r != nil {
 		r.defers = append(r.defers, f)
-	}
-}
-
-// pclaDeny records that the lambdas being checked for builder inference
-// can't keep their checks, because of why: something the check decided
-// from a type with a variable, which only a check with the variable
-// fixed decides as kotlinc does.
-func (c *Checker) pclaDeny(why string) {
-	for _, r := range c.pclaRuns {
-		if r.deny == "" {
-			r.deny = why
-		}
 	}
 }
 
@@ -202,39 +180,6 @@ func (c *Checker) pclaStale(x *syntax.Call, f *types.FunSym) bool {
 	return c.pclaLive != nil && (!c.pclaLive[x] || x.Sym != f)
 }
 
-// pclaRollback undoes the checks that r keeps, last first: their lambdas
-// are checked again.
-func (c *Checker) pclaRollback(r *stubRun, why string) {
-	for i := len(r.checks) - 1; i >= 0; i-- {
-		k := r.checks[i]
-		c.pclaStat("rollback", k.l.P, why)
-		c.endTrial(k.t)
-	}
-	if len(r.checks) > 0 {
-		// The lambda is checked again in the lambdas around it, which
-		// their checks don't follow yet.
-		c.pclaDeny("nested:" + why)
-	}
-	r.checks = nil
-}
-
-// pclaUndo undoes the check of lambda l that r keeps, if it does: l is
-// checked again.
-func (c *Checker) pclaUndo(r *stubRun, l *syntax.Lambda, why string) {
-	i := slices.IndexFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
-	if i < 0 {
-		return
-	}
-	c.pclaStat("rollback", l.P, why)
-	saved := c.trial
-	c.endTrial(r.checks[i].t)
-	c.trial = saved
-	r.checks = slices.Delete(r.checks, i, i+1)
-	// The lambda is checked again in the lambdas around it, which
-	// their checks don't follow yet.
-	c.pclaDeny("nested:" + why)
-}
-
 // pclaCommit keeps the check of lambda l that run r kept, if it can: l,
 // an argument of the call with system s, whose variables in l's
 // parameter types are fixed, isn't checked again. w is what a check now
@@ -242,26 +187,27 @@ func (c *Checker) pclaUndo(r *stubRun, l *syntax.Lambda, why string) {
 // type. The types the check gave the tree are written with what the
 // variables were inferred as (see pclaWrite), and the fixups of the
 // systems that finished in l run again, with them. It returns the type
-// of l's body, or false if l is to be checked again: the check is then
-// undone.
+// of l's body, or false if r kept no check of l.
 func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWant, ret types.Type, params []types.Type) (types.Type, bool) {
 	ki := slices.IndexFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
 	if ki < 0 {
 		return types.InvalidType, false
 	}
 	k := r.checks[ki]
-	deny := func(why string) (types.Type, bool) {
-		c.pclaUndo(r, l, why)
-		return types.InvalidType, false
+	// The check is the lambda's only one: what the commit can't finish
+	// is reported, not checked again.
+	fail := func(why string) (types.Type, bool) {
+		c.pclaStat("unfinished", l.P, why)
+		c.errs = append(c.errs, k.errs...)
+		c.errorf(l.P, "internal error: builder inference left the lambda's check unfinished (%s)", why)
+		r.checks = slices.DeleteFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
+		return types.InvalidType, true
 	}
-	switch {
-	case r.deny != "":
-		return deny(r.deny)
-	case len(k.w.params) != len(params):
-		return deny("params")
+	if len(k.w.params) != len(params) {
+		return fail("params")
 	}
 	if why := pclaScan(l); why != "" {
-		return deny(why)
+		return fail(why)
 	}
 	// What the variables were inferred as: the builder's in the call's
 	// system, and those of the calls in the lambda in the shared one.
@@ -324,14 +270,10 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	for i, p := range k.w.params {
 		if sub.Apply(p) != params[i] {
 			c.pclaStat("params-differ", l.P, fmt.Sprint(p), fmt.Sprint(sub.Apply(p)), fmt.Sprint(params[i]))
-			return deny("params")
+			return fail("params")
 		}
 	}
 	keep := func() {
-		if o := k.t.outer; o != nil {
-			o.undo = append(o.undo, k.t.undo...)
-			maps.Copy(o.classes, k.t.classes)
-		}
 		c.errs = append(c.errs, k.errs...)
 		if o := c.pclaRun(); o != nil {
 			// What still has a variable of the builder around is its to
@@ -347,7 +289,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		o := c.pclaRun()
 		for _, a := range sub {
 			if o == nil || a.T.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == nil }) {
-				return deny("open")
+				return fail("open")
 			}
 		}
 		pclaWrite(l, sub)
@@ -360,8 +302,6 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	ours = func(u types.Type) bool {
 		return u.K == types.TypeVar && (slices.Contains(r.vars, u.Param()) || slices.Contains(r.extra, u.Param()) || slices.Contains(r.handed, u.Param()))
 	}
-	saved := c.trial
-	c.trial = k.t
 	n := len(c.errs)
 	// The types first: a fixup reads those of the nodes it checks.
 	live := pclaWrite(l, sub)
@@ -424,13 +364,11 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 			c.typeFacts[n] = f
 		}
 	}
-	c.trial = saved
 	for _, t := range pclaLeft(l) {
 		if t.Has(ours) {
-			// A variable that nothing inferred: the check with the
-			// builder's fixed reports it, or infers it on its own.
+			// A variable that nothing inferred.
 			c.errs = c.errs[:n]
-			return deny("open")
+			return fail("open")
 		}
 	}
 	// As in K2, the calls of extensions on the receiver after an
@@ -628,11 +566,10 @@ func pclaResetBridges(d *syntax.ClassDecl) {
 
 // pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'
 // lambdas are listed in, a tab-separated line each, for measuring what
-// builder inference does over a corpus (bench/pcla-diff.sh): "lambda",
-// the lambda's position, the depth of its run, what it has that the
-// checks treat specially, and how its first check ended; and
-// "second-only", an error that only the second check of a lambda
-// reports, with its message.
+// builder inference does over a corpus: "lambda", the lambda's
+// position, the depth of its run, what it has that the check treats
+// specially, and how its check ended; "commit", a check that was kept;
+// and "unfinished", one that the commit couldn't finish, with why.
 var pclaStats = os.Getenv("KC_PCLA_STATS")
 
 var pclaStatsMu sync.Mutex
@@ -664,7 +601,6 @@ func (c *Checker) pclaFeatures(l *syntax.Lambda, r *stubRun, n int) string {
 	}
 	add(r.depth > 0, "nested")
 	add(n > 1, "group")
-	add(c.trial != nil, "in-trial")
 	add(l.Anon, "anon-fun")
 	add(l.Ref != nil, "ref")
 	_, pre := c.checked[l]
@@ -1045,63 +981,6 @@ func (c *Checker) unfixedReceiver(x syntax.Expr, t types.Type, name string, p sy
 		c.errorf(p, "unresolved reference: %s", name)
 	}
 	return true
-}
-
-// pclaKept are the errors of the first check of a builder's lambda, for
-// the call with system s: another check of the call, as with an expected
-// type after one without, has its own system, and its own errors.
-type pclaKept struct {
-	s    *system
-	errs []*syntax.Error
-}
-
-// keepPCLAErrors records the errors of the first check of lambda l of
-// the call with system s, for replayPCLAErrors: as in K2, whose analysis
-// of the lambda with its variables unfixed is the only one, they are the
-// lambda's, whatever the variables are inferred as afterwards.
-func (c *Checker) keepPCLAErrors(s *system, l *syntax.Lambda, errs []*syntax.Error) {
-	if len(errs) == 0 {
-		delete(c.pclaErrs, l)
-		return
-	}
-	if c.pclaErrs == nil {
-		c.pclaErrs = map[*syntax.Lambda]pclaKept{}
-	}
-	c.pclaErrs[l] = pclaKept{s, errs}
-}
-
-// filePos is a position in a file.
-type filePos struct {
-	file string
-	p    syntax.Pos
-}
-
-// replayPCLAErrors reports the errors kept of the first check of lambda l
-// of the call with system s where its second check, whose errors start at
-// n, has none: the member that the first couldn't resolve is one the
-// fixed variables then give. An error that the second check finds too is
-// reported as that one words it, with the types inferred. A warning where
-// an error is replayed would be about an expression that K2 never
-// resolved, so warnf reports none there.
-func (c *Checker) replayPCLAErrors(s *system, l *syntax.Lambda, n int) {
-	k, ok := c.pclaErrs[l]
-	if !ok {
-		return
-	}
-	delete(c.pclaErrs, l)
-	if k.s != s {
-		return
-	}
-	for _, e := range k.errs {
-		if slices.ContainsFunc(c.errs[n:], func(o *syntax.Error) bool { return o.Pos == e.Pos }) {
-			continue
-		}
-		c.errs = append(c.errs, e)
-		if c.pclaReplayed == nil {
-			c.pclaReplayed = map[filePos]bool{}
-		}
-		c.pclaReplayed[filePos{e.File, e.Pos}] = true
-	}
 }
 
 // elvisHint gives the variables of params, the parameter types of a

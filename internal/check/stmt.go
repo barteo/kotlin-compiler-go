@@ -1361,14 +1361,6 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	// What the check writes into an assignment is the check's: one that
-	// stubInference throws away may take another branch than the one
-	// that counts, as y += 1 does for a var y of a builder's E, which
-	// would leave its rewrite in Stmts.
-	if c.trial != nil {
-		stmts, opType, value := s.Stmts, s.OpType, s.Value
-		c.onUndo(func() { s.Stmts, s.OpType, s.Value = stmts, opType, value })
-	}
 	if recv, build, ok := safeTarget(s.Target); ok {
 		c.safeAssign(s, recv, build)
 		return
@@ -1436,12 +1428,10 @@ func (c *Checker) assign(s *syntax.Assign) {
 			// What x op= v is, x.opAssign(v) or x = x op v, is decided
 			// here from x's type, which the tree doesn't have yet:
 			// from what it has once the variable is written.
-			if pclaSingle {
-				stubTarget = tt
-				if tt.P && !ft.P && ft.IsPrimitive() {
-					// A platform type of a primitive: Int!, not Int.
-					ft.N, ft.P = true, true
-				}
+			stubTarget = tt
+			if tt.P && !ft.P && ft.IsPrimitive() {
+				// A platform type of a primitive: Int!, not Int.
+				ft.N, ft.P = true, true
 			}
 			tt = ft
 		}

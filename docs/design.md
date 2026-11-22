@@ -129,12 +129,9 @@ and the symbols declared in it, the postponed calls are completed and
 their fixups run again, and what the check decided from a type with a
 variable is decided again (`pclaDefer`). A nested builder whose
 variables depend on those of one around it leaves its lambda to that
-one's completion. A few lambdas can't be kept and are checked a second
-time with the variables fixed, the first check being undone
-(`pclaUndo`): docs/unsupported.md lists them. `KC_PCLA_DEBUG=1` logs
-the checks, `KC_PCLA_STATS=file` lists how each ended, and
-`KC_PCLA=recheck` checks every builder lambda a second time, as kc did
-before, for `bench/pcla-diff.sh` to compare the two.
+one's completion. There is no second check: a lambda that the commit
+can't finish is an internal error. `KC_PCLA_DEBUG=1` logs the checks
+and `KC_PCLA_STATS=file` lists how each ended.
 
 **Smart casts.** Stable values (`val`s, `this`, final `val` properties
 with fields, and local `var`s no closure assigns) are narrowed by `is`

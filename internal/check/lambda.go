@@ -239,7 +239,6 @@ func (c *Checker) samRef(l *syntax.Lambda) {
 	if call := kfunCall(l); call != nil && hasJVMOwner(call) {
 		if l.SAM.Suspend {
 			l.KFun = call
-			c.onUndo(func() { l.KFun = nil })
 		} else {
 			c.setKFun(l, call)
 		}
@@ -491,7 +490,6 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		// a reference passed for a suspend function type: results::add
 		// for onEach's action.
 		x.Class = c.anonName()
-		c.onUndo(func() { x.Class = "" })
 	}
 	saved := c.state
 	if x.Class != "" {
@@ -1108,19 +1106,12 @@ func (c *Checker) captureThis() {
 
 // addCapture records that lambda or frame l captures v.
 func (c *Checker) addCapture(l *syntax.Lambda, v *types.VarSym) {
-	if c.trial != nil {
-		n, was := len(l.Captures), v.Captured
-		c.onUndo(func() { l.Captures, v.Captured = l.Captures[:n], was })
-	}
 	v.Captured = true
 	l.Captures = append(l.Captures, v)
 }
 
 // setThis records that lambda or frame l captures this.
 func (c *Checker) setThis(l *syntax.Lambda) {
-	if !l.This {
-		c.onUndo(func() { l.This = false })
-	}
 	l.This = true
 }
 
@@ -2300,15 +2291,12 @@ func noInputs(t types.Type) bool {
 // (see stubRun.add). A member of a value of one of their types fixes the
 // variable to what those constraints give (see fixedStub), and the value
 // a lambda returning Unit ends with makes it Unit (see stubTail). The
-// rules are those of K2's PCLA (see pcla.go). The types the check gives
-// the tree are discarded, and what it changes outside l undone (see
-// trial): l is checked again once the variables are fixed, and the
-// errors of this check are reported where that one has none (see
-// replayPCLAErrors).
-//
-// With $KC_PCLA=single and keep set, the check isn't discarded at once:
-// stubInference returns the run that keeps it, for pclaCommit, which
-// keeps it for good if it can.
+// rules are those of K2's PCLA (see pcla.go). The check is l's only one:
+// its tree and errors are kept, and once the variables are inferred
+// pclaCommit writes what they were inferred as into the types the check
+// gave the tree. With keep set stubInference returns the run that keeps
+// the check, for that commit; otherwise the run is kept for when l's
+// turn comes (see pclaKeep).
 func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type, ft types.Type, keep bool) *stubRun {
 	if c.nothingTail {
 		// The value of a lambda's nothingTail: its variables aren't
@@ -2345,7 +2333,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		return ps, pft, ok
 	}
 	typed := false
-	if pclaSingle && bare(params) {
+	if bare(params) {
 		// Unless another of the call's lambdas declares the types of
 		// its parameters, which bound the variable: takeLambdas({ it },
 		// { x: Int -> x }) for a (T) -> Unit and an (R) -> Unit, T : R.
@@ -2355,7 +2343,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			typed = typed || pl.l != l && ok && bare(ps) && len(pl.l.Params) > 0 && !slices.ContainsFunc(pl.l.Params, func(p *syntax.LambdaParam) bool { return p.Type == nil })
 		}
 	}
-	if pclaSingle && bare(params) && !typed {
+	if bare(params) && !typed {
 		for _, pl := range s.lambdas {
 			ps, pft, ok := lambdaParams(pl)
 			if pl.l == l || !ok || bare(ps) || !slices.ContainsFunc(ps, func(p types.Type) bool { return s.apply(p).HasVars() }) {
@@ -2387,7 +2375,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			}
 		}
 		ps, _, ok := funcParts(pft)
-		if pclaSingle && ok && bare(ps) && !typed {
+		if ok && bare(ps) && !typed {
 			continue
 		}
 		if pl.l == l || !ok || !slices.ContainsFunc(ps, func(p types.Type) bool {
@@ -2427,8 +2415,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	}
 	// As in K2, a lambda's errors with the variables unfixed don't end
 	// its analysis: the variables are inferred from the constraints it
-	// recorded, and the errors reported where they are (see
-	// replayPCLAErrors). But a lambda whose only errors are ambiguous
+	// recorded, and the errors reported where they are. But a lambda whose only errors are ambiguous
 	// calls, as Entry(it) whose constructors the unfixed variables make
 	// ambiguous, takes the variables from the others: what it recorded
 	// is dropped. And an unresolved reference that poisons the system
@@ -2455,15 +2442,10 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 				fs = strings.TrimPrefix(fs+",ret-vars", ",")
 			}
 			c.pclaStat("lambda", sl.l.P, fmt.Sprint(r.depth), fs, how)
-			if c.pclaFirst == nil {
-				c.pclaFirst = map[*syntax.Lambda][]*syntax.Error{}
-			}
-			c.pclaFirst[sl.l] = errs
 		}
 		if ambiguous {
 			// What it recorded is dropped. Its check is kept, with its
 			// errors.
-			delete(c.pclaErrs, sl.l)
 			delete(c.pclaPoison, sl.l)
 			for _, v := range r.extra[ne:] {
 				delete(c.stubs, v)
@@ -2472,7 +2454,6 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			continue
 		}
 		if !ok && unresolved.Line > 0 && c.poisons(sl.l, unresolved) {
-			delete(c.pclaErrs, sl.l)
 			if c.pclaPoison == nil {
 				c.pclaPoison = map[*syntax.Lambda]syntax.Pos{}
 			}
@@ -2480,7 +2461,6 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			clean = false
 			break
 		}
-		c.keepPCLAErrors(s, sl.l, errs)
 		delete(c.pclaPoison, sl.l)
 		clean = true
 	}
@@ -2494,8 +2474,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		// was recorded, and the check that counts reports what
 		// disagrees with them where it is, constrain(Interloper) after
 		// provide().memberFunction() fixed OTv to ScopeOwner.
-		if !pclaSingle || len(r.checks) == 0 {
-			c.pclaRollback(r, "uninferred")
+		if len(r.checks) == 0 {
 			return nil
 		}
 		// The checks are kept, with the variables uninferred.
@@ -2521,19 +2500,8 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 				}
 			}
 		}
-		for _, v := range r.extra {
-			if tv := trial.byVar[v]; tv != nil && tv.fixed && v.Origin != nil {
-				if val := trial.vals[v].T; val.K != types.Invalid && !val.HasVars() {
-					if c.stubHints == nil {
-						c.stubHints = map[stubHintKey]types.Type{}
-					}
-					c.stubHints[stubHintKey{v.Origin, c.file.Path, tv.pos}] = val
-				}
-			}
-		}
 	}
-	switch {
-	case len(r.checks) == 0:
+	if len(r.checks) == 0 {
 		return nil
 	}
 	// Not solved, the constraints disagree: solved is nil, and the
@@ -2552,8 +2520,10 @@ func (c *Checker) pclaKeep(r *stubRun, l *syntax.Lambda, keep bool) *stubRun {
 			if c.pclaKept == nil {
 				c.pclaKept = map[*syntax.Lambda]*stubRun{}
 			}
-			if o := c.pclaKept[k.l]; o != nil {
-				c.pclaUndo(o, k.l, "again")
+			if o := c.pclaKept[k.l]; o != nil && o != r {
+				// Checked again with the variables unfixed: this check
+				// counts.
+				o.checks = slices.DeleteFunc(o.checks, func(p pclaCheck) bool { return p.l == k.l })
 			}
 			c.pclaKept[k.l] = r
 		}
@@ -2562,29 +2532,6 @@ func (c *Checker) pclaKeep(r *stubRun, l *syntax.Lambda, keep bool) *stubRun {
 		return nil
 	}
 	return r
-}
-
-// stubHintKey is a variable of a call: its type parameter, and the
-// call's file and position.
-type stubHintKey struct {
-	p    *types.TypeParamSym
-	file string
-	pos  syntax.Pos
-}
-
-// stubHint returns the value that stubInference gave variable tv of a
-// call in a builder's lambda that it inferred with the builder's
-// variables, if any. As in Kotlin, which infers them together once, the
-// call keeps it where its bounds, once the builder's variables are
-// fixed, give none: S of yieldAll<S : T>(mk()) in sequence { constrain(this);
-// yieldAll(mk()) } for an Inv<U> is U's String, which S : String alone
-// doesn't give.
-func (s *system) stubHint(tv *tvar) (types.Type, bool) {
-	if tv.v.Origin == nil || s.c.stubHints == nil {
-		return types.InvalidType, false
-	}
-	t, ok := s.c.stubHints[stubHintKey{tv.v.Origin, s.c.file.Path, tv.pos}]
-	return t, ok
 }
 
 // stubLambda is a lambda that stubInference checks, for a function type ft
@@ -2663,25 +2610,16 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 		// of myBuilder2 { add("") }'s Foo<K2> are then K1's.
 		w.ret = ret
 	}
-	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
-	c.trial = t
 	np, nd := len(r.postponed), len(r.defers)
-	if pclaSingle {
-		w.stars = starParams(ft)
-		c.pclaRuns = append(c.pclaRuns, r)
-		r.checking = append(r.checking, sl.l)
-	}
+	w.stars = starParams(ft)
+	c.pclaRuns = append(c.pclaRuns, r)
+	r.checking = append(r.checking, sl.l)
 	_, bt, _ := c.checkLambda(sl.l, w)
-	if pclaSingle {
-		r.checking = r.checking[:len(r.checking)-1]
-		// The check is kept until the variables are inferred.
-		c.pclaRuns = c.pclaRuns[:len(c.pclaRuns)-1]
-		c.trial = t.outer
-		r.checks = append(r.checks, pclaCheck{l: sl.l, t: t, errs: slices.Clone(c.errs[n:]), w: w, bt: bt,
-			postponed: slices.Clone(r.postponed[np:]), defers: slices.Clone(r.defers[nd:])})
-	} else {
-		c.endTrial(t)
-	}
+	r.checking = r.checking[:len(r.checking)-1]
+	// The check is kept until the variables are inferred.
+	c.pclaRuns = c.pclaRuns[:len(c.pclaRuns)-1]
+	r.checks = append(r.checks, pclaCheck{l: sl.l, errs: slices.Clone(c.errs[n:]), w: w, bt: bt,
+		postponed: slices.Clone(r.postponed[np:]), defers: slices.Clone(r.defers[nd:])})
 	clean = len(c.errs) == n
 	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
 	// So does one with the call's other variables, for a result of the
@@ -2713,7 +2651,7 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id *syntax.Ident) {
 	name, p := id.Name, id.P
 	l, ok := r.owner.(*syntax.Lambda)
-	if ok && pclaSingle && c.pclaRun() != nil && slices.ContainsFunc(c.pclaRun().checking, func(o *syntax.Lambda) bool { return o == l }) {
+	if ok && c.pclaRun() != nil && slices.ContainsFunc(c.pclaRun().checking, func(o *syntax.Lambda) bool { return o == l }) {
 		// In the check of l with the variables unfixed, which is kept:
 		// its commit reports the call, if they stay uninferred.
 		if !c.memberFun(t, name, x) && !c.hasFunProp(t, name, x) {
@@ -2724,7 +2662,7 @@ func (c *Checker) poisonedRecv(r *implicitRecv, t types.Type, x *syntax.Call, id
 		}
 		return
 	}
-	if !ok || c.trial != nil || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+	if !ok || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
 		return
 	}
 	at, ok := c.pclaPoison[l]
@@ -2804,15 +2742,13 @@ type stubRun struct {
 	// forks are the system's forks over r's variables alone (see
 	// system.stubFork), which fixAll resolves.
 	forks []fork
-	// With $KC_PCLA=single: checks are the checks of r's lambdas, kept
-	// until r's variables are fixed (see pclaCommit), and solved the
-	// shared system they were inferred in. deny is why the checks can't
-	// be kept, if set. postponed are the systems that finished in the
+	// checks are the checks of r's lambdas, kept until r's variables
+	// are fixed (see pclaCommit), and solved the shared system they
+	// were inferred in. postponed are the systems that finished in the
 	// lambdas, whose fixups run again with the variables inferred, and
 	// defers what the check decides again then.
 	checks    []pclaCheck
 	solved    *system
-	deny      string
 	postponed []*system
 	defers    []func(types.Subst)
 	// subs are what the variables of the lambdas in r's whose checks
@@ -3154,84 +3090,14 @@ func (c *Checker) demandStubs(t types.Type) types.Type {
 	return c.fixedStub(t)
 }
 
-// trial is a check of a lambda that stubInference throws away: what it
-// changes outside the lambda, its classes' names and the file's list of
-// them, the captures it adds to the lambdas around and in it, and the
-// declarations of its classes inferred, is undone, so that the check
-// that counts declares and names them again, as if it were the first.
-// The classes keep their symbols, which the constraints the trial
-// records may mention: declareClass declares them again.
-type trial struct {
-	undo    []func()
-	classes map[*types.ClassSym]bool // the classes the check declares
-	outer   *trial                   // the one the lambda is in, if any
-}
-
-// endTrial ends trial t, undoing what its check changed, last first.
-func (c *Checker) endTrial(t *trial) {
-	c.trial = t.outer
-	for i := len(t.undo) - 1; i >= 0; i-- {
-		t.undo[i]()
-	}
-	if len(t.classes) > 0 && c.redeclared == nil {
-		c.redeclared = map[*types.ClassSym]bool{}
-	}
-	if len(t.classes) > 0 {
-		// Their methods, which declaring them again makes anew, by name.
-		c.u.local.methods.Range(func(k, _ any) bool {
-			if t.classes[k.(methodsKey).cls] {
-				c.u.local.methods.Delete(k)
-			}
-			return true
-		})
-	}
-	for cls := range t.classes {
-		c.redeclared[cls] = true
-		// Their members are declared afresh.
-		for _, m := range cls.Decl.(*syntax.ClassDecl).Members {
-			switch m := m.(type) {
-			case *syntax.FunDecl:
-				m.Sym = nil
-			case *syntax.PropDecl:
-				m.Sym = nil
-			}
-		}
-	}
-}
-
-// onUndo records f, which undoes a change, if a trial is running.
-func (c *Checker) onUndo(f func()) {
-	if c.trial != nil {
-		c.trial.undo = append(c.trial.undo, f)
-	}
-}
-
 // addLocalCall records lc, a call of a local function or a construction
 // of a local class, and propagates the captures.
 func (c *Checker) addLocalCall(lc localCall) {
 	if c.localCalls == nil {
 		c.localCalls = new([]localCall)
 	}
-	p := c.localCalls
-	n := len(*p)
-	c.onUndo(func() { *p = (*p)[:n] })
-	*p = append(*p, lc)
+	*c.localCalls = append(*c.localCalls, lc)
 	c.propagateCaptures()
-}
-
-// trialOf returns the trial that declared class cls, or the class cls is
-// in, if any. Checking a declaration during inference belongs to it: the
-// declaration is checked once, and what that changes is undone only with
-// its class.
-func (c *Checker) trialOf(cls *types.ClassSym) *trial {
-	for t := c.trial; t != nil; t = t.outer {
-		for k := cls; k != nil; k = k.Outer {
-			if t.classes[k] {
-				return t
-			}
-		}
-	}
-	return nil
 }
 
 // stub returns the run of stubInference's that infers t, if it is a
@@ -3463,7 +3329,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		run = kept
 	case kept != nil:
 		// Checked again with the variables unfixed: that check counts.
-		c.pclaUndo(kept, l, "again")
+		kept.checks = slices.DeleteFunc(kept.checks, func(k pclaCheck) bool { return k.l == l })
 	}
 	errs0 := len(s.errs)
 	vars := make([]*tvar, len(params))
@@ -3542,15 +3408,12 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	var bt types.Type
-	nerrs := len(c.errs)
 	committed := false
 	if run != nil {
 		bt, committed = c.pclaCommit(s, run, l, w, r, params)
 	}
 	if committed {
 		// The check with the variables unfixed is the lambda's.
-		delete(c.pclaErrs, l)
-		delete(c.pclaFirst, l)
 	} else if pre, ok := c.checked[l]; ok {
 		// Checked to choose the overload, with these parameter types.
 		bt = pre
@@ -3561,15 +3424,6 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	} else {
 		bt = c.checkTail(s, l, w, r)
 	}
-	if first, ok := c.pclaFirst[l]; ok {
-		delete(c.pclaFirst, l)
-		for _, e := range c.errs[nerrs:] {
-			if !slices.ContainsFunc(first, func(o *syntax.Error) bool { return o.Pos == e.Pos }) {
-				c.pclaStat("second-only", e.Pos, e.Msg)
-			}
-		}
-	}
-	c.replayPCLAErrors(s, l, nerrs)
 	pclaTree("checked", l)
 	// A lambda ending in a statement gives R := Unit. Not if a parameter
 	// declared with a type contradicts it, as String does R's Int in

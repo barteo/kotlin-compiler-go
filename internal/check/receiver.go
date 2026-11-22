@@ -201,8 +201,6 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 			continue
 		}
 		c.capture(r.sym, r.depth)
-		old := x.Member
-		c.onUndo(func() { x.Member = old })
 		x.Member = m
 		return t, true
 	}
@@ -437,14 +435,9 @@ func (c *Checker) rewriteFun(x *syntax.Call, m syntax.Expr) {
 	c.rewrite(&x.Fun, m)
 }
 
-// rewrite replaces the expression *p of the tree with e. A trial's
-// rewrite is undone: an object expression's receivers, which e may refer
-// to, are declared again after it.
+// rewrite replaces the expression *p of the tree with e.
 func (c *Checker) rewrite(p *syntax.Expr, e syntax.Expr) {
-	if old := *p; old != e {
-		c.onUndo(func() { *p = old })
-		*p = e
-	}
+	*p = e
 }
 
 // hasFun reports whether a receiver of type t has a member or extension
