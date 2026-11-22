@@ -327,6 +327,25 @@ func tempRef(vs *syntax.VarStmt, p syntax.Pos) *syntax.Ident {
 // element, to check after the statements.
 func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string, arg syntax.Expr, value func(read syntax.Expr) syntax.Expr) ([]syntax.Stmt, func() syntax.Expr, bool) {
 	xt := c.value(ix.X, noWant)
+	if assignOp == "" && c.stub(xt.Flex()) != nil {
+		// x[i]++ of an x of a builder's type that isn't inferred yet:
+		// kotlinc resolves the get and the set of an increment without
+		// fixing the variable (KT-71778), so neither is found, where
+		// x[i] += v fixes it for its get.
+		for _, name := range [...]string{"get", "set"} {
+			c.errorf(syntax.StartPos(ix), "unresolved reference: %s", name)
+		}
+		for _, a := range ix.Args {
+			c.value(a, noWant)
+		}
+		return nil, func() syntax.Expr { return checked(ix, types.InvalidType) }, true
+	}
+	if c.trial != nil {
+		// A builder's first check: the second one checks the receiver
+		// and the indices again, with the builder's types inferred.
+		x, args := ix.X, slices.Clone(ix.Args)
+		c.onUndo(func() { ix.X = x; copy(ix.Args, args) })
+	}
 	ix.X = checked(ix.X, xt)
 	if xt.K == types.Invalid {
 		return nil, nil, false
