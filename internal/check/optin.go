@@ -807,9 +807,13 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 	w.pop()
 	for i := range as {
 		a := &as[i]
-		if cls := w.o.annClass(a); cls != nil {
+		cls := w.o.annClass(a)
+		if cls != nil {
 			// A deprecated annotation class, used as an annotation.
 			w.deprecatedUse(a.P, cls.DisplayName(), notHidden(classDepr(cls)))
+		}
+		if a.Is("OptIn") && !a.Implicit {
+			w.optInArgs(a)
 		}
 		var versions []*syntax.AnnotationArg
 		switch {
@@ -833,6 +837,29 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			if ok && !kotlinVersion.MatchString(s) {
 				w.errorf(arg.Toks[0].Pos, "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
 			}
+		}
+	}
+}
+
+// optInArgs warns of an @OptIn that opts in to nothing: one without
+// arguments, and its arguments that aren't the classes of opt-in
+// requirement markers.
+func (w *optWalker) optInArgs(a *syntax.Annotation) {
+	values, ok := w.o.u.optInValues[a]
+	if !ok {
+		return // not kotlin.OptIn, or its arguments have errors
+	}
+	if len(a.Args) == 0 {
+		w.c.warnf(a.P, "OPT_IN_WITHOUT_ARGUMENTS", "'@OptIn' without arguments has no effect")
+		return
+	}
+	for _, v := range values {
+		for _, e := range v.Elems {
+			lit, ok := e.X.(*syntax.ClassLit)
+			if !ok || lit.Class.K != types.Class || lit.Class.C == nil || lit.Class.C.Missing || w.o.marker(lit.Class.C) != nil {
+				continue
+			}
+			w.c.warnf(lit.P, "OPT_IN_ARGUMENT_IS_NOT_MARKER", "annotation '%s' is not annotated with '@RequiresOptIn'. '@OptIn' has no effect", lit.Class.C.DisplayName())
 		}
 	}
 }
@@ -1209,7 +1236,13 @@ func (w *optWalker) inheritance(st *syntax.SuperType) {
 		}
 	}
 	for _, m := range ms {
-		if m == nil || !m.err || w.o.optsIn(w.scope, m, true) {
+		if m == nil || w.o.optsIn(w.scope, m, true) {
+			continue
+		}
+		if !m.err {
+			if st.Type != nil {
+				w.warnf(st.Type.P, "OPT_IN_TO_INHERITANCE", "this class or interface requires opt-in to be implemented. Its usage should be marked with '@%s', '@OptIn(%s::class)' or '@SubclassOptInRequired(%s::class)'", m.simple, m.simple, m.simple)
+			}
 			continue
 		}
 		if st.Type != nil {

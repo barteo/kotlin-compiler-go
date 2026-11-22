@@ -179,7 +179,10 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		// ValueRecorder.
 		vrec, _ := c.u.rec.(ValueRecorder)
 		quiet := source && !cls.Annotation
-		if quiet && vrec == nil {
+		// The classes @OptIn names are kept for the opt-in pass, which
+		// warns of those that aren't markers.
+		optIn := quiet && cls.Name == "kotlin/OptIn"
+		if quiet && vrec == nil && !optIn {
 			continue
 		}
 		before := len(c.errs)
@@ -211,9 +214,12 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			continue
 		}
 		if local {
-			values, _ := c.annotationValues(cls, a.TypeArgs, args, a.P)
+			values, ok := c.annotationValues(cls, a.TypeArgs, args, a.P)
 			if vrec != nil {
 				vrec.AnnotationValues(c.file, a, values)
+			}
+			if optIn && ok {
+				c.u.optInValues[a] = values
 			}
 			if quiet {
 				c.errs = c.errs[:before]
@@ -239,6 +245,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		}
 		if vrec != nil {
 			vrec.AnnotationValues(c.file, a, values)
+		}
+		if optIn && ok {
+			c.u.optInValues[a] = values
 		}
 		if quiet {
 			c.errs = c.errs[:before]

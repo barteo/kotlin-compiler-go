@@ -774,3 +774,17 @@ func TestWarningsVarargNothing(t *testing.T) {
 func TestWarningsOrderDependent(t *testing.T) {
 	checkReference(t, "testdata/orderdependent.kt", Options{Warnings: true})
 }
+
+// TestWarningsOptInArguments checks the warnings of @OptIn annotations
+// that opt in to nothing, and of subclasses of classes whose
+// @SubclassOptInRequired marker has level WARNING, against kotlinc's of
+// testdata/optin_args.kt.
+func TestWarningsOptInArguments(t *testing.T) {
+	checkReference(t, "testdata/optin_args.kt", Options{Warnings: true})
+}
+
+// TestWarningsRedundantRepeatable checks the warnings of Kotlin's
+// @Repeatable beside Java's against kotlinc's of testdata/repeatable.kt.
+func TestWarningsRedundantRepeatable(t *testing.T) {
+	checkReference(t, "testdata/repeatable.kt", Options{Warnings: true})
+}

@@ -32,6 +32,7 @@ var recoveredWarnings = map[string]bool{
 	// Modifiers.
 	"REDUNDANT_MODIFIER":               true,
 	"REDUNDANT_OPEN_IN_INTERFACE":      true,
+	"REDUNDANT_REPEATABLE_ANNOTATION":  true,
 	"NON_FINAL_MEMBER_IN_FINAL_CLASS":  true,
 	"NON_FINAL_MEMBER_IN_OBJECT":       true,
 	"USELESS_VARARG_ON_PARAMETER":      true,
