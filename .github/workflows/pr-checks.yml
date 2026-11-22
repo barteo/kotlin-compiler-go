@@ -163,7 +163,8 @@ jobs:
 
   # kotlinc's own box and diagnostics tests (docs/conformance.md), from a
   # sparse checkout of JetBrains/kotlin at KOTLIN_VERSION's tag: a test
-  # that passes in the committed bench/results/*.tsv must still pass. The
+  # that passes in the committed bench/results/*.tsv must still pass, and
+  # an expected error or warning kc reported on its line must still be. The
   # harness compiles on long-lived kc -serve processes, so both suites take
   # about a minute on 4 CPUs. A test that starts passing is a warning: the
   # baselines are updated with bench/kotlin-tests.sh box|diagnostics.
@@ -202,6 +203,8 @@ jobs:
         run: |
           bench/kotlin-tests.sh diagnostics -baseline bench/results/diagnostics.tsv \
             -missed-baseline bench/results/diagnostics-missed.tsv -missed "$RUNNER_TEMP/diagnostics-missed.tsv" \
+            -missed-warnings-baseline bench/results/diagnostics-missed-warnings.tsv \
+            -missed-warnings "$RUNNER_TEMP/diagnostics-missed-warnings.tsv" \
             -o "$RUNNER_TEMP/diagnostics.md" -tsv "$RUNNER_TEMP/diagnostics.tsv" 2>&1 | tee "$RUNNER_TEMP/diagnostics.log"
 
       - name: Summary
@@ -213,13 +216,17 @@ jobs:
             {
               echo "### $mode"
               echo '```'
-              grep -E '^[0-9]+ tests in |^  [a-z/ ]+ +[0-9]+$|^baseline |^missed errors |^  (regression|fixed|newly missed): ' "$log" || true
+              grep -E '^[0-9]+ tests in |^  [a-z/ ]+ +[0-9]+$|^baseline |^missed (errors|warnings) |^  (regression|fixed|newly missed): ' "$log" || true
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             fixed=$(grep -c '^  fixed: ' "$log" || true)
             reported=$(sed -n 's/^missed errors .*: [0-9]* newly missed, \([0-9]*\) newly reported$/\1/p' "$log")
             if [ "${reported:-0}" -gt 0 ]; then
               echo "::warning::$mode: kc now reports $reported more expected errors; update the baseline with bench/kotlin-tests.sh $mode"
+            fi
+            warned=$(sed -n 's/^missed warnings .*: [0-9]* newly missed, \([0-9]*\) newly reported$/\1/p' "$log")
+            if [ "${warned:-0}" -gt 0 ]; then
+              echo "::warning::$mode: kc now reports $warned more expected warnings; update the baseline with bench/kotlin-tests.sh $mode"
             fi
             if [ "$fixed" -gt 0 ]; then
               echo "::warning::$mode: $fixed tests now pass; update the baseline with bench/kotlin-tests.sh $mode"
