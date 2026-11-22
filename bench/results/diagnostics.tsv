@@ -2149,7 +2149,7 @@ tests/coroutines/suspendInvokeInsideWhen.kt	accepts valid
 tests/coroutines/suspendInvokeWithReceiver.kt	accepts valid		
 tests/coroutines/suspendLambdaFromExpectedType.kt	accepts valid		
 tests/covariantArrayAsReceiver.kt	rejects invalid	on an expected line	
-tests/crashOnPlusAssignInBuildList.kt	rejects invalid	elsewhere	
+tests/crashOnPlusAssignInBuildList.kt	rejects invalid	on an expected line	
 tests/crashOnPlusAssignWithUnresolvedInBuildList.kt	rejects invalid	on an expected line	
 tests/crv/assignments.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/basic.kt	skip	LANGUAGE	
@@ -4443,11 +4443,11 @@ tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ArgumentForSuperty
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepEquivalent.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSubtype.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSupertype.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowEquivalent.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSubtypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSupertypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSubtype.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSupertype.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowEquivalent.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/InnerDeclarationScope.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	rejects invalid	on an expected line	
@@ -4458,7 +4458,7 @@ tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/Contravaria
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/DefinitelyNonNullTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/FlexibleTypeVariable.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/NullableTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	on an expected line	
@@ -4509,8 +4509,8 @@ tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt
 tests/inference/pcla/fixationOnDemand/syntaxForms/RangeOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ReferenceEqualityExpression.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/StringInterpolationExpression.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCastExpression.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCastExpression.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/UnarySignOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ValueEqualityOperatorCall.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/WhenExpression.kt	rejects invalid	on an expected line	
@@ -4523,7 +4523,7 @@ tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorW
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument20.kt	skip	LANGUAGE	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/earlyReturn20.kt	skip	LANGUAGE	
-tests/inference/pcla/forceLambdaCompletionFromReturnStatement/multiLambdas.kt	rejects invalid	elsewhere	
+tests/inference/pcla/forceLambdaCompletionFromReturnStatement/multiLambdas.kt	rejects invalid	on an expected line	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/multiLambdas20.kt	skip	LANGUAGE	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/noPostponedAtomForNestedLambda.kt	accepts valid		
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/noPostponedAtomForNestedLambda20.kt	skip	LANGUAGE	
@@ -4534,7 +4534,7 @@ tests/inference/pcla/invalidateKeys.kt	rejects invalid	on an expected line
 tests/inference/pcla/invokeExtensionReceiverWithNotFixedVariables.kt	accepts valid		
 tests/inference/pcla/invokeExtensionReceiverWithNotFixedVariablesInitial.kt	accepts valid		
 tests/inference/pcla/issues/kt43710.kt	accepts valid		
-tests/inference/pcla/issues/kt43710b.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt43710b.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt47986Default.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt47986Disabled.kt	skip	LANGUAGE	
 tests/inference/pcla/issues/kt47986Enabled.kt	skip	LANGUAGE	
@@ -4567,7 +4567,7 @@ tests/inference/pcla/issues/kt52838c.kt	rejects invalid	on an expected line
 tests/inference/pcla/issues/kt53109.kt	accepts valid		
 tests/inference/pcla/issues/kt53422.kt	skip	API_VERSION	
 tests/inference/pcla/issues/kt53422a.kt	accepts valid		
-tests/inference/pcla/issues/kt53422b.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt53422b.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt53478.kt	accepts valid		
 tests/inference/pcla/issues/kt53553.kt	accepts valid		
 tests/inference/pcla/issues/kt53639.kt	accepts valid		
@@ -4580,14 +4580,14 @@ tests/inference/pcla/issues/kt54400c.kt	accepts valid
 tests/inference/pcla/issues/kt54664.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt54767a.kt	accepts valid		
 tests/inference/pcla/issues/kt54767b.kt	accepts valid		
-tests/inference/pcla/issues/kt55056.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt55056.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt55057.kt	skip	API_VERSION	
 tests/inference/pcla/issues/kt55281.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt56949.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt57707.kt	accepts valid		
 tests/inference/pcla/issues/kt57709.kt	accepts valid		
 tests/inference/pcla/issues/kt57834.kt	accepts valid		
-tests/inference/pcla/issues/kt59426.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt59426.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt59798.kt	accepts valid		
 tests/inference/pcla/issues/kt60291a.kt	accepts valid		
 tests/inference/pcla/issues/kt60291b.kt	accepts valid		
@@ -4603,7 +4603,7 @@ tests/inference/pcla/issues/kt63840c.kt	accepts valid
 tests/inference/pcla/issues/kt63841.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt64066.kt	accepts valid		
 tests/inference/pcla/issues/kt64066disabled.kt	skip	LANGUAGE	
-tests/inference/pcla/issues/kt64077.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt64077.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt64222.kt	accepts valid		
 tests/inference/pcla/issues/kt65300a.kt	accepts valid		
 tests/inference/pcla/issues/kt65300b.kt	accepts valid		
@@ -4643,7 +4643,7 @@ tests/inference/pcla/lambdaBelongsToOuterCallAdditionalFixedVariable.kt	accepts 
 tests/inference/pcla/lambdaBelongsToOuterCallUnitConstraint.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForBareType.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForBareTypeAs.kt	accepts valid		
-tests/inference/pcla/lambdaParameterForBareTypeEarlyFixationAffectsBehavior.kt	rejects invalid	elsewhere	
+tests/inference/pcla/lambdaParameterForBareTypeEarlyFixationAffectsBehavior.kt	rejects invalid	on an expected line	
 tests/inference/pcla/lambdaParameterForBareTypeOnOuterTypeVariable.kt	accepts valid		
 tests/inference/pcla/lambdaParameterForNonBareType.kt	accepts valid		
 tests/inference/pcla/lambdaParameterTypeFixation.kt	accepts valid		
@@ -4713,7 +4713,7 @@ tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	on an expected
 tests/inference/pcla/stubTypes/commonSuperType.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeContravariant.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeCovariant.kt	accepts valid		
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	elsewhere	
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/commonSuperTypeNullable.kt	accepts valid		
 tests/inference/pcla/stubTypes/intersect.kt	accepts valid		
 tests/inference/pcla/stubTypes/memberScope.kt	rejects invalid	on an expected line	

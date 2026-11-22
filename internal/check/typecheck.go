@@ -283,6 +283,7 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 	c.bareRef, c.bareSubject = ref, subject
 	t := c.resolveType(ref)
 	c.bareRef = nil
+	subject = c.bareSubject // with a builder's variable fixed (see bareType)
 	switch {
 	case t.K == types.Invalid:
 		return t
@@ -361,6 +362,12 @@ func (c *Checker) argsInBounds(t types.Type) bool {
 // with the arguments that follow from the subject's type, x is List for
 // an x: Collection<String> giving List<String>, and * for the others.
 func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) types.Type {
+	if ref == c.bareRef && ref != nil {
+		// A builder's variable is fixed for the arguments, as K2 fixes
+		// it on demand: OTv of provide() is GenericScopeOwnerSubtype.
+		subject = c.fixedStub(subject)
+		c.bareSubject = subject
+	}
 	t, known, _ := c.bareArgs(cls, ref, subject)
 	if !known && ref == c.bareRef && ref != nil && subject.K != types.Invalid && !subject.IsParam() {
 		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",

@@ -437,15 +437,24 @@ type Checker struct {
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
-	// stubRejected are the constraints on builders' variables that
-	// stubRun.add rejected.
-	stubRejected [][2]types.Type
-	// stubRuns counts stubInference's runs.
-	stubRuns int
 	// pclaPoison are the builder lambdas whose variables stubInference
 	// couldn't infer because of an unresolved reference, by where the
 	// first one is (see poisonedRecv).
 	pclaPoison map[*syntax.Lambda]syntax.Pos
+	// pclaErrs are the errors of builder lambdas' first checks that their
+	// second checks report where they have none (see replayPCLAErrors).
+	pclaErrs map[*syntax.Lambda]pclaKept
+	// pclaReplayed is where those errors were reported: no warning is
+	// reported there.
+	pclaReplayed map[filePos]bool
+	// elvisCall is the call on the left of an elvis being checked, and
+	// elvisWant the type that the right side gives it (see elvisHint).
+	elvisCall *syntax.Call
+	elvisWant types.Type
+	// elvisFull is the initializer being checked of a local declared
+	// without a type, which nothing else is expected of: an elvis that
+	// is one is completed on its own.
+	elvisFull *syntax.Binary
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
@@ -1142,7 +1151,7 @@ func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	k := warnKey{p, name, msg}
-	if c.warned[k] {
+	if c.warned[k] || c.pclaReplayed[filePos{c.file.Path, p}] {
 		return
 	}
 	if c.warned == nil {
