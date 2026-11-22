@@ -2365,6 +2365,12 @@ func signedIntLit(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
+	if id, ok := fn.X.(*syntax.Ident); ok && id.Sym != nil && len(c.stubs) > 0 && c.stub(vt.Flex()) == nil {
+		// A variable declared with a builder's variable for its type and
+		// smart-cast by an assignment is a PTV & TargetType: a member
+		// call on it fixes the variable, as one on the variable does.
+		c.fixedStub(id.Sym.Type)
+	}
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
 		return t, nil, false

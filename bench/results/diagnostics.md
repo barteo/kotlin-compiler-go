@@ -67,12 +67,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21594 of 22025 expected errors (98.0%) on their lines.
+kc reports 21597 of 22025 expected errors (98.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2506 | 47 |
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1450 | 41 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1452 | 39 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 603 | 32 |
 | `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 148 | 11 |
@@ -82,11 +82,11 @@ kc reports 21594 of 22025 expected errors (98.0%) on their lines.
 | `TYPE_MISMATCH` | 33 | 24 | 9 |
 | `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 108 | 6 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 121 | 6 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 422 | 6 |
 | `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
 | `SYNTAX` | 886 | 880 | 6 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 109 | 5 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
@@ -140,10 +140,10 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 34 | 7.9% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
-| syntax-error | 74 | 17.2% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| syntax-error | 74 | 17.3% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 57 | 13.2% | `ARGUMENT_TYPE_MISMATCH` 9, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
-| missing-check | 266 | 61.7% | `UNRESOLVED_REFERENCE` 28, `ARGUMENT_TYPE_MISMATCH` 23, `CANNOT_INFER_PARAMETER_TYPE` 23, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `RETURN_TYPE_MISMATCH` 9 |
+| nearby | 55 | 12.9% | `ARGUMENT_TYPE_MISMATCH` 8, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
+| missing-check | 265 | 61.9% | `UNRESOLVED_REFERENCE` 28, `CANNOT_INFER_PARAMETER_TYPE` 23, `ARGUMENT_TYPE_MISMATCH` 22, `OVERLOAD_RESOLUTION_AMBIGUITY` 11, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,7 +151,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 199 |
+| `unresolved reference: _` | 198 |
 | `type mismatch: inferred type is _ but _ was expected` | 141 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 131 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 80 |
