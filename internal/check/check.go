@@ -451,7 +451,8 @@ type Checker struct {
 	// reported, 2 for those that can't infer their result's type, and
 	// poisonVals the locals there whose types the error
 	// leaves uninferred: 1 for the result of a call that can't infer its
-	// type parameter, 2 for the result of the call that has the error.
+	// type parameter, 2 for the result of the call that has the error,
+	// 3 for a member of the builder's receiver of the builder's type.
 	poisonIn    *syntax.Lambda
 	poisonAt    syntax.Pos
 	poisonCalls map[syntax.Expr]int

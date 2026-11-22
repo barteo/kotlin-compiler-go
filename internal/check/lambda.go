@@ -2734,9 +2734,11 @@ func (c *Checker) poisonedCall(x *syntax.Call, n int) {
 		case *syntax.Lambda:
 			return true
 		case *syntax.Ident:
-			return a.Sym != nil && c.poisonVals[a.Sym] != 0
+			if a.Sym != nil && c.poisonVals[a.Sym] != 0 {
+				return true
+			}
 		}
-		return false
+		return c.poisonedValue(a)
 	})
 	f := x.Sym
 	if m, ok := x.Fun.(*syntax.Member); ok {
@@ -2787,12 +2789,81 @@ func (c *Checker) poisonedCall(x *syntax.Call, n int) {
 	}
 }
 
+// receiverMember reports whether e is a member of the receiver of the
+// poisoned builder lambda being checked, read or called on it without a
+// receiver or on this: size, this.size, get(0).
+func (c *Checker) receiverMember(e syntax.Expr) (types.Type, bool) {
+	l := c.poisonIn
+	if l == nil || l.Recv == nil || l.Recv.Type.K != types.Class {
+		return types.InvalidType, false
+	}
+	of := func(owner *types.ClassSym) bool { return owner != nil && l.Recv.Type.C.IsSubclassOf(owner) }
+	switch e := e.(type) {
+	case *syntax.Ident:
+		if e.Member != nil {
+			return c.receiverMember(e.Member)
+		}
+		if e.Sym != nil && e.Sym.Kind == types.Prop && of(e.Sym.Owner) {
+			return e.Sym.Type, true
+		}
+	case *syntax.Member:
+		if _, ok := e.X.(*syntax.This); ok && e.Prop != nil && of(e.Prop.Owner) {
+			return e.Prop.Type, true
+		}
+	case *syntax.Call:
+		recv := true
+		if m, ok := e.Fun.(*syntax.Member); ok {
+			_, recv = m.X.(*syntax.This)
+		}
+		if recv && e.Sym != nil && of(e.Sym.Owner) {
+			return e.Sym.Ret, true
+		}
+	}
+	return types.InvalidType, false
+}
+
+// poisonedValue reports whether argument a of a call in a poisoned
+// builder lambda has, outside its lambdas, a member of the builder's
+// receiver or a local of the builder's type (see poisonedVal): K2
+// checks the call with the builder's system then, tk(size), tk(k +
+// size) or tk(g.length) for a val g = get(0).
+func (c *Checker) poisonedValue(a syntax.Expr) bool {
+	found := false
+	syntax.Inspect(a, func(n any) bool {
+		if found {
+			return false
+		}
+		switch n := n.(type) {
+		case *syntax.Lambda:
+			return false
+		case *syntax.Ident:
+			if n.Sym != nil && c.poisonVals[n.Sym] == 3 {
+				found = true
+			}
+		}
+		if e, ok := n.(syntax.Expr); ok && !found {
+			_, found = c.receiverMember(e)
+		}
+		return !found
+	})
+	return found
+}
+
 // poisonedVal records local s of a builder lambda that an unresolved
 // reference poisoned (see poisonedCall), if it has no type because of
 // that: its value is the result of a call that couldn't infer its type
-// parameter there, or of the call with the unresolved reference.
+// parameter there (1), of the call with the unresolved reference (2), or
+// a member of the builder's receiver that has the builder's type (3).
 func (c *Checker) poisonedVal(s *syntax.VarStmt) {
 	if c.poisonIn == nil || c.trial != nil || s.Type != nil || s.Init == nil {
+		return
+	}
+	if t, ok := c.receiverMember(s.Init); ok && t.HasParams() {
+		// Of the builder's type: val g = get(0).
+		if c.poisonVals == nil {
+			c.poisonVals = map[*types.VarSym]int{}
+		}
+		c.poisonVals[s.Sym] = 3
 		return
 	}
 	x, ok := s.Init.(*syntax.Call)
