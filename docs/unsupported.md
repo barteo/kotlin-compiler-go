@@ -270,17 +270,17 @@ own tests.
     shapes are carried to the calls after it: a generic extension
     called on an unresolved receiver with the lambda's `this`,
     `Unresolved().bar(this)`, or with a lambda, `Unresolved().apply {
-    }`. The builder's variables are then uninferred, where K2 still
-    infers them from the constraints before the error. After it the
-    extension calls on the builder's receiver are inapplicable, and
-    the calls that K2 checks with the shared system are reported: one
-    with a lambda, an anonymous function or a callable reference for
-    an argument, one of a member of the builder's receiver with the
-    builder's type in its signature, one that takes the result of
-    such a call, and a member of the result of the call with the
-    error. K2 also reports some operators with such a result for an
-    operand (`k..s`, not `s + 1`), a property of the builder's
-    receiver passed as an argument, and gives the members of the
+    }`. The builder's variables are then inferred from the
+    constraints before the error only. After it the extension calls
+    on the builder's receiver are inapplicable, and the calls that K2
+    checks with the shared system are reported: one with a lambda, an
+    anonymous function or a callable reference for an argument, one
+    of a member of the builder's receiver with the builder's type in
+    its signature, one that takes a member of the builder's
+    receiver, a local of the builder's type or the result of such a
+    call, and a member of the result of the call with the error. K2
+    also reports some operators with the result of such a call for
+    an operand (`k..s`, not `s + 1`), and gives the members of the
     result of the call with the error the types of the standard
     library's candidates it tried (`MatchGroup?` for an index); kc
     doesn't.
@@ -294,9 +294,9 @@ own tests.
   - An overload chosen by a lambda's result type
     (`@OverloadResolutionByLambdaReturnType`) whose lambda parameter is
     a variable with only variables below it is chosen through the
-    variable above it, as K2 semi-fixes it, only if the lambda doesn't
-    use its parameter. Outside a builder kc calls such a call
-    ambiguous, where K2 chooses.
+    variable above it, as K2 semi-fixes it. Outside a builder kc
+    calls such a call ambiguous, where K2 reports that the arguments'
+    type parameters can't be inferred: both reject it.
   - The positions of K2's "cannot infer" on a parameter or a type
     argument (`CANNOT_INFER_PARAMETER_TYPE`) in a lambda with errors
     are kc's own.
