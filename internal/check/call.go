@@ -1133,7 +1133,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = ng
 			}
 		}
-		if len(maximal) == 0 && len(c.stubs) > 0 {
+		if len(maximal) == 0 && len(c.stubs) > 0 && !slices.ContainsFunc(match, func(cd *candidate) bool {
+			return !slices.ContainsFunc(cd.params, c.hasStub)
+		}) {
 			// In a builder's lambda, a stub in the candidates' parameter
 			// types leaves none more specific than the others: the one
 			// candidate without a vararg is chosen, make(it: Iterable<T>)
@@ -1141,7 +1143,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			// in the parameters left to their defaults stay ambiguous,
 			// which the builder's other lambdas resolve (see
 			// stubInference): Entry(key: T, id: Any = key) and
-			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			// Entry(entry: Entry<T>) for an Entry(it) of a stub. So do
+			// candidates whose parameter types are of their own type
+			// parameters, which are compared as anywhere else: the
+			// extensions <T> Controller<T>.foo(vararg T) and
+			// foo(Inv<T>) (KT-67947).
 			for _, cd := range match {
 				if !cd.usesVararg() {
 					maximal = append(maximal, cd)
