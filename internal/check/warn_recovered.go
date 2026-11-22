@@ -38,6 +38,8 @@ var recoveredWarnings = map[string]bool{
 	"OVERLOADS_PRIVATE":                   true,
 	"OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS": true,
 	"DSL_MARKER_PROPAGATES_TO_MANY":       true,
+	"OPERATOR_RENAMED_ON_IMPORT":          true,
+	"INCOMPATIBLE_ANNOTATION_TARGETS":     true,
 	"REDUNDANT_REPEATABLE_ANNOTATION":     true,
 	"NON_FINAL_MEMBER_IN_FINAL_CLASS":     true,
 	"NON_FINAL_MEMBER_IN_OBJECT":          true,

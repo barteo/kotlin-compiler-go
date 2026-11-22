@@ -107,6 +107,7 @@ func (c *Checker) localWarnings() {
 			c.redundantSpreads(n)
 			c.varargNothing(n)
 			if !refCalls[n] {
+				c.trimMarginWarning(n)
 				c.conversionWarning(n)
 				c.inferredInvisibleCall(n)
 				if c.u.extraWarnings {

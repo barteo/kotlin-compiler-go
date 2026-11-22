@@ -816,3 +816,30 @@ func TestWarningsUselessOverloads(t *testing.T) {
 func TestWarningsUselessExposeBoxed(t *testing.T) {
 	checkReference(t, "testdata/exposeboxed.kt", Options{Warnings: true})
 }
+
+// TestWarningsTrimMargin checks the warnings of trimMargin with a blank
+// prefix against kotlinc's of testdata/trimmargin.kt.
+func TestWarningsTrimMargin(t *testing.T) {
+	checkReference(t, "testdata/trimmargin.kt", Options{Warnings: true})
+}
+
+// TestWarningsOperatorRenamed checks the warnings of operator functions
+// imported under another operator's name against kotlinc's of
+// testdata/oprename.kt.
+func TestWarningsOperatorRenamed(t *testing.T) {
+	checkReference(t, "testdata/oprename.kt", Options{Warnings: true})
+}
+
+// TestWarningsSuperQualifier checks the warnings of type arguments in an
+// outer class's super qualifier against kotlinc's of
+// testdata/superqualifier.kt.
+func TestWarningsSuperQualifier(t *testing.T) {
+	checkReference(t, "testdata/superqualifier.kt", Options{Warnings: true})
+}
+
+// TestWarningsIncompatibleTargets checks the warnings of Java's @Target
+// that lacks a counterpart of Kotlin's against kotlinc's of
+// testdata/javatargets.kt.
+func TestWarningsIncompatibleTargets(t *testing.T) {
+	checkReference(t, "testdata/javatargets.kt", Options{Warnings: true})
+}

@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -28,6 +30,27 @@ func kindIs(k types.Kind) func(types.Type) bool {
 
 func classIs(name string) func(types.Type) bool {
 	return func(t types.Type) bool { return t.K == types.Class && t.C != nil && t.C.Name == name }
+}
+
+// trimMarginWarning reports call x if it is the standard library's
+// trimMargin with a blank string literal as the margin prefix, which
+// throws: kotlinc's TRIM_MARGIN_BLANK_PREFIX. A constant with such a value
+// isn't reported.
+func (c *Checker) trimMarginWarning(x *syntax.Call) {
+	f := x.Sym
+	if f == nil || f.Name != "trimMargin" || f.Owner != nil || !strings.HasPrefix(f.Facade, "kotlin/text/") || x.Invoke || len(x.Args) != 1 {
+		return
+	}
+	lit, ok := x.Args[0].(*syntax.StringLit)
+	if !ok {
+		return
+	}
+	for _, p := range lit.Parts {
+		if p.X != nil || strings.TrimSpace(p.Lit) != "" {
+			return
+		}
+	}
+	c.warnf(syntax.StartPos(x), "TRIM_MARGIN_BLANK_PREFIX", "'trimMargin' call with a blank margin prefix throws an exception")
 }
 
 // conversionWarning reports call x if it is a member conversion, as

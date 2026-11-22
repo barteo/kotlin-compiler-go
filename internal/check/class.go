@@ -2071,6 +2071,10 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			c.errorf(s.Iface.P, "not an immediate supertype")
 			return t, false
 		}
+		if s.Outer != nil && s.Iface.Args != nil && c.sameArgs(t, want) {
+			// kotlinc reports it of an outer class's super only.
+			c.warnf(s.Iface.P, "TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER", "type arguments do not need to be specified in a 'super' qualifier")
+		}
 	default:
 		var has []types.Type
 		for _, st := range cls.Supers {
