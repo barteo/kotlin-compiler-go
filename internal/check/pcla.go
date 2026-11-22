@@ -67,6 +67,9 @@ type pclaCheck struct {
 	// check gave its body.
 	w  lambdaWant
 	bt types.Type
+	// postponed and defers are the run's that the check added.
+	postponed []*system
+	defers    []func()
 }
 
 // pclaRun returns the innermost run whose lambda is being checked, if
@@ -175,6 +178,23 @@ func (c *Checker) pclaRollback(r *stubRun, why string) {
 	r.checks = nil
 }
 
+// pclaUndo undoes the check of lambda l that r keeps, if it does: l is
+// checked again.
+func (c *Checker) pclaUndo(r *stubRun, l *syntax.Lambda, why string) {
+	i := slices.IndexFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
+	if i < 0 {
+		return
+	}
+	c.pclaStat("rollback", l.P, why)
+	saved := c.trial
+	c.endTrial(r.checks[i].t)
+	c.trial = saved
+	r.checks = slices.Delete(r.checks, i, i+1)
+	// The lambda is checked again in the lambdas around it, which
+	// their checks don't follow yet.
+	c.pclaDeny("nested:" + why)
+}
+
 // pclaCommit keeps the check of lambda l that run r kept, if it can: l,
 // an argument of the call with system s, whose variables in l's
 // parameter types are fixed, isn't checked again. w is what a check now
@@ -185,14 +205,16 @@ func (c *Checker) pclaRollback(r *stubRun, why string) {
 // of l's body, or false if l is to be checked again: the check is then
 // undone.
 func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWant, ret types.Type, params []types.Type) (types.Type, bool) {
-	k := r.checks[0]
+	ki := slices.IndexFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
+	if ki < 0 {
+		return types.InvalidType, false
+	}
+	k := r.checks[ki]
 	deny := func(why string) (types.Type, bool) {
-		c.pclaRollback(r, why)
+		c.pclaUndo(r, l, why)
 		return types.InvalidType, false
 	}
 	switch {
-	case len(r.checks) != 1 || k.l != l:
-		return deny("group")
 	case r.deny != "":
 		return deny(r.deny)
 	case len(k.w.params) != len(params):
@@ -274,10 +296,10 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		if o := c.pclaRun(); o != nil {
 			// What still has a variable of the builder around is its to
 			// complete.
-			o.postponed = append(o.postponed, r.postponed...)
-			o.defers = append(o.defers, r.defers...)
+			o.postponed = append(o.postponed, k.postponed...)
+			o.defers = append(o.defers, k.defers...)
 		}
-		r.checks = nil
+		r.checks = slices.DeleteFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
 	}
 	if slices.ContainsFunc(slices.Collect(maps.Values(sub)), func(a types.Arg) bool { return a.T.HasVars() }) {
 		// A variable of a builder around isn't inferred yet: its commit
@@ -305,12 +327,12 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	live := pclaWrite(l, sub)
 	savedSub, savedLive := c.pclaSub, c.pclaLive
 	c.pclaSub, c.pclaLive = sub, live
-	for _, q := range r.postponed {
+	for _, q := range k.postponed {
 		q.pclaComplete(sub)
 	}
 	c.pclaSub, c.pclaLive = savedSub, savedLive
 	pclaWrite(l, sub)
-	for _, f := range r.defers {
+	for _, f := range k.defers {
 		f()
 	}
 	c.trial = saved

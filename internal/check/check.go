@@ -457,6 +457,9 @@ type Checker struct {
 	// pclaRuns are the runs of stubInference whose lambdas are being
 	// checked, the innermost last, with $KC_PCLA=single.
 	pclaRuns []*stubRun
+	// pclaKept are the runs that keep the check of a lambda whose turn
+	// to be checked for good hasn't come.
+	pclaKept map[*syntax.Lambda]*stubRun
 	// pclaFirst are the errors of builder lambdas' first checks, kept
 	// for $KC_PCLA_STATS only.
 	pclaFirst map[*syntax.Lambda][]*syntax.Error
@@ -3396,6 +3399,13 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
+	defer func() {
+		for l, r := range c.pclaKept {
+			if slices.ContainsFunc(r.checks, func(k pclaCheck) bool { return k.l == l }) {
+				c.errorf(l.P, "internal error: the check of a builder's lambda was neither kept nor undone")
+			}
+		}
+	}()
 	c.allAnnotations()
 	done := c.u.ctx.Done()
 	for _, d := range c.file.Decls {

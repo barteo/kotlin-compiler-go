@@ -2480,17 +2480,28 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	switch {
 	case len(r.checks) == 0:
 		return nil
-	case !keep:
-		c.pclaRollback(r, "branch")
-	case len(group) > 1:
-		c.pclaRollback(r, "group")
-	default:
-		// Not solved, the constraints disagree: solved is nil, and the
-		// call's system alone gives its variables.
-		r.solved = trial
-		return r
 	}
-	return nil
+	// Not solved, the constraints disagree: solved is nil, and the
+	// call's system alone gives its variables.
+	r.solved = trial
+	// The checks of the call's other lambdas, and of the lambda of an
+	// if's or a when's branch (see openLast), are kept for when their
+	// turn comes (see postponedLambda).
+	for _, k := range r.checks {
+		if k.l != l || !keep {
+			if c.pclaKept == nil {
+				c.pclaKept = map[*syntax.Lambda]*stubRun{}
+			}
+			if o := c.pclaKept[k.l]; o != nil {
+				c.pclaUndo(o, k.l, "again")
+			}
+			c.pclaKept[k.l] = r
+		}
+	}
+	if !keep {
+		return nil
+	}
+	return r
 }
 
 // stubHintKey is a variable of a call: its type parameter, and the
@@ -2594,6 +2605,7 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	}
 	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
 	c.trial = t
+	np, nd := len(r.postponed), len(r.defers)
 	if pclaSingle {
 		w.stars = starParams(ft)
 		c.pclaRuns = append(c.pclaRuns, r)
@@ -2603,7 +2615,8 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 		// The check is kept until the variables are inferred.
 		c.pclaRuns = c.pclaRuns[:len(c.pclaRuns)-1]
 		c.trial = t.outer
-		r.checks = append(r.checks, pclaCheck{l: sl.l, t: t, errs: slices.Clone(c.errs[n:]), w: w, bt: bt})
+		r.checks = append(r.checks, pclaCheck{l: sl.l, t: t, errs: slices.Clone(c.errs[n:]), w: w, bt: bt,
+			postponed: slices.Clone(r.postponed[np:]), defers: slices.Clone(r.defers[nd:])})
 	} else {
 		c.endTrial(t)
 	}
@@ -3366,7 +3379,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			s.fixVarsIn(q)
 		}
 	}
+	kept := c.pclaKept[l]
+	delete(c.pclaKept, l)
 	run := c.stubInference(s, l, params, ft, true)
+	switch {
+	case run == nil:
+		run = kept
+	case kept != nil:
+		// Checked again with the variables unfixed: that check counts.
+		c.pclaUndo(kept, l, "again")
+	}
 	errs0 := len(s.errs)
 	vars := make([]*tvar, len(params))
 	for i, q := range params {
