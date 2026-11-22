@@ -100,6 +100,52 @@ func (c *Checker) pclaPostpone(s *system) {
 	}
 }
 
+// pclaMsg is an error's message, as errorf takes it.
+type pclaMsg struct {
+	format string
+	args   []any
+}
+
+// pclaLate records how error e, of a check that builder inference may
+// keep, is worded, if its message names a type with a variable: the
+// variable is inferred after the check, and kotlinc's message names
+// what it is inferred as.
+func (c *Checker) pclaLate(e *syntax.Error, format string, args []any) {
+	if !slices.ContainsFunc(args, func(a any) bool {
+		t, ok := a.(types.Type)
+		return ok && t.HasVars()
+	}) {
+		return
+	}
+	if c.pclaMsgs == nil {
+		c.pclaMsgs = map[*syntax.Error]pclaMsg{}
+	}
+	c.pclaMsgs[e] = pclaMsg{format, slices.Clone(args)}
+}
+
+// pclaReword words the errors in errs that pclaLate recorded again,
+// with sub.
+func (c *Checker) pclaReword(errs []*syntax.Error, sub types.Subst) {
+	for _, e := range errs {
+		m, ok := c.pclaMsgs[e]
+		if !ok {
+			continue
+		}
+		open := false
+		for i, a := range m.args {
+			if t, ok := a.(types.Type); ok && t.HasVars() {
+				t = sub.Apply(t)
+				m.args[i] = t
+				open = open || t.HasVars()
+			}
+		}
+		e.Msg = fmt.Sprintf(m.format, m.args...)
+		if !open {
+			delete(c.pclaMsgs, e)
+		}
+	}
+}
+
 // pclaStale reports whether a fixup of a resolution of call x to f,
 // run again by pclaCommit, is of a resolution that the check dropped:
 // the call was resolved again, to another function, or isn't in the
@@ -145,8 +191,6 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 		return deny("group")
 	case r.deny != "":
 		return deny(r.deny)
-	case len(k.errs) > 0:
-		return deny("errors")
 	case pre:
 		return deny("prechecked")
 	case k.w.ret != w.ret || k.w.check != w.check:
@@ -208,9 +252,19 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 			return deny("open")
 		}
 	}
+	// An error that the fixups find again is the check's own.
+	late := c.errs[n:]
+	c.errs = c.errs[:n:n]
+	for _, e := range late {
+		if !slices.ContainsFunc(k.errs, func(o *syntax.Error) bool { return o.Pos == e.Pos }) &&
+			!slices.ContainsFunc(c.errs[n:], func(o *syntax.Error) bool { return o.Pos == e.Pos && o.Msg == e.Msg }) {
+			c.errs = append(c.errs, e)
+		}
+	}
 	if len(c.errs) > n {
 		c.pclaStat("commit-errors", l.P, c.errs[n].Msg)
 	}
+	c.pclaReword(k.errs, sub)
 	c.pclaStat("commit", l.P)
 	if o := k.t.outer; o != nil {
 		o.undo = append(o.undo, k.t.undo...)
@@ -308,7 +362,8 @@ func pclaScan(l *syntax.Lambda) string {
 		}
 		return why == ""
 	})
-	return strings.TrimPrefix(why, "*syntax.")
+	why = strings.TrimPrefix(why, "*syntax.")
+	return why
 }
 
 // pclaStats, from $KC_PCLA_STATS, is a file that the checks of builders'

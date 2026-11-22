@@ -448,6 +448,10 @@ type Checker struct {
 	// being committed (see pclaCommit) were inferred as, while the
 	// fixups of the systems that finished in it run again.
 	pclaSub types.Subst
+	// pclaMsgs are the errors of the checks that builder inference
+	// keeps whose messages name a type with a variable: how to word
+	// them again once it is inferred.
+	pclaMsgs map[*syntax.Error]pclaMsg
 	// pclaLive are the nodes of that lambda's tree.
 	pclaLive map[any]bool
 	// pclaRuns are the runs of stubInference whose lambdas are being
@@ -1153,7 +1157,11 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	e := &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)}
+	c.errs = append(c.errs, e)
+	if len(c.pclaRuns) > 0 {
+		c.pclaLate(e, format, args)
+	}
 }
 
 // warnf reports a warning, which kotlinc names name. It is for the passes
