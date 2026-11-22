@@ -134,7 +134,11 @@ func (c *Checker) pclaReword(errs []*syntax.Error, sub types.Subst) {
 		open := false
 		for i, a := range m.args {
 			if t, ok := a.(types.Type); ok && t.HasVars() {
-				t = sub.Apply(t)
+				if u := sub.Apply(t); !u.Has(func(x types.Type) bool { return x.K == types.Invalid }) {
+					// Not one that nothing inferred: the message
+					// names the variable.
+					t = u
+				}
 				m.args[i] = t
 				open = open || t.HasVars()
 			}
@@ -208,12 +212,17 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	sub := types.Subst{}
 	for _, v := range r.vars {
 		if tv := s.byVar[v]; tv != nil && tv.fixed {
-			if a := s.vals[v]; !a.T.HasVars() && a.T.K != types.Invalid {
+			if a := s.vals[v]; !a.T.HasVars() && (a.T.K != types.Invalid || r.solved == nil) {
 				sub[v] = a
 			}
 		}
 	}
 	for _, v := range r.extra {
+		if r.solved == nil {
+			// The constraints disagree: the calls' own bounds give
+			// their variables (see pclaComplete).
+			break
+		}
 		if tv := r.solved.byVar[v]; tv != nil && tv.fixed {
 			if a := r.solved.vals[v]; !a.T.HasVars() && a.T.K != types.Invalid {
 				sub[v] = a
@@ -222,6 +231,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	}
 	for i, p := range k.w.params {
 		if sub.Apply(p) != params[i] {
+			c.pclaStat("params-differ", l.P, fmt.Sprint(p), fmt.Sprint(sub.Apply(p)), fmt.Sprint(params[i]))
 			return deny("params")
 		}
 	}
@@ -299,6 +309,25 @@ func (s *system) pclaComplete(sub types.Subst) {
 		s.vals[v] = a
 	}
 	n := len(s.errs)
+	uninferred := func(t types.Type) bool {
+		if t.K != types.TypeVar || s.byVar[t.Param()] != nil {
+			return false
+		}
+		a, ok := sub[t.Param()]
+		return ok && a.T.K == types.Invalid
+	}
+	for _, tv := range s.vars {
+		// A variable that only a builder's variable that nothing
+		// inferred bounds isn't inferred either.
+		if !tv.fixed && len(tv.lits) == 0 && (slices.ContainsFunc(tv.lower, uninferred) || slices.ContainsFunc(tv.upper, uninferred)) &&
+			!slices.ContainsFunc(tv.lower, func(l types.Type) bool { return !uninferred(l) && s.proper(l) }) {
+			tv.fixed = true
+			s.vals[tv.v] = types.Arg{T: types.InvalidType}
+			if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, msg}) {
+				s.errs = append(s.errs, inferError{tv.pos, msg})
+			}
+		}
+	}
 	if s.unfixed() {
 		// A variable that the shared system didn't infer, as one of a
 		// call that didn't check, which said nothing in it: the call's

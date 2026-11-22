@@ -2480,13 +2480,13 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	switch {
 	case len(r.checks) == 0:
 		return nil
-	case !ok:
-		c.pclaRollback(r, "unsolved")
 	case !keep:
 		c.pclaRollback(r, "branch")
 	case len(group) > 1:
 		c.pclaRollback(r, "group")
 	default:
+		// Not solved, the constraints disagree: solved is nil, and the
+		// call's system alone gives its variables.
 		r.solved = trial
 		return r
 	}
