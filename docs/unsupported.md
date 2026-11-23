@@ -736,8 +736,7 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   bounded by a primitive type (`value class W<T : Int>(val s: T)`) is
   unboxed as the boxed primitive (`Integer`); `kotlinc` passes the
   primitive (`int`) to its `-impl` methods.
-- Annotations on type parameters and types aren't written, nor are
-  `@[A B]` lists.
+- Annotations on type parameters and types aren't written.
 
 **Compiler plugins**
 

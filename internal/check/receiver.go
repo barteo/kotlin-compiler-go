@@ -66,6 +66,16 @@ func (c *Checker) ambiguousLabel(label string) bool {
 	n := 0
 	if c.cls != nil && simpleName(c.cls) == label {
 		n++
+		// Or an object around it of the same name, whose this the code
+		// can name too: object A { object B { object A { this@A } } }.
+		inner := c.cls.Inner
+		for k := c.cls.Outer; k != nil; k = k.Outer {
+			if simpleName(k) == label && (inner || k.Object) {
+				n++
+				break
+			}
+			inner = inner && k.Inner
+		}
 	}
 	innermost := true
 	for i := len(c.recvs) - 1; i >= 0; i-- {

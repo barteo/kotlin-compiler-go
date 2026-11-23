@@ -32,6 +32,13 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		if s, ok := a.Str("name"); ok && site == fileSite {
 			c.jvmPackageName(a, s)
 		}
+		// kc doesn't check the arguments of this internal annotation as
+		// an expression; a package's name isn't one.
+		if arg := a.Arg(0, "name"); arg != nil && len(arg.Toks) == 1 && arg.Toks[0].Kind == syntax.IDENT {
+			if name := arg.Toks[0].Text; !c.isVar(name) && (c.u.isPackage(name) || c.u.ext.hasPackageTree(name)) {
+				c.errorf(arg.Toks[0].Pos, "expression expected, but package name found")
+			}
+		}
 	case "Strictfp":
 		if site.kind == siteClass || site == objectExprSite {
 			c.errorf(a.P, "'@Strictfp' annotation on classes is unsupported yet")

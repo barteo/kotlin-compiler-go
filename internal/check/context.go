@@ -125,17 +125,21 @@ func noInfer(t *syntax.TypeRef) bool {
 
 // propContexts declares the context parameters of property d, of symbol
 // sym, which its accessors take, and declare in their bodies. A property
-// with them has no field: it needs accessors unless abstract.
+// with them has no field: it needs accessors unless abstract, and one
+// without them is reported at its context parameters, as kotlinc's
+// CONTEXT_PARAMETERS_WITH_BACKING_FIELD.
 func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 	if len(d.Contexts) == 0 {
 		return
 	}
 	switch {
-	case d.Recv != nil, d.Init != nil:
-		// Reported as an extension property's, or as an initializer
-		// without a field.
+	case d.Recv != nil, d.BackingField != nil:
+		// Reported as an extension property's, or with the explicit
+		// backing field.
+	case d.Lateinit:
+		c.errorf(d.PosOf("lateinit", d.P), "'lateinit' modifier is not allowed on properties with context receivers")
 	case !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil):
-		c.errorf(d.P, "a property with context parameters must have accessors or be abstract")
+		c.contextsWithField(d)
 	}
 	sym.Contexts = c.contextSyms(d.Contexts)
 	if d.Setter != nil && len(d.Setter.Params) == 1 && d.Setter.Params[0].P != d.Setter.P {
@@ -995,4 +999,14 @@ func (c *Checker) fitsRecv(t, rt types.Type) bool {
 		return cls != nil && rc != nil && cls.IsSubclassOf(rc)
 	}
 	return c.subtype(t, rt)
+}
+
+// contextsWithField reports property d, which has context parameters, as
+// one that would need a backing field, at its context parameters.
+func (c *Checker) contextsWithField(d *syntax.PropDecl) {
+	p := d.ContextP
+	if p.Line == 0 {
+		p = d.P
+	}
+	c.errorf(p, "property with context parameters cannot be initialized because it has no backing field")
 }

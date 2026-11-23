@@ -15,7 +15,7 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4447 tests both reject, kc reports an error on the line of an expected one in 4418.
+Of the 4447 tests both reject, kc reports an error on the line of an expected one in 4420.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -65,70 +65,70 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21640 of 22025 expected errors (98.3%) on their lines.
+kc reports 21709 of 22025 expected errors (98.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2508 | 45 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1456 | 35 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 605 | 30 |
-| `RETURN_TYPE_MISMATCH` | 418 | 400 | 18 |
+| `RETURN_TYPE_MISMATCH` | 418 | 401 | 17 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 240 | 11 |
-| `NULL_FOR_NONNULL_TYPE` | 155 | 145 | 10 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 149 | 10 |
-| `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
+| `NULL_FOR_NONNULL_TYPE` | 155 | 146 | 9 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
-| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 109 | 5 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 423 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `TYPE_MISMATCH` | 33 | 28 | 5 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
-| `VAL_REASSIGNMENT` | 231 | 226 | 5 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 123 | 4 |
 | `UPPER_BOUND_VIOLATED` | 125 | 121 | 4 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 159 | 4 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 221 | 3 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 111 | 3 |
 | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 91 | 88 | 3 |
 | `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
-| `INCONSISTENT_BACKING_FIELD_TYPE` | 18 | 15 | 3 |
-| `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 11 | 3 |
-| `INVALID_TYPE_OF_ANNOTATION_MEMBER` | 30 | 27 | 3 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
 | `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
 | `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
-| `CAPTURED_VAL_INITIALIZATION` | 34 | 32 | 2 |
-| `CONTEXT_PARAMETERS_WITH_BACKING_FIELD` | 2 | 0 | 2 |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 43 | 2 |
-| `DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE` | 3 | 1 | 2 |
-| `EXPLICIT_FIELD_MUST_BE_INITIALIZED` | 6 | 4 | 2 |
 | `ILLEGAL_ESCAPE` | 20 | 18 | 2 |
-| `ILLEGAL_INLINE_PARAMETER_MODIFIER` | 8 | 6 | 2 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
-| `INAPPLICABLE_FILE_TARGET` | 11 | 9 | 2 |
 | `INNER_CLASS_CONSTRUCTOR_NO_RECEIVER` | 34 | 32 | 2 |
-| `INVALID_IF_AS_EXPRESSION` | 46 | 44 | 2 |
 | `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 7 | 5 | 2 |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 35 | 33 | 2 |
 | `MEMBER_PROJECTED_OUT` | 50 | 48 | 2 |
 | `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
 | `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 94 | 2 |
-| `NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION` | 2 | 0 | 2 |
 | `NO_ELSE_IN_WHEN` | 217 | 215 | 2 |
 | `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 24 | 2 |
 | `OPT_IN_MARKER_ON_WRONG_TARGET` | 16 | 14 | 2 |
 | `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
-| `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 30 | 2 |
-| `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 30 | 28 | 2 |
 | `REDECLARATION` | 196 | 194 | 2 |
 | `REPEATED_ANNOTATION` | 69 | 67 | 2 |
-| `RESERVED_MEMBER_FROM_INTERFACE_INSIDE_VALUE_CLASS` | 3 | 1 | 2 |
 | `RETURN_NOT_ALLOWED` | 63 | 61 | 2 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 85 | 2 |
 | `TYPEOF_SUSPEND_TYPE` | 4 | 2 | 2 |
+| `TYPE_ARGUMENTS_NOT_ALLOWED` | 11 | 9 | 2 |
+| `UNINITIALIZED_VARIABLE` | 213 | 211 | 2 |
+| `ACCESSOR_FOR_DELEGATED_PROPERTY` | 6 | 5 | 1 |
+| `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 0 | 1 |
+| `AMBIGUOUS_ANNOTATION_ARGUMENT` | 4 | 3 | 1 |
+| `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
+| `CANNOT_INFER_IT_PARAMETER_TYPE` | 7 | 6 | 1 |
+| `COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT` | 5 | 4 | 1 |
+| `COMPILER_REQUIRED_ANNOTATION_AMBIGUITY` | 1 | 0 | 1 |
+| `CONSTRUCTOR_IN_OBJECT` | 13 | 12 | 1 |
+| `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
+| `DEPRECATED_TYPE_PARAMETER_SYNTAX` | 2 | 1 | 1 |
+| `DSL_SCOPE_VIOLATION` | 108 | 107 | 1 |
+| `EMPTY_CHARACTER_LITERAL` | 9 | 8 | 1 |
+| `ERROR_IN_CONTRACT_DESCRIPTION` | 38 | 37 | 1 |
+| `INACCESSIBLE_OUTER_CLASS_RECEIVER` | 40 | 39 | 1 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,11 +137,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 27 | 7.0% | `ARGUMENT_TYPE_MISMATCH` 9, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 73 | 19.0% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 27 | 8.5% | `ARGUMENT_TYPE_MISMATCH` 9, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 71 | 22.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 46 | 11.9% | `ARGUMENT_TYPE_MISMATCH` 7, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4, `NULL_FOR_NONNULL_TYPE` 3 |
-| missing-check | 239 | 62.1% | `UNRESOLVED_REFERENCE` 27, `CANNOT_INFER_PARAMETER_TYPE` 21, `ARGUMENT_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
+| nearby | 39 | 12.3% | `ARGUMENT_TYPE_MISMATCH` 7, `CANNOT_INFER_PARAMETER_TYPE` 4, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 4, `NULL_FOR_NONNULL_TYPE` 3 |
+| missing-check | 179 | 56.6% | `UNRESOLVED_REFERENCE` 27, `CANNOT_INFER_PARAMETER_TYPE` 21, `ARGUMENT_TYPE_MISMATCH` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 
@@ -150,7 +150,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 195 |
-| `type mismatch: inferred type is _ but _ was expected` | 139 |
+| `type mismatch: inferred type is _ but _ was expected` | 138 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 76 |
 | `unresolved or unsupported type: _` | 29 |
@@ -179,7 +179,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `multiple labels are forbidden` | 7 |
 | `operator '_' cannot be applied to Any?` | 7 |
 | `unexpected '_'` | 7 |
-| *105 more* | |
+| *102 more* | |
 
 ## Unsupported features
 
@@ -191,7 +191,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3519 of the 3667 warnings the tests expect (96.0%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3521 of the 3667 warnings the tests expect (96.0%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -300,7 +300,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `OPERATOR_RENAMED_ON_IMPORT` | 3 | 3 | 0 |
 | `OPT_IN_ARGUMENT_IS_NOT_MARKER` | 3 | 3 | 0 |
 | `OPT_IN_TO_INHERITANCE` | 3 | 3 | 0 |
-| `REDUNDANT_ANNOTATION_TARGET` | 3 | 1 | 0 |
+| `REDUNDANT_ANNOTATION_TARGET` | 3 | 3 | 0 |
 | `REDUNDANT_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
 | `REDUNDANT_RETURN_UNIT_TYPE` | 3 | 3 | 0 |
 | `TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER` | 3 | 2 | 0 |

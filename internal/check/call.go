@@ -267,7 +267,9 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	amap := make([]int, n)
 	limit, positional := len(ps), n
 	if x.Trailing() && n > 0 && len(ps) > 0 {
-		if ps[len(ps)-1].Type.K == types.Invalid {
+		if ps[len(ps)-1].Type.K == types.Invalid || ps[len(ps)-1].Vararg {
+			// A trailing lambda isn't a vararg's argument
+			// (VARARG_OUTSIDE_PARENTHESES, see arityError).
 			return nil, false
 		}
 		amap[n-1] = len(ps) - 1
@@ -340,7 +342,7 @@ func mapNamed(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 		name := x.Name(i)
 		switch {
 		case x.Trailing() && i == len(x.Args)-1:
-			if len(ps) == 0 || used[len(ps)-1] {
+			if len(ps) == 0 || used[len(ps)-1] || ps[len(ps)-1].Vararg {
 				return nil, false
 			}
 			amap[i] = len(ps) - 1

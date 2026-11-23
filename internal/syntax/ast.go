@@ -133,6 +133,9 @@ type TypeRef struct {
 	// Named are the positions of the names of a function type's named
 	// parameters, (x: A) -> R, which a supertype can't have.
 	Named []Pos
+	// Names are the names of a function type's parameters, one for each
+	// of Params, "" for one not named.
+	Names []string
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
 	// Contexts are the context parameters' types of a context function
@@ -1534,6 +1537,9 @@ type Call struct {
 	// parameters, which go to the callee's as Kotlin adapts a reference
 	// (see refNames).
 	RefArgs []types.Type
+	// FromRef is set by the checker on the call a callable reference's
+	// lambda makes.
+	FromRef bool
 	// Value is set by the checker on a call that a compiler plugin
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.

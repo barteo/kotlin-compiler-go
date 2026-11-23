@@ -25,11 +25,16 @@ fun withLogger(block: context(Logger) () -> Unit) {
     block(Logger("explicit"))
 }
 
-context(a: Logger)
-val initialized: String = "x" // ERROR initializer is not allowed here because this property has no backing field
+context(a: Logger) // ERROR property with context parameters cannot be initialized because it has no backing field
+val initialized: String = "x"
+
+context(a: Logger) // ERROR property with context parameters cannot be initialized because it has no backing field
+val noGetter: String // ERROR property must be initialized
 
 context(a: Logger)
-val noGetter: String // ERROR a property with context parameters must have accessors or be abstract
+var withAccessors: String = "x" // ERROR initializer is not allowed here because this property has no backing field
+    get() = a.name
+    set(value) {}
 
 val anonymous: context(Logger) () -> Unit = fun () {} // ERROR the anonymous function's context parameters don't match the expected function type
 

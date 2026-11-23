@@ -124,6 +124,23 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 			inspectClass(n.Decl, visit)
 			depth--
 			return false
+		case *syntax.Assign:
+			// A property whose setter is protected.
+			var v *types.VarSym
+			var recv syntax.Expr
+			switch t := n.Target.(type) {
+			case *syntax.Ident:
+				if t.Member == nil {
+					v = t.Sym
+				}
+			case *syntax.Member:
+				if _, ok := t.X.(*syntax.Super); !ok {
+					v, recv = t.Prop, t.X
+				}
+			}
+			if v != nil && v.Kind == types.Prop && !protectedProp(v) && setterVis(v) == syntax.Protected {
+				protected(n.Target.Pos(), recv, v.Owner, &syntax.Modifiers{Visibility: syntax.Protected}, "property setter", v.Name)
+			}
 		case *syntax.Super:
 			if n.Label == "" && depth == 0 || n.Label != "" && !locals[n.Label] {
 				c.errorf(n.P, "accessing super members from public-API inline function is prohibited")
@@ -798,6 +815,20 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 			}
 		}
 	}
+	if d.Inline {
+		// A context parameter of a function type must be noinline (see
+		// CONTEXT_PARAMETER_MUST_BE_NOINLINE); one of another type can't
+		// be either.
+		for _, p := range d.Contexts {
+			if p.Sym != nil && (p.Noinline || p.Crossinline) && notInlinable(p.Sym.Type) {
+				mod := "noinline"
+				if p.Crossinline {
+					mod = "crossinline"
+				}
+				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
+			}
+		}
+	}
 	for _, p := range d.Params {
 		if p.Sym == nil || p.Vararg {
 			continue
@@ -808,9 +839,7 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 			if p.Crossinline {
 				mod = "crossinline"
 			}
-			notFunc := t.K == types.Unit || t.K >= types.Bool && t.K <= types.Any ||
-				t.K == types.Class && t.C != nil && !t.C.Func && !strings.Contains(t.C.Name, "KFunction") && !strings.Contains(t.C.Name, "KSuspendFunction")
-			if !d.Inline || notFunc {
+			if !d.Inline || notInlinable(t) {
 				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
 			}
 		}
@@ -833,12 +862,19 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 	}
 }
 
+// notInlinable reports whether a parameter of type t can't be noinline
+// or crossinline: it's of no function type.
+func notInlinable(t types.Type) bool {
+	return t.K == types.Unit || t.K >= types.Bool && t.K <= types.Any ||
+		t.K == types.Class && t.C != nil && !t.C.Func && !strings.Contains(t.C.Name, "KFunction") && !strings.Contains(t.C.Name, "KSuspendFunction")
+}
+
 // invalidInlineDefault reports whether x, the default value of an inline
 // functional parameter, isn't a lambda, an anonymous function or a
 // callable reference, which the inliner can't inline.
 func invalidInlineDefault(x syntax.Expr) bool {
 	switch x.(type) {
-	case *syntax.Call, *syntax.Ident, *syntax.Member:
+	case *syntax.Call, *syntax.Ident, *syntax.Member, *syntax.ObjectExpr:
 		return true
 	}
 	return false

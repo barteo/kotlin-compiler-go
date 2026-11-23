@@ -905,7 +905,12 @@ func (c *Checker) resolveImports() {
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
 			if starred[imp.Path] {
-				continue // imported twice: its members aren't overloads of themselves
+				// Imported twice: its members aren't overloads of
+				// themselves. An object's is an error each time.
+				if owner := c.importOwner(imp.Path); c.u.Pkgs[imp.Path] == nil && owner != nil && owner.Object && !owner.External && !ext.hasPackage(name) && !ext.isKotlinPackage(imp.Path) {
+					c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+				}
+				continue
 			}
 			starred[imp.Path] = true
 			user := c.u.Pkgs[imp.Path]
@@ -2444,7 +2449,7 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 				return true
 			}
 			for _, g := range s.Methods[f.Name] {
-				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) {
+				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) && !c.substOverrides(f, g) {
 					continue
 				}
 				for j, p := range f.Params {
@@ -2476,6 +2481,28 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 		return ms
 	}
 	return out
+}
+
+// substOverrides reports whether Java method f overrides g, a method of
+// a generic supertype, through the type arguments f's class gives it: B's
+// bar(String x) of A's bar(T x), for a B that extends A<String>, whose
+// descriptors differ.
+func (c *Checker) substOverrides(f, g *types.FunSym) bool {
+	if len(g.TypeParams) != 0 || len(f.TypeParams) != 0 || g.Owner == nil || len(g.Owner.TypeParams) == 0 {
+		return false
+	}
+	gs := c.memberSubst(f.Owner.This(), g.Owner)
+	if gs == nil {
+		return false
+	}
+	for j, p := range f.Params {
+		dp, ok := types.ParamDesc(p.Type)
+		dq, qok := types.ParamDesc(gs.ApplyIn(g.Params[j].Type))
+		if !ok || !qok || dp != dq {
+			return false
+		}
+	}
+	return true
 }
 
 // functionNOverrides adds to ms, for each Java method whose parameter is
@@ -3026,6 +3053,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	}
 	if cls.Entries != nil && !cls.External {
 		c.errorf(p, "enum types cannot be instantiated")
+		c.args(x, nil)
+		return types.InvalidType
+	}
+	if cls.Annotation && x.FromRef {
+		c.errorf(p, "annotation class cannot be instantiated")
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -3592,8 +3624,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		return true
 	})
 	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported &&
-			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported && len(f.TypeParams) == 0 && c.pairedSetter(cls, f, getters) {
 			x.Setter = f
 		}
 	}
@@ -3610,9 +3641,39 @@ const javaDeclTargets = types.TargetClass | types.TargetAnnotationClass | types.
 	types.TargetValueParameter | types.TargetConstructor | types.TargetFunction | types.TargetGetter | types.TargetSetter |
 	types.TargetExpression
 
+// pairedSetter reports whether Java method f of cls is the setter of
+// one of getters: of its type, or overriding a supertype's method that
+// is, as JavaOverride.setFoo(@Nullable String) overrides
+// JavaBase.setFoo(String) for a @NotNull getFoo().
+func (c *Checker) pairedSetter(cls *types.ClassSym, f *types.FunSym, getters []*types.FunSym) bool {
+	paired := func(f *types.FunSym) bool {
+		return slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) })
+	}
+	if paired(f) {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s != cls {
+			for _, m := range c.javaMethods(s, f.Name) {
+				if len(m.Params) == 1 && len(m.TypeParams) == 0 && m.Desc != "" && m.Desc == f.Desc && paired(m) {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 // sameJavaType reports whether setter's parameter is of getter's type,
 // in Java's terms when both are Java methods: their descriptors.
 func sameJavaType(setter, getter *types.FunSym) bool {
+	if p, r := setter.Params[0].Type, getter.Ret; !p.P && !r.P && p.N != r.N && !p.IsPrimitive() {
+		// @Nullable String setFoo's for a @NotNull getFoo(), which
+		// K2 doesn't pair (KT-56506).
+		return false
+	}
 	if setter.Desc != "" && getter.Desc != "" && setter.Decl == nil && getter.Decl == nil {
 		_, ret, _ := strings.Cut(getter.Desc, ")")
 		return strings.HasPrefix(setter.Desc, "("+ret+")")

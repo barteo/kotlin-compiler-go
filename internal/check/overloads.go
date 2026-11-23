@@ -75,6 +75,7 @@ func conflicts(checkers []*Checker) {
 				decls = c.namedDecls(decls, d)
 			}
 		}
+		ovs = javaCtorOverloads(ovs, name, reported)
 		overloadConflicts(ovs, reported)
 		redeclarations(decls, reported)
 		for _, c := range pkgs[name] {
@@ -106,6 +107,9 @@ func conflicts(checkers []*Checker) {
 					// Enum's properties.
 					c.errorf(e.P, "redeclaration: %s", e.Name)
 					c.errorf(d.P, "redeclaration: %s", e.Name)
+				}
+				if e.Name == "entries" {
+					c.errorf(e.P, "conflicting declarations: the enum entry 'entries' and the property 'Enum.entries' (KT-48872)")
 				}
 			}
 			overloadConflicts(ovs, reported)
@@ -175,6 +179,39 @@ func (c *Checker) declOverloads(out []overload, d syntax.Decl, owner *syntax.Cla
 		}
 	}
 	return out
+}
+
+// javaCtorOverloads appends the constructors of the Java classes of
+// package pkg that its top-level functions ovs are named after: fun J()
+// conflicts with a Java class J's J(), which only the function is
+// reported for.
+func javaCtorOverloads(ovs []overload, pkg string, reported map[any]bool) []overload {
+	done := map[string]bool{}
+	for _, o := range ovs[:len(ovs):len(ovs)] {
+		if o.ctor || o.recv != nil || o.prop || done[o.name] {
+			continue
+		}
+		done[o.name] = true
+		name := o.name
+		if pkg != "" {
+			name = strings.ReplaceAll(pkg, ".", "/") + "/" + o.name
+		}
+		cls := o.c.u.ext.class(name)
+		if cls == nil || !isJavaClass(cls) || cls.Interface || cls.Abstract || cls.Annotation {
+			continue
+		}
+		cls.Ensure()
+		for _, f := range cls.Ctors {
+			if f.Private {
+				continue
+			}
+			j := funOverload(o.c, f, o.pos, f)
+			j.name, j.tparams, j.ctor, j.hidden = o.name, cls.TypeParams, true, f.Hidden
+			reported[f] = true // the Java class isn't the program's to report
+			ovs = append(ovs, j)
+		}
+	}
+	return ovs
 }
 
 // ctorScoped reports whether class d of the program has constructors

@@ -2622,6 +2622,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "isInitialized" && !x.Safe {
 		return c.isInitialized(x, l.Ref)
+	} else if x.Name == "isInitialized" {
+		defer c.lateinitIntrinsic(x)
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "name" && !x.Safe {
 		// A reference's name is a constant, as with kotlinc: ktor's
@@ -2716,6 +2718,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
 		} else {
 			c.shadowedField(cls, p, x.P)
+			c.companionProtectedProp(p, x.P) // A.x of a companion's x
 		}
 		ensureVar(x.Prop)
 		c.recursiveVarRef(x.Prop, x.P)
@@ -4233,12 +4236,23 @@ func deprecatedConversion(from types.Type, b types.Builtin) string {
 	return ""
 }
 
+// bareEmpty reports whether b is an empty branch without braces.
+func bareEmpty(b *syntax.Block) bool {
+	return len(b.Stmts) == 0 && b.End == (syntax.Pos{})
+}
+
 func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
 	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	c.value(x.Cond, types.BoolType)
 	c.wantBool(x.Cond)
 	whenTrue, whenFalse := c.narrowing(x.Cond)
+	if valueUsed && !c.tailIfs[x] && x.Else != nil && (bareEmpty(x.Then) || bareEmpty(x.Else)) {
+		// if (c) else x, or if (c) x else;, as kotlinc's
+		// INVALID_IF_AS_EXPRESSION: an empty branch without braces is no
+		// value, where {} is Unit.
+		c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
+	}
 
 	// The vars the branches assign have the join of their types at the
 	// ends of the branches after the if. So have the values the condition

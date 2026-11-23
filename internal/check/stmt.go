@@ -1784,8 +1784,31 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		c.errorf(x.P, "backing field of 'var %s: %s' is not accessible at this point", p.Name, p.Type)
 		return types.InvalidType
 	}
+	if fd, ok := c.fnDecl(); ok && c.inInlineFun && len(c.lambdas) == c.base && (fd.Inline || inlineAccessorDecl(fd)) {
+		// Its copies elsewhere couldn't read the field; a lambda's
+		// can, as kotlinc has it.
+		c.errorf(x.P, "this declaration cannot be used inside an inline function")
+	}
 	x.X, x.Prop, x.Builtin = recv, p, types.IsInitialized
 	return types.BoolType
+}
+
+// fnDecl returns the declaration of the function being checked.
+func (c *Checker) fnDecl() (*syntax.FunDecl, bool) {
+	if c.fn == nil {
+		return nil, false
+	}
+	fd, ok := c.fn.Decl.(*syntax.FunDecl)
+	return fd, ok
+}
+
+// lateinitIntrinsic reports a use of kotlin's isInitialized on a
+// property reference that isn't a literal, this::x, which the compiler
+// replaces with a read of the field.
+func (c *Checker) lateinitIntrinsic(x *syntax.Member) {
+	if g := x.Getter; g != nil && g.Ext && g.Name == "isInitialized" && g.Facade == "kotlin/LateinitKt" {
+		c.errorf(x.P, "this declaration can only be called on a property literal (e.g. 'Foo::bar')")
+	}
 }
 
 // exactValue reports whether value x takes the type it's expected to,

@@ -402,6 +402,9 @@ type Checker struct {
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// boundDefNotNull holds the T & Any of the bounds being resolved,
+	// whose T's bounds may not be known yet: T : Comparable<T & Any>.
+	boundDefNotNull *[]boundDNN
 	// ctorAliasRef is the typealias use that a constructor call through
 	// it, ctorAliasCall, is expanding, whose bounds only warn where they
 	// aren't of the alias's arguments; aliasDeprecated are the calls
@@ -1376,6 +1379,39 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 // context parameter is reported: types are resolved more than once.
 type reservedRef struct{ *syntax.TypeRef }
 
+// dupNamesRef keys c.done for a function type whose parameters'
+// names funcTypeNames has checked.
+type dupNamesRef struct{ ref *syntax.TypeRef }
+
+// funcTypeNames reports a function type two of whose parameters have
+// one name: written, (a: A, a: B) -> R, or the first @ParameterName of
+// an unnamed one's type.
+func (c *Checker) funcTypeNames(ref *syntax.TypeRef) {
+	seen := map[string]bool{}
+	for i, p := range ref.Params {
+		name := ""
+		if i < len(ref.Names) {
+			name = ref.Names[i]
+		}
+		if name == "" {
+			for _, a := range p.Annotations {
+				if a.Target == "" && a.Is("ParameterName") {
+					name, _ = a.Str("name")
+					break
+				}
+			}
+		}
+		if name == "" { // _ too, as kotlinc
+			continue
+		}
+		if seen[name] {
+			c.errorf(ref.P, "duplicate parameter name in a function type")
+			return
+		}
+		seen[name] = true
+	}
+}
+
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
 		c.errorf(ref.P, "function types with more than %d parameters are prohibited", types.MaxVarArity)
@@ -1386,6 +1422,10 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		if ps[i] = c.resolveType(p); ps[i].K == types.Invalid {
 			return types.InvalidType
 		}
+	}
+	if !c.done[dupNamesRef{ref}] {
+		c.done[dupNamesRef{ref}] = true
+		c.funcTypeNames(ref)
 	}
 	r := c.resolveType(ref.Ret)
 	if r.K == types.Invalid {
@@ -1626,6 +1666,9 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	// are all set: T : Enum<T> needs T's bound to check Enum<T>.
 	saved := c.noBoundChecks
 	c.noBoundChecks = true
+	var dnn []boundDNN
+	savedDNN := c.boundDefNotNull
+	c.boundDefNotNull = &dnn
 	refs := map[*syntax.TypeParam][]*syntax.TypeRef{} // the TypeRef of each bound in Bounds
 	for _, d := range decls {
 		d.Sym.Bounds = nil
@@ -1657,6 +1700,12 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	for _, d := range cyclic {
 		c.errorf(d.P, "type parameter %s has cyclic upper bounds", d.Name)
 		d.Sym.Bounds = nil
+	}
+	c.boundDefNotNull = savedDNN
+	for _, x := range dnn {
+		if !x.p.NullableBound() {
+			c.errorf(x.ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
+		}
 	}
 	c.noBoundChecks = saved
 	if saved {
@@ -2415,6 +2464,12 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
+	if g := d.Getter; g != nil && g.Ret != nil && d.Type == g.Ret && d.Init != nil {
+		// val x = init get(): T: the parsers give x the getter's type,
+		// for val x get(): T { ... }, but one with an initializer is
+		// of its initializer's type, which the getter's must be.
+		d.Type = nil
+	}
 	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
@@ -2442,7 +2497,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		default:
 			sym.JvmStatic = true
 		}
-	} else if owner == nil || !owner.Object || owner.Anonymous {
+	} else if owner == nil || !owner.Object || owner.Anonymous || d.Override && owner.CompanionOf == nil {
 		// @get:JvmStatic, or @JvmStatic on an accessor.
 		as := []*syntax.Annotation{d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")}
 		for _, g := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -2450,9 +2505,13 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 				as = append(as, g.Find("", "JvmStatic"))
 			}
 		}
+		msg := "only members in named objects and companion objects can be annotated with '@JvmStatic'"
+		if owner != nil && owner.Object && !owner.Anonymous {
+			msg = "override member cannot be '@JvmStatic' in an object"
+		}
 		for _, a := range as {
 			if a != nil {
-				c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+				c.errorf(a.P, "%s", msg)
 				break
 			}
 		}
@@ -2488,7 +2547,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.SetterVis == syntax.Internal && jvmName(&d.Modifiers, "set") == "" {
 		sym.SetterModule = c.internal(&syntax.Modifiers{Visibility: syntax.Internal}, owner, "")
 	}
-	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed) && len(d.Contexts) == 0
+	// A property with context parameters has no field, but one whose
+	// accessors would need one is reported as such (propContexts), and
+	// is checked as if it had one, as kotlinc does.
+	fieldUsed := sym.FieldUsed && len(d.Contexts) == 0 // field is unresolved in the accessors of one with contexts
+	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || fieldUsed)
 	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 	if ext && !sym.Abstract && (owner == nil || !owner.Interface) {
 		// kotlinc gives the property a field, which its external
@@ -2525,7 +2588,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "this property cannot be abstract and delegated")
 	case owner != nil && owner.Interface && hasField:
 		c.errorf(d.P, "property in an interface cannot have a backing field")
-	case d.Init != nil && !hasField && !sym.FieldUsed:
+	case d.Init != nil && !hasField && !fieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
 		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
@@ -2535,7 +2598,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			p = d.SetterVisP // at the modifier, as kotlinc
 		}
 		c.errorf(p, "private setters are not allowed for open properties")
-	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect:
+	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect && (owner != nil || d.BackingField == nil || len(d.Contexts) > 0):
+		// A top-level explicit backing field without an initializer is
+		// reported as such (backingFieldDecl); a class's, if its
+		// constructors don't assign it (definite assignment).
 		switch {
 		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
@@ -2610,6 +2676,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 		if d.Setter != nil {
 			d.Setter.Sym.Params[0].Type = sym.Type
@@ -2836,6 +2903,12 @@ func declaresCopy(cls *types.ClassSym, n int) bool {
 	return false
 }
 
+// boundDNN is a T & Any in a bound, and its T.
+type boundDNN struct {
+	ref *syntax.TypeRef
+	p   *types.TypeParamSym
+}
+
 // defNotNull resolves an intersection type, which Kotlin allows only as
 // a definitely non-nullable type, T & Any, with kotlinc's messages.
 func (c *Checker) defNotNull(ref *syntax.TypeRef) types.Type {
@@ -2852,6 +2925,8 @@ func (c *Checker) defNotNull(ref *syntax.TypeRef) types.Type {
 	case !t.IsParam() || t.N || !t.Param().NullableBound():
 		c.errorf(ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
 		return types.InvalidType
+	case c.boundDefNotNull != nil:
+		*c.boundDefNotNull = append(*c.boundDefNotNull, boundDNN{ref, t.Param()}) // checked again once the bounds are
 	}
 	return t.NonNull() // T & Any
 }
@@ -2950,12 +3025,10 @@ func (c *Checker) funVariance(d *syntax.FunDecl, report bool) {
 	for _, p := range d.Params {
 		ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
 	}
-	if !report {
-		// The context parameters, which kotlinc checks only to find the
-		// members private to this.
-		for _, p := range d.Contexts {
-			ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
-		}
+	// The context parameters, in in position as kotlinc 2.4 has them
+	// (KT-77417).
+	for _, p := range d.Contexts {
+		ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
 	}
 	if d.Ret != nil || !report {
 		ok = c.checkVariance(d.Sym.Ret, d.Ret, types.Out, report) && ok
@@ -3334,6 +3407,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 	}
 	if d.Setter != nil {
@@ -3442,8 +3516,29 @@ func (c *Checker) checkBodies() {
 	}
 	c.propRefs()
 	c.inlineFileChecks()
+	c.inlinedLambdaAnnotations()
 	c.typeAnnotations()
 	c.metroIntrinsics()
+}
+
+// inlinedLambdaAnnotations reports the annotations of lambdas passed to
+// inline functions' inline parameters that are kept in class files,
+// where an inlined lambda has none of its own to keep them in.
+func (c *Checker) inlinedLambdaAnnotations() {
+	for n, as := range c.file.Annotated {
+		l, ok := n.(*syntax.Lambda)
+		if !ok || l.Ref != nil || l.Anon || !l.InlineArg {
+			continue
+		}
+		for i := range as {
+			if typeUseAnnotations(as[i:i+1]) == nil {
+				continue // Compose's @Composable, which its plugin reads
+			}
+			if cls := c.lookupClass(as[i].Name); cls != nil && cls.Annotation && cls.Retention != types.RetentionSource {
+				c.errorf(as[i].P, "the lambda expression here is an inlined argument, so this annotation cannot be stored anywhere")
+			}
+		}
+	}
 }
 
 // checkSignatures is checkBodies for Options.Signatures: the annotations
@@ -3999,6 +4094,24 @@ func noField(p *types.VarSym, d *syntax.FunDecl) bool {
 	return ok && (len(pd.Contexts) > 0 || pd.Getter == d && pd.Type == nil && pd.Init == nil)
 }
 
+// getterRetType checks the return type written on property d's getter,
+// get(): T, which must be the property's type, once that is known. One
+// that isn't is kotlinc's WRONG_GETTER_RETURN_TYPE, and the getter's body
+// is then checked with the type written.
+func (c *Checker) getterRetType(d *syntax.PropDecl) {
+	g := d.Getter
+	if g.Ret == nil || g.Ret == d.Type || d.Field != nil || g.Sym == nil {
+		return
+	}
+	t := c.resolveType(g.Ret)
+	pt := d.Sym.Type
+	if t.K == types.Invalid || pt.K == types.Invalid || t == pt || t.HasVars() || pt.HasVars() || c.subtype(t, pt) && c.subtype(pt, t) {
+		return // the same type, or a platform type's other nullability
+	}
+	c.errorf(g.Ret.P, "getter return type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+	g.Sym.Ret = t
+}
+
 // setterParamType checks the type written on a setter's parameter, set(v:
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
@@ -4008,6 +4121,14 @@ func (c *Checker) setterParamType(d *syntax.PropDecl) {
 	}
 	if t := c.resolveType(p.Type); t.K != types.Invalid && t != d.Sym.Type {
 		c.errorf(p.P, "setter parameter type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+		if p.Sym != nil {
+			// In the setter's body, the parameter is of the type
+			// written, as in kotlinc: field = value is a mismatch. Its
+			// callers still pass the property's type.
+			v := *p.Sym
+			v.Type = t
+			p.Sym = &v
+		}
 	}
 }
 
@@ -4044,7 +4165,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}
 	declareNamedContexts(s, d)
-	for _, p := range sym.Params {
+	for i, p := range sym.Params {
+		if d.Property != "" && i < len(d.Params) && d.Params[i].Sym != nil {
+			p = d.Params[i].Sym // a setter's, of the type written (setterParamType)
+		}
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),

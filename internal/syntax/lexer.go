@@ -223,6 +223,7 @@ func (lx *lexer) run() {
 		}
 		if lx.off >= len(lx.src) {
 			lx.emit(EOF, lx.pos(), "")
+			lx.toks = expandAnnotationLists(lx.toks)
 			return
 		}
 		n, start := len(lx.toks), lx.off
@@ -769,4 +770,80 @@ func (lx *lexer) skipTemplate() bool {
 		lx.advance(1)
 	}
 	return false
+}
+
+// expandAnnotationLists rewrites the annotation lists of toks, @[A B(x)]
+// or @get:[A B], as the annotations they list, @A @B(x) or @get:A
+// @get:B: the parser reads one annotation at a time.
+func expandAnnotationLists(toks []Token) []Token {
+	var out []Token
+	for i := 0; i < len(toks); i++ {
+		t := toks[i]
+		j := i + 1 // the [ of @[ or @target:[
+		if t.Kind == AT && j+2 < len(toks) && toks[j].Kind == IDENT && toks[j+1].Kind == COLON && toks[j+2].Kind == LBRACK {
+			j += 2
+		}
+		if t.Kind != AT || j >= len(toks) || toks[j].Kind != LBRACK {
+			if out != nil {
+				out = append(out, t)
+			}
+			continue
+		}
+		end, depth := j, 0
+		for ; end < len(toks) && toks[end].Kind != EOF; end++ {
+			switch toks[end].Kind {
+			case LBRACK, LPAREN, LBRACE:
+				depth++
+			case RBRACK, RPAREN, RBRACE:
+				depth--
+			}
+			if depth == 0 {
+				break
+			}
+		}
+		if end >= len(toks) || toks[end].Kind != RBRACK {
+			if out != nil {
+				out = append(out, t)
+			}
+			continue // the parser reports it
+		}
+		if out == nil {
+			out = append(make([]Token, 0, len(toks)+8), toks[:i]...)
+		}
+		target := toks[i+1 : j] // target and colon, or none
+		depth = 0
+		first := true
+		for k := j + 1; k < end; k++ {
+			e := toks[k]
+			if e.Kind == NL {
+				continue
+			}
+			if depth == 0 && e.Kind == IDENT && (k == j+1 || toks[k-1].Kind != DOT) {
+				// The first @ is where the list's is, the others at
+				// their names; the parser puts each annotation at its
+				// name (see parser.annotation).
+				p := e.Pos
+				if first {
+					p, first = t.Pos, false
+				}
+				out = append(out, Token{Kind: AT, Pos: p, Text: "@"})
+				for _, tt := range target {
+					tt.Pos = p
+					out = append(out, tt)
+				}
+			}
+			switch e.Kind {
+			case LPAREN, LBRACK, LBRACE, LT:
+				depth++
+			case RPAREN, RBRACK, RBRACE, GT:
+				depth--
+			}
+			out = append(out, e)
+		}
+		i = end
+	}
+	if out == nil {
+		return toks
+	}
+	return out
 }

@@ -33,7 +33,7 @@ class A {
     val m: Any
         private field: Int = 1 // ERROR modifier 'private' is not applicable
 
-    val f: Any // ERROR must be initialized
+    val f: Any // ERROR must be a subtype of the property's type
         field // ERROR must have a type or an initializer
 
     fun inc(): Int = n + 1
@@ -46,7 +46,7 @@ interface I {
         field: Int = 1 // ERROR not allowed in an interface
 }
 
-val top: Any // ERROR must be initialized
+val top: Any
     field: Int // ERROR must be initialized
 
 fun outside(a: A): Int = a.n + 1 // ERROR unresolved reference
@@ -60,3 +60,22 @@ val late: Any
     field = object : Holder(early) {
         fun lazily(): Any = late
     }
+
+// As kotlinc 2.4: a field of a type the property's isn't a supertype of,
+// in a property reported for its accessors too, and a field in a class
+// that isn't initialized.
+class Reported {
+    val withGetter: Int // ERROR must be a subtype of the property's
+        field: Number = 42
+        get() = 30 // ERROR cannot have accessors
+
+    val inferredWithGetter: Int // ERROR must be a subtype of the property's
+        field = 3.14
+        get() = 10 // ERROR cannot have accessors
+
+    val uninitialized: Number
+        field: Int // ERROR must be initialized
+
+    val initializedProperty = listOf(1, 2) // ERROR cannot have an initializer
+        field: MutableList<Int>
+}
