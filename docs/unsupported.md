@@ -105,9 +105,6 @@ own tests.
     the return value checker: `RETURN_VALUE_NOT_USED`,
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
-  - With `-Wextra`: `CAN_BE_VAL_DELAYED_INITIALIZATION` and
-    `CAN_BE_VAL_LATEINIT`; and `CAN_BE_VAL` of a `var` declared without
-    an initializer.
 
   Of a program with a syntax error, which `kc` checks without the
   statements and declarations that have the errors, only the warnings
@@ -244,8 +241,10 @@ own tests.
     variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
     `var` whose modifier may widen a setter it inherits, an override
     property's accessors, nor on an override of a member that inherits
-    its visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
-    reference.
+    its visibility; `USELESS_CALL_ON_NOT_NULL` not of a callable
+    reference; and `CAN_BE_VAL_DELAYED_INITIALIZATION` and
+    `CAN_BE_VAL_LATEINIT` not of a `var` assigned in a loop that runs
+    once, `do { … } while (false)`.
 
 - Local `external` functions inside an interface's members when the
   interface's methods are JVM default methods (the default

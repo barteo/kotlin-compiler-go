@@ -13,7 +13,7 @@ fun a1(c: Boolean, p: Pair<Int, Int>) {
     val (e, f) = p // UNUSED_VARIABLE
     use(e)
     val (_, g) = p // UNUSED_VARIABLE
-    lateinit var h: String // UNUSED_VARIABLE
+    lateinit var h: String // CAN_BE_VAL_LATEINIT UNUSED_VARIABLE
     val i by Dg // UNUSED_VARIABLE
     var j by Dg
     j = 2
@@ -97,9 +97,9 @@ fun a4(c: Boolean) {
     b = 2
     use(b)
     when { c -> b = 3 } // ASSIGNED_VALUE_IS_NEVER_READ
-    var d: Int // VARIABLE_NEVER_READ
+    var d: Int // CAN_BE_VAL_DELAYED_INITIALIZATION VARIABLE_NEVER_READ
     d = 1 // ASSIGNED_VALUE_IS_NEVER_READ
-    var e: Int //
+    var e: Int // CAN_BE_VAL_DELAYED_INITIALIZATION
     e = 1
     use(e)
     var f = 1
@@ -420,4 +420,44 @@ fun loopVars(m: Map<Int, Int>) {
     for (i: Int? in 1 downTo 0) {}
     for (j: Any in listOf(1)) {}
     for ((a, b) in m) {} // UNUSED_VARIABLE
+}
+inline fun <T> cbvRun(f: () -> T): T = f()
+// Variables assigned later: CAN_BE_VAL_DELAYED_INITIALIZATION and
+// CAN_BE_VAL_LATEINIT where every path assigns them at most once.
+fun cbv1(b: Boolean) { var a: Int; if (b) a = 1 else a = 2; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv2(b: Boolean) { var a: Int; a = 1; use(a); a = 2; use(a) }
+fun cbv3(b: Boolean) { var a: Int; if (b) { a = 1; use(a); return }; a = 2; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv4(b: Boolean) { var a: Int; while (b) { a = 1; use(a) } }
+fun cbv5(b: Boolean) { var a: Int; run { a = 1 }; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv6(b: Boolean) { var a: Int; cbvRun { a = 1 } } // ASSIGNED_VALUE_IS_NEVER_READ VARIABLE_NEVER_READ
+fun cbv7(b: Boolean) { var a: Int; try { a = 1 } catch (e: Exception) { a = 2 }; use(a) }
+fun cbv8(b: Boolean) { var a: Int; try { a = 1; use(a) } finally { use(2) } } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv9(b: Boolean) { var a: Int; when { b -> a = 1; else -> a = 2 }; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv10(b: Boolean) { lateinit var s: String; if (b) s = ""; if (b) use(s) } // CAN_BE_VAL_LATEINIT
+fun cbv11(b: Boolean) { lateinit var s: String; s = ""; use(s); s = "x"; use(s) }
+fun cbv12(b: Boolean) { var a: Int; a = if (b) 1 else 2; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv13(b: Boolean) { var a: Int; for (i in 0..1) { if (b) { a = 1; use(a); break } } } // CAN_BE_VAL_DELAYED_INITIALIZATION
+// kotlinc's CAN_BE_VAL_DELAYED_INITIALIZATION of a do-while (false)'s, a
+// loop it knows runs once, isn't reported.
+fun cbv14(b: Boolean) { var a: Int; do { a = 1 } while (false); use(a) }
+fun cbv15(b: Boolean) { var a: Int; val f = { a = 1 }; f() } // ASSIGNED_VALUE_IS_NEVER_READ VARIABLE_NEVER_READ
+fun cbv16(b: Boolean) { var a: Int; fun g() { a = 1 }; g() } // ASSIGNED_VALUE_IS_NEVER_READ VARIABLE_NEVER_READ
+fun cbv17(b: Boolean) { var a: Int; if (b) a = 1; use(1) } // ASSIGNED_VALUE_IS_NEVER_READ CAN_BE_VAL_DELAYED_INITIALIZATION VARIABLE_NEVER_READ
+fun cbv18(b: Boolean) { var a: Int; use(1) } // CAN_BE_VAL_DELAYED_INITIALIZATION UNUSED_VARIABLE
+fun cbv19(b: Boolean) { var a: Int; if (b) { a = 1 } else { throw Exception() }; use(a) } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv20(b: Boolean) { var a: Int; a = 1; a++; use(a) }
+fun cbv21(b: Boolean) { var a: Int; try { a = 1; use(a) } catch (e: Exception) { a = 2; use(a) } }
+fun cbv22(b: Boolean): Int { var a: Int; if (b) return 0; a = 1; return a } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv23(b: Boolean) { var a: Int; while (true) { a = 1; use(a); break } } // CAN_BE_VAL_DELAYED_INITIALIZATION
+fun cbv24(b: Boolean) { var (x, y) = 1 to 2; use(x); use(y) } // CAN_BE_VAL
+
+fun cbv25(d: Double): Long {
+    var x: Long // VARIABLE_NEVER_READ
+    { if (d > 0) x = 0 else x = 1 } // UNUSED_LAMBDA_EXPRESSION ASSIGNED_VALUE_IS_NEVER_READ
+    return 0
+}
+
+fun cbv26(): Any {
+    var x: Int // VARIABLE_NEVER_READ
+    return object { fun f() { x = 1 } } // ASSIGNED_VALUE_IS_NEVER_READ
 }

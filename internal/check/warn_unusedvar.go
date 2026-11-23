@@ -241,6 +241,16 @@ func (c *Checker) unusedVarWarnings() {
 			// calls plusAssign doesn't assign it.
 			c.warnf(vs.P, "CAN_BE_VAL", "this 'var' property is never written to, it can be declared as 'val'")
 		}
+		if vs != nil && vs.Mutable && vs.Init == nil && !delegated && !v.annot && len(v.updates) == 0 && !v.incDec {
+			// One assigned later, at most once on every path.
+			if loc, ok := u.stmtLoc[vs]; ok && atMostOnce(sym, loc.block, loc.index) {
+				if vs.Lateinit {
+					c.warnf(vs.P, "CAN_BE_VAL_LATEINIT", "this 'lateinit var' property is not written to more than once, it can be declared as nullable 'val'")
+				} else {
+					c.warnf(vs.P, "CAN_BE_VAL_DELAYED_INITIALIZATION", "this 'var' property is not written to more than once, it can be declared as 'val'")
+				}
+			}
+		}
 		if !v.read {
 			switch {
 			case len(v.writes) == 0:
@@ -777,4 +787,276 @@ func walkNode(n any, f func(any) bool) {
 		return true
 	}
 	syntax.Inspect(n, visit)
+}
+
+// writeCount is how many times paths through code may assign a variable,
+// as writes counts them: on those that complete it, on those that leave
+// it by return, throw or break, and on those that continue a loop. Each
+// count is -1 if no path does, and capped at 2, for more than once.
+type writeCount struct{ cont, out, back int }
+
+// plusCount returns a+b of two counts, either of which may be -1.
+func plusCount(a, b int) int {
+	if a < 0 || b < 0 {
+		return -1
+	}
+	return min(a+b, 2)
+}
+
+// atMostOnce reports whether the variable sym, declared without an
+// initializer as statement i of block b, is assigned at most once on
+// every path, as kotlinc's CanBeValChecker judges it: then it can be a
+// val. Loops whose bodies may assign it and run again, and lambdas,
+// local functions and classes that assign it, unless the lambda is run
+// once in place, make it more.
+func atMostOnce(sym *types.VarSym, b *syntax.Block, i int) bool {
+	w, ok := writes(sym, b.Stmts[i+1:])
+	return ok && w.cont <= 1 && w.out <= 1 && w.back <= 1
+}
+
+// writes counts the assignments of sym in statements stmts, run in turn
+// (see writeCount). It reports false where it can't tell.
+func writes(sym *types.VarSym, stmts []syntax.Stmt) (writeCount, bool) {
+	w := writeCount{cont: 0, out: -1, back: -1}
+	for _, s := range stmts {
+		sw, ok := stmtWrites(sym, s)
+		if !ok {
+			return w, false
+		}
+		w.out = max(w.out, plusCount(w.cont, sw.out))
+		w.back = max(w.back, plusCount(w.cont, sw.back))
+		w.cont = plusCount(w.cont, sw.cont)
+		if w.cont < 0 {
+			break // what follows can't run
+		}
+	}
+	return w, true
+}
+
+// blockWrites is writes of block b, which may be nil.
+func blockWrites(sym *types.VarSym, b *syntax.Block) (writeCount, bool) {
+	if b == nil {
+		return writeCount{cont: 0, out: -1, back: -1}, true
+	}
+	return writes(sym, b.Stmts)
+}
+
+// branchWrites joins the counts of alternatives.
+func branchWrites(ws ...writeCount) writeCount {
+	j := writeCount{cont: -1, out: -1, back: -1}
+	for _, w := range ws {
+		j.cont, j.out, j.back = max(j.cont, w.cont), max(j.out, w.out), max(j.back, w.back)
+	}
+	return j
+}
+
+// seqWrites is a followed by b.
+func seqWrites(a, b writeCount) writeCount {
+	return writeCount{
+		cont: plusCount(a.cont, b.cont),
+		out:  max(a.out, plusCount(a.cont, b.out)),
+		back: max(a.back, plusCount(a.cont, b.back)),
+	}
+}
+
+// stmtWrites counts the assignments of sym in statement s.
+func stmtWrites(sym *types.VarSym, s syntax.Stmt) (writeCount, bool) {
+	switch s := s.(type) {
+	case *syntax.ExprStmt:
+		return exprWrites(sym, s.X)
+	case *syntax.VarStmt:
+		if s.Delegate != nil {
+			return flatWrites(sym, s)
+		}
+		return exprWrites(sym, s.Init)
+	case *syntax.Assign:
+		w, ok := exprWrites(sym, s.Value)
+		if !ok {
+			return w, false
+		}
+		if id, ok := s.Target.(*syntax.Ident); ok && id.Sym == sym {
+			if s.Op != syntax.ASSIGN {
+				return w, false // x += v reads it, assigned before
+			}
+			return seqWrites(w, writeCount{cont: 1, out: -1, back: -1}), true
+		}
+		t, ok := flatWrites(sym, s.Target)
+		return seqWrites(t, w), ok
+	case *syntax.While:
+		cond, ok1 := exprWrites(sym, s.Cond)
+		body, ok2 := blockWrites(sym, s.Body)
+		if !ok1 || !ok2 || cond.cont != 0 || cond.out > 0 {
+			return writeCount{}, false
+		}
+		return loopWrites(body)
+	case *syntax.For:
+		r, ok1 := exprWrites(sym, s.Range)
+		body, ok2 := blockWrites(sym, s.Body)
+		if !ok1 || !ok2 {
+			return writeCount{}, false
+		}
+		l, ok := loopWrites(body)
+		return seqWrites(r, l), ok
+	}
+	return flatWrites(sym, s)
+}
+
+// loopWrites counts the assignments of a loop with body counts body: none
+// on a path that runs it again, and then those of its paths out of it,
+// which, return or break, are taken to complete it.
+func loopWrites(body writeCount) (writeCount, bool) {
+	if body.cont > 0 || body.back > 0 {
+		return writeCount{}, false
+	}
+	return writeCount{cont: max(body.out, 0), out: -1, back: -1}, true
+}
+
+// exprWrites counts the assignments of sym in expression x, which may be
+// nil.
+func exprWrites(sym *types.VarSym, x syntax.Expr) (writeCount, bool) {
+	switch x := x.(type) {
+	case nil:
+		return writeCount{cont: 0, out: -1, back: -1}, true
+	case *syntax.If:
+		cond, ok1 := exprWrites(sym, x.Cond)
+		then, ok2 := blockWrites(sym, x.Then)
+		els, ok3 := blockWrites(sym, x.Else)
+		return seqWrites(cond, branchWrites(then, els)), ok1 && ok2 && ok3
+	case *syntax.When:
+		w, ok := exprWrites(sym, x.Subject)
+		if !ok {
+			return w, false
+		}
+		var bs []writeCount
+		if !whenHasElse(x) {
+			bs = append(bs, writeCount{cont: 0, out: -1, back: -1}) // no branch matches
+		}
+		for _, br := range x.Branches {
+			for _, c := range br.Conds {
+				if cw, ok := flatWrites(sym, c.X); !ok || cw.cont != 0 {
+					return w, false
+				}
+			}
+			if gw, ok := flatWrites(sym, br.Guard); !ok || gw.cont != 0 {
+				return w, false
+			}
+			bw, ok := blockWrites(sym, br.Body)
+			if !ok {
+				return w, false
+			}
+			bs = append(bs, bw)
+		}
+		return seqWrites(w, branchWrites(bs...)), true
+	case *syntax.Try:
+		// A catch may be entered after any of the body's statements.
+		body, ok := blockWrites(sym, x.Body)
+		if !ok {
+			return body, false
+		}
+		before := max(body.cont, body.out, body.back, 0)
+		w := body
+		for _, ct := range x.Catches {
+			cw, ok := blockWrites(sym, ct.Body)
+			if !ok {
+				return cw, false
+			}
+			w = branchWrites(w, seqWrites(writeCount{cont: before, out: -1, back: -1}, cw))
+		}
+		if x.Finally != nil {
+			fw, ok := blockWrites(sym, x.Finally)
+			if !ok || fw.cont < 0 {
+				return fw, false
+			}
+			w = writeCount{cont: plusCount(w.cont, fw.cont), out: plusCount(w.out, fw.cont), back: plusCount(w.back, fw.cont)}
+		}
+		return w, true
+	case *syntax.Jump:
+		w, ok := exprWrites(sym, x.X)
+		if !ok || w.cont < 0 {
+			return w, ok
+		}
+		if x.Kind == syntax.CONTINUE {
+			return writeCount{cont: -1, out: w.out, back: max(w.back, w.cont)}, true
+		}
+		return writeCount{cont: -1, out: max(w.out, w.cont), back: w.back}, true
+	case *syntax.Lambda:
+		if x.Once && x.Inline && x.Ref == nil && !x.Anon {
+			// Run once, in place: its returns leave it, or more.
+			w, ok := blockWrites(sym, x.Body)
+			return writeCount{cont: max(w.cont, w.out), out: -1, back: w.back}, ok
+		}
+		if assignsVar(x, sym) {
+			return writeCount{}, false // run any number of times
+		}
+	case *syntax.ObjectExpr:
+		if assignsVar(x, sym) {
+			return writeCount{}, false
+		}
+	}
+	return flatWrites(sym, x)
+}
+
+// flatWrites counts the assignments of sym in n, which has no statements
+// of its own that it may skip or repeat: there must be none, other than
+// in lambdas run once in place (see exprWrites).
+func flatWrites(sym *types.VarSym, n any) (writeCount, bool) {
+	w := writeCount{cont: 0, out: -1, back: -1}
+	ok := true
+	walkNode(n, func(m any) bool {
+		if !ok {
+			return false
+		}
+		if m == n {
+			return true
+		}
+		switch m := m.(type) {
+		case *syntax.Assign:
+			if id, isID := m.Target.(*syntax.Ident); isID && id.Sym == sym {
+				ok = false
+			}
+		case *syntax.Unary:
+			if id, isID := m.X.(*syntax.Ident); isID && id.Sym == sym && (m.Op == syntax.INC || m.Op == syntax.DEC) {
+				ok = false
+			}
+		case *syntax.Lambda, *syntax.If, *syntax.When, *syntax.Try, *syntax.Jump:
+			if !assignsVar(m, sym) {
+				return false
+			}
+			if x, isExpr := m.(syntax.Expr); isExpr {
+				ew, eok := exprWrites(sym, x)
+				if !eok || ew.cont < 0 || ew.out >= 0 || ew.back >= 0 {
+					ok = false // a branch that jumps, in the middle of n
+				} else {
+					w.cont = plusCount(w.cont, ew.cont)
+				}
+				return false
+			}
+		case *syntax.LocalFun, *syntax.LocalClass, *syntax.ObjectExpr:
+			if assignsVar(m, sym) {
+				ok = false
+			}
+			return false
+		}
+		return true
+	})
+	return w, ok
+}
+
+// assignsVar reports whether n assigns sym.
+func assignsVar(n any, sym *types.VarSym) bool {
+	found := false
+	walkNode(n, func(m any) bool {
+		switch m := m.(type) {
+		case *syntax.Assign:
+			if id, ok := m.Target.(*syntax.Ident); ok && id.Sym == sym {
+				found = true
+			}
+		case *syntax.Unary:
+			if id, ok := m.X.(*syntax.Ident); ok && id.Sym == sym && (m.Op == syntax.INC || m.Op == syntax.DEC) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
