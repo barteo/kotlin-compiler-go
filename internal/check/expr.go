@@ -1341,21 +1341,35 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 // an interface A and a class B is allowed, and so is a === b for an open
 // class and an abstract one, and a == b for two nullable enums.
 func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	return c.equalityCompat(op, xt, yt) == eqError
+}
+
+// The results of equalityCompat.
+const (
+	eqOK = iota
+	eqWarning
+	eqError
+)
+
+// equalityCompat is equalityInapplicable with K2's warning:
+// EQUALITY_NOT_APPLICABLE_WARNING where it is inapplicable but K1 let
+// both types have subtypes.
+func (c *Checker) equalityCompat(op syntax.Kind, xt, yt types.Type) int {
 	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
 	if op == syntax.EQ || op == syntax.NE {
 		if (c.enumType(x) || c.enumType(y)) && types.MayBeNull(xt) && types.MayBeNull(yt) {
 			// K1 let a nullable enum be compared with any nullable type,
 			// as both may be null: K2 only warns (see
 			// enumComparisonWarning).
-			return false
+			return eqOK
 		}
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
-			return false
+			return eqOK
 		}
 	} else if !types.IsPrimitiveKind(x.K) && !types.IsPrimitiveKind(y.K) && types.MayBeNull(xt) && types.MayBeNull(yt) {
 		// A primitive has no identity, nullable or not: a === b for an
 		// Int? and a String? is an error.
-		return false
+		return eqOK
 	}
 	final := func(t types.Type) bool {
 		switch t.K {
@@ -1374,12 +1388,12 @@ func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 		return t.K != types.TypeParam
 	}
 	if !final(x) && !final(y) && !(class(x) && class(y)) {
-		return false
+		return eqOK
 	}
 	if canHaveSubtypesK1(x) && canHaveSubtypesK1(y) && c.missedByK1Enums(xt, yt) {
-		return false // only a warning
+		return eqWarning
 	}
-	return true
+	return eqError
 }
 
 // paramEqualityInapplicable reports whether K2 rejects comparing a value
@@ -1452,7 +1466,8 @@ func (c *Checker) missedByK1Enums(xt, yt types.Type) bool {
 }
 
 // canHaveSubtypesK1 reports whether a non-null type t can have subtypes,
-// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final can,
+// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final or
+// is an enum can,
 // and so can a final generic one with a star, an in projection or an out
 // argument that can.
 func canHaveSubtypesK1(t types.Type) bool {
@@ -1464,7 +1479,9 @@ func canHaveSubtypesK1(t types.Type) bool {
 		return false
 	}
 	t.C.Ensure()
-	if t.C.Interface || !t.C.Final {
+	if t.C.Interface || !t.C.Final || t.C.Super != nil && t.C.Super.Name == "java/lang/Enum" {
+		// K1's isFinalClass is false of an enum class, whose entries
+		// may be its subclasses.
 		return true
 	}
 	if t.A == nil {
@@ -1819,7 +1836,17 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				kn := k
 				kn.t = types.NullType
 				null = []narrow{kn}
-				k.t = k.t.NonNull()
+				base := k.t
+				if id, isID := unchecked(nullSide(x)).(*syntax.Ident); isID {
+					if v := c.narrowSym(id); v != nil {
+						base = v.Type
+					}
+				}
+				if t, ok := nonNullOf(k.t, base); ok {
+					k.t = t
+				} else {
+					k.t = k.t.NonNull()
+				}
 				n = append([]narrow{k}, c.impliedBy(k)...)
 			}
 			// a?.b != null, and a?.b == c where c isn't null, mean that a
@@ -1827,9 +1854,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 			switch {
 			case ynull:
-				n = append(n, c.safeReceivers(x.X)...)
+				n = append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...)
 			case xnull:
-				n = append(n, c.safeReceivers(x.Y)...)
+				n = append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...)
 			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
 			case equalsNonNull(x.X.Type()):
@@ -1865,6 +1892,11 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			c.scope.narrows = t1
 			t2, f2 := c.narrowing(x.Y)
 			c.pop()
+			if neverCompletes(x.Y) {
+				// a != null && throw E() is never true: as in K2, code
+				// that can't be reached learns nothing.
+				return nil, c.eitherNarrows(f1, t1, f2)
+			}
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
@@ -1877,6 +1909,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			c.scope.narrows = f1
 			t2, f2 := c.narrowing(x.Y)
 			c.pop()
+			if neverCompletes(x.Y) {
+				return c.eitherNarrows(t1, f1, t2), nil // never false
+			}
 			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
 	case *syntax.Unary:
@@ -1936,6 +1971,18 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		// isn't.
 		var not []narrow
 		var others *coverage
+		base := k.t
+		if v := c.narrowSym(x.X); v != nil {
+			base = v.Type
+		}
+		if t, ok := notIsNarrowed(k.t, base, x.Target); ok {
+			kn := k
+			kn.t = t
+			not = []narrow{kn}
+			if t.K != types.Null && t.K != types.Nothing {
+				not = append(not, c.impliedBy(kn)...)
+			}
+		}
 		if x.Target.K == types.Class && !types.MayBeNull(x.Target) {
 			not = c.excluding(nil, k, &coverage{classes: []*types.ClassSym{x.Target.C}})
 			// Not of a check that makes an intersection, A & B for
@@ -1960,6 +2007,57 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		return n, not
 	}
 	return nil, nil
+}
+
+// notIsNarrowed returns the type of a value of type cur, declared as
+// base, where it isn't a target, as K2's data flow has it: x is Any is
+// x != null, so it is null; and a null is a T?, x is Any? among those,
+// so what isn't one isn't null. ok is false where that tells nothing.
+func notIsNarrowed(cur, base, target types.Type) (t types.Type, ok bool) {
+	if !types.MayBeNull(cur) || cur.K == types.Invalid || target.P || target.K == types.Null || target.K == types.Invalid {
+		return cur, false
+	}
+	switch {
+	case target.K == types.Any && !target.N:
+		if cur.K == types.Null {
+			return cur, false
+		}
+		return types.NullType, true
+	case target.N:
+		return nonNullOf(cur, base)
+	}
+	return cur, false
+}
+
+// neverCompletes reports whether x, a checked expression, is of type
+// Nothing: it always jumps.
+func neverCompletes(x syntax.Expr) bool {
+	t := x.Type()
+	return t.K == types.Nothing && !t.N
+}
+
+// nullSide returns the side of x, a comparison with null, that isn't
+// the null literal.
+func nullSide(x *syntax.Binary) syntax.Expr {
+	if isNull(x.Y) {
+		return x.X
+	}
+	return x.Y
+}
+
+// nonNullOf returns the type of a value of type cur, declared as base,
+// where it isn't null. Of one known to be null, which K2 types as an
+// intersection with Nothing whose members are base's, kc, without such
+// intersections, takes base's non-null type, so that its members stay
+// resolved; ok is false if there is none.
+func nonNullOf(cur, base types.Type) (types.Type, bool) {
+	if cur.K != types.Null {
+		return cur.NonNull(), true
+	}
+	if base.K == types.Invalid || base.K == types.Null || base.K == types.Nothing || !types.MayBeNull(base) {
+		return cur, false
+	}
+	return base.NonNull(), true
 }
 
 // identNarrows returns the smart casts that a === b or a !== b implies
@@ -2150,6 +2248,8 @@ func (c *Checker) asserted(x syntax.Expr) []narrow {
 				k.t = k.t.NonNull()
 				out = append(out, k)
 			}
+			// a?.b!!: a isn't null either.
+			out = append(out, c.safeReceivers(x.X)...)
 		case *syntax.Member:
 			if !x.Safe {
 				walk(x.X)
@@ -2248,6 +2348,14 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 		n = append(append(n, k), c.impliedBy(k)...)
 	}
 	return n
+}
+
+// safeCastNonNull returns what a as? T not being null tells: a is a T.
+func (c *Checker) safeCastNonNull(x syntax.Expr) []narrow {
+	if as, ok := x.(*syntax.As); ok && as.Safe {
+		return c.equalNonNull(as)
+	}
+	return nil
 }
 
 // notOf returns the smart casts of ns but those of vars and their
@@ -2459,6 +2567,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
 	if x.Safe && c.qualifierValue(x.X) {
+		c.noteQualifierSafe(x)
 		return types.InvalidType
 	}
 	if id, ok := x.X.(*syntax.Ident); ok && c.starQualifierAmbiguity(id) {
@@ -3157,6 +3266,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 
 	case *syntax.Member:
 		if fn.Safe && c.qualifierValue(fn.X) {
+			c.noteQualifierSafe(fn)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3183,6 +3293,10 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			id := &syntax.Ident{Name: "String"} // Class.S(), S a typealias of String
 			id.P = fn.P
 			x.Fun, x.Builtin = id, types.NewString
+			if c.aliasCtors == nil {
+				c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
+			}
+			c.aliasCtors[x] = a // for its deprecation
 			return types.StringType
 		}
 		if cls := c.classRef(fn); cls != nil {
@@ -4662,6 +4776,17 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				case cond.NotIs && cond.Target.K == types.Class && !cond.Target.N:
 					cov.not = append(cov.not, cond.Target.C)
 				}
+				if hasSubj && cond.Is {
+					// What the subject is in the branches after one it
+					// isn't: null after is Any.
+					if t, ok := notIsNarrowed(subjType(), st, cond.Target); ok {
+						n := narrow{recv: subj.recv, sym: subj.sym, t: t}
+						later = append(later, n)
+						if t.K != types.Null && t.K != types.Nothing {
+							later = append(later, c.impliedBy(n)...)
+						}
+					}
+				}
 				if hasSubj && single && cond.Target.K != types.Invalid {
 					n := narrow{recv: subj.recv, sym: subj.sym, t: c.isNarrowed(subjType(), cond.Target)}
 					if cond.Is {
@@ -4742,10 +4867,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.OpType.K == types.Invalid {
 					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
-					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid && c.incompatibleEnums(st, ct) {
-						// A subject smart cast to an enum, compared with a
-						// value its declared type may be equal to: as
-						// kotlinc, only a warning (see whenEnumWarnings).
+					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid {
+						// A smart-cast subject, compared with a value its
+						// declared type may be equal to: as kotlinc, only
+						// a warning (see whenEnumWarnings).
 						m := len(c.errs)
 						if t := c.equality(cond.X.Pos(), syntax.EQ, dt, ct); t.K != types.Invalid {
 							c.errs, cond.OpType = c.errs[:n], t
@@ -4776,6 +4901,16 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					whenTrue = append(whenTrue, c.safeReceivers(x.Subject)...)
 				}
 				if _, ok := cond.X.(*syntax.NullLit); ok {
+					if hasSubj && st.K != types.Null && !definitelyNonNull(st) {
+						// The branches before left it null alone, or
+						// ruled null out.
+						if nt := subjType(); nt.K == types.Null || definitelyNonNull(nt) {
+							if c.nullConds == nil {
+								c.nullConds = map[*syntax.WhenCond]bool{}
+							}
+							c.nullConds[cond] = nt.K == types.Null
+						}
+					}
 					// Later branches see a non-null subject, and this one
 					// a null one, of type Nothing?.
 					if hasSubj && types.MayBeNull(subjType()) {

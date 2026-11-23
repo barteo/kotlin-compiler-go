@@ -742,7 +742,9 @@ func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []typ
 // Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
 // A plugin's code isn't checked (state.plugin).
 func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
-	if c.state.plugin {
+	if c.state.plugin || c.aliasDeprecated[x] {
+		// A typealias's constructor call whose expansion only drew a
+		// warning: its class's type arguments are the expansion's.
 		return
 	}
 	for j, p := range cd.tparams {
@@ -1292,7 +1294,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
 	if len(x.TypeArgs) == 0 && len(best.tparams) > 0 {
-		sys.fixups = append(sys.fixups, func(s *system) { c.notePlatformArgs(x, best.tparams, best.sub, s) })
+		sys.fixups = append(sys.fixups, func(s *system) {
+			c.notePlatformArgs(x, best.tparams, best.sub, s)
+			c.noteEmptyIntersection(x, best.tparams, best.sub, s)
+		})
 	}
 	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
@@ -2252,6 +2257,12 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	}
 	for i, t := range ts {
 		p := cd.params[i]
+		if cd.param(i).NoInfer && p.HasVars() {
+			// A @NoInfer parameter's argument adds no constraint, an
+			// integer literal's neither: it is checked against the type
+			// the others infer.
+			continue
+		}
 		if lit, ok := x.Args[i].(*syntax.IntLit); ok && !lit.Long && !lit.Unsigned {
 			if p.K == types.TypeVar && cd.sys.addLit(p, lit) {
 				continue
@@ -2269,11 +2280,6 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			}
 			cd.susps[i] = true
 			cd.sys.sub(t, ft)
-			continue
-		}
-		if cd.param(i).NoInfer && p.HasVars() {
-			// A @NoInfer parameter's argument adds no constraint: it is
-			// checked against the type the others infer.
 			continue
 		}
 		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok && !c.ownParamArg(&cd.callee, x, i) {

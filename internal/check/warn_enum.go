@@ -42,7 +42,9 @@ func (c *Checker) enumComparisonWarning(x *syntax.Binary) {
 }
 
 // whenEnumWarnings reports the conditions of when x that compare its
-// subject with a value incompatible with it, as enumComparisonWarning.
+// subject with a value incompatible with it, as enumComparisonWarning,
+// and those that compare a smart-cast subject with a value only its
+// declared type may be equal to: INCOMPATIBLE_TYPES_WARNING.
 func (c *Checker) whenEnumWarnings(x *syntax.When) {
 	if x.Subject == nil {
 		return
@@ -53,8 +55,21 @@ func (c *Checker) whenEnumWarnings(x *syntax.When) {
 			if cond.X == nil || cond.In || cond.NotIn || cond.Is || cond.NotIs || cond.SubjType.K != types.Invalid || cond.OpType.K == types.Invalid {
 				continue
 			}
-			if ct := cond.X.Type(); c.incompatibleEnums(st, ct) {
+			ct := cond.X.Type()
+			if c.incompatibleEnums(st, ct) {
 				c.warnf(syntax.StartPos(cond.X), "INCOMPATIBLE_ENUM_COMPARISON", "comparison of incompatible enums '%s' and '%s' is always unsuccessful", st, ct)
+				continue
+			}
+			if _, cast := declaredOf(x.Subject); cast && ct.K != types.Invalid && c.generalEquality(syntax.EQ, st, ct) {
+				// Compared as the subject's declared type, as the check
+				// did: inapplicable to the smart-cast type, kotlinc
+				// warns.
+				n := len(c.errs)
+				bad := c.equality(cond.X.Pos(), syntax.EQ, st, ct).K == types.Invalid
+				c.errs = c.errs[:n]
+				if bad {
+					c.warnf(syntax.StartPos(cond.X), "INCOMPATIBLE_TYPES_WARNING", "potentially incompatible types '%s' and '%s'", st, ct)
+				}
 			}
 		}
 	}

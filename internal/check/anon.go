@@ -165,8 +165,14 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		return nil
 	}
 	if (c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil || c.inInlineFun && c.inlineAccessorBody()) && d.Local {
+		// Reported, with its functions, as kotlinc does; its code is
+		// still checked, which the error keeps from being generated.
 		c.errorf(d.P, "local classes are not yet supported in inline functions")
-		return nil
+		for _, m := range d.Members {
+			if fd, ok := m.(*syntax.FunDecl); ok && !fd.Generated {
+				c.errorf(fd.P, "local functions are not yet supported in inline functions")
+			}
+		}
 	}
 	if c.cls != nil && c.cls.Anonymous {
 		if od, ok := c.cls.Decl.(*syntax.ClassDecl); ok && od.EnclosingFun != nil {

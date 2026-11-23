@@ -110,7 +110,7 @@ func (c *Checker) hasSubtypesK1(t types.Type) bool {
 	}
 	cls := t.C
 	cls.Ensure()
-	if !cls.Final || cls.Interface || cls.Abstract || cls.Entries != nil || cls.Func || cls.Array || cls.Sealed {
+	if !cls.Final || cls.Interface || cls.Abstract || cls.Entries != nil || cls.Func || cls.Array && len(cls.TypeParams) > 0 || cls.Sealed {
 		return true
 	}
 	if t.A == nil {

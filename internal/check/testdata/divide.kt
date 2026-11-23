@@ -61,3 +61,6 @@ fun h(l: Long, d: Double, f: Float) {
     println(d.div(0.0)) // DIVISION_BY_ZERO
     println(l / +0L)
 }
+annotation class FloatsAnn(val c: FloatArray)
+@FloatsAnn([1 / 0f]) // DIVISION_BY_ZERO
+fun annotated() {}

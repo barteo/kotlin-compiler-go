@@ -709,6 +709,16 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	}
 	before := len(c.errs)
 	c.assignable(c.value(x, t), t, x.Pos())
+	// The post-pass over the code doesn't enter annotations: their
+	// arguments' warnings, which don't depend on smart casts, are
+	// reported here, with an error too, as kotlinc does.
+	syntax.Inspect(x, func(n any) bool {
+		c.divisionWarning(n)
+		if call, ok := n.(*syntax.Call); ok {
+			c.trimMarginWarning(call)
+		}
+		return true
+	})
 	if len(c.errs) == before {
 		if bad := c.nonConst(x); bad != nil {
 			c.errorf(bad.Pos(), nonConstArgMsg)

@@ -307,7 +307,11 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		return c.construct(x, cls, p, want, sink)
 	}
 	if len(a.TypeParams) == 0 || len(x.TypeArgs) > 0 {
-		t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs})
+		ref := &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs}
+		savedRef, savedCall := c.ctorAliasRef, c.ctorAliasCall
+		c.ctorAliasRef, c.ctorAliasCall = ref, x
+		t := c.expandAlias(a, ref)
+		c.ctorAliasRef, c.ctorAliasCall = savedRef, savedCall
 		if t.K == types.Invalid {
 			c.args(x, nil)
 			return t
@@ -480,7 +484,7 @@ func (c *Checker) refBounds(t types.Type, ref *syntax.TypeRef, skip func(types.T
 	if len(ref.Args) != len(t.A.List) {
 		return
 	}
-	c.argBounds(t, func(i int) syntax.Pos { return ref.Args[i].P }, skip, erase, nil)
+	c.argBounds(t, func(i int) syntax.Pos { return ref.Args[i].P }, skip, erase, nil, nil)
 	for i, r := range ref.Args {
 		if a := t.A.Get(i); r.Type != nil && a.V != types.Star {
 			c.refBounds(a.T, r.Type, skip, erase)
@@ -552,7 +556,13 @@ func (c *Checker) expansionBounds(a *types.AliasSym, args []types.Arg, known []b
 			}
 			return ref.P
 		}
-		c.argBounds(s.ApplyExact(t), at, unknown, erase, a)
+		var warn func(int) bool
+		if ref == c.ctorAliasRef {
+			// Of a constructor call, a violation that isn't of one of
+			// the alias's arguments is only a warning, as in K2.
+			warn = func(i int) bool { return at(i) == ref.P }
+		}
+		c.argBounds(s.ApplyExact(t), at, unknown, erase, a, warn)
 		for _, x := range t.A.List {
 			if x.V != types.Star {
 				walk(x.T)
@@ -566,8 +576,10 @@ func (c *Checker) expansionBounds(a *types.AliasSym, args []types.Arg, known []b
 // reports, against the bounds of its class's type parameters, and
 // reports an error at(i) for argument i out of them; erase, if set, is
 // applied to the bounds, and alias, if set, is the typealias whose
-// expansion t is part of.
-func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(types.Type) bool, erase types.Subst, alias *types.AliasSym) {
+// expansion t is part of. If warn reports so for argument i, it is
+// kotlinc's UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING
+// of the constructor call ctorAliasCall instead.
+func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(types.Type) bool, erase types.Subst, alias *types.AliasSym, warn func(int) bool) {
 	ps := t.C.TypeParams
 	if t.K != types.Class || t.A == nil || len(ps) != len(t.A.List) {
 		return
@@ -582,6 +594,14 @@ func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(typ
 				b = erase.Apply(b)
 			}
 			if !c.subtype(a.T, b) {
+				if warn != nil && warn(i) {
+					c.warnf(at(i), "UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'. This will become an error in future releases", ps[i].Name, b, a.T)
+					if c.aliasDeprecated == nil {
+						c.aliasDeprecated = map[*syntax.Call]bool{}
+					}
+					c.aliasDeprecated[c.ctorAliasCall] = true
+					break
+				}
 				if alias != nil {
 					c.errorf(at(i), "type argument is not within its bounds in the expansion of typealias %s: type parameter '%s' must be subtype of '%s', but actual: '%s'", alias.Name, ps[i].Name, b, a.T)
 				} else {
@@ -631,4 +651,50 @@ func (c *Checker) nothingAlias(ref *syntax.TypeRef) bool {
 	}
 	c.resolveAlias(a)
 	return a.Type.K == types.Nothing && !a.Type.N
+}
+
+// inferredAliasBounds warns of constructor call x through a typealias
+// whose type arguments it infers, Test(1, 2) of typealias Test<A, B> =
+// Hr<A, B, Foo<A>, Bar<B>>, if a class in its type's type arguments,
+// Bar<Int> for class Bar<B : CharSequence>, has an argument out of its
+// bounds: K2's UPPER_BOUND_VIOLATED_DEPRECATION_WARNING. The type's own
+// arguments are the call's, which inference keeps within its class's
+// bounds.
+func (c *Checker) inferredAliasBounds(x *syntax.Call) {
+	if !c.inferAliasArgs[x] {
+		return
+	}
+	t := x.Type()
+	if t.K != types.Class || t.A == nil || t.HasVars() {
+		return
+	}
+	var walk func(t types.Type) bool
+	walk = func(t types.Type) bool {
+		if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+			return false
+		}
+		s := classSubst(t)
+		for i, a := range t.A.List {
+			if a.V == types.Star || a.T.K == types.Invalid || a.T.IsParam() {
+				continue
+			}
+			for _, b := range t.C.TypeParams[i].Bounds {
+				if b = s.Apply(b); b.K != types.Invalid && !b.HasVars() && !c.subtype(a.T, b) {
+					c.warnf(calleePos(x), "UPPER_BOUND_VIOLATED_DEPRECATION_WARNING", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'. This will become an error in future releases", t.C.TypeParams[i].Name, b, a.T)
+					return true
+				}
+			}
+		}
+		for _, a := range t.A.List {
+			if a.V != types.Star && walk(a.T) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, a := range t.A.List {
+		if a.V != types.Star && walk(a.T) {
+			return
+		}
+	}
 }

@@ -85,10 +85,30 @@ func (c *Checker) ambiguousLabel(label string) bool {
 	return n > 1
 }
 
+// lambdaLabels returns the number of lambdas with a receiver around the
+// code that label names.
+func (c *Checker) lambdaLabels(label string) int {
+	n := 0
+	for i := range c.recvs {
+		if r := &c.recvs[i]; r.label == label {
+			if _, lambda := r.owner.(*syntax.Lambda); lambda {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
 	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
 		c.errorf(x.P, "ambiguous label: %s", x.Label)
+	} else if x.Label != "" && !x.Class && x.Recv == nil && c.lambdaLabels(x.Label) > 1 {
+		// this@block in lambdas of nested block { } calls: the
+		// innermost, of which kotlinc warns.
+		p := x.P
+		p.Col += len("this")
+		c.warnf(p, "LABEL_NAME_CLASH", "there is more than one label with such a name in this scope")
 	}
 	r := c.receiverFor(x)
 	if obj := c.headerThis(x, r); obj != nil {

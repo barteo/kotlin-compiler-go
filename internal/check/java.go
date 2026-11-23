@@ -2212,6 +2212,15 @@ func (c *Checker) qualifierValue(x syntax.Expr) bool {
 	return false
 }
 
+// noteQualifierSafe records safe call x whose receiver qualifierValue
+// reported, which K2 also warns of as UNNECESSARY_SAFE_CALL.
+func (c *Checker) noteQualifierSafe(x *syntax.Member) {
+	if c.qualifierSafe == nil {
+		c.qualifierSafe = map[*syntax.Member]bool{}
+	}
+	c.qualifierSafe[x] = true
+}
+
 // jdkPackage reports whether class name is in one of the JDK's packages,
 // in which Kotlin code can't be.
 func jdkPackage(name string) bool {
@@ -3268,7 +3277,8 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		// xs.forEach { } is Iterable.forEach's, if the lambda fits.
 		var fit []callee
 		for _, cl := range c.extCallees(fn.Name, rt) {
-			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) {
+			// Not getOrDefault(key, value), which the member hides.
+			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) && !platformDependentExt(cl.f) {
 				fit = append(fit, cl)
 			}
 		}

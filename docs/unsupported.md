@@ -42,11 +42,9 @@ own tests.
   - Those of annotations: `WRONG_ANNOTATION_TARGET_WARNING`,
     `INAPPLICABLE_TARGET_ON_PROPERTY_WARNING`,
     `ANNOTATION_WILL_BE_APPLIED_ALSO_TO_PROPERTY_OR_FIELD`,
-    `ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE`,
     `REDUNDANT_ANNOTATION`, `REPEATED_ANNOTATION_WARNING`,
     `INAPPLICABLE_JVM_FIELD_WARNING`,
-    `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION`,
-    `NEWER_VERSION_IN_SINCE_KOTLIN` and
+    `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION` and
     `OPT_IN_MARKER_ON_OVERRIDE_WARNING`.
   - Those of modifiers: `DEPRECATED_MODIFIER_PAIR`,
     `DEPRECATED_MODIFIER_CONTAINING_DECLARATION`,
@@ -64,17 +62,19 @@ own tests.
     `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE_DEPRECATION`,
     `EXPOSED_TYPE_PARAMETER_BOUND_DEPRECATION_WARNING`,
     `TYPE_PARAMETER_AS_REIFIED_DEPRECATION_WARNING`,
-    `TYPE_INTERSECTION_AS_REIFIED_DEPRECATION_WARNING`,
-    `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` and
-    `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING`.
+    `TYPE_INTERSECTION_AS_REIFIED_DEPRECATION_WARNING`, and
+    `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` but of a typealias's
+    constructor call (see below).
     Of the diagnostics that are a `_WARNING` until a language version
     makes them an `_ERROR`, `kc` reports only
     `IMPOSSIBLE_IS_CHECK_WARNING`,
-    `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING` and
+    `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING`,
     `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`,
-    not, for example, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING`.
-  - Those of types and type arguments: `INCOMPATIBLE_TYPES_WARNING`,
-    `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION`,
+    `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING`
+    and `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING`, and, in
+    part, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` and
+    `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` (see below).
+  - Those of types and type arguments:
     `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING`,
@@ -83,9 +83,8 @@ own tests.
     `LOCAL_VARIABLE_WITH_TYPE_PARAMETERS_WARNING`,
     `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_GET_CLASS_WARNING`, and of class
     literals: `CLASS_LITERAL_LHS_NOT_A_CLASS_WARNING`,
-    `EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS_WARNING`,
-    `UNSUPPORTED_ARRAY_OF_NOTHING_IN_CLASS_LITERAL_LHS` and
-    `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING`.
+    `EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS_WARNING` and
+    `UNSUPPORTED_ARRAY_OF_NOTHING_IN_CLASS_LITERAL_LHS`.
   - Those of initialization and inline functions:
     `MUST_BE_INITIALIZED_WARNING`,
     `MUST_BE_INITIALIZED_OR_BE_ABSTRACT_WARNING`,
@@ -99,16 +98,17 @@ own tests.
     `DESTRUCTURING_SHORT_FORM_OF_NON_DATA_CLASS`,
     `DESTRUCTURING_SHORT_FORM_UNDERSCORE`,
     `UNNAMED_PROPERTY_WITH_IMPLICIT_IGNORABLE_TYPE`,
-    `RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER`, `LABEL_NAME_CLASH`,
+    `RESOLVED_TO_UNDERSCORE_NAMED_CATCH_PARAMETER`,
     `REDUNDANT_LABEL_WARNING`, `REDUNDANT_RETURN`,
-    `ESCAPING_CAPTURED_VARIABLE`,
+    `ESCAPING_CAPTURED_VARIABLE`, `WRAPPED_LHS_IN_ASSIGNMENT_WARNING`,
     `INEFFICIENT_EQUALS_OVERRIDING_IN_VALUE_CLASS`,
     `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY`, and those of
     the return value checker: `RETURN_VALUE_NOT_USED`,
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
-  - With `-Wextra`: `CAN_BE_VAL`, `CAN_BE_VAL_DELAYED_INITIALIZATION`,
-    `CAN_BE_VAL_LATEINIT` and `REDUNDANT_MODALITY_MODIFIER`.
+  - With `-Wextra`: `CAN_BE_VAL_DELAYED_INITIALIZATION`,
+    `CAN_BE_VAL_LATEINIT` and `REDUNDANT_MODALITY_MODIFIER`; and
+    `CAN_BE_VAL` of a `var` declared without an initializer.
 
   Of a program with a syntax error, which `kc` checks without the
   statements and declarations that have the errors, only the warnings
@@ -127,15 +127,18 @@ own tests.
   - Type checks and casts, such as `USELESS_IS_CHECK`,
     `IMPOSSIBLE_IS_CHECK_WARNING`, `USELESS_CAST` and
     `CAST_NEVER_SUCCEEDS`, are judged as `kotlinc` judges them, by the
-    declared type and then by its smart casts, but never where a
-    platform type or a type `kc` couldn't resolve is involved.
+    declared type and then by its smart casts, but never where a type
+    `kc` couldn't resolve is involved, and a platform operand only by
+    its nullable upper bound, for `USELESS_IS_CHECK` and `USELESS_CAST`.
   - `UNCHECKED_CAST` only of a cast to a type parameter that isn't
     reified, to a generic type from `Any` or a star-projected
     supertype, to a function type from another of its class, or to a
     generic type whose type arguments its operand's type doesn't tell,
     judged as `kotlinc` does but only where that type's arguments map
     to the target class's type parameters one by one, without
-    projections, and the operand isn't smart cast.
+    projections, and the operand isn't smart cast; of a platform
+    operand only where its type arguments are all stars, as a cast of
+    `Class.forName(name)`.
   - `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
     `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
     `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names
@@ -154,15 +157,28 @@ own tests.
     members of the program's classes and of the class path's Kotlin
     classes, not of Java classes or built-in types such as `List` and
     `Int`.
-  - `DIVISION_BY_ZERO` not in annotation arguments.
   - `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum
-    or a sealed class, not of one exhaustive through an `is` check of
-    the subject's own type, or over a type parameter's value.
+    or a sealed class, or one exhaustive through an unguarded `is`
+    check of a supertype of the subject's type; not over a type
+    parameter's value, a Java enum or a Java sealed class.
   - `INCOMPATIBLE_ENUM_COMPARISON` and
     `FORBIDDEN_IDENTITY_EQUALS_WARNING` not where a platform type is
     involved.
-  - `EQUALITY_NOT_APPLICABLE_WARNING` only of smart-cast values, not of
-    enums nor an identity comparison of a value without identity.
+  - `EQUALITY_NOT_APPLICABLE_WARNING` of smart-cast values, not of
+    enums nor an identity comparison of a value without identity, and
+    of unrelated types that K1 let both have subtypes, as an interface
+    and a class compared with `===`.
+  - `INCOMPATIBLE_TYPES_WARNING` only of a `when` whose subject is a
+    smart-cast variable.
+  - `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` only of a typealias's
+    constructor call that infers the typealias's type arguments, of a
+    class in its type's type arguments.
+  - `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` and
+    `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` of a call's
+    type argument that `kc` infers as an intersection, or that only
+    upper constraints and its declared bounds give, and of a delegated
+    property's `getValue`; not of a callable reference's vararg
+    adaptation or a lambda's last expression after a bare `return`.
   - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
     error name in a `@Suppress`, but not in one on a type or a
     supertype.
@@ -223,8 +239,9 @@ own tests.
     first of them and outside loops; `UNUSED_ANONYMOUS_PARAMETER` not
     of a parameter whose name the lambda's body uses for another
     variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
-    property, nor on an override of a member that inherits its
-    visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
+    `var` whose modifier may widen a setter it inherits, an override
+    property's accessors, nor on an override of a member that inherits
+    its visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
     reference.
 
 - Local `external` functions inside an interface's members when the
@@ -235,9 +252,9 @@ own tests.
   `@Deprecated` are checked, the class path's read from its class files
   and metadata. Markers and deprecations with level `WARNING` (Java's
   `@Deprecated` and a Java source's javadoc `@deprecated` among them)
-  give the warnings `OPT_IN_USAGE` and `DEPRECATION`. `@DeprecatedSinceKotlin` and
-  `@SinceKotlin` are read as if their versions were reached: `kc` acts
-  as the newest API version, as `kotlinc` does by default, and has no
+  give the warnings `OPT_IN_USAGE` and `DEPRECATION`. `@DeprecatedSinceKotlin`'s
+  versions are judged against API version 2.4, `kotlinc` 2.4's default,
+  and `@SinceKotlin`'s are read as if reached; `kc` has no
   `-api-version`. A class path's typealias opts in to nothing, as the
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.
@@ -557,8 +574,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
-  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
-  though named arguments take Kotlin's parameter names.
+  `get`, `getOrDefault` and both `remove`s; others keep Java's, though
+  named arguments take Kotlin's parameter names.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s

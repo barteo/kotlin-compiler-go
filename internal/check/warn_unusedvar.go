@@ -32,6 +32,7 @@ type localVar struct {
 	writes   []*syntax.Assign // its assignments, x = v
 	updates  []*syntax.Assign // its compound assignments, x += v
 	read     bool
+	incDec   bool       // x++ or x-- assigns it
 	captured bool       // used in a lambda, a local function or a local class
 	capture  syntax.Pos // where the first of these begins
 	annot    bool       // named in an annotation's argument
@@ -162,7 +163,7 @@ func (c *Checker) unusedVarWarnings() {
 			if n.Op == syntax.INC || n.Op == syntax.DEC {
 				id, ok := n.X.(*syntax.Ident)
 				if v := u.local(id, ok); v != nil {
-					v.read = true
+					v.read, v.incDec = true, true
 					if !n.Prefix {
 						u.postfix = append(u.postfix, n)
 					}
@@ -200,6 +201,11 @@ func (c *Checker) unusedVarWarnings() {
 		}
 		vs, _ := v.decl.(*syntax.VarStmt)
 		delegated := vs != nil && vs.Delegate != nil
+		if vs != nil && vs.Mutable && vs.Init != nil && !vs.Lateinit && !delegated && !v.annot && len(v.writes) == 0 && len(v.updates) == 0 && !v.incDec {
+			// A var initialized and never assigned again: x += v that
+			// calls plusAssign doesn't assign it.
+			c.warnf(vs.P, "CAN_BE_VAL", "this 'var' property is never written to, it can be declared as 'val'")
+		}
 		if !v.read {
 			switch {
 			case len(v.writes) == 0:

@@ -37,3 +37,12 @@ func TestSetMajor(t *testing.T) {
 		t.Errorf("Major of a short slice isn't 0")
 	}
 }
+
+func TestLaterThanAPI(t *testing.T) {
+	for v, want := range map[string]bool{"2.4": false, "2.3": false, "1.9.20": false, "2.4.0": false, "02.4": false,
+		"2.4.1": true, "2.5": true, "2.10": true, "3.0": true} {
+		if got := LaterThanAPI(v); got != want {
+			t.Errorf("LaterThanAPI(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

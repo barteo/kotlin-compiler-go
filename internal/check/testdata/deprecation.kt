@@ -94,3 +94,36 @@ fun entries() {
     E.A
     E.B // DEPRECATION
 }
+
+// Classes deprecated in qualifiers, and typealiases of String.
+class QA {
+    @Deprecated("Deprecated companion")
+    companion object
+}
+
+class QTop {
+    @Deprecated("Nested")
+    class Nested {
+        companion object { fun use() {} }
+        class Nested2
+    }
+}
+
+class QHolder {
+    @Deprecated(message = "test")
+    typealias S2 = String
+}
+
+@Deprecated(message = "test")
+typealias QS = String
+
+fun qualifiers(): String {
+    println(QA::class)
+    println(QA.Companion::class) // DEPRECATION
+    QTop.Nested.use() // DEPRECATION
+    QTop.Nested.Nested2() // DEPRECATION
+    return QHolder.S2() + QS() // DEPRECATION
+}
+
+@OptIn(kotlin.experimental.ExperimentalTypeInference::class)
+fun <T> holder(@BuilderInference b: MutableList<T>.() -> Unit): MutableList<T> = mutableListOf<T>().apply(b) // DEPRECATION

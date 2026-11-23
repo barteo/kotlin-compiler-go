@@ -49,6 +49,12 @@ func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Ty
 		c.noteTypeFacts(cond, x.Subject, st)
 	} else {
 		c.noteTypeFacts(cond, nil, st)
+		if nt := c.scope.narrowedMember(nil, x.SubjSym, st); x.SubjSym != nil && nt != st && nt.K != types.Invalid {
+			// What the branches before made of the subject's variable.
+			f := c.typeFacts[cond]
+			f.casts = append(f.casts, nt)
+			c.typeFacts[cond] = f
+		}
 	}
 }
 
@@ -253,6 +259,10 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	if k, ok := c.castNarrow(x); ok {
 		// x is a T from here on: in (x as T).f(x), (x as T) + x.
 		c.scope.narrows = append(c.scope.narrows, k)
+	}
+	if !types.MayBeNull(t) {
+		// a?.b as T, for a T that isn't nullable: a isn't null.
+		c.scope.narrows = append(c.scope.narrows, c.safeReceivers(x.X)...)
 	}
 	if t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
 		return types.UnitType // x as Unit, a cast to kotlin.Unit

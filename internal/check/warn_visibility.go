@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -10,7 +12,8 @@ import (
 // modifier that gives a declaration the visibility it has without it,
 // or one that a private or local class it is in hides. It is reported
 // where that is certain: not on an override of a member whose visibility
-// is itself inherited, nor on an override property or its accessors.
+// is itself inherited, on an override var whose modifier may widen a
+// setter it inherits, or on an override property's accessors.
 
 // visibilityKeywords are the visibility modifiers by keyword.
 var visibilityKeywords = map[string]syntax.Visibility{
@@ -109,7 +112,23 @@ func (c *Checker) redundantVisibility(d syntax.Decl, owner *syntax.ClassDecl) {
 		}
 		c.visibilityWarning(d.Written, implicit, owner)
 	case *syntax.PropDecl:
-		if d.Generated || d.Plugin || d.Sym == nil || d.DelegateOf != nil || d.Expect || d.Override {
+		if d.Generated || d.Plugin || d.Sym == nil || d.DelegateOf != nil || d.Expect {
+			return
+		}
+		if d.Override {
+			// Without a modifier, it has the visibility of the
+			// properties it overrides; its accessors aren't judged.
+			if owner == nil || owner.Sym == nil || d.Recv != nil {
+				return
+			}
+			if v, ok := c.overriddenPropVisibility(owner.Sym, d.Sym); ok {
+				if _, set := writtenSetterVisibility(d); d.Sym.Mutable && !set && !c.overriddenSettersAre(owner.Sym, d.Sym, v) {
+					// Its modifier is its setter's too, which it may
+					// widen: public over a protected set.
+					return
+				}
+				c.visibilityWarning(d.Written, v, owner)
+			}
 			return
 		}
 		vis := d.Visibility
@@ -190,6 +209,76 @@ func containerVisibility(d *syntax.ClassDecl) (local bool, v syntax.Visibility, 
 		}
 	}
 	return false, v, known
+}
+
+// overriddenPropVisibility is overriddenVisibility of override property
+// p of class cls: the highest visibility of the properties it overrides.
+func (c *Checker) overriddenPropVisibility(cls *types.ClassSym, p *types.VarSym) (syntax.Visibility, bool) {
+	v, found := syntax.Private, false
+	for _, o := range c.overriddenProps(cls, p) {
+		if o.inherits {
+			// Its visibility is that of a property it overrides,
+			// which is among the others.
+			continue
+		}
+		found = true
+		d, ok := compareVisibility(o.vis, v)
+		if !ok {
+			return 0, false
+		}
+		if d > 0 {
+			v = o.vis
+		}
+	}
+	return v, found
+}
+
+// overriddenSettersAre reports whether the setters of the properties
+// that mutable property p of class cls overrides all have visibility v,
+// which a setter without a modifier of its own inherits.
+func (c *Checker) overriddenSettersAre(cls *types.ClassSym, p *types.VarSym, v syntax.Visibility) bool {
+	over := c.overriddenProps(cls, p)
+	for _, o := range over {
+		if !o.mutable || slices.ContainsFunc(over, func(n superProp) bool { return n.owner != o.owner && n.owner.IsSubclassOf(o.owner) }) {
+			// Overridden itself by another: only the nearest count.
+			continue
+		}
+		sv := o.setterVis
+		if o.inheritsSetter {
+			// Unless its setter has a modifier, as public set, its
+			// visibility is that of a setter it overrides.
+			q := c.memberProp(o.owner, p.Name)
+			if q == nil {
+				return false
+			}
+			d, ok := q.Decl.(*syntax.PropDecl)
+			if !ok {
+				return false
+			}
+			w, set := writtenSetterVisibility(d)
+			if !set {
+				return false
+			}
+			sv = w
+		}
+		if sv != v {
+			return false
+		}
+	}
+	return true
+}
+
+// writtenSetterVisibility returns the visibility modifier written on the
+// setter of property d, if it has one.
+func writtenSetterVisibility(d *syntax.PropDecl) (syntax.Visibility, bool) {
+	for i, mods := range d.AccessorMods {
+		if i < len(d.AccessorSets) && d.AccessorSets[i] {
+			if _, v, ok := writtenVisibility(mods); ok {
+				return v, true
+			}
+		}
+	}
+	return 0, false
 }
 
 // overriddenVisibility returns the visibility override f of class cls has

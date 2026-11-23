@@ -109,7 +109,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	written := ref.Args != nil || ref.Outer != nil
-	args := ref.Args // as written, before stars are added
+	args := ref.Args   // as written, before stars are added
+	starAlias := false // a generic typealias written without arguments, given stars
 	if !written && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
@@ -126,6 +127,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 			}
 			if n > 0 {
 				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars, Nullable: ref.Nullable}
+				starAlias = c.lookupAlias(ref.Name) != nil
 			}
 		}
 	}
@@ -135,6 +137,9 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	c.refLHS, c.classLitLHS = old, oldLit
 	if t.K == types.Invalid || callable {
 		return t
+	}
+	if starAlias {
+		c.starAliasBounds(t, ref.P)
 	}
 	if t.N {
 		// A?::class, or a typealias of a nullable type.
@@ -1421,4 +1426,27 @@ func (c *Checker) variableRef(v *types.VarSym, name string) bool {
 		return len(fs) == 0 && len(c.topFuns(name)) == 0 && (!c.u.ext.kotlin || len(c.kotlinFuns(name, false)) == 0)
 	}
 	return false
+}
+
+// starAliasBounds warns at p if t, the expansion of a typealias written
+// without its type arguments on the left of a class literal, which are
+// stars, has a type argument out of its bounds:
+// UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING of TA::class for
+// typealias TA<T> = C<Int, List<T>> and class C<X, Y : X>.
+func (c *Checker) starAliasBounds(t types.Type, p syntax.Pos) {
+	if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+		return
+	}
+	s := classSubst(t)
+	for i, a := range t.A.List {
+		if a.V == types.Star || a.T.K == types.Invalid {
+			continue
+		}
+		for _, b := range t.C.TypeParams[i].Bounds {
+			if b = s.Apply(b); b.K != types.Invalid && !b.HasVars() && !c.subtype(a.T, b) {
+				c.warnf(p, "UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING", "star projected type alias leads to incompatible upper bound: type parameter '%s' must be subtype of '%s', but actual: '%s'. Consider using the expanded class instead", t.C.TypeParams[i].Name, b, a.T)
+				return
+			}
+		}
+	}
 }

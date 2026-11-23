@@ -291,6 +291,9 @@ type Checker struct {
 	// maybeNull are the x!! and x ?: y whose x some check of them found
 	// may be null: checked again, x may be smart cast by the first check.
 	maybeNull map[syntax.Expr]bool
+	// qualifierSafe are the safe calls on a class without a companion
+	// object or a package: see noteQualifierSafe.
+	qualifierSafe map[*syntax.Member]bool
 	// typeFacts are, for each x is T, x as T and is condition of a when,
 	// what its check knew of x (see noteTypeFacts).
 	typeFacts map[any]typeFacts
@@ -307,6 +310,10 @@ type Checker struct {
 	// redundantElses are the whens whose else branch is redundant: see
 	// noteRedundantElse.
 	redundantElses map[*syntax.When]bool
+	// nullConds are the null conditions of whens whose subject the
+	// branches before left null alone, as after is Any (true), or ruled
+	// null out, as after null -> (false): see whenNullWarnings.
+	nullConds map[*syntax.WhenCond]bool
 	// blockJumps are the blocks with a statement that always jumps, and
 	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
@@ -315,6 +322,10 @@ type Checker struct {
 	// class that is a Kotlin one, java.lang.Integer of
 	// java.lang.Integer::class.java: the Kotlin class's name.
 	platformArgs map[any]string
+	// emptyInters are the calls with a type argument they infer that is
+	// an intersection that is or may be empty: see
+	// noteEmptyIntersection.
+	emptyInters map[*syntax.Call]emptyInter
 	// deadClasses are the local classes and object expressions in code
 	// reported unreachable, which classDeadCode doesn't judge.
 	deadClasses map[*syntax.ClassDecl]bool
@@ -391,6 +402,13 @@ type Checker struct {
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// ctorAliasRef is the typealias use that a constructor call through
+	// it, ctorAliasCall, is expanding, whose bounds only warn where they
+	// aren't of the alias's arguments; aliasDeprecated are the calls
+	// warned of so (see argBounds).
+	ctorAliasRef    *syntax.TypeRef
+	ctorAliasCall   *syntax.Call
+	aliasDeprecated map[*syntax.Call]bool
 	// headerParams are the parameters of the constructor whose
 	// parameters' annotations are checked: their arguments see them.
 	headerParams []*types.VarSym
@@ -2233,7 +2251,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
-		sym.NoInferRet = d.Ret.NoInfer
+		sym.NoInferRet = noInfer(d.Ret) // In<@NoInfer E> too
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
@@ -3369,6 +3387,17 @@ func (c *Checker) recursiveFunRef(f *types.FunSym, p syntax.Pos) {
 func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Type != nil {
 		return // only its backing field's type is inferred
+	}
+	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Field != nil && d.Field.DelegateOf == d {
+		// Read in its own delegate, by lazy { x }: reported here, not
+		// at the delegate, as kotlinc reports it.
+		if f := d.Field.Sym; f != nil && f.InProgress && !f.Resolved {
+			f.ReentryReported++
+			v.ReentryReported++
+			c.u.reentries.Add(1)
+			c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+			return
+		}
 	}
 	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
 		v.ReentryReported++

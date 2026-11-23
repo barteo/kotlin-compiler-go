@@ -15,6 +15,11 @@ type File struct {
 	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
+	// AmbiguousLT is set when the file has a comparison x < (... > ...),
+	// which kotlinc's parser takes for type arguments if its recovering
+	// type parser ends at the >, as x < (if (y > 1) 1 else 2), making a
+	// syntax error of it: the driver asks psi, which has its grammar.
+	AmbiguousLT bool
 	// Dangling are the annotations of modifier lists at the top level that
 	// no declaration follows, which kotlinc resolves and checks, as the
 	// checker does, but annotate nothing. The file then has a syntax
@@ -1365,6 +1370,7 @@ type Binary struct {
 	exprBase
 	Op     Kind
 	X, Y   Expr
+	Paren  bool       // written in parentheses: (a + b)
 	OpType types.Type // operand type for arithmetic and comparisons
 	// Call is the operator call of an arithmetic operator or a comparison
 	// on other types than the built-in ones: x.plus(y), x.compareTo(y),

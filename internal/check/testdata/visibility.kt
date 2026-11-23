@@ -86,3 +86,45 @@ open class Owner {
     }
 }
 @Suppress("REDUNDANT_VISIBILITY_MODIFIER") public fun suppressed() {}
+
+// Override properties: without a modifier, they have the visibility of
+// the properties they override, and a var's modifier is its setter's too.
+abstract class PA {
+    open var attribute = "a"
+        protected set
+    protected open val pv = 1
+    internal open val iv = 1
+}
+
+class PC1 : PA() {
+    public override var attribute = super.attribute // REDUNDANT_VISIBILITY_MODIFIER
+        public set
+    protected override val pv = 2 // REDUNDANT_VISIBILITY_MODIFIER
+    public override val iv = 3
+}
+
+abstract class PB2 : PA() {
+    override var attribute = "b"
+        public set
+    override val pv = 4
+}
+
+class PC2 : PB2() {
+    public override var attribute = super.attribute // REDUNDANT_VISIBILITY_MODIFIER
+    protected override val pv = 5 // REDUNDANT_VISIBILITY_MODIFIER
+}
+
+class PC3 : PA() {
+    public override var attribute = super.attribute
+}
+
+abstract class PB4 : PA() {
+    override var attribute = "b"
+}
+
+class PC4 : PB4() {
+    public override var attribute = super.attribute
+}
+
+interface PI { val x: Int }
+class PD2 : PI { public override val x = 1 } // REDUNDANT_VISIBILITY_MODIFIER

@@ -66,6 +66,17 @@ fun f(s: String, n: String?) {
     s!!.length
     n!!.length
 }`, []string{"3:UNNECESSARY_NOT_NULL_ASSERTION"}},
+		{"bounds in a typealias's expansion: errors but in a constructor call", `
+class NumColl<T : Collection<Number>>
+class Num<T : Number>
+typealias NL<T2> = NumColl<List<T2>>
+typealias NA<T> = Num<T>
+fun f(x: NL<Any>) {}
+val direct = NA<Any>()
+val nested = NL<Any>()`, []string{"6:error", "7:error", "7:error", "8:UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING"}},
+		{"blank trimMargin prefix in an annotation", `
+annotation class Ann(val s: String)
+@Ann("".trimMargin(" ")) val a = 1`, []string{"3:TRIM_MARGIN_BLANK_PREFIX", "3:error"}},
 		{"safe call", `
 fun f(s: String, n: String?) {
     s?.length
@@ -582,6 +593,26 @@ func TestWarningsDeprecation(t *testing.T) {
 
 // TestWarningsNullCast checks the elvis, cast, safe call and null
 // condition warnings of testdata/nullcast.kt.
+// TestWarningsNullSmartCasts checks the null checks and casts that the
+// smart casts of is Any, of safe calls and casts, and of a value that is
+// always null decide, and casts of platform types.
+// TestWarningsAliasBounds checks the deprecation warnings of bounds in
+// typealias expansions against kotlinc's of testdata/aliasbounds.kt.
+func TestWarningsAliasBounds(t *testing.T) {
+	checkReference(t, "testdata/aliasbounds.kt", Options{Warnings: true})
+}
+
+// TestWarningsEmptyIntersection checks the warnings of type arguments
+// inferred as empty intersections against kotlinc's of
+// testdata/emptyinter.kt.
+func TestWarningsEmptyIntersection(t *testing.T) {
+	checkReference(t, "testdata/emptyinter.kt", Options{Warnings: true})
+}
+
+func TestWarningsNullSmartCasts(t *testing.T) {
+	checkReference(t, "testdata/nullsmart.kt", Options{Warnings: true})
+}
+
 func TestWarningsNullCast(t *testing.T) {
 	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
 }
@@ -888,4 +919,12 @@ func TestWarningsRedundantTypes(t *testing.T) {
 			t.Errorf("without ExtraWarnings: %s", g)
 		}
 	}
+}
+
+// TestWarningsSmall checks small warnings — versions newer than the API,
+// clashing labels, annotations on the same line as a block-level
+// expression, null when-conditions of a narrowed subject — against
+// kotlinc's of testdata/smallwarn.kt.
+func TestWarningsSmall(t *testing.T) {
+	checkReference(t, "testdata/smallwarn.kt", Options{Warnings: true})
 }

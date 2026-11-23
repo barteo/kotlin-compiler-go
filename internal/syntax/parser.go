@@ -21,6 +21,9 @@ type parser struct {
 	// errs, and parsing goes on with the next declaration.
 	recover bool
 	errs    []*Error
+	// ltParen is set on x < (... > ...), a comparison kotlinc's parser
+	// may take for type arguments: see File.AmbiguousLT.
+	ltParen bool
 	// noTrailing is set while parsing a delegate in a class header, where a
 	// brace starts the class body rather than a trailing lambda.
 	noTrailing bool
@@ -81,6 +84,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
 	f.Annotated = p.annotated
+	f.AmbiguousLT = p.ltParen
 	FinishFile(f, path)
 	return f, nil
 }
@@ -1227,6 +1231,24 @@ func (p *parser) typeArgsAhead() bool {
 			}
 		case IDENT, DOT, COMMA, QUEST, STAR, IN, LPAREN, RPAREN, ARROW, COLON, AMP, NL:
 		default:
+			return false
+		}
+	}
+}
+
+// gtInParens reports whether a > is between the ( at token j and its ).
+func (p *parser) gtInParens(j int) bool {
+	for depth := 0; ; j++ {
+		switch p.toks[j].Kind {
+		case LPAREN:
+			depth++
+		case RPAREN:
+			if depth--; depth == 0 {
+				return false
+			}
+		case GT:
+			return true
+		case EOF:
 			return false
 		}
 	}
@@ -2733,6 +2755,9 @@ func (p *parser) parsePostfix() Expr {
 					x = p.parseCall(x, p.parseTypeArgs())
 					continue
 				}
+				if p.toks[p.i+1].Kind == LPAREN && p.gtInParens(p.i+1) {
+					p.ltParen = true
+				}
 			}
 			return x
 		case NL:
@@ -3594,6 +3619,8 @@ func Parenthesized(x Expr) {
 	case *Call:
 		x.Paren = true
 	case *Index:
+		x.Paren = true
+	case *Binary:
 		x.Paren = true
 	}
 }
