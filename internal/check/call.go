@@ -477,15 +477,28 @@ type candidate struct {
 // expectation, after an error).
 func (c *Checker) args(x *syntax.Call, cl *callee) []types.Type {
 	ts := make([]types.Type, len(x.Args))
+	plain := cl != nil && c.plainArgs(x)
 	for i := range x.Args {
 		want := noWant
 		var f *types.FunSym
 		if cl != nil {
 			want, f = cl.argType(i, x.Args), cl.f
 		}
+		saved := c.argWant
+		if plain {
+			c.argWant = x.Args[i]
+		}
 		ts[i] = c.argValue(&x.Args[i], want, f)
+		c.argWant = saved
 	}
 	return ts
+}
+
+// plainArgs reports whether call x's arguments are constrained by their
+// parameters' types as arguments (see tvar.argUp): not those of a call
+// with explicit type arguments or of an indexing operator.
+func (c *Checker) plainArgs(x *syntax.Call) bool {
+	return len(x.TypeArgs) == 0 && !c.indexCalls[x]
 }
 
 // innerLambdas returns the bodies of the lambdas in x, but those nested
@@ -1017,10 +1030,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if single && !cs[0].params[i].HasVars() {
 			if cs[0].typeArgParam(i, x.Args) {
-				c.typeArgWant = a
+				c.typeArgWant, c.typeArgStrict = a, cs[0].strictTypeArgParam(i, x.Args)
+			} else if c.plainArgs(x) {
+				c.argWant = a
 			}
 			ts[i] = c.value(a, cs[0].params[i])
-			c.typeArgWant = nil
+			c.typeArgWant, c.typeArgStrict, c.argWant = nil, false, nil
 			continue
 		}
 		if p, ok := c.sharedFunParam(cs, i); ok {
@@ -1418,9 +1433,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			if c.typeArgWant == syntax.Expr(x) {
 				trial.typeArgs++
+				if c.typeArgStrict {
+					trial.strictArgs++
+				}
+			}
+			if c.argWant == syntax.Expr(x) {
+				trial.argParams++
 			}
 			trial.sub(ret, want)
-			trial.expecting, trial.typeArgs = 0, 0
+			trial.expecting, trial.typeArgs, trial.argParams, trial.strictArgs = 0, 0, 0, 0
 			if trial.ok {
 				sys = trial
 			}
@@ -1434,9 +1455,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		trial := sys.clone()
 		if c.typeArgWant == syntax.Expr(x) {
 			trial.typeArgs++
+			if c.typeArgStrict {
+				trial.strictArgs++
+			}
+		}
+		if c.argWant == syntax.Expr(x) {
+			trial.argParams++
 		}
 		trial.sub(ret, want)
-		trial.typeArgs = 0
+		trial.typeArgs, trial.argParams, trial.strictArgs = 0, 0, 0
 		if trial.ok {
 			sys = trial
 		}
@@ -2350,9 +2377,22 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			continue
 		}
 		if cd.typeArgParam(i, x.Args) {
+			strict := cd.strictTypeArgParam(i, x.Args)
 			cd.sys.typeArgs++
+			if strict {
+				cd.sys.strictArgs++
+			}
 			cd.sys.sub(t, p)
 			cd.sys.typeArgs--
+			if strict {
+				cd.sys.strictArgs--
+			}
+			continue
+		}
+		if c.plainArgs(x) {
+			cd.sys.argParams++
+			cd.sys.sub(t, p)
+			cd.sys.argParams--
 			continue
 		}
 		cd.sys.sub(t, p)
@@ -2364,6 +2404,16 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 // i is given by the call's explicit type arguments (see tvar.typeArgUp).
 func (cd *candidate) typeArgParam(i int, args []syntax.Expr) bool {
 	return cd.explicit && slices.ContainsFunc(cd.tparams, func(tp *types.TypeParamSym) bool { return mentionsParam(cd.argType(i, args), tp) })
+}
+
+// strictTypeArgParam reports whether the type of cd's parameter for
+// argument i uses a type parameter the call's explicit type arguments give
+// as a type that isn't flexible: a Kotlin function's, or a Java one's
+// whose bound is annotated not-null (see tvar.strictArg).
+func (cd *candidate) strictTypeArgParam(i int, args []syntax.Expr) bool {
+	return cd.typeArgParam(i, args) && cd.argType(i, args).Has(func(u types.Type) bool {
+		return u.IsParam() && !u.P && slices.Contains(cd.tparams, u.Param())
+	})
 }
 
 // constrainContexts adds the constraints of a candidate's context

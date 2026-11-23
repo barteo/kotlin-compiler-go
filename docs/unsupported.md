@@ -627,7 +627,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   among several isn't read, nor are those inside a type, such as
   `JavaBox<@NotNull T>`. `@NullMarked` and `@NullUnmarked` are read only
   on the classes and methods of the program's Java sources, not on
-  packages, modules or class files.
+  packages, modules or class files. A nullable one on a type parameter's
+  bound, `T extends @Nullable Object`, changes nothing: K2 rejects
+  `n2<String>(null)` for a Java `<T extends @Nullable Object> void n2(T)`,
+  which `kc` compiles.
+- A `null` passed for a Java parameter of a flexible type variable,
+  `JavaBox(null)`, whose variable is then equal to a type parameter bound
+  `Any`, as in `nn(JavaBox(null))` for a Java `<T extends @NotNull Object>
+  void nn(JavaBox<T>)`, infers the type parameter as `Any` where K2 can't
+  infer it: `kc` compiles the call.
 - Of Java members, only those of the program's Java sources count
   toward an inherited member that must be overridden because it has
   several implementations; a class-path Java class's do not.

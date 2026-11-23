@@ -505,6 +505,17 @@ type Checker struct {
 	// type that its call's explicit type arguments give (see
 	// tvar.typeArgUp).
 	typeArgWant syntax.Expr
+	// typeArgStrict is set with typeArgWant where the explicit type
+	// arguments aren't flexible in the parameter's type (see
+	// tvar.strictArg).
+	typeArgStrict bool
+	// argWant is the argument being checked against its parameter's type,
+	// not one that explicit type arguments give (see tvar.argUp).
+	argWant syntax.Expr
+	// indexCalls are the get and set calls of indexing operators, a[i] and
+	// a[i] = v, whose arguments K2 constrains as an assignment's value:
+	// not as an argument's (see tvar.argUp).
+	indexCalls map[*syntax.Call]bool
 	// elvisFull is the initializer being checked of a local declared
 	// without a type, which nothing else is expected of: an elvis that
 	// is one is completed on its own.

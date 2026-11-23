@@ -3953,6 +3953,10 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	if name == "set" {
 		call.PassLast() // the value
 	}
+	if c.indexCalls == nil {
+		c.indexCalls = map[*syntax.Call]bool{}
+	}
+	c.indexCalls[call] = true
 	x.Call = call
 	t := c.expr(call, want)
 	if f := call.Sym; f != nil && !f.Operator {
