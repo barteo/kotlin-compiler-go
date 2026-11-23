@@ -31,6 +31,9 @@ const (
 	AccStrict       = 0x0800
 
 	majorVersion = 52 // Java 8
+	// Java17 is Java 17's major version, from which classes have a
+	// PermittedSubclasses attribute.
+	Java17 = 61
 )
 
 // TargetMajor returns the class file major version of JVM target, as
@@ -465,6 +468,9 @@ type Class struct {
 	// Signature is the class's generic signature, its Signature
 	// attribute, if it has one.
 	Signature string
+	// Permitted are the classes of the PermittedSubclasses attribute, of
+	// a sealed class or interface, if it has one.
+	Permitted []string
 	fields    []*member
 	methods   []*member
 	anns      annotations
@@ -722,6 +728,13 @@ func (c *Class) Bytes() []byte {
 		classAttrs = append(classAttrs, attr{c.Utf8("EnclosingMethod"), u2(u2(nil, c.Class(e.Class)), m)})
 	}
 	classAttrs = c.annotationAttrs(classAttrs, c.anns)
+	if len(c.Permitted) > 0 {
+		b := u2(nil, uint16(len(c.Permitted)))
+		for _, name := range c.Permitted {
+			b = u2(b, c.Class(name))
+		}
+		classAttrs = append(classAttrs, attr{c.Utf8("PermittedSubclasses"), b})
+	}
 	if len(c.bootstrap) > 0 {
 		// After the code, which adds bootstrap methods.
 		b := u2(nil, uint16(len(c.bootstrap)))

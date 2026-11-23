@@ -167,8 +167,10 @@ expect declarations are only checked against them (`expect.go`). `contract { }` 
 ## Class files
 
 Class files are version 52 (Java 8), and those of a higher
-`-jvm-target` only say a higher version: the driver raises it as it
-writes them (`classfile.SetMajor`), as nothing in them needs it. The assembler
+`-jvm-target` say a higher version: the driver raises it as it
+writes them (`classfile.SetMajor`), as nothing in them needs it but, from
+Java 17 on, a sealed class's `PermittedSubclasses` attribute, which
+codegen writes for the target (`Options.JVMTarget`). The assembler
 (`internal/classfile/code.go`) computes `StackMapTable` frames in the
 same pass that emits code:
 

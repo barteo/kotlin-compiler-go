@@ -694,9 +694,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the lambdas and local functions of its initializers and `init` blocks
   are static methods of the interface.
 - Class files for a `-jvm-target` above 1.8 are those for 1.8 with a
-  higher version: no `PermittedSubclasses` attributes, which `kotlinc`
-  writes for `-jvm-target 17` and later, and string templates are built
-  with `StringBuilder`, not `kotlinc`'s `StringConcatFactory` of 9 and
+  higher version, and from 17 on `PermittedSubclasses` attributes, as
+  `kotlinc` writes them: string templates are built with
+  `StringBuilder`, not `kotlinc`'s `StringConcatFactory` of 9 and
   later. `InnerClasses` entries are only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`
