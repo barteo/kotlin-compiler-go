@@ -742,7 +742,9 @@ func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []typ
 // Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
 // A plugin's code isn't checked (state.plugin).
 func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
-	if c.state.plugin {
+	if c.state.plugin || c.aliasDeprecated[x] {
+		// A typealias's constructor call whose expansion only drew a
+		// warning: its class's type arguments are the expansion's.
 		return
 	}
 	for j, p := range cd.tparams {

@@ -6,16 +6,16 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4448 | 51.6% |
+| rejects invalid | 4446 | 51.6% |
 | accepts valid | 4150 | 48.2% |
-| accepts invalid | 15 | 0.2% |
+| accepts invalid | 17 | 0.2% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4415.
+Of the 4446 tests both reject, kc reports an error on the line of an expected one in 4413.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -51,6 +51,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ARGUMENT_TYPE_MISMATCH` | 4 | 4 | `tests/j+k/collectionOverrides/containsAll.kt`, `tests/j+k/genericFunAndClassNullabilityInconsistency.kt` |
 | `UNRESOLVED_REFERENCE` | 4 | 2 | `tests/j+k/differentFilename.kt`, `tests/jvm/classpath/classFromJdkInLibrary.kt` |
 | `(no error marked)` | 3 | 3 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
+| `OTHER_ERROR_WITH_REASON` | 2 | 2 | `testsWithStdLib/typealias/upperBoundViolated.kt`, `testsWithStdLib/typealias/upperBoundViolated2.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
 | `CONDITION_TYPE_MISMATCH` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
@@ -67,7 +68,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21603 of 22025 expected errors (98.1%) on their lines.
+kc reports 21601 of 22025 expected errors (98.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -127,10 +128,10 @@ kc reports 21603 of 22025 expected errors (98.1%) on their lines.
 | `NO_ELSE_IN_WHEN` | 217 | 215 | 2 |
 | `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 24 | 2 |
 | `OPT_IN_MARKER_ON_WRONG_TARGET` | 16 | 14 | 2 |
+| `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 30 | 2 |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 30 | 28 | 2 |
 | `REDECLARATION` | 196 | 194 | 2 |
-| `REPEATED_ANNOTATION` | 69 | 67 | 2 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -139,11 +140,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 34 | 8.1% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
+| accepted | 36 | 8.5% | `ARGUMENT_TYPE_MISMATCH` 9, `SYNTAX` 6, `UNRESOLVED_REFERENCE` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `MEMBER_PROJECTED_OUT` 2 |
 | syntax-error | 74 | 17.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 54 | 12.8% | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `ARGUMENT_TYPE_MISMATCH` 7, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
-| missing-check | 260 | 61.6% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 21, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
+| nearby | 54 | 12.7% | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 8, `ARGUMENT_TYPE_MISMATCH` 7, `RETURN_TYPE_MISMATCH` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 4 |
+| missing-check | 260 | 61.3% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 22, `CANNOT_INFER_PARAMETER_TYPE` 21, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `RETURN_TYPE_MISMATCH` 9 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,9 +152,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 198 |
-| `type mismatch: inferred type is _ but _ was expected` | 141 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 131 |
+| `unresolved reference: _` | 196 |
+| `type mismatch: inferred type is _ but _ was expected` | 139 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 77 |
 | `unresolved or unsupported type: _` | 29 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
@@ -193,7 +194,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3425 of the 3667 warnings the tests expect (93.4%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3498 of the 3667 warnings the tests expect (95.4%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -202,15 +203,15 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
-| `USELESS_IS_CHECK` | 127 | 114 | 0 |
+| `USELESS_IS_CHECK` | 127 | 116 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 89 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
-| `SENSELESS_COMPARISON` | 91 | 72 | 1 |
-| `USELESS_CAST` | 91 | 77 | 2 |
-| `UNNECESSARY_SAFE_CALL` | 90 | 79 | 1 |
-| `UNCHECKED_CAST` | 88 | 73 | 1 |
+| `SENSELESS_COMPARISON` | 91 | 81 | 1 |
+| `USELESS_CAST` | 91 | 83 | 2 |
+| `UNNECESSARY_SAFE_CALL` | 90 | 84 | 1 |
+| `UNCHECKED_CAST` | 88 | 76 | 1 |
 | `OPT_IN_USAGE` | 83 | 78 | 0 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 71 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
@@ -218,9 +219,9 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 60 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 45 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 47 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
-| `USELESS_ELVIS` | 44 | 41 | 0 |
+| `USELESS_ELVIS` | 44 | 43 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
@@ -233,8 +234,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 26 | 0 |
 | `INLINE_CLASS_DEPRECATED` | 26 | 26 | 0 |
 | `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 | 26 | 0 |
-| `REDUNDANT_ELSE_IN_WHEN` | 26 | 19 | 0 |
-| `DIVISION_BY_ZERO` | 25 | 22 | 0 |
+| `REDUNDANT_ELSE_IN_WHEN` | 26 | 24 | 0 |
+| `DIVISION_BY_ZERO` | 25 | 25 | 0 |
 | `LEAKED_IN_PLACE_LAMBDA` | 25 | 25 | 0 |
 | `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 | 22 | 2 |
 | `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 | 22 | 0 |
@@ -247,7 +248,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `DEPRECATED_JAVA_ANNOTATION` | 16 | 16 | 0 |
 | `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 | 15 | 0 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 | 15 | 0 |
-| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 12 | 0 |
+| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 15 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 | 7 | 0 |
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 15 | 0 |
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
@@ -261,7 +263,9 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 | 11 | 0 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 | 10 | 0 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 | 10 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 | 9 | 0 |
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 10 | 0 |
+| `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 | 2 | 0 |
 | `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
 | `DUPLICATE_BRANCH_CONDITION_IN_WHEN` | 9 | 9 | 0 |
 | `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 | 9 | 0 |
@@ -291,7 +295,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `SYNCHRONIZED_ON_INLINE` | 5 | 5 | 0 |
 | `DSL_MARKER_PROPAGATES_TO_MANY` | 4 | 4 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
-| `TRIM_MARGIN_BLANK_PREFIX` | 4 | 2 | 0 |
+| `TRIM_MARGIN_BLANK_PREFIX` | 4 | 4 | 0 |
+| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 | 3 | 0 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 | 2 | 0 |
 | `DEPRECATED_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
 | `OPERATOR_RENAMED_ON_IMPORT` | 3 | 3 | 0 |
@@ -301,9 +306,11 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
 | `REDUNDANT_RETURN_UNIT_TYPE` | 3 | 3 | 0 |
 | `TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER` | 3 | 2 | 0 |
+| `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING` | 3 | 3 | 0 |
 | `USELESS_JVM_EXPOSE_BOXED` | 3 | 2 | 0 |
 | `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
 | `INCOMPATIBLE_ANNOTATION_TARGETS` | 2 | 2 | 0 |
+| `INCOMPATIBLE_TYPES_WARNING` | 2 | 2 | 0 |
 | `OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS` | 2 | 2 | 0 |
 | `REDUNDANT_SETTER_PARAMETER_TYPE` | 2 | 2 | 0 |
 | `REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE` | 2 | 2 | 0 |
@@ -316,15 +323,9 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 
 | Warning | Count |
 |:---|---:|
-| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 |
-| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 |
-| `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 |
-| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 |
 | `CAN_BE_VAL` | 3 |
 | `MISSING_DEPENDENCY_SUPERCLASS_WARNING` | 3 |
-| `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING` | 3 |
 | `ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE` | 2 |
-| `INCOMPATIBLE_TYPES_WARNING` | 2 |
 | `REDUNDANT_RETURN` | 2 |
 | `CANNOT_CHANGE_ACCESS_PRIVILEGE_WARNING` | 1 |
 | `CANNOT_INFER_VISIBILITY_WARNING` | 1 |

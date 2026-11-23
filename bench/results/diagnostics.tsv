@@ -10801,8 +10801,8 @@ testsWithStdLib/typealias/hashMapTypeAlias.kt	accepts valid
 testsWithStdLib/typealias/nothingTypeAlias.kt	accepts valid		
 testsWithStdLib/typealias/typeAliasSamAdapterConstructors.kt	accepts valid		
 testsWithStdLib/typealias/typeAliasSamAdapterConstructors2.kt	accepts valid		
-testsWithStdLib/typealias/upperBoundViolated.kt	rejects invalid	on an expected line	
-testsWithStdLib/typealias/upperBoundViolated2.kt	rejects invalid	on an expected line	
+testsWithStdLib/typealias/upperBoundViolated.kt	accepts invalid	OTHER_ERROR_WITH_REASON	upperBoundViolated.kt:8: OTHER_ERROR_WITH_REASON
+testsWithStdLib/typealias/upperBoundViolated2.kt	accepts invalid	OTHER_ERROR_WITH_REASON	upperBoundViolated2.kt:6: OTHER_ERROR_WITH_REASON
 testsWithStdLib/typealias/upperBoundViolated3.kt	accepts valid		
 testsWithStdLib/unaryOperators.kt	rejects invalid	on an expected line	
 testsWithStdLib/varargs/kt3213.kt	accepts valid		

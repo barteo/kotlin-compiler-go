@@ -399,6 +399,13 @@ type Checker struct {
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// ctorAliasRef is the typealias use that a constructor call through
+	// it, ctorAliasCall, is expanding, whose bounds only warn where they
+	// aren't of the alias's arguments; aliasDeprecated are the calls
+	// warned of so (see argBounds).
+	ctorAliasRef    *syntax.TypeRef
+	ctorAliasCall   *syntax.Call
+	aliasDeprecated map[*syntax.Call]bool
 	// headerParams are the parameters of the constructor whose
 	// parameters' annotations are checked: their arguments see them.
 	headerParams []*types.VarSym

@@ -117,6 +117,7 @@ func (c *Checker) localWarnings() {
 		case *syntax.Call:
 			c.platformArgWarning(n)
 			c.emptyIntersectionWarningAt(n, delegateAt(n, calleePos(n)))
+			c.inferredAliasBounds(n)
 			c.atomicWarnings(n)
 			c.redundantSpreads(n)
 			c.varargNothing(n)
