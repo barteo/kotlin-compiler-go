@@ -256,7 +256,7 @@ those of the last module are only read.
 
 Some *accepts invalid* tests are out of `kc`'s reach, and stay so.
 `kotlinc` compiles them under the harness too (see the self-check
-below), except for the quirk and the FIR2IR tests:
+below), except for the FIR2IR tests:
 
 - **A class path without the standard library**: the two
   `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
@@ -273,7 +273,6 @@ below), except for the quirk and the FIR2IR tests:
   is `kotlinc`'s view of a source root directory. Given the `.java`
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
-- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser.
 - **An error of the test pipeline only**:
   `testsWithStdLib/typealias/upperBoundViolated` and
   `upperBoundViolated2` expect, besides the deprecation warning of a
@@ -331,17 +330,17 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,613 | |
-| rejects invalid | 4,446 | 51.6% |
+| rejects invalid | 4,447 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
-| accepts invalid | 17 | 0.2% |
+| accepts invalid | 16 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,601 of the 22,025 expected errors (98.1%) on their lines, and 3,498 of
-the 3,667 expected warnings (95.4%), with 18 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 6 of the 17
+21,640 of the 22,025 expected errors (98.3%) on their lines, and 3,519 of
+the 3,667 expected warnings (96.0%), with 18 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 6 of the 16
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
@@ -349,7 +348,7 @@ largest groups are:
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
   type mismatches (`ARGUMENT_TYPE_MISMATCH` 4) and unresolved names
-  (`UNRESOLVED_REFERENCE` 4); no other error is expected by more than
+  (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
   two. All but two are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none, and no harness errors.

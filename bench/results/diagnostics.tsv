@@ -2558,7 +2558,7 @@ tests/delegatedProperty/inference/useCompleterWithoutExpectedType.kt	accepts val
 tests/delegatedProperty/inference/useExpectedType.kt	accepts valid		
 tests/delegatedProperty/inference/useExpectedTypeForVal.kt	accepts valid		
 tests/delegatedProperty/kt4640.kt	rejects invalid	on an expected line	
-tests/delegatedProperty/kt48546.kt	rejects invalid	elsewhere	
+tests/delegatedProperty/kt48546.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/localVariable.kt	accepts valid		
 tests/delegatedProperty/localWithSmartCast.kt	accepts valid		
 tests/delegatedProperty/missedGetter.kt	rejects invalid	on an expected line	
@@ -2660,8 +2660,8 @@ tests/delegation/covariantOverrides/kt13952.kt	rejects invalid	on an expected li
 tests/delegation/covariantOverrides/simple.kt	rejects invalid	on an expected line	
 tests/delegation/kt40510.kt	rejects invalid	on an expected line	
 tests/delegation/kt44843.kt	rejects invalid	on an expected line	
-tests/delegation/kt48546.kt	rejects invalid	elsewhere	
-tests/delegation/kt49477.kt	rejects invalid	elsewhere	
+tests/delegation/kt48546.kt	rejects invalid	on an expected line	
+tests/delegation/kt49477.kt	rejects invalid	on an expected line	
 tests/delegation/kt8154.kt	accepts valid		
 tests/delegation/memberHidesSupertypeOverride/abstractOverride.kt	accepts valid		
 tests/delegation/memberHidesSupertypeOverride/delegationToSubType.kt	accepts valid		
@@ -8787,7 +8787,7 @@ tests/suspendConversion/suspendVsNonSuspendGeneric.kt	accepts valid
 tests/suspendConversion/suspendVsNonSuspendSam.kt	accepts valid		
 tests/suspendFunAndPrivateJava.kt	accepts valid		
 tests/synchronizedOnJavaValueBasedWarning.kt	skip	JDK_KIND	
-tests/syntax/complicatedLTGT.kt	accepts invalid	CONDITION_TYPE_MISMATCH; EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS; SYNTAX; UNRESOLVED_REFERENCE	complicatedLTGT.kt:5: CONDITION_TYPE_MISMATCH
+tests/syntax/complicatedLTGT.kt	rejects invalid	on an expected line	
 tests/syntax/complicatedLTGTE.kt	accepts valid		
 tests/syntax/forInStringWithIndexNameBasedDestructuringFullForm.kt	skip	LANGUAGE	
 tests/syntax/incorrectLTGTFallback.kt	accepts valid		
@@ -10344,7 +10344,7 @@ testsWithStdLib/inference/complexConstraintSystem.kt	accepts valid
 testsWithStdLib/inference/delegates/kt31219.kt	accepts valid		
 testsWithStdLib/inference/delegates/kt31679.kt	accepts valid		
 testsWithStdLib/inference/delegates/kt32249.kt	accepts valid		
-testsWithStdLib/inference/delegates/kt50994.kt	rejects invalid	elsewhere	
+testsWithStdLib/inference/delegates/kt50994.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/dnnTypeWithNullable.kt	skip	LANGUAGE	
 testsWithStdLib/inference/dnnTypeWithNullableOld.kt	skip	LANGUAGE	
 testsWithStdLib/inference/expectedSetForLambdaParameter.kt	accepts valid		
