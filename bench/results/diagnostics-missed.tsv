@@ -46,7 +46,6 @@ tests/crashOnPlusAssignWithUnresolvedInBuildList.kt	crashOnPlusAssignWithUnresol
 tests/cyclicHierarchy/kotlinJavaNestedCycle.kt	StorageManager.kt:2	CYCLIC_INHERITANCE_HIERARCHY	missing-check
 tests/cyclicHierarchy/withTypeAlias2.kt	withTypeAlias2.kt:14	RECURSIVE_TYPEALIAS_EXPANSION	missing-check
 tests/dataClasses/missingDependencyInSupertype.kt	missingDependencyInSupertype.kt:5	MISSING_DEPENDENCY_SUPERCLASS	missing-check
-tests/delegatedProperty/provideDelegate/provideDelegateOperatorDeclaration.kt	provideDelegateOperatorDeclaration.kt:12	INAPPLICABLE_OPERATOR_MODIFIER	missing-check
 tests/delegatedProperty/redundantSetter.kt	redundantSetter.kt:8	ACCESSOR_FOR_DELEGATED_PROPERTY	syntax-error
 tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:17	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
 tests/destructuring/destructuringInWhenSubject.kt	destructuringInWhenSubject.kt:8	IMPOSSIBLE_IS_CHECK_ERROR	syntax-error
@@ -75,7 +74,6 @@ tests/fromBuilder/enums.kt	enums.kt:14	UNRESOLVED_REFERENCE	missing-check
 tests/fromBuilder/enums.kt	enums.kt:19	UNRESOLVED_REFERENCE	missing-check
 tests/fromBuilder/enums.kt	enums.kt:24	UNRESOLVED_REFERENCE	missing-check
 tests/fromBuilder/enums.kt	enums.kt:28	UNINITIALIZED_ENUM_COMPANION	missing-check
-tests/functionAsExpression/FunctionType.kt	FunctionType.kt:31	INITIALIZER_TYPE_MISMATCH	missing-check
 tests/functionTypeInitializerTypeMismatch.kt	functionTypeInitializerTypeMismatch.kt:55	RETURN_TYPE_MISMATCH	missing-check
 tests/generics/capturedParameters/uncheckedCast.kt	uncheckedCast.kt:34	CANNOT_CHECK_FOR_ERASED	missing-check
 tests/generics/capturedParameters/uncheckedCast.kt	uncheckedCast.kt:39	NO_TYPE_ARGUMENTS_ON_RHS	missing-check
@@ -174,7 +172,6 @@ tests/j+k/typeFromGenericWithAnnotationWithoutWrtHack.kt	Test.kt:9	INITIALIZER_T
 tests/javac/qualifiedExpression/PackageVsClass.kt	c.kt:9	UNRESOLVED_REFERENCE	nearby
 tests/jvm/classpath/classFromJdkInLibrary.kt	source.kt:4	UNRESOLVED_REFERENCE	accepted
 tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt	main.kt:2	DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR	accepted
-tests/jvm/internal/internalFromForeignModule.kt	source.kt:5	INVISIBLE_REFERENCE	missing-check
 tests/jvm/typeOf/suspendType.kt	suspendType.kt:11	TYPEOF_SUSPEND_TYPE	missing-check
 tests/jvm/typeOf/suspendType.kt	suspendType.kt:14	TYPEOF_SUSPEND_TYPE	missing-check
 tests/kt41984.kt	main.kt:15	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
@@ -209,7 +206,6 @@ tests/problems/invalidCode.kt	c.kt:3	UNRESOLVED_IMPORT	syntax-error
 tests/problems/invalidCode.kt	c.kt:5	UNRESOLVED_IMPORT	syntax-error
 tests/problems/multipleJavaClassesInOneFile.kt	main.kt:5	UNRESOLVED_REFERENCE	accepted
 tests/propertyOfFinalClassSmartcastEdgeCases.kt	Kotlin.kt:37	CANNOT_CHECK_FOR_ERASED	nearby
-tests/redeclarations/RedeclaringPrivateToFile.kt	a.kt:14	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:26	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:26	UNRESOLVED_REFERENCE	missing-check
 tests/regressions/Jet81.kt	Jet81.kt:9	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	missing-check
@@ -250,7 +246,6 @@ tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteral
 tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteralsWithoutArtifactOnClasspath.kt:3	UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH	accepted
 tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteralsWithoutArtifactOnClasspath.kt:4	UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH	accepted
 tests/varargs/varargInSetter.kt	varargInSetter.kt:5	ASSIGNMENT_TYPE_MISMATCH	syntax-error
-tests/varargs/varargViewedAsArray.kt	varargViewedAsArray.kt:26	INAPPLICABLE_CANDIDATE	missing-check
 tests/visibility/moreSpecificProtected.kt	moreSpecificProtected.kt:81	UNRESOLVED_REFERENCE_WRONG_RECEIVER	missing-check
 tests/when/guard/initializationAnalyses.kt	initializationAnalyses.kt:84	VAL_REASSIGNMENT	missing-check
 tests/when/guard/typeCheckerBehaves.kt	typeCheckerBehaves.kt:33	NO_ELSE_IN_WHEN	nearby
@@ -262,7 +257,6 @@ testsWithStdLib/annotations/annotationTargetResolvedAmbiguously.kt	annotationTar
 testsWithStdLib/annotations/annotationTargetResolvedAmbiguously.kt	annotationTargetResolvedAmbiguously.kt:43	WRONG_ANNOTATION_TARGET	missing-check
 testsWithStdLib/callableReferences/companions.kt	main.kt:27	OVERLOAD_RESOLUTION_AMBIGUITY	missing-check
 testsWithStdLib/coroutines/callableReference/callableReferenceOnUnresolvedLHS.kt	callableReferenceOnUnresolvedLHS.kt:9	UNRESOLVED_REFERENCE	missing-check
-testsWithStdLib/coroutines/suspensionPointInMonitorNewInf.kt	suspensionPointInMonitorNewInf.kt:37	SUSPENSION_POINT_INSIDE_CRITICAL_SECTION	missing-check
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:30	TYPE_MISMATCH	missing-check
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:71	TYPE_MISMATCH	missing-check
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	Kotlin.kt:87	CANNOT_INFER_PARAMETER_TYPE	missing-check
@@ -272,9 +266,6 @@ testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCaptured.kt	onlyIn
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithLambda.kt	onlyInputTypesWithLambda.kt:50	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	missing-check
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithLambda.kt	onlyInputTypesWithLambda.kt:64	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	missing-check
 testsWithStdLib/kt9078.kt	kt9078.kt:7	UNRESOLVED_REFERENCE	missing-check
-testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:12	OPT_IN_MARKER_ON_WRONG_TARGET	missing-check
-testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:17	OPT_IN_USAGE_ERROR	missing-check
-testsWithStdLib/properties/backingField/explicitBackingFieldOptIns.kt	explicitBackingFieldOptIns.kt:22	OPT_IN_MARKER_ON_WRONG_TARGET	missing-check
 testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineAndEffectiveVisibility.kt	explicitBackingFieldsInInlineAndEffectiveVisibility.kt:16	PRIVATE_CLASS_MEMBER_FROM_INLINE	missing-check
 testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeWithReceiver.kt	explicitFieldWithFunctionTypeWithReceiver.kt:20	NO_VALUE_FOR_PARAMETER	nearby
 testsWithStdLib/typealias/upperBoundViolated.kt	upperBoundViolated.kt:8	OTHER_ERROR_WITH_REASON	accepted
