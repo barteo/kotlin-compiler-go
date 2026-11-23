@@ -2449,7 +2449,7 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 				return true
 			}
 			for _, g := range s.Methods[f.Name] {
-				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) {
+				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) && !c.substOverrides(f, g) {
 					continue
 				}
 				for j, p := range f.Params {
@@ -2481,6 +2481,28 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 		return ms
 	}
 	return out
+}
+
+// substOverrides reports whether Java method f overrides g, a method of
+// a generic supertype, through the type arguments f's class gives it: B's
+// bar(String x) of A's bar(T x), for a B that extends A<String>, whose
+// descriptors differ.
+func (c *Checker) substOverrides(f, g *types.FunSym) bool {
+	if len(g.TypeParams) != 0 || len(f.TypeParams) != 0 || g.Owner == nil || len(g.Owner.TypeParams) == 0 {
+		return false
+	}
+	gs := c.memberSubst(f.Owner.This(), g.Owner)
+	if gs == nil {
+		return false
+	}
+	for j, p := range f.Params {
+		dp, ok := types.ParamDesc(p.Type)
+		dq, qok := types.ParamDesc(gs.ApplyIn(g.Params[j].Type))
+		if !ok || !qok || dp != dq {
+			return false
+		}
+	}
+	return true
 }
 
 // functionNOverrides adds to ms, for each Java method whose parameter is
