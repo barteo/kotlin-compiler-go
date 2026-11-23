@@ -995,7 +995,8 @@ func literalString(t syntax.Token) (string, bool) {
 
 // markerTargetErrors reports requirement markers among annotations as
 // that are on a target markers can't be on: a getter, a value parameter,
-// a local variable, a receiver, a setter's parameter or a delegate.
+// a local variable, a receiver, a setter's parameter, a delegate or a
+// field, explicit or not.
 func (w *optWalker) markerTargetErrors(as []syntax.Annotation, param bool) {
 	if suppresses(as, "OPT_IN_MARKER_ON_WRONG_TARGET") || w.suppressed("OPT_IN_MARKER_ON_WRONG_TARGET") {
 		return
@@ -1004,7 +1005,7 @@ func (w *optWalker) markerTargetErrors(as []syntax.Annotation, param bool) {
 		a := &as[i]
 		bad := false
 		switch a.Target {
-		case "get", "setparam", "receiver", "delegate", "param":
+		case "get", "setparam", "receiver", "delegate", "param", "field":
 			bad = true
 		case "":
 			bad = param
@@ -1965,6 +1966,17 @@ func (w *optWalker) propMarkers(p *types.VarSym, write bool) []*optMarker {
 	switch d := p.Decl.(type) {
 	case *syntax.PropDecl:
 		ms := w.o.annMarkers(d.Annotations, "", "property", acc)
+		if !write && d.BackingField != nil && p.Kind == types.Global && p.Facade == w.c.file.Class() {
+			// A read in the file of a top-level property reads its
+			// explicit backing field, whose markers count, as in K2.
+			var fs []syntax.Annotation
+			for _, a := range d.Annotations {
+				if a.OnField {
+					fs = append(fs, a)
+				}
+			}
+			ms = append(ms, w.o.annMarkers(fs, "field")...)
+		}
 		if !write {
 			if d.Type != nil {
 				ms = append(ms, w.o.refMarkers(d.Type, 0)...)

@@ -17,8 +17,9 @@ import (
 
 // suspendScope returns the innermost lambda whose body is code of its
 // own, or nil for the function being checked, whether that code can
-// suspend, and whether an inlined lambda passed to synchronized is
-// between the two: a suspension point there would hold the monitor.
+// suspend, and whether an inlined lambda passed to synchronized or
+// withLock is between the two: a suspension point there would hold the
+// monitor or lock.
 func (c *Checker) suspendScope() (l *syntax.Lambda, ok, critical bool) {
 	l, ok, critical, _ = c.suspendScope1()
 	return l, ok, critical
@@ -38,8 +39,8 @@ func (c *Checker) suspendScope1() (l *syntax.Lambda, ok, critical, monitor bool)
 			// Not a reference's, whose function a suspend one isn't
 			// for a function type that isn't suspend: go1(x::id) in a
 			// suspend lambda.
-			critical = critical || j.callee == "synchronized"
-			monitor = monitor || j.inMonitor && j.callee != "synchronized"
+			critical = critical || j.critical
+			monitor = monitor || j.inMonitor && !j.critical
 			continue
 		}
 		return l, false, critical, monitor

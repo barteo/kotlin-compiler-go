@@ -453,7 +453,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 	}
 	if info.Sig != "" || len(outer) > 0 {
-		t.classSignature(cls, info.Sig, outer)
+		t.classSignature(cls, info.Sig, outer, info.BoundAnnotations)
 	}
 	pure := t.pureInterface(cls, info)
 	if pure != nil && t.kotlin {
@@ -505,7 +505,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			f.Params = f.Params[1:]
 		}
 		if sig != "" {
-			ok = t.methodSignature(f, cls, sig, len(f.Params))
+			ok = t.methodSignature(f, cls, sig, len(f.Params), m.BoundAnnotations)
 		}
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
@@ -641,7 +641,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 					prev.Ambiguous = true
 					continue
 				}
-				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
+				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, javaFieldType(ft)), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
 					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate,
 					Deprecated: classFileDeprecation(fd.Deprecated)}
 			}
@@ -664,7 +664,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 					if static {
 						kind = types.Static
 					}
-					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: kind,
+					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, javaFieldType(ft)), Kind: kind,
 						Owner: cls, Resolved: true, Final: true, JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0,
 						Constant: fieldConstant(fd)})
 				}
@@ -688,6 +688,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Entries = append(cls.Entries, fd.Name)
 		}
 	}
+}
+
+// javaFieldType returns the type of an instance field from its
+// descriptor or signature, ft: a platform type, but for a use of a type
+// parameter whose bound is annotated not-null (see javaParamType).
+func javaFieldType(ft types.Type) types.Type {
+	if ft.IsParam() && ft.Param().JavaNotNull && !ft.N {
+		return ft
+	}
+	return ft.Platform()
 }
 
 // fieldNullability returns the type ft of field fd as its annotations
@@ -736,7 +746,9 @@ var javaNullability = func() map[string]bool {
 // only type that is both the mutable collection and the read-only one: a
 // Kotlin override may declare either.
 func enhance(as []string, t types.Type) types.Type {
-	if !t.P {
+	if !t.P && !(t.IsParam() && t.Param().JavaNotNull && !t.N) {
+		// Or a use of a type parameter whose bound is annotated not-null,
+		// which @Nullable makes nullable: @Nullable T.
 		return t
 	}
 	notNull, nullable := false, false
@@ -1004,6 +1016,12 @@ func (c *Checker) resolveImports() {
 		if cls != nil {
 			c.imports[alias] = cls
 			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
+			if c.libraryAliasPath(imp.Path, cls) {
+				if c.aliasClassImports == nil {
+					c.aliasClassImports = map[string]bool{}
+				}
+				c.aliasClassImports[alias] = true
+			}
 		}
 		var ta *types.AliasSym
 		if cls == nil && ext.kotlin {
@@ -1376,6 +1394,37 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 		}
 	}
 	return nil
+}
+
+// libraryAliasOf reports whether simple name name, which resolves to
+// class cls, is a library's typealias of it, as HashSet is
+// kotlin.collections' of java.util.HashSet: a class on the class path that
+// isn't imported, explicitly or by a star import, by its own name.
+func (c *Checker) libraryAliasOf(name string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	if cls == nil || !cls.External || !ext.kotlin || kotlinTypes[name] {
+		return false
+	}
+	if _, ok := c.imports[name]; ok {
+		return c.aliasClassImports[name]
+	}
+	for _, r := range slices.Concat(c.starPkgs(), ext.defaultRefs()) {
+		if k := ext.pkgClassIn(r, name); k != nil {
+			return k == cls && ext.pkgClassAlias(r, name) == cls
+		}
+	}
+	return false
+}
+
+// libraryAliasPath reports whether qualified name qname is a library's
+// typealias of class cls: kotlin.collections.HashSet of java.util.HashSet.
+func (c *Checker) libraryAliasPath(qname string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	i := strings.LastIndexByte(qname, '.')
+	if i < 0 || cls == nil || !cls.External || !ext.kotlin || ext.class(strings.ReplaceAll(qname, ".", "/")) != nil {
+		return false
+	}
+	return ext.pkgClassAlias(ext.pkgRef(qname[:i]), qname[i+1:]) == cls
 }
 
 // extClass resolves a simple name of a class on the class path.

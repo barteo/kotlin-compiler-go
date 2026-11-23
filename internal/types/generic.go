@@ -206,6 +206,11 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
+	// JavaNotNull is set on a Java type parameter whose only bound is
+	// annotated not-null, T extends @NotNull Object: its bound isn't a
+	// platform type and nor are its uses in its class's or method's
+	// members, as in K2.
+	JavaNotNull bool
 	// OnlyInput is set on a parameter annotated @kotlin.internal.OnlyInputTypes,
 	// as T of contains(element: T): what a call infers for it must be the
 	// type of one of its inputs.

@@ -257,6 +257,22 @@ func readTypeAnnotations(r *reader, p *pool) []TypeAnnotation {
 	return out
 }
 
+// boundAnnotations adds to bs, by type parameter, the descriptors of the
+// annotations among as with the target, a type parameter bound's, on the
+// top of the bound's type rather than inside it.
+func boundAnnotations(bs [][]string, as []TypeAnnotation, target byte) [][]string {
+	for _, a := range as {
+		if a.Target != target || len(a.Path) > 0 {
+			continue
+		}
+		for len(bs) <= a.Index {
+			bs = append(bs, nil)
+		}
+		bs[a.Index] = append(bs[a.Index], a.Annotation.Type)
+	}
+	return bs
+}
+
 // readAnnotation reads one annotation as an '@' element value; r is past
 // it even if it can't be decoded.
 func readAnnotation(r *reader, p *pool) (ElementValue, bool) {

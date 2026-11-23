@@ -453,6 +453,13 @@ type Checker struct {
 	// aliasCtors are the calls of typealiases' constructors, with their
 	// aliases: see ownParamArg.
 	aliasCtors map[*syntax.Call]*types.AliasSym
+	// libAliasCtors are the calls of constructors through a library's
+	// typealias, which resolves to its class: HashSet(c) (see
+	// tvar.strictFlex).
+	libAliasCtors map[*syntax.Call]bool
+	// aliasClassImports are the names of imports of a library's typealias
+	// that imports holds as its class: import kotlin.collections.HashSet.
+	aliasClassImports map[string]bool
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
@@ -498,6 +505,17 @@ type Checker struct {
 	// type that its call's explicit type arguments give (see
 	// tvar.typeArgUp).
 	typeArgWant syntax.Expr
+	// typeArgStrict is set with typeArgWant where the explicit type
+	// arguments aren't flexible in the parameter's type (see
+	// tvar.strictArg).
+	typeArgStrict bool
+	// argWant is the argument being checked against its parameter's type,
+	// not one that explicit type arguments give (see tvar.argUp).
+	argWant syntax.Expr
+	// indexCalls are the get and set calls of indexing operators, a[i] and
+	// a[i] = v, whose arguments K2 constrains as an assignment's value:
+	// not as an argument's (see tvar.argUp).
+	indexCalls map[*syntax.Call]bool
 	// elvisFull is the initializer being checked of a local declared
 	// without a type, which nothing else is expected of: an elvis that
 	// is one is completed on its own.
@@ -786,7 +804,7 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 			Abstract: m.Access&classfile.AccAbstract != 0}
 		ok := t.signature(f, m.Desc, false)
 		if m.Sig != "" {
-			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
+			ok = t.methodSignature(f, owner, m.Sig, len(f.Params), m.BoundAnnotations)
 		}
 		if !ok {
 			continue
@@ -2156,10 +2174,17 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 
 // starVarAmbiguous reports whether v, a top-level property of the
 // program's packages that one star import gives, is also, as another
-// property, given by another: as in Kotlin, the use is ambiguous.
+// property, given by another: as in Kotlin, the use is ambiguous. So is
+// the file's private property that another file of its package declares
+// public.
 func (c *Checker) starVarAmbiguous(name string, v *types.VarSym) bool {
 	if v.Kind != types.Global {
 		return false
+	}
+	if w, ok := c.pkg.Vars[name]; ok && w != v && w.Facade != v.Facade && w.Alt == nil && v.Alt == nil && len(w.Contexts) == 0 && len(v.Contexts) == 0 && c.fileVars[name] == v {
+		// The file's private property and another file's public one of
+		// the package, a redeclaration that a use doesn't resolve.
+		return true
 	}
 	mine, others := false, false
 	for _, p := range c.userStars {

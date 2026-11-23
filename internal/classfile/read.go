@@ -86,6 +86,10 @@ type Info struct {
 	// RecordComponents are the names of a Java record's components, from
 	// its Record attribute.
 	RecordComponents []string
+	// BoundAnnotations are the descriptors of the type annotations on the
+	// class's type parameters' bounds, at the top of a bound's type, by
+	// type parameter, or nil if there are none: T extends @NotNull Object.
+	BoundAnnotations [][]string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -146,6 +150,10 @@ type Member struct {
 	ParamAnnotations [][]string
 	// Deprecated is the member's deprecation, or nil.
 	Deprecated *Deprecation
+	// BoundAnnotations are, for a generic method, as Info's for a class,
+	// the descriptors of the type annotations on its type parameters'
+	// bounds.
+	BoundAnnotations [][]string
 }
 
 // Deprecation is the deprecation of a class or member: the message and
@@ -447,6 +455,10 @@ func Parse(data []byte) (*Info, error) {
 					size = 0
 				case name == "Deprecated":
 					m.Deprecated = javaDeprecation(m.Deprecated)
+				case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+					end := min(r.pos+size, len(r.b))
+					m.BoundAnnotations = boundAnnotations(m.BoundAnnotations, readTypeAnnotations(r, p), TargetTypeParamBound)
+					r.pos, size = end, 0
 				case name == "RuntimeInvisibleParameterAnnotations", name == "RuntimeVisibleParameterAnnotations":
 					end := r.pos + size
 					n := int(r.u1())
@@ -517,6 +529,10 @@ func Parse(data []byte) (*Info, error) {
 		case name == "Signature" && size == 2:
 			info.Sig = must(p.utf8(r.u2()))
 			size = 0
+		case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+			end := min(r.pos+size, len(r.b))
+			info.BoundAnnotations = boundAnnotations(info.BoundAnnotations, readTypeAnnotations(r, p), TargetClassTypeParamBound)
+			r.pos, size = end, 0
 		case name == "InnerClasses":
 			for range r.u2() {
 				inner, outer := r.u2(), r.u2()

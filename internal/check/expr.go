@@ -204,6 +204,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				// An object named as a function is the object: a value.
 				if obj := objectOf(cls); obj != nil {
 					c.checkClassVisible(obj, x.P) // the class, or its private companion
+					if !c.usable(obj, x.P) {
+						return types.InvalidType // a library's internal companion
+					}
 					return objectValue(x, obj)
 				}
 				if obj := c.starObject(x.Name, cls); obj != nil {
@@ -2577,6 +2580,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
 			c.checkClassVisible(obj, x.P)
+			if !c.usable(obj, x.P) {
+				return types.InvalidType // a library's internal object
+			}
 			return objectValue(x, obj) // a.b.Obj, Outer.Companion, kotlin.random.Random
 		}
 	}
@@ -3205,6 +3211,12 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			return c.invokeValue(x, types.ClassType(cls), want, sink)
 		}
 		if cls != nil && len(fs) == 0 {
+			if alias == nil && c.libraryAliasOf(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true
+			}
 			return c.construct(x, cls, fn.P, want, sink)
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls == nil && len(fs) == 0 && len(a.TypeParams) == 0 {
@@ -3308,6 +3320,12 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 					c.recordAlias(x, a)
 					return c.aliasConstruct(x, a, cls, fn.P, want, sink) // a.b.Alias(1)
 				}
+			}
+			if name := c.qualifiedName(fn); name != "" && c.libraryAliasPath(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true // kotlin.collections.HashSet(c)
 			}
 			return c.construct(x, cls, fn.P, want, sink) // java.util.Random(1)
 		}
@@ -3935,6 +3953,10 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	if name == "set" {
 		call.PassLast() // the value
 	}
+	if c.indexCalls == nil {
+		c.indexCalls = map[*syntax.Call]bool{}
+	}
+	c.indexCalls[call] = true
 	x.Call = call
 	t := c.expr(call, want)
 	if f := call.Sym; f != nil && !f.Operator {

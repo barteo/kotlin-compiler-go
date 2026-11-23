@@ -497,6 +497,25 @@ func (r *resolver) boundInterface(t *Type) bool {
 	return tp == nil && r.s.isInterface(n)
 }
 
+// boundAnnotations returns the descriptors of the nullability annotations
+// on the bounds of type parameters tps, by type parameter, as a class
+// file's type annotations give them (classfile.Info.BoundAnnotations),
+// or nil if there are none.
+func (r *resolver) boundAnnotations(tps []*TypeParam) [][]string {
+	var out [][]string
+	for i, tp := range tps {
+		for _, b := range tp.Bounds {
+			if ds := r.nullability(b.Annotations); len(ds) > 0 {
+				for len(out) <= i {
+					out = append(out, nil)
+				}
+				out[i] = append(out[i], ds...)
+			}
+		}
+	}
+	return out
+}
+
 func (r *resolver) typeParamsSig(tps []*TypeParam) string {
 	if len(tps) == 0 {
 		return ""
@@ -627,6 +646,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		info.Sig = b.String()
 	}
+	info.BoundAnnotations = r.boundAnnotations(c.TypeParams)
 
 	for _, a := range c.Annotations {
 		switch a.Name {
@@ -775,6 +795,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			mm.Annotations = append(mm.Annotations, mr.markNonNull(true, m.Ret, nil)...)
 		}
 		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
+		mm.BoundAnnotations = mr.boundAnnotations(m.TypeParams)
 		if c.Kind == KindAnnotation && m.HasDefault {
 			// The value isn't evaluated, as in Details: an element value
 			// of no kind says that there is one.
