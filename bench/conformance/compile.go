@@ -451,7 +451,8 @@ func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string)
 // (-Wextra, as UNREACHABLE_CODE) for WITH_EXTRA_CHECKERS and the tests of
 // controlFlowAnalysis/deadCode and extraCheckers, whose markup expects
 // their warnings without it, and the experimental ones (as
-// REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS.
+// REDUNDANT_INTERPOLATION_PREFIX) for WITH_EXPERIMENTAL_CHECKERS and the
+// tests of extraCheckers, which expect EMPTY_RANGE.
 func checkerFlags(t *test, m *module) []string {
 	var flags []string
 	has := func(d string) bool {
@@ -463,7 +464,7 @@ func checkerFlags(t *test, m *module) []string {
 		strings.HasPrefix(t.path, "tests/extraCheckers/") {
 		flags = append(flags, "-Wextra")
 	}
-	if has("WITH_EXPERIMENTAL_CHECKERS") {
+	if has("WITH_EXPERIMENTAL_CHECKERS") || strings.HasPrefix(t.path, "tests/extraCheckers/") {
 		flags = append(flags, "-Xuse-fir-experimental-checkers")
 	}
 	return flags

@@ -423,17 +423,18 @@ func TestWarningsConversions(t *testing.T) {
 }
 
 // TestWarningsEmptyRange checks the warnings of empty ranges against
-// those kotlinc reports with -Wextra of testdata/emptyrange.kt, and that
-// there are none without it.
+// those kotlinc reports with -Xuse-fir-experimental-checkers of
+// testdata/emptyrange.kt, and that there are none without it, even with
+// -Wextra.
 func TestWarningsEmptyRange(t *testing.T) {
-	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExtraWarnings: true})
+	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExperimentalWarnings: true})
 	b, err := os.ReadFile("testdata/emptyrange.kt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true, ExtraWarnings: true}) {
 		if strings.HasSuffix(g, ":EMPTY_RANGE") {
-			t.Errorf("without ExtraWarnings: %s", g)
+			t.Errorf("without ExperimentalWarnings: %s", g)
 		}
 	}
 }

@@ -241,8 +241,9 @@ Four things differ from the test infrastructure:
 and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
 ones for tests with `WITH_EXTRA_CHECKERS` and those of
 `controlFlowAnalysis/deadCode/` and `extraCheckers/`, and the experimental ones for tests with
-`WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
-same tests.
+`WITH_EXPERIMENTAL_CHECKERS` and those of `extraCheckers/` (whose
+`EMPTY_RANGE` is an experimental checker's); the harness passes `kc` the
+flags for the same tests.
 
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. Like

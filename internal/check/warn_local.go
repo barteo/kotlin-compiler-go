@@ -87,7 +87,7 @@ func (c *Checker) localWarnings() {
 			}
 		case *syntax.Binary:
 			c.arrayEqualityWarning(n)
-			if c.u.extraWarnings || c.u.experimentalWarnings {
+			if c.u.experimentalWarnings {
 				c.emptyRangeWarning(n)
 			}
 			c.binaryWarnings(n)
@@ -131,7 +131,7 @@ func (c *Checker) localWarnings() {
 					c.uselessCallOnNotNull(n)
 				}
 			}
-			if c.u.extraWarnings || c.u.experimentalWarnings {
+			if c.u.experimentalWarnings {
 				c.emptyRangeWarning(n)
 			}
 			if m, ok := n.Fun.(*syntax.Member); ok && !n.Invoke {
