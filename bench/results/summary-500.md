@@ -11,10 +11,10 @@
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 5,823 ± 227 ms | — | 13,579 ms | 802 MB |
-| `kc -j 4` | 4,462 ± 215 ms | 1.3x faster | 13,916 ms | 912 MB |
-| `kotlinc (cold JVM)` | 97,922 ms | 16.8x slower | 241,030 ms | 3,416 MB |
+| `kc -j 1` | 6,114 ± 96 ms | — | 12,283 ms | 867 MB |
+| `kc -j 4` | 4,533 ± 210 ms | 1.3x faster | 13,610 ms | 1,040 MB |
+| `kotlinc (cold JVM)` | 101,216 ms | 16.6x slower | 259,662 ms | 3,025 MB |
 
-- kotlinc in a warm JVM (median of the last 2 of 4 runs in one JVM): 89139 ms
+- kotlinc in a warm JVM (median of the last 2 of 4 runs in one JVM): 78178 ms
 - Same program output: yes (checksum: 2194537)
 
