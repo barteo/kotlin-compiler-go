@@ -1157,6 +1157,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	// reported once, at its supertypes (checkMixedSuspendSupertypes), not
 	// again for its invoke overriding one of each kind.
 	mixed := mixesSuspendSupertypes(d)
+	if d.Value && !d.Interface && !d.Object && !d.Local {
+		c.reservedValueMembers(d)
+	}
 	for _, m := range d.Members {
 		fd, ok := m.(*syntax.FunDecl)
 		if !ok || fd.SelfStatic {
