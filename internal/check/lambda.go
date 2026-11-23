@@ -3402,7 +3402,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	case !r.HasVars():
 		w.ret, w.check = r, true
 	case r.K == types.TypeVar:
-		w.ret = s.upperHint(r)
+		// R? that the expected type makes Unit is Unit?, whose result
+		// isn't coerced to Unit: foo { if (c) Unit else null }.
+		w.ret = c.nullableUnit(r, s.upperHint(r))
 		if w.ret.K == types.Invalid && endsInLambda(l) {
 			// The lambda it returns takes its parameter types from the
 			// result's function-typed bound, once known.

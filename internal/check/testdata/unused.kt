@@ -153,3 +153,12 @@ fun u2(c: Boolean) {
     try { fun() = 1 } finally { fun() = 2 } // UNUSED_EXPRESSION
     String::class // UNUSED_EXPRESSION
 }
+// R? that the expected type makes Unit isn't coerced to Unit, and the
+// class literal of a reified type parameter isn't reported.
+class UnInv<T>(val x: T?)
+fun <R> unFoo(f: () -> R?): UnInv<R> = UnInv(f())
+fun unG(): UnInv<Unit> = unFoo { if (false) Unit else null }
+inline fun <reified K> unSel() {
+    K::class
+    String::class // UNUSED_EXPRESSION
+}
