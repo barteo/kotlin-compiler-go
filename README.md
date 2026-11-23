@@ -89,6 +89,28 @@ Even without its checkers, `kotlinc` would take 67 s, 9x as long as
 
 ## Try it
 
+### Install a release
+
+The [releases](https://github.com/barteo/kotlin-compiler-go/releases) have
+`kc` for Linux and macOS, on x86_64 (`amd64`) and arm64. Each archive holds
+the binary, this README, the license and the [Gradle init
+script](#use-it-in-a-gradle-build). `kc` still needs a JDK, and
+`kotlin-stdlib.jar` on the class path for most programs (below).
+
+```sh
+V=v0.1.0 P=linux_amd64  # or linux_arm64, darwin_amd64, darwin_arm64
+curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/kc_${V}_$P.tar.gz
+curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS  # on macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+tar xzf kc_${V}_$P.tar.gz && sudo install kc_${V}_$P/kc /usr/local/bin/
+kc -version
+```
+
+The macOS binaries aren't signed. If macOS refuses to run one that a browser
+downloaded, clear its quarantine with `xattr -d com.apple.quarantine kc`.
+
+### Build from source
+
 Requires Go 1.27.2+ and a JDK. The tests and benchmarks also need
 `kotlinc` and `hyperfine`. On macOS: `brew install go openjdk@21 kotlin
 hyperfine`. On Linux, get Go from [go.dev/dl](https://go.dev/dl/) and the
@@ -134,6 +156,7 @@ Arguments can be files or directories. Flags:
 | `-Xmulti-platform` | compile a multiplatform module's sources (`expect` and `actual` declarations, errors without it), as in `kotlinc` |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
+| `-version` | print `kc`'s version and exit |
 | `-time` | print per-phase timings |
 | `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
 | `-Wextra` | also report the warnings of `kotlinc`'s extra checkers (`UNREACHABLE_CODE`), as in `kotlinc` |
@@ -281,6 +304,22 @@ Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/l
   differences must be listed in `testdata/coroutine-shapes.golden`.
 - Package tests in `internal/` cover the parser, Kotlin metadata, class
   file frames and methods, the inliner and class path loading.
+
+## Releasing
+
+Versions follow [SemVer](https://semver.org), at `0.x` while `kc` is a
+prototype. To release, push an annotated tag on a commit of `main` whose
+checks passed:
+
+```sh
+git tag -a v0.1.0 -m "kc v0.1.0" && git push origin v0.1.0
+```
+
+[.github/workflows/release.yml](.github/workflows/release.yml) builds the four
+archives, runs each binary on its own platform, and publishes them with
+`SHA256SUMS` and notes generated from the merged pull requests. A tag with a
+hyphen, such as `v0.1.0-rc.1`, makes a prerelease. Running the workflow by hand
+builds and tests the archives without publishing them.
 
 ## License
 

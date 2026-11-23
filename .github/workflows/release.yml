@@ -1,0 +1,163 @@
+name: Release
+
+# Builds kc for Linux and macOS, on amd64 and arm64, and smoke-tests each
+# binary on its own platform. A pushed v* tag also publishes the archives
+# and their SHA256SUMS as a GitHub release; a tag with a hyphen, such as
+# v0.1.0-rc.1, makes a prerelease. Run by hand (workflow_dispatch), it
+# builds and tests only, and leaves the archives as the run's artifacts.
+#
+# kc is pure Go (only cmd/libkc needs cgo), so one runner cross-compiles
+# every platform.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+
+      - name: Version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=$GITHUB_REF_NAME
+          else
+            version=dev-${GITHUB_SHA::12}
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          name=kc_${VERSION}_${GOOS}_${GOARCH}
+          mkdir -p "dist/$name"
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$name/kc" ./cmd/kc
+          cp README.md LICENSE THIRD_PARTY_NOTICES.md tools/gradle/use-kc.init.gradle.kts "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          echo "ARCHIVE=$name.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: kc_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  # Each binary compiles and runs the README's first example on a runner of
+  # its own platform.
+  smoke-test:
+    name: Smoke test (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: darwin, goarch: amd64, runner: macos-15-intel }
+          - { goos: darwin, goarch: arm64, runner: macos-latest }
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: testdata/run
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@v6
+        with:
+          name: kc_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist
+
+      - name: kc -version
+        run: |
+          tar -C dist -xzf "dist/kc_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          kc=dist/kc_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}/kc
+          echo "KC=$kc" >> "$GITHUB_ENV"
+          out=$("$kc" -version)
+          echo "$out"
+          case "$out" in
+            "kc $VERSION "*" ${{ matrix.goos }}/${{ matrix.goarch }}") ;;
+            *) echo "::error::unexpected version: $out"; exit 1 ;;
+          esac
+
+      - name: Compile and run fizzBuzz
+        run: |
+          "$KC" -d "$RUNNER_TEMP/out" testdata/run/fizzBuzz.kt
+          java -cp "$RUNNER_TEMP/out" FizzBuzzKt | diff - testdata/run/fizzBuzz.out
+
+  publish:
+    name: Publish the release
+    needs: [build, smoke-test]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: kc_*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum kc_*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          if [[ $TAG == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/kc_*.tar.gz dist/SHA256SUMS \
+            --verify-tag --title "kc $TAG" --generate-notes "${flags[@]}"
