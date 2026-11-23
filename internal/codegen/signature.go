@@ -541,6 +541,16 @@ func (g *gen) signFun(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, desc
 // params, as an overload of @JvmOverloads, or for one of a member that
 // this inherits, whose types sub maps to those this sees.
 func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, desc string, this types.Type, fparams []*types.VarSym, sub types.Subst) {
+	if s := g.funSig(f, fd, desc, this, fparams, sub, nil, nil); s != "" {
+		mr.SetSignature(s)
+	}
+}
+
+// funSig returns the generic signature that signParams gives a method.
+// That of a local function's method has the type parameters outer of the
+// code around it before its own, and takes frame, what it captures,
+// after its receiver.
+func (g *gen) funSig(f *types.FunSym, fd *syntax.FunDecl, desc string, this types.Type, fparams []*types.VarSym, sub types.Subst, outer []*types.TypeParamSym, frame []sigPart) string {
 	var as []syntax.Annotation
 	var recvRef, retRef *syntax.TypeRef
 	refs := map[*types.VarSym]*syntax.TypeRef{}
@@ -562,6 +572,9 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 		}
 	}
 	tps := f.TypeParams
+	if len(outer) > 0 {
+		tps = append(slices.Clone(outer), tps...)
+	}
 	var params []sigPart
 	own := 0
 	if this.K != types.Invalid {
@@ -581,6 +594,7 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 	if f.Ext {
 		params = append(params, typedPart(f.Recv, recvRef))
 	}
+	params = append(params, frame...)
 	special := specialGeneric(f, fparams)
 	for i, p := range fparams {
 		params = append(params, sigPart{t: p.Type, ref: refs[p], erase: special[i] == erasedParam, anyColl: special[i] == anyCollection})
@@ -601,9 +615,98 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 		}
 		ret.t = sub.Apply(ret.t)
 	}
-	if s := methodSig(tps, params, ret, desc, 0, g.wildcards(as, f.Owner)); s != "" {
+	owner := f.Owner
+	if owner == nil {
+		owner = g.owner // a local function's
+	}
+	return methodSig(tps, params, ret, desc, 0, g.wildcards(as, owner))
+}
+
+// signLocal gives mr, the method of local function lf, of descriptor
+// desc, its generic signature. As kotlinc's, the method declares the type
+// parameters of the code around the function that its signature, its
+// body or what it captures mention, in that order, before its own.
+func (g *gen) signLocal(mr cf.MemberRef, lf *syntax.LocalFun, desc string) {
+	fd := lf.Decl
+	f := fd.Sym
+	var outer []*types.TypeParamSym
+	see := func(t types.Type) {
+		t.Has(func(u types.Type) bool {
+			if u.K == types.TypeParam && slices.Contains(lf.Outer, u.Param()) && !slices.Contains(outer, u.Param()) {
+				outer = append(outer, u.Param())
+			}
+			return false
+		})
+	}
+	for _, p := range f.Contexts {
+		see(p.Type)
+	}
+	if f.Ext {
+		see(f.Recv)
+	}
+	for _, p := range f.Params {
+		see(p.Type)
+	}
+	see(f.Ret)
+	body := func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.VarStmt:
+			if n.Sym != nil {
+				see(n.Sym.Type)
+			}
+		case *syntax.LocalFun:
+			if s := n.Decl.Sym; s != nil {
+				for _, p := range s.Params {
+					see(p.Type)
+				}
+				see(s.Ret)
+			}
+		case *syntax.Is:
+			see(n.Target)
+		case syntax.Expr:
+			see(n.Type())
+		}
+		return true
+	}
+	for _, p := range fd.Params {
+		syntax.Inspect(p.Default, body)
+	}
+	syntax.Inspect(fd.Body, body)
+	syntax.Inspect(fd.ExprBody, body)
+	frame := g.frameParts(lf.Frame)
+	for _, p := range frame {
+		see(p.t)
+	}
+	for i := 0; i < len(outer); i++ {
+		for _, b := range outer[i].Bounds {
+			see(b)
+		}
+	}
+	if s := g.funSig(f, fd, desc, types.InvalidType, f.Params, nil, outer, frame); s != "" {
 		mr.SetSignature(s)
 	}
+}
+
+// frameParts returns the parts of what frameDesc describes: the
+// enclosing object and the captures of a local function's frame.
+func (g *gen) frameParts(x *syntax.Lambda) []sigPart {
+	var parts []sigPart
+	if x.This {
+		parts = append(parts, sigPart{t: g.thisClass().This()})
+	}
+	for _, v := range x.Captures {
+		parts = append(parts, capturePart(v))
+	}
+	return parts
+}
+
+// capturePart returns the part of captured variable v. A captured var's
+// is its holder, of the descriptor's type.
+func capturePart(v *types.VarSym) sigPart {
+	if v.Boxed() {
+		return sigPart{t: types.InvalidType}
+	}
+	return sigPart{t: v.Type}
 }
 
 // signField gives field mr of a property of type t, written ref, its
@@ -657,20 +760,28 @@ func propRef(p *types.VarSym) *syntax.TypeRef {
 // generic signature: as kotlinc's, and javac's, it leaves out an inner
 // class's outer instance and an enum's name and ordinal. An inner class's
 // gets none if neither its parameters nor its outer instance have generic
-// types, and a local class's gets none. params are its parameters'
-// declarations, and as its annotations.
+// types. That of a local class or an object expression's has what the
+// class captures, which the constructor takes first. params are its
+// parameters' declarations, and as its annotations.
 func (g *gen) signCtor(mr cf.MemberRef, cls *types.ClassSym, f *types.FunSym, params []*syntax.Param, d string, as []syntax.Annotation) {
-	if cls.Local || cls.Anonymous || len(f.Params) != len(params) {
+	if len(f.Params) != len(params) {
 		return
 	}
 	skip := 0
+	var ps []sigPart
 	switch cd, _ := cls.Decl.(*syntax.ClassDecl); {
 	case cls.Inner:
 		skip = 1
+	case cls.Local || cls.Anonymous:
+		if cd == nil {
+			return
+		}
+		for _, v := range cd.Captures {
+			ps = append(ps, capturePart(v))
+		}
 	case cls.Entries != nil || cd != nil && cd.EnumEntry:
 		skip = 2
 	}
-	var ps []sigPart
 	for i, p := range f.Params {
 		var ref *syntax.TypeRef
 		if !params[i].Vararg {

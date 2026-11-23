@@ -992,6 +992,9 @@ type LocalFun struct {
 	// enclosing functions it uses, also through the local functions it
 	// calls, and whether it uses the enclosing class's this.
 	Frame *Lambda
+	// Outer are the type parameters in scope where the function is
+	// declared, those of the declarations around it, innermost first.
+	Outer []*types.TypeParamSym
 	// Method is set by codegen: the name of the static method the function
 	// is, such as main$g, of class Owner, and Desc its descriptor. This is
 	// the class whose this the frame captures.
