@@ -567,10 +567,13 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		// is, before it is one of its elements: an Array<out Any> for a
 		// vararg of Any; one in another place is an element.
 		last := forms[n-1]
-		pos, known := c.refVarargPos(r)
+		pos, after, known := c.refVararg(r)
 		var spreads []refForm
 		for i := len(w.params) - 1; i >= 0; i-- {
-			if w.params[i].NonNull().IsArray() && (!known || i == pos) {
+			// As in K2, the array is the vararg's whole value: the
+			// parameters after it are the function's after the vararg,
+			// not more of its elements, ::f for (Array<String>, String).
+			if w.params[i].NonNull().IsArray() && (!known || i == pos && len(w.params)-1-i <= after) {
 				spreads = append(spreads, refForm{params: last.params, suspend: last.suspend, body: func() syntax.Expr {
 					spread = i
 					defer func() { spread = -1 }()

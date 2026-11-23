@@ -26,3 +26,16 @@ val numbersC: List<Int> = listOf()
 fun readsField() {
     val b: MutableList<Int> = numbersB // ERROR this declaration needs opt-in
 }
+
+fun stringVararg(vararg args: String) {}
+fun useStrings(fn: (String, String, String) -> Unit) = fn("foo", "bar", "boo")
+fun useStringArray(fn: (Array<String>) -> Unit) = fn(arrayOf("foo", "bar"))
+fun useMixedStringArgs2(fn: (Array<String>, String) -> Unit) = fn(arrayOf("foo"), "baz")
+fun joinAll(vararg xs: String, sep: String = ",", end: String = ".") {}
+
+fun varargViewedAsArray() {
+    useStrings(::stringVararg)
+    useStringArray(::stringVararg)
+    useMixedStringArgs2(::stringVararg) // ERROR type mismatch
+    useMixedStringArgs2(::joinAll)
+}
