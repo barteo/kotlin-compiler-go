@@ -477,6 +477,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	inherited := c.inheritedMembers(cls)
 	this := cls.This()
 	ownSigs := map[string]bool{}
+	defaultImpls := "" // the signature of a clash in DefaultImpls
 	for i := range own {
 		m := &own[i]
 		ownSigs[m.sig] = true
@@ -491,8 +492,27 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 			g := &inherited[j]
 			if g.sig == m.sig && (g.static || !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) && !c.joinedByJava(cls, m, g)) {
 				c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
+				if cls.Interface && withBody(m) && withBody(g) && defaultImpls == "" {
+					defaultImpls = m.sig
+				}
 				break
 			}
+		}
+	}
+	if cls.Interface {
+		// Members with bodies that clash clash again in the interface's
+		// DefaultImpls class too, which kotlinc reports at the interface.
+		seen := map[string]bool{}
+		for i := range own {
+			if m := &own[i]; withBody(m) && !m.private {
+				if seen[m.sig] && defaultImpls == "" {
+					defaultImpls = m.sig
+				}
+				seen[m.sig] = true
+			}
+		}
+		if defaultImpls != "" {
+			c.errorf(d.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", defaultImpls)
 		}
 	}
 	if comp := cls.Companion; comp != nil {
@@ -513,6 +533,20 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 			}
 		}
 	}
+}
+
+// withBody reports whether interface member m, not static, has a body,
+// which its DefaultImpls class has a static method for.
+func withBody(m *jvmMember) bool {
+	switch {
+	case m.static || m.synth || m.field():
+		return false
+	case m.prop != nil:
+		return !m.prop.Abstract
+	case m.fun != nil:
+		return !m.fun.Abstract
+	}
+	return false
 }
 
 // jvmStaticClashes reports the @JvmStatic functions of companion object
@@ -635,7 +669,12 @@ func (c *Checker) bigArityFuns(cls *types.ClassSym) bool {
 // descriptor but not the same parameter types: one that takes a value
 // class's instance takes its underlying value, and List<A> is List<B>.
 func (c *Checker) ctorClashes(d *syntax.ClassDecl) {
-	seen := map[string]*types.FunSym{}
+	type ctor struct {
+		f        *types.FunSym
+		pos      syntax.Pos
+		reported bool
+	}
+	seen := map[string]*ctor{}
 	add := func(f *types.FunSym, pos syntax.Pos) {
 		if f == nil {
 			return
@@ -644,16 +683,21 @@ func (c *Checker) ctorClashes(d *syntax.ClassDecl) {
 		if !ok {
 			return
 		}
-		if g := seen[desc]; g != nil && len(g.Params) == len(f.Params) {
+		if g := seen[desc]; g != nil && len(g.f.Params) == len(f.Params) {
 			for i, p := range f.Params {
-				if !c.sameType(p.Type, g.Params[i].Type) {
+				if !c.sameType(p.Type, g.f.Params[i].Type) {
+					// At each of them, as the backend reports it.
+					if !g.reported {
+						g.reported = true
+						c.errorf(g.pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
+					}
 					c.errorf(pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
 					return
 				}
 			}
 			return
 		}
-		seen[desc] = f
+		seen[desc] = &ctor{f: f, pos: pos}
 	}
 	if d.HasPrimary {
 		add(d.Ctor, d.P)

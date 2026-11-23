@@ -881,10 +881,13 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 func parse(frontend, path, src string) (f *syntax.File, errs, soft []*syntax.Error) {
 	if frontend != "psi" {
 		f, perrs := syntax.Parse(path, src)
-		if len(perrs) == 0 {
+		if len(perrs) == 0 && !f.AmbiguousLT {
 			return f, nil, nil
 		}
 		s := psi.Parse(path, src)
+		if len(perrs) == 0 && len(s.Diagnostics()) == 0 {
+			return f, nil, nil // a comparison for kotlinc too
+		}
 		f, lerrs := lowerRecovering(s)
 		errs, soft = syntaxErrors(path, src, s, perrs, lerrs)
 		return f, errs, soft
