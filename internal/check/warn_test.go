@@ -77,6 +77,14 @@ val nested = NL<Any>()`, []string{"6:error", "7:error", "7:error", "8:UPPER_BOUN
 		{"blank trimMargin prefix in an annotation", `
 annotation class Ann(val s: String)
 @Ann("".trimMargin(" ")) val a = 1`, []string{"3:TRIM_MARGIN_BLANK_PREFIX", "3:error"}},
+		{"JvmOverloads beside IntroducedAt", `
+@file:OptIn(ExperimentalVersionOverloading::class)
+class C {
+    @JvmOverloads
+    fun foo(a: Int = 1, @IntroducedAt("1") b: Int = 2) { }
+    @kotlin.jvm.JvmOverloads fun bar(a: Int = 1, @IntroducedAt("1") b: Int = 2) { }
+}
+@JvmOverloads fun top(a: Int = 1, b: Int = 2) { }`, []string{"4:CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION", "6:CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION"}},
 		{"safe call", `
 fun f(s: String, n: String?) {
     s?.length
