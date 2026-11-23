@@ -43,8 +43,7 @@ own tests.
     `INAPPLICABLE_TARGET_ON_PROPERTY_WARNING`,
     `ANNOTATION_WILL_BE_APPLIED_ALSO_TO_PROPERTY_OR_FIELD`,
     `REDUNDANT_ANNOTATION`, `REPEATED_ANNOTATION_WARNING`,
-    `INAPPLICABLE_JVM_FIELD_WARNING`,
-    `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION` and
+    `INAPPLICABLE_JVM_FIELD_WARNING` and
     `OPT_IN_MARKER_ON_OVERRIDE_WARNING`.
   - Those of modifiers: `DEPRECATED_MODIFIER_PAIR`,
     `DEPRECATED_MODIFIER_CONTAINING_DECLARATION`,
@@ -106,9 +105,6 @@ own tests.
     the return value checker: `RETURN_VALUE_NOT_USED`,
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
-  - With `-Wextra`: `CAN_BE_VAL_DELAYED_INITIALIZATION`,
-    `CAN_BE_VAL_LATEINIT` and `REDUNDANT_MODALITY_MODIFIER`; and
-    `CAN_BE_VAL` of a `var` declared without an initializer.
 
   Of a program with a syntax error, which `kc` checks without the
   statements and declarations that have the errors, only the warnings
@@ -131,20 +127,23 @@ own tests.
     `kc` couldn't resolve is involved, and a platform operand only by
     its nullable upper bound, for `USELESS_IS_CHECK` and `USELESS_CAST`.
   - `UNCHECKED_CAST` only of a cast to a type parameter that isn't
-    reified, to a generic type from `Any` or a star-projected
+    reified (of another type parameter's value only where it isn't
+    smart cast), to a generic type from `Any` or a star-projected
     supertype, to a function type from another of its class, or to a
-    generic type whose type arguments its operand's type doesn't tell,
-    judged as `kotlinc` does but only where that type's arguments map
-    to the target class's type parameters one by one, without
-    projections, and the operand isn't smart cast; of a platform
-    operand only where its type arguments are all stars, as a cast of
-    `Class.forName(name)`.
+    generic type whose type arguments its operand's type, smart casts
+    included, doesn't tell (a primitive or a `String` only where it
+    isn't smart cast), judged as `kotlinc` does but only where
+    that type's arguments map to the target class's type parameters
+    one by one, without projections, and not of a lambda or a
+    reference to an interface; of a platform operand only where its
+    type arguments are all stars, as a cast of `Class.forName(name)`.
   - `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
     `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
     `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names
     only where they are stable, of the program's and Kotlin libraries'
-    functions, not Java methods, and the last two only of the program's
-    Kotlin members.
+    functions and the built-in classes' members (`Any`, `CharSequence`,
+    `Comparable` and the collections), not Java methods, and the last
+    two only of the program's Kotlin members.
   - `PLATFORM_CLASS_MAPPED_TO_KOTLIN` where the Java class is named,
     not through a typealias, and at a call that infers it as a type
     argument only for a boxed primitive's class, as
@@ -229,20 +228,27 @@ own tests.
   - `DANGEROUS_CHARACTERS` not of a function type's parameter names,
     nor of a destructuring `for` loop's.
   - With `-Wextra`: `UNREACHABLE_CODE` only after a statement that
-    always jumps, not the dead code of a class's initialization order;
+    always jumps, in the right operand of `true ||` and `false &&` and
+    in the body of `while (false)`, not after a loop whose only `break`
+    is in such an operand, nor the dead code of a class's
+    initialization order;
     `ASSIGNED_VALUE_IS_NEVER_READ` and
     `VARIABLE_INITIALIZER_IS_REDUNDANT` only where no statement that
     may read the value comes before it is overwritten or out of scope,
-    through `if`, `when` and `try` but not loops, a catch taken as
-    entered after any statement of the `try`, and, for a variable a
-    lambda, a local function or a local class uses, only before the
-    first of them and outside loops; `UNUSED_ANONYMOUS_PARAMETER` not
+    through `if`, `when`, `try` and loops without `break` or
+    `continue`, a catch taken as entered after any statement of the
+    `try`, and, for a variable a lambda, a local function or a local
+    class reads, only before the first of them and outside loops, and
+    in a lambda that only assigns it, not inline, only where nothing
+    reads it after the lambda; `UNUSED_ANONYMOUS_PARAMETER` not
     of a parameter whose name the lambda's body uses for another
     variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
     `var` whose modifier may widen a setter it inherits, an override
     property's accessors, nor on an override of a member that inherits
-    its visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
-    reference.
+    its visibility; `USELESS_CALL_ON_NOT_NULL` not of a callable
+    reference; and `CAN_BE_VAL_DELAYED_INITIALIZATION` and
+    `CAN_BE_VAL_LATEINIT` not of a `var` assigned in a loop that runs
+    once, `do { … } while (false)`.
 
 - Local `external` functions inside an interface's members when the
   interface's methods are JVM default methods (the default

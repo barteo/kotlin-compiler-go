@@ -174,8 +174,8 @@ func (c *Checker) unusedNode(u *unusedWarnings, n any) {
 // pureExpr reports whether evaluating x does nothing, as kotlinc judges it
 // for UNUSED_EXPRESSION: a literal, a string template of such parts, a
 // local variable or parameter, this, an object, or a class literal or
-// callable reference of one or of a type. A property, even a constant,
-// isn't.
+// callable reference of one or of a type, but not of a reified type
+// parameter. A property, even a constant, isn't.
 func pureExpr(x syntax.Expr) bool {
 	switch x := x.(type) {
 	case *syntax.IntLit:
@@ -207,6 +207,9 @@ func pureExpr(x syntax.Expr) bool {
 	case *syntax.This:
 		return !x.Implicit && !x.Class
 	case *syntax.ClassLit:
+		if x.Class.IsParam() {
+			return false // K::class of a reified K
+		}
 		return !x.Bound || x.X != nil && pureExpr(x.X)
 	case *syntax.Lambda:
 		if r := x.Ref; r != nil {

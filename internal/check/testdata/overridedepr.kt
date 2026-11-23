@@ -95,3 +95,18 @@ class Q(@Deprecated("") override val a: String) : Props {
 class R : Comparable<R> {
     override fun compareTo(other: R): Int = 0
 }
+
+// Number's toChar() is deprecated, an error since Kotlin 2.3.
+open class NumberChar(val value: Int) : Number() {
+    override fun toChar(): Char = '+' // OVERRIDE_DEPRECATION
+    override fun toInt(): Int = value
+    override fun toByte(): Byte = toInt().toByte()
+    override fun toDouble(): Double = toInt().toDouble()
+    override fun toFloat(): Float = toInt().toFloat()
+    override fun toLong(): Long = toInt().toLong()
+    override fun toShort(): Short = toInt().toShort()
+}
+class NumberChar2(value: Int) : NumberChar(value) {
+    override fun toChar(): Char = 'x'
+}
+fun numberChar(n: NumberChar) = n.toChar()

@@ -31,8 +31,8 @@ func writtenVisibility(written []syntax.Mod) (syntax.Mod, syntax.Visibility, boo
 	return syntax.Mod{}, 0, false
 }
 
-// redundantVisibilities reports the redundant visibility modifiers of the
-// file's declarations.
+// redundantVisibilities reports the redundant visibility and modality
+// modifiers of the file's declarations (see redundantModality).
 func (c *Checker) redundantVisibilities() {
 	if !c.u.extraWarnings {
 		return
@@ -48,12 +48,14 @@ func (c *Checker) redundantVisibilities() {
 			if cp.IsProp && !cp.Override {
 				c.visibilityWarning(cp.Written, syntax.Public, d)
 			}
+			c.ctorPropModality(cp, d)
 		}
 		if !d.Interface && !d.Object && !d.Anonymous {
 			c.visibilityWarning(d.CtorMods.Written, ctorVisibilityOf(d), d)
 		}
 		for _, m := range d.Members {
 			c.redundantVisibility(m, d)
+			c.redundantModality(m, d)
 			c.redundantDeclTypes(m)
 			if m, ok := m.(*syntax.ClassDecl); ok {
 				class(m)
@@ -62,6 +64,7 @@ func (c *Checker) redundantVisibilities() {
 	}
 	for _, d := range c.file.Decls {
 		c.redundantVisibility(d, nil)
+		c.redundantModality(d, nil)
 		c.redundantDeclTypes(d)
 		if d, ok := d.(*syntax.ClassDecl); ok {
 			class(d)

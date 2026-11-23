@@ -628,7 +628,7 @@ func completes(n any) bool {
 }
 
 // hasBreak reports whether body has a break out of loop.
-func hasBreak(body *syntax.Block, loop syntax.Stmt) bool {
+func hasBreak(body any, loop syntax.Stmt) bool {
 	found := false
 	syntax.Inspect(body, func(n any) bool {
 		if j, ok := n.(*syntax.Jump); ok && j.Kind == syntax.BREAK && j.Loop == loop {

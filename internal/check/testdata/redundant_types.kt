@@ -79,3 +79,9 @@ class My {
 var My.e: Int
     get() = 1
     set(value: Int) {} // REDUNDANT_SETTER_PARAMETER_TYPE
+// A delegated property has no setter to report.
+object RtDelegate {
+    operator fun getValue(t: Any?, p: kotlin.reflect.KProperty<*>) = ""
+    operator fun setValue(t: Any?, p: kotlin.reflect.KProperty<*>, v: String) {}
+}
+var rtDelegated: String by RtDelegate

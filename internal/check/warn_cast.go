@@ -58,7 +58,14 @@ func (c *Checker) isWarnings(n any, p syntax.Pos, t types.Type, not, last bool) 
 		}
 		return
 	}
-	if !ok || !certainCastType(t) || !f.certain() || f.orig.K == types.Nothing || f.orig.K == types.Null {
+	if !ok || !certainCastType(t) || !f.certain() || f.orig.K == types.Nothing {
+		return
+	}
+	if f.orig.K == types.Null {
+		// null is T? always holds; that null !is Nothing does isn't told.
+		if c.subtype(f.orig, t) {
+			useless()
+		}
 		return
 	}
 	if c.subtype(f.orig, t) {

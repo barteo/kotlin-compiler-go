@@ -591,6 +591,9 @@ type FunDecl struct {
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
+	// ContractConds are the conditions its contract's effects imply, as
+	// written, for the warnings about them.
+	ContractConds []Expr
 	// Plugin is set on a function that kc declares as a compiler plugin
 	// of kotlinc's would: serialization's serializer().
 	Plugin bool

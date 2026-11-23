@@ -20,7 +20,7 @@ func (c *Checker) paramNameWarnings(fd *syntax.FunDecl, over []*types.FunSym) {
 		}
 		for i, p := range fd.Params {
 			if q := o.Params[i].Name; q != "" && p.Name != q {
-				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", o.Owner.DisplayName(), q)
+				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", superName(o.Owner), q)
 			}
 		}
 		// Context parameters too, an anonymous one's name being _.
@@ -29,10 +29,20 @@ func (c *Checker) paramNameWarnings(fd *syntax.FunDecl, over []*types.FunSym) {
 				break
 			}
 			if q := contextName(o.Contexts[i]); q != "" && p.Name != "" && p.Name != q {
-				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", o.Owner.DisplayName(), q)
+				c.warnf(p.P, "PARAMETER_NAME_CHANGED_ON_OVERRIDE", "The corresponding parameter in the supertype '%s' is named '%s'. This may cause problems when calling this function with named arguments.", superName(o.Owner), q)
 			}
 		}
 	}
+}
+
+// superName returns the simple name of class cls, as kotlinc names a
+// supertype: Any for java.lang.Object, MutableEntry for MutableMap's.
+func superName(cls *types.ClassSym) string {
+	n := cls.DisplayName()
+	if k, ok := platformMapped[cls.Name]; ok && cls.KotlinName == "" {
+		n = k
+	}
+	return n[strings.LastIndexByte(n, '.')+1:]
 }
 
 // contextName returns the name of context parameter p as written: _ for
@@ -46,7 +56,9 @@ func contextName(p *types.VarSym) string {
 
 // stableParamNames reports whether function f's parameter names are
 // part of its API: it is the program's Kotlin function, or a Kotlin
-// library's, read from its metadata.
+// library's, read from its metadata, or a member of a Java class that is
+// a Kotlin built-in one, which has the names Kotlin gives it, as
+// element of List's contains(element).
 func stableParamNames(f *types.FunSym) bool {
 	if f.Owner == nil || f.Owner.Func {
 		return false // a function type's invoke
@@ -54,14 +66,21 @@ func stableParamNames(f *types.FunSym) bool {
 	if _, ok := f.Decl.(*syntax.FunDecl); ok {
 		return true
 	}
+	if _, ok := platformMapped[f.Owner.Name]; ok && f.Owner.External {
+		return !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Name == "p" })
+	}
 	return f.Owner.External && f.Owner.FromKotlin
 }
 
 // overriddenByAnother reports whether another of the functions over,
 // one of a subclass of o's class, overrides o: then o isn't overridden
-// directly.
+// directly. As with kotlinc, a Java interface's equals(Object), as
+// Comparator's, doesn't override Any's.
 func overriddenByAnother(o *types.FunSym, over []*types.FunSym) bool {
 	for _, g := range over {
+		if o.Owner.Name == "java/lang/Object" && g.Owner.Interface && isJavaClass(g.Owner) {
+			continue
+		}
 		if g != o && g.Owner != o.Owner && g.Owner.IsSubclassOf(o.Owner) {
 			return true
 		}

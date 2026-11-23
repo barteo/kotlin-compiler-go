@@ -77,6 +77,14 @@ val nested = NL<Any>()`, []string{"6:error", "7:error", "7:error", "8:UPPER_BOUN
 		{"blank trimMargin prefix in an annotation", `
 annotation class Ann(val s: String)
 @Ann("".trimMargin(" ")) val a = 1`, []string{"3:TRIM_MARGIN_BLANK_PREFIX", "3:error"}},
+		{"JvmOverloads beside IntroducedAt", `
+@file:OptIn(ExperimentalVersionOverloading::class)
+class C {
+    @JvmOverloads
+    fun foo(a: Int = 1, @IntroducedAt("1") b: Int = 2) { }
+    @kotlin.jvm.JvmOverloads fun bar(a: Int = 1, @IntroducedAt("1") b: Int = 2) { }
+}
+@JvmOverloads fun top(a: Int = 1, b: Int = 2) { }`, []string{"4:CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION", "6:CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION"}},
 		{"safe call", `
 fun f(s: String, n: String?) {
     s?.length
@@ -290,7 +298,7 @@ fun <T> h(a: Any, t: T?) {
     t as T
 }
 `)
-	want := "10:UNCHECKED_CAST,11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
+	want := "10:UNCHECKED_CAST,11:UNCHECKED_CAST,15:UNCHECKED_CAST,16:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
 	if strings.Join(got, ",") != want {
 		t.Errorf("got %v, want %s", got, want)
 	}
@@ -338,6 +346,13 @@ fun f(x: Int) {
 // testdata/casts.kt.
 func TestWarningsCasts(t *testing.T) {
 	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
+}
+
+// TestWarningsContractConds checks the null comparisons and type checks
+// of contracts' conditions against those kotlinc reports of
+// testdata/contractconds.kt.
+func TestWarningsContractConds(t *testing.T) {
+	checkReference(t, "testdata/contractconds.kt", Options{Warnings: true})
 }
 
 // TestWarningsIdentity checks the warnings of identity comparisons of
@@ -408,17 +423,18 @@ func TestWarningsConversions(t *testing.T) {
 }
 
 // TestWarningsEmptyRange checks the warnings of empty ranges against
-// those kotlinc reports with -Wextra of testdata/emptyrange.kt, and that
-// there are none without it.
+// those kotlinc reports with -Xuse-fir-experimental-checkers of
+// testdata/emptyrange.kt, and that there are none without it, even with
+// -Wextra.
 func TestWarningsEmptyRange(t *testing.T) {
-	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExtraWarnings: true})
+	checkReference(t, "testdata/emptyrange.kt", Options{Warnings: true, ExperimentalWarnings: true})
 	b, err := os.ReadFile("testdata/emptyrange.kt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true, ExtraWarnings: true}) {
 		if strings.HasSuffix(g, ":EMPTY_RANGE") {
-			t.Errorf("without ExtraWarnings: %s", g)
+			t.Errorf("without ExperimentalWarnings: %s", g)
 		}
 	}
 }
@@ -615,6 +631,22 @@ func TestWarningsNullSmartCasts(t *testing.T) {
 
 func TestWarningsNullCast(t *testing.T) {
 	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
+}
+
+// TestWarningsModality checks the warnings of redundant modality
+// modifiers against those kotlinc reports with -Wextra of
+// testdata/modality.kt, and that there are none without it.
+func TestWarningsModality(t *testing.T) {
+	checkReference(t, "testdata/modality.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/modality.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":REDUNDANT_MODALITY_MODIFIER") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
 }
 
 // TestWarningsParamName checks the PARAMETER_NAME_CHANGED_ON_OVERRIDE

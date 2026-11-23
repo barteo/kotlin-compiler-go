@@ -500,3 +500,68 @@ fun uk29(l: MutableList<String>) { uUse(l as ArrayList<String>) }
 fun uk30(l: MutableList<String>) { uUse(l as ArrayList<Int>) } // UNCHECKED_CAST
 fun uk31(l: List<String>) { uUse(l as MutableList<String>) }
 fun uk32(s: Sequence<Int>) { uUse(s as List<Int>) } // UNCHECKED_CAST
+fun uk33(): Array<Any> {
+    val a = arrayOfNulls<Any>(5)
+    a as Array<Int> // UNCHECKED_CAST
+    return a as Array<Any> // UNCHECKED_CAST
+}
+fun uk34(a: Any) { if (a is MutableList<*>) uUse(a as ArrayList<String>) } // UNCHECKED_CAST
+fun <T> ul1(t: T?) { uUse(t as T) } // UNCHECKED_CAST
+fun <V1, V : V1> ul2(v: V?) { uUse(v as V) } // UNCHECKED_CAST
+fun <V1, V : V1> ul2b(w: V1) { uUse(w as V) } // UNCHECKED_CAST
+fun <T, K> ul3(x: T & Any) { uUse(x as (K & Any)) } // UNCHECKED_CAST
+fun <T> ul4(t: T?) { uUse(t as? T) } // USELESS_CAST
+abstract class UNested<T> { abstract val keyT: T }
+fun ul5() { uUse(UNested<*>::keyT as UNested<Number>) } // UNCHECKED_CAST
+class UBox2<T>
+inline fun <reified T> ul6(a: Any) {
+    a as T
+    a as UBox2<T> // UNCHECKED_CAST
+    a as UBox2<List<T>> // UNCHECKED_CAST
+}
+fun <T : List<String>> ul7(t: T) { uUse(t as ArrayList<String>) } // UNCHECKED_CAST
+fun <T : ArrayList<String>> ul8(t: T) { uUse(t as ArrayList<String>) }
+fun <T> ul9(t: T) { uUse(t as List<String>) } // UNCHECKED_CAST
+class UVt { fun <T : CharSequence> get(): T = "" as T } // UNCHECKED_CAST
+fun ul10(v: UVt?) { uUse(v?.get() as? String) } // USELESS_CAST
+fun ul11(v: UVt?) { uUse(v?.get() as String) }
+fun ul12(v: UVt) { uUse(v.get() as? String) }
+fun ul13(v: UVt?) { uUse(v?.get<String>() as? String) } // USELESS_CAST
+// Java classes kotlinc maps to Kotlin ones are judged as those.
+fun um1(s: String) = s as java.lang.Integer // CAST_NEVER_SUCCEEDS PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um2(i: Int) = i as java.lang.Integer // PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um3(i: Int) = i as java.lang.Long // CAST_NEVER_SUCCEEDS PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um4(s: Long) = s as java.lang.Object // PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um5(s: String) = s as Number // CAST_NEVER_SUCCEEDS
+fun um6(n: Number) = n as String // CAST_NEVER_SUCCEEDS
+fun um7(n: Number) = n as Int
+fun um8(n: Int) = n as Number
+fun um9(n: Number) = n as java.math.BigDecimal
+fun um10(n: Char) = n as Number // CAST_NEVER_SUCCEEDS
+fun um11(n: Any) { if (n is Number) uUse(n is String) } // IMPOSSIBLE_IS_CHECK_WARNING
+
+// A built-in type's cast to a generic type that its own supertype of
+// that class isn't a subtype of, Int's Comparable<Int> of Comparable<Any>.
+fun ub1(i: Int) = i as Comparable<Any> // UNCHECKED_CAST
+fun ub2(i: Int) = i as Comparable<Int>
+fun ub3(i: Int) = i as Comparable<*>
+fun ub4(s: String) = s as Comparable<Any> // UNCHECKED_CAST
+fun ub5(s: String) = s as Comparable<String>
+fun ub6(d: Double?) = d as Comparable<Any> // UNCHECKED_CAST
+fun ub7(b: Boolean) = b as? Comparable<Any?> // UNCHECKED_CAST
+fun ub8(l: Long) = l as Comparable<Number> // UNCHECKED_CAST
+fun ub9(c: Char) = c as Comparable<Char>
+fun ub10(s: String) = s as CharSequence
+fun <T> ub11(i: Int) = i as Comparable<T> // UNCHECKED_CAST
+fun ub12(i: Int) { i as Comparable<Any>; uUse(i as? Comparable<Any>) } // UNCHECKED_CAST
+
+// Unit is a final class; null is a Nothing?.
+fun uu1(i: Int) = i as? Unit // CAST_NEVER_SUCCEEDS
+fun uu2(s: String) = s as Unit // CAST_NEVER_SUCCEEDS
+fun uu3(a: Any) = a as Unit
+fun uu4(u: Unit) = u is Unit // USELESS_IS_CHECK
+fun un1() = null is String? // USELESS_IS_CHECK
+fun un2() = null !is String? // USELESS_IS_CHECK
+fun un3() = null !is Nothing
+fun un4() = null is Any
+fun un5(x: Nothing?) = x is Int? // USELESS_IS_CHECK

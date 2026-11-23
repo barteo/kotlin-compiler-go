@@ -1151,17 +1151,27 @@ func (w *optWalker) params(ps []*syntax.Param) {
 // unsignedVararg reports vararg parameter p of an unsigned type, which is
 // an array of them, UIntArray for UInt: the array classes need opt-in.
 func (w *optWalker) unsignedVararg(p *syntax.Param) {
-	if !p.Vararg || p.Type == nil || p.Sym == nil {
-		return
+	if p.Type != nil {
+		w.require(p.Type.P, w.o.varargMarkers(p))
+	}
+}
+
+// varargMarkers returns the markers of the array class of vararg
+// parameter p of an unsigned type, UIntArray for UInt, which its
+// declaration and its calls need: p's type is the array's.
+func (o *optPass) varargMarkers(p *syntax.Param) []*optMarker {
+	if p == nil || !p.Vararg || p.Sym == nil {
+		return nil
 	}
 	t := p.Sym.Type
 	if t.K != types.Class || t.C == nil || t.N {
-		return
+		return nil
 	}
 	switch t.C.Name {
 	case "kotlin/UByteArray", "kotlin/UShortArray", "kotlin/UIntArray", "kotlin/ULongArray":
-		w.require(p.Type.P, w.o.classMarkers(t.C))
+		return o.classMarkers(t.C)
 	}
+	return nil
 }
 
 func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
@@ -1845,6 +1855,7 @@ func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types
 		for _, prm := range d.Params {
 			if prm != nil {
 				ms = append(ms, w.o.refMarkers(prm.Type, 0)...)
+				ms = append(ms, w.o.varargMarkers(prm)...)
 			}
 		}
 		if d.Ret != nil {
@@ -1908,6 +1919,7 @@ func (w *optWalker) ctorMarkers(f *types.FunSym) []*optMarker {
 		for _, p := range d.CtorParams {
 			if p != nil {
 				ms = append(ms, w.o.refMarkers(p.Type, 0)...)
+				ms = append(ms, w.o.varargMarkers(&p.Param)...)
 			}
 		}
 		return ms
@@ -1916,6 +1928,7 @@ func (w *optWalker) ctorMarkers(f *types.FunSym) []*optMarker {
 		for _, p := range d.Params {
 			if p != nil {
 				ms = append(ms, w.o.refMarkers(p.Type, 0)...)
+				ms = append(ms, w.o.varargMarkers(p)...)
 			}
 		}
 		return ms

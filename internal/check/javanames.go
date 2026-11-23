@@ -42,6 +42,36 @@ var kotlinParams = map[byte]map[string][]string{
 	},
 }
 
+// builtinMethodParams names the parameters of the members of the Java
+// classes that are Kotlin's built-in ones, by class and method name, that
+// Kotlin declares otherwise than the collections' (see kotlinParams):
+// other of Any's equals(other).
+var builtinMethodParams = map[string][]string{
+	"java/lang/Object.equals":            {"other"},
+	"java/lang/Comparable.compareTo":     {"other"},
+	"java/lang/CharSequence.charAt":      {"index"}, // get(index)
+	"java/lang/CharSequence.subSequence": {"startIndex", "endIndex"},
+}
+
+// builtinParamNames gives the members of builtinMethodParams of class
+// cls, being loaded, Kotlin's parameter names, which calls may name and
+// overrides should keep.
+func builtinParamNames(cls *types.ClassSym) {
+	for name, fs := range cls.Methods {
+		names := builtinMethodParams[cls.Name+"."+name]
+		if names == nil {
+			continue
+		}
+		for _, f := range fs {
+			if len(f.Params) == len(names) && !f.Static {
+				for i, p := range f.Params {
+					p.Name = names[i]
+				}
+			}
+		}
+	}
+}
+
 // kotlinParamNames gives the members of Java class cls, being loaded,
 // that override Kotlin collection members the names of those members'
 // parameters, which calls may name, as K2 does: a HashMap's

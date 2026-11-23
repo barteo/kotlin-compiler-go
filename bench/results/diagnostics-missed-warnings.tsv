@@ -9,13 +9,6 @@ tests/StringPrefixAndSuffix.kt	StringPrefixAndSuffix.kt:35	USELESS_IS_CHECK	synt
 tests/StringPrefixAndSuffix.kt	StringPrefixAndSuffix.kt:36	USELESS_IS_CHECK	syntax-error
 tests/TraitOverrideObjectMethods.kt	TraitOverrideObjectMethods.kt:7	REDUNDANT_VISIBILITY_MODIFIER	missing-check
 tests/annotations/parameters/double.kt	double.kt:11	REDUNDANT_CALL_OF_CONVERSION_METHOD	missing-check
-tests/callableReference/propertyOfNestedGenericClass.kt	propertyOfNestedGenericClass.kt:30	UNCHECKED_CAST	missing-check
-tests/cast/AsWithOtherParameter.kt	AsWithOtherParameter.kt:17	UNCHECKED_CAST	missing-check
-tests/cast/IsErasedUpcastToNonReified.kt	IsErasedUpcastToNonReified.kt:31	UNCHECKED_CAST	missing-check
-tests/cast/IsErasedUpcastToNonReified.kt	IsErasedUpcastToNonReified.kt:36	UNCHECKED_CAST	missing-check
-tests/cast/IsErasedUpcastToNonReified.kt	IsErasedUpcastToNonReified.kt:37	UNCHECKED_CAST	missing-check
-tests/cast/neverSucceeds/DefinitelyNotNullTypes.kt	DefinitelyNotNullTypes.kt:5	UNCHECKED_CAST	missing-check
-tests/cast/neverSucceeds/MappedDirect.kt	MappedDirect.kt:33	CAST_NEVER_SUCCEEDS	missing-check
 tests/classObjects/typeParametersInAnnonymousObject.kt	typeParametersInAnnonymousObject.kt:36	USELESS_IS_CHECK	syntax-error
 tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	valVarOnContextParameter.kt:21	CONTEXTUAL_OVERLOAD_SHADOWED	syntax-error
 tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	valVarOnContextParameter.kt:24	CONTEXTUAL_OVERLOAD_SHADOWED	syntax-error
@@ -23,7 +16,6 @@ tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	valVarO
 tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	valVarOnContextParameter.kt:31	CONTEXTUAL_OVERLOAD_SHADOWED	syntax-error
 tests/contextParameters/diagnostics/anonymousFunctionsWithModifiers.kt	anonymousFunctionsWithModifiers.kt:6	NO_TAIL_CALLS_FOUND	syntax-error
 tests/controlFlowAnalysis/deadCode/commentsInDeadCode.kt	commentsInDeadCode.kt:8	UNREACHABLE_CODE	missing-check
-tests/controlFlowAnalysis/deadCode/returnInDeadLambda.kt	returnInDeadLambda.kt:5	CAN_BE_VAL_DELAYED_INITIALIZATION	missing-check
 tests/controlFlowAnalysis/reassignmentInTryCatch.kt	reassignmentInTryCatch.kt:25	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
 tests/controlFlowAnalysis/unnecessaryLateinit/secondaryConstructorDelegateItself.kt	secondaryConstructorDelegateItself.kt:5	UNNECESSARY_LATEINIT	missing-check
 tests/controlStructures/ifWhenWithoutElse.kt	ifWhenWithoutElse.kt:61	USELESS_ELVIS	missing-check
@@ -35,13 +27,7 @@ tests/delegatedProperty/inference/successfulProvideDelegateLeadsToRedGetValue.kt
 tests/diagnostics/upperBoundViolated.kt	upperBoundViolated.kt:50	UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING	syntax-error
 tests/enum/equalityOfFlexibleTypeParameters.kt	B.kt:3	FORBIDDEN_IDENTITY_EQUALS_WARNING	missing-check
 tests/extraCheckers/RedundantVisibilityModifierChecker.kt	RedundantVisibilityModifierChecker.kt:3	REDUNDANT_VISIBILITY_MODIFIER	missing-check
-tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:104	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
-tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:105	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
 tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:195	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
-tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:219	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
-tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:99	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
-tests/extraCheckers/unused/manyLocalVariables.kt	manyLocalVariables.kt:4	VARIABLE_INITIALIZER_IS_REDUNDANT	missing-check
-tests/extraCheckers/unused/manyLocalVariables.kt	manyLocalVariables.kt:9	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
 tests/generics/innerClasses/bareTypesComplex.kt	bareTypesComplex.kt:11	USELESS_IS_CHECK	missing-check
 tests/incompleteCode/diagnosticWithSyntaxError/declarationAfterIncompleteElvis.kt	declarationAfterIncompleteElvis.kt:10	USELESS_ELVIS_LEFT_IS_NULL	syntax-error
 tests/incompleteCode/diagnosticWithSyntaxError/declarationAfterIncompleteElvis.kt	declarationAfterIncompleteElvis.kt:21	USELESS_ELVIS_LEFT_IS_NULL	syntax-error
@@ -55,9 +41,7 @@ tests/inference/coercionToUnit/coercionToUnitWithNothingType.kt	test.kt:40	INFER
 tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	cstWithTypeContainingNonFixedVariable.kt:63	UPPER_BOUND_VIOLATED_DEPRECATION_WARNING	missing-check
 tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	cstWithTypeContainingNonFixedVariable.kt:67	UPPER_BOUND_VIOLATED_DEPRECATION_WARNING	missing-check
 tests/inference/emptyIntersectionTypes/kt48987.kt	kt48987.kt:9	INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING	missing-check
-tests/inference/expectedTypeAdditionalTest.kt	expectedTypeAdditionalTest.kt:12	CAST_NEVER_SUCCEEDS	missing-check
 tests/inference/expectedTypeAdditionalTest.kt	expectedTypeAdditionalTest.kt:9	USELESS_CAST	missing-check
-tests/inference/findViewById.kt	1.kt:35	USELESS_CAST	missing-check
 tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypesOriginal.kt	main.kt:20	UPPER_BOUND_VIOLATED_DEPRECATION_WARNING	missing-check
 tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypesOriginal.kt	main.kt:30	UPPER_BOUND_VIOLATED_DEPRECATION_WARNING	missing-check
 tests/inference/pcla/issues/kt49829.kt	kt49829.kt:11	USELESS_CAST	missing-check
@@ -65,7 +49,6 @@ tests/inference/pcla/issues/kt51148.kt	kt51148.kt:4	UPPER_BOUND_VIOLATED_DEPRECA
 tests/inference/regressions/kt2179.kt	kt2179.kt:47	EXTENSION_SHADOWED_BY_MEMBER	missing-check
 tests/inference/underscoredTypeInForbiddenPositions.kt	underscoredTypeInForbiddenPositions.kt:66	USELESS_IS_CHECK	syntax-error
 tests/inference/underscoredTypeInForbiddenPositions.kt	underscoredTypeInForbiddenPositions.kt:69	CAST_NEVER_SUCCEEDS	syntax-error
-tests/inference/upperBounds/kt2856.kt	kt2856.kt:9	UNCHECKED_CAST	missing-check
 tests/infos/SmartCasts.kt	SmartCasts.kt:72	USELESS_IS_CHECK	missing-check
 tests/inlineClasses/jvmExposeBoxed/simple.kt	simple.kt:147	USELESS_JVM_EXPOSE_BOXED	missing-check
 tests/innerClasses/inCallableReferenceLHS/innerLocalClasses.kt	innerLocalClasses.kt:20	WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING	missing-check
@@ -90,15 +73,7 @@ tests/operatorRem/numberRemConversions.kt	numberRemConversions.kt:16	EXTENSION_S
 tests/properties/extensionPropertyMustHaveAccessorsOrBeAbstract2.kt	extensionPropertyMustHaveAccessorsOrBeAbstract2.kt:31	UNNECESSARY_LATEINIT	missing-check
 tests/references/mutablePropertyWithCapturedType.kt	mutablePropertyWithCapturedType.kt:8	MUTABLE_PROPERTY_WITH_CAPTURED_TYPE	missing-check
 tests/regressions/kt307.kt	kt307.kt:10	UNCHECKED_CAST	missing-check
-tests/samConversions/samConversionsWithSmartCasts.kt	samConversionsWithSmartCasts.kt:34	UNCHECKED_CAST	missing-check
-tests/smartCasts/alwaysNull.kt	alwaysNull.kt:7	SENSELESS_COMPARISON	missing-check
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	boundSmartcastsInBranches.kt:111	SENSELESS_COMPARISON	missing-check
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	boundSmartcastsInBranches.kt:153	SENSELESS_COMPARISON	missing-check
 tests/smartCasts/castchecks/basicOn.kt	basicOn.kt:32	USELESS_CAST	missing-check
-tests/smartCasts/castchecks/variables.kt	variables.kt:46	USELESS_CAST	missing-check
-tests/smartCasts/castchecks/variables.kt	variables.kt:47	CAST_NEVER_SUCCEEDS	missing-check
-tests/smartCasts/castchecks/variables.kt	variables.kt:55	USELESS_CAST	missing-check
-tests/smartCasts/castchecks/variables.kt	variables.kt:56	CAST_NEVER_SUCCEEDS	missing-check
 tests/smartCasts/castchecks/variables.kt	variables.kt:64	USELESS_CAST	missing-check
 tests/smartCasts/kt32358_2.kt	kt32358_2.kt:10	WRONG_INVOCATION_KIND	missing-check
 tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:19	SENSELESS_COMPARISON	missing-check
@@ -125,9 +100,6 @@ tests/when/guard/diverseBooleanExpression.kt	diverseBooleanExpression.kt:32	IMPO
 tests/when/guard/diverseBooleanExpression.kt	diverseBooleanExpression.kt:33	IMPOSSIBLE_IS_CHECK_WARNING	missing-check
 testsWithStdLib/contracts/dsl/errors/illegalEqualsCondition.kt	illegalEqualsCondition.kt:21	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/contracts/dsl/errors/unlabeledReceiver.kt	unlabeledReceiver.kt:9	SENSELESS_COMPARISON	missing-check
-testsWithStdLib/contracts/fromSource/bad/returnsImplies/redundantConditions.kt	redundantConditions.kt:17	USELESS_IS_CHECK	missing-check
-testsWithStdLib/contracts/fromSource/bad/returnsImplies/redundantConditions.kt	redundantConditions.kt:17	USELESS_IS_CHECK	missing-check
-testsWithStdLib/contracts/fromSource/bad/returnsImplies/redundantConditions.kt	redundantConditions.kt:8	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/contracts/fromSource/good/callsInPlace/infiniteLoop.kt	infiniteLoop.kt:9	WRONG_INVOCATION_KIND	missing-check
 testsWithStdLib/contracts/smartcasts/deeplyNested.kt	deeplyNested.kt:82	IMPOSSIBLE_IS_CHECK_WARNING	missing-check
 testsWithStdLib/contracts/smartcasts/deeplyNested.kt	deeplyNested.kt:93	IMPOSSIBLE_IS_CHECK_WARNING	missing-check
@@ -144,4 +116,3 @@ testsWithStdLib/inference/inapplicableWhen.kt	inapplicableWhen.kt:15	UNNECESSARY
 testsWithStdLib/j+k/genericGetterForJavaOverriddenProperty.kt	test.kt:3	UNCHECKED_CAST	syntax-error
 testsWithStdLib/j+k/genericGetterForJavaOverriddenProperty2.kt	test.kt:3	UNCHECKED_CAST	syntax-error
 testsWithStdLib/properties/backingField/explicitFieldAndBodylessAccessor.kt	explicitFieldAndBodylessAccessor.kt:9	REDUNDANT_EXPLICIT_BACKING_FIELD	missing-check
-testsWithStdLib/versionOverloads/withJvmOverloads.kt	withJvmOverloads.kt:8	CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION	missing-check

@@ -11,8 +11,9 @@ import (
 // comparisons that don't do what they seem to:
 // REDUNDANT_CALL_OF_CONVERSION_METHOD on a conversion to the type the
 // value has already, ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS
-// on == of two arrays, which compares references, and, with -Wextra,
-// EMPTY_RANGE on a range of constants that is empty.
+// on == of two arrays, which compares references, and, with
+// -Xuse-fir-experimental-checkers, EMPTY_RANGE on a range of constants
+// that is empty.
 
 // conversionTargets are the conversions by name, with whether a type is
 // the one each converts to.
@@ -138,8 +139,8 @@ func (c *Checker) arrayClass(t types.Type) *types.ClassSym {
 
 // emptyRangeWarning reports range x, x..y, x..<y, x until y or x downTo
 // y, or a call of rangeTo, rangeUntil, until or downTo, if it is of two
-// constants and empty, as 2..1 or 1 until 1: kotlinc's extra
-// EmptyRangeChecker.
+// constants and empty, as 2..1 or 1 until 1: kotlinc's experimental
+// EmptyRangeChecker, which -Wextra doesn't run.
 func (c *Checker) emptyRangeWarning(x syntax.Expr) {
 	var lo, hi syntax.Expr
 	var name string

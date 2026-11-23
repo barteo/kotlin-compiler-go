@@ -15,8 +15,10 @@ import (
 // the versions to ascend; the parameters that have one to be optional
 // and not vararg, and no parameter without one after them to be required
 // unless it is a trailing lambda; and the default values not to use
-// newer parameters, nor object expressions. versionOverloads checks
-// those of the file's functions and constructors.
+// newer parameters, nor object expressions. It warns of @JvmOverloads
+// beside them (CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION), whose
+// overloads may clash with theirs. versionOverloads checks those of the
+// file's functions and constructors.
 
 // versionSite is where a function with parameters is declared.
 type versionSite struct {
@@ -140,6 +142,11 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 	suppressed := func(name string) bool {
 		return suppresses(c.file.Annotations, name) || suppresses(m.Annotations, name) ||
 			site.cls != nil && suppresses(site.cls.Annotations, name)
+	}
+	for i := range m.Annotations {
+		if a := &m.Annotations[i]; a.Is("JvmOverloads") {
+			c.warnf(a.P, "CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION", "'@JvmOverloads' annotation may generate conflicting overloads with the '@IntroducedAt' annotation")
+		}
 	}
 
 	cls := site.cls

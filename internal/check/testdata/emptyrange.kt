@@ -1,4 +1,5 @@
-// The warnings kotlinc 2.4.21 reports with -Wextra of the empty ranges of
+// The warnings kotlinc 2.4.21 reports with -Xuse-fir-experimental-checkers
+// (not -Wextra) of the empty ranges of
 // constants below, as TestWarningsEmptyRange reads them: each line ends
 // with a comment naming the warnings it reports, if any. They follow its
 // EmptyRangeChecker and the test extraCheckers/emptyRangeChecker of its

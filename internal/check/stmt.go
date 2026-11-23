@@ -118,8 +118,9 @@ func stmtJumps(s syntax.Stmt) bool {
 	case *syntax.For:
 		return jumps(s.Range)
 	case *syntax.While:
-		// A do-while loop whose condition jumps only ends by a break.
-		return jumps(s.Cond) && (!s.Do || !hasBreak(s.Body, s))
+		// A do-while loop whose condition jumps only ends by a break,
+		// which may be the condition's own: do { } while (break).
+		return jumps(s.Cond) && (!s.Do || !hasBreak(s.Body, s) && !hasBreak(s.Cond, s))
 	}
 	return false
 }
@@ -702,7 +703,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		}
 	}
 	if narrowed.K != types.Invalid {
-		c.assignedVar(s.Sym, narrowed)
+		c.assignedVar(s.Sym, narrowed, false)
 	}
 	if s.Init != nil {
 		c.bindValue(s.Sym, s.Init, s.Type != nil)
@@ -818,9 +819,10 @@ func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool
 
 // safeIf checks the receiver of a safe target, a?.b or a?.b[i], into a
 // temporary, val t = a, and returns it with if (t != null) and the
-// target on t, t.b or t.b[i].
+// target on t, t.b or t.b[i]. A variable known to be null is seen with
+// its declared type, as a safe call's receiver (see declaredIfNull).
 func (c *Checker) safeIf(p syntax.Pos, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) (*syntax.VarStmt, *syntax.If, syntax.Expr) {
-	tmp := c.temp(p, "receiver", recv, c.value(recv, noWant))
+	tmp := c.temp(p, "receiver", recv, c.declaredIfNull(recv, c.value(recv, noWant)))
 	target := build(tempRef(tmp, recv.Pos()))
 	null := &syntax.NullLit{}
 	null.P = recv.Pos()
@@ -1475,7 +1477,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 					vt = v.Type
 				}
 			}
-			c.assignedVar(v, vt)
+			c.assignedVar(v, vt, true)
 			c.assignedNested(v, vt)
 			c.assignChecked(s, vt)
 			if slices.Contains(c.scope.vars, v) {

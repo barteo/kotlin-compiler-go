@@ -286,3 +286,85 @@ fun u9_l() {
         ""
     )
 }
+// A break in a finally block, or in a do-while's condition, leaves the
+// loop.
+fun breakInFinally(): String {
+    while (true) {
+        try {
+            continue
+        } finally {
+            break
+        }
+    }
+    return "OK"
+}
+fun breakInDoWhileCond(): String {
+    var i = 0
+    while (true) {
+        do { ++i } while (break)
+        if (i != 1) return "FAIL1"
+    }
+    return "OK" // UNREACHABLE_CODE
+}
+// A do-while's condition, after a body that always jumps, but not by a
+// continue of the loop.
+fun dwj1(c: Boolean) { do { if (c) continue; return } while (c) }
+fun dwj2(c: Boolean) { do { break } while (c) } // UNREACHABLE_CODE
+fun dwj3(c: Boolean) { do { throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dwj4(c: Boolean) { l@ do { for (i in 0..1) { if (c) continue@l }; return } while (c) }
+fun dwj5(c: Boolean) { do { if (c) return else throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dwj6(c: Boolean) { do { while (true) {} } while (c) } // UNREACHABLE_CODE
+
+// The right operand of true || y and false && y: only of the literal.
+const val ULIT = true
+fun ulit(x: Boolean) {
+    val t = true
+    baz(t || x)
+    baz(ULIT || x)
+    baz((true) || x) // UNREACHABLE_CODE
+    baz(!false || x)
+    baz(true || x) // UNREACHABLE_CODE
+    baz(false && x) // UNREACHABLE_CODE
+    baz(false || x)
+    baz(true && x)
+    baz(x || true || x)
+    baz(true || x && (x || false && x)) // UNREACHABLE_CODE
+    baz((true || x) && x) // UNREACHABLE_CODE
+    if (true || x) bar(1) else bar(2) // UNREACHABLE_CODE
+    while (true || x) { if (x) break } // UNREACHABLE_CODE
+}
+fun ulit2(): Boolean { return true || return false } // UNREACHABLE_CODE
+fun ulit3(): Boolean {
+    return true && return false // UNREACHABLE_CODE
+}
+fun ulit4(): String {
+    while (true) {
+        if (true && break) {
+            return "fail" // UNREACHABLE_CODE
+        }
+    }
+    return "OK"
+}
+fun ulit5(): String {
+    while (true) {
+        if (true || throw Exception()) { // UNREACHABLE_CODE
+            return "OK"
+        }
+    }
+    return "fail" // UNREACHABLE_CODE
+}
+
+// A while loop whose condition is false, at its start: only the literal.
+fun uwf(x: Boolean) {
+    while (false); // UNREACHABLE_CODE
+    while (false) { bar(1) } // UNREACHABLE_CODE
+    while (false) bar(2) // UNREACHABLE_CODE
+    while (false) { // UNREACHABLE_CODE
+        bar(3)
+        bar(4)
+    }
+    while (false && x) { bar(5) } // UNREACHABLE_CODE
+    do { bar(6) } while (false)
+    while ((false)) {} // UNREACHABLE_CODE
+    bar(8)
+}

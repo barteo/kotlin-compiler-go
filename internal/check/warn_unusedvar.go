@@ -17,13 +17,17 @@ import (
 // by the code's control flow graph. kc reports them only where the code's
 // structure makes it certain: the value is overwritten, or the variable
 // goes out of scope or the function returns, before any statement that
-// reads the variable, going through if, when and try statements but not
-// loops. In a try, a catch may be entered after any statement, and the
-// finally block from anywhere. For a variable that a lambda, a local
-// function or a local class uses, kotlinc judges the writes before the
-// first of them, which reads the variable if it uses it other than by
-// assigning it; kc judges these writes too, but not in loops, where the
-// capture may come before them.
+// reads the variable, going through if, when and try statements, and
+// loops without break or continue, whose body runs again from its start.
+// In a try, a catch may be entered after any statement, and the finally
+// block from anywhere. For a variable that a lambda, a local function or
+// a local class uses, kotlinc judges the writes before the first of
+// them, which reads the variable if it uses it other than by assigning
+// it; kc judges these writes too, but not in loops, where the capture may
+// come before them. One that only assigns the variable can't read a
+// value, so the writes outside it are judged as if it weren't there, and
+// a write in a lambda, which may run any time after it is created, only
+// where nothing reads the variable after the lambda begins.
 
 // localVar is what unusedVars knows of a local variable.
 type localVar struct {
@@ -35,7 +39,11 @@ type localVar struct {
 	incDec   bool       // x++ or x-- assigns it
 	captured bool       // used in a lambda, a local function or a local class
 	capture  syntax.Pos // where the first of these begins
-	annot    bool       // named in an annotation's argument
+	// captureReads says that one of these reads it, rather than only
+	// assigning it.
+	captureReads bool
+	annot        bool         // named in an annotation's argument
+	readPos      []syntax.Pos // where it is read
 }
 
 // stmtLoc is a statement's place: its block and its index there.
@@ -52,6 +60,7 @@ type unusedVars struct {
 	stmtLoc     map[syntax.Stmt]stmtLoc         // a block's statements
 	exprStmt    map[syntax.Expr]stmtLoc         // an if or when that is a statement
 	writeLoc    map[syntax.Expr]stmtLoc         // the innermost statement of x++ and x--
+	lambdaLoc   map[*syntax.Lambda]stmtLoc      // the innermost statement of a lambda
 	tries       map[*syntax.Block][]*syntax.Try // the try constructs a block is in
 	postfix     []*syntax.Unary
 }
@@ -61,7 +70,8 @@ type unusedVars struct {
 func (c *Checker) unusedVarWarnings() {
 	u := &unusedVars{vars: map[*types.VarSym]*localVar{}, blockParent: map[*syntax.Block]any{},
 		stmtLoc: map[syntax.Stmt]stmtLoc{}, exprStmt: map[syntax.Expr]stmtLoc{}, writeLoc: map[syntax.Expr]stmtLoc{},
-		tries: map[*syntax.Block][]*syntax.Try{}}
+		lambdaLoc: map[*syntax.Lambda]stmtLoc{},
+		tries:     map[*syntax.Block][]*syntax.Try{}}
 	declare := func(sym *types.VarSym, name string, decl any, b *syntax.Block) {
 		if sym == nil || name == "_" || strings.HasPrefix(name, "<") || strings.HasPrefix(name, "$") || u.vars[sym] != nil {
 			return
@@ -77,7 +87,12 @@ func (c *Checker) unusedVarWarnings() {
 				u.stmtLoc[st] = stmtLoc{n, i}
 				switch st := st.(type) {
 				case *syntax.VarStmt:
-					declare(st.Sym, st.Name, st, n)
+					// Not for (x: T in xs)'s x, which the checker declares
+					// as val x: T = <element>: kotlinc doesn't report a
+					// loop's variable.
+					if id, ok := st.Init.(*syntax.Ident); !ok || !strings.HasPrefix(id.Name, "<element") {
+						declare(st.Sym, st.Name, st, n)
+					}
 				case *syntax.Destructure:
 					for _, vs := range st.Stmts {
 						declare(vs.Sym, vs.Name, vs, n)
@@ -89,8 +104,13 @@ func (c *Checker) unusedVarWarnings() {
 					}
 				}
 				syntax.Inspect(st, func(m any) bool {
-					if x, ok := m.(*syntax.Unary); ok && (x.Op == syntax.INC || x.Op == syntax.DEC) {
-						u.writeLoc[x] = stmtLoc{n, i}
+					switch x := m.(type) {
+					case *syntax.Unary:
+						if x.Op == syntax.INC || x.Op == syntax.DEC {
+							u.writeLoc[x] = stmtLoc{n, i}
+						}
+					case *syntax.Lambda:
+						u.lambdaLoc[x] = stmtLoc{n, i}
 					}
 					return true
 				})
@@ -109,9 +129,21 @@ func (c *Checker) unusedVarWarnings() {
 			}
 			if n.SubjVar != "" {
 				declare(n.SubjSym, n.SubjVar, n, nil)
+				// A branch's condition compares the subject with its
+				// value, which reads it.
+				if v := u.vars[n.SubjSym]; v != nil && slices.ContainsFunc(n.Branches, func(br *syntax.WhenBranch) bool { return len(br.Conds) > 0 }) {
+					v.read = true
+				}
 			}
 		case *syntax.While:
 			u.blockParent[n.Body] = n
+			if n.Do {
+				// The condition sees the body's variables, declared as
+				// the walk enters it.
+				syntax.Inspect(n.Body, visit)
+				syntax.Inspect(n.Cond, visit)
+				return false
+			}
 		case *syntax.For:
 			u.blockParent[n.Body] = n
 		case *syntax.Try:
@@ -150,6 +182,7 @@ func (c *Checker) unusedVarWarnings() {
 					v.writes = append(v.writes, n)
 				} else {
 					v.read = true
+					v.readPos = append(v.readPos, id.Pos())
 					if !plusAssign(n) {
 						v.updates = append(v.updates, n)
 					}
@@ -164,6 +197,7 @@ func (c *Checker) unusedVarWarnings() {
 				id, ok := n.X.(*syntax.Ident)
 				if v := u.local(id, ok); v != nil {
 					v.read, v.incDec = true, true
+					v.readPos = append(v.readPos, id.Pos())
 					if !n.Prefix {
 						u.postfix = append(u.postfix, n)
 					}
@@ -173,6 +207,7 @@ func (c *Checker) unusedVarWarnings() {
 		case *syntax.Ident:
 			if v := u.local(n, true); v != nil {
 				v.read = true
+				v.readPos = append(v.readPos, n.Pos())
 			}
 		}
 		return true
@@ -206,6 +241,16 @@ func (c *Checker) unusedVarWarnings() {
 			// calls plusAssign doesn't assign it.
 			c.warnf(vs.P, "CAN_BE_VAL", "this 'var' property is never written to, it can be declared as 'val'")
 		}
+		if vs != nil && vs.Mutable && vs.Init == nil && !delegated && !v.annot && len(v.updates) == 0 && !v.incDec {
+			// One assigned later, at most once on every path.
+			if loc, ok := u.stmtLoc[vs]; ok && atMostOnce(sym, loc.block, loc.index) {
+				if vs.Lateinit {
+					c.warnf(vs.P, "CAN_BE_VAL_LATEINIT", "this 'lateinit var' property is not written to more than once, it can be declared as nullable 'val'")
+				} else {
+					c.warnf(vs.P, "CAN_BE_VAL_DELAYED_INITIALIZATION", "this 'var' property is not written to more than once, it can be declared as 'val'")
+				}
+			}
+		}
 		if !v.read {
 			switch {
 			case len(v.writes) == 0:
@@ -227,7 +272,7 @@ func (c *Checker) unusedVarWarnings() {
 			}
 		}
 		for _, w := range append(v.writes[:len(v.writes):len(v.writes)], v.updates...) {
-			if loc, ok := u.stmtLoc[w]; ok && u.beforeCapture(v, w.Target.Pos(), loc) && u.unreadAfter(sym, v, loc) {
+			if loc, ok := u.stmtLoc[w]; ok && (u.beforeCapture(v, w.Target.Pos(), loc) && u.unreadAfter(sym, v, loc) || u.unreadFromLambda(v, loc)) {
 				c.warnf(w.Target.Pos(), "ASSIGNED_VALUE_IS_NEVER_READ", "assigned value is never read")
 			}
 		}
@@ -244,6 +289,9 @@ func (c *Checker) unusedVarWarnings() {
 		loc, ok := u.writeLoc[x]
 		if !ok || !u.beforeCapture(v, id.Pos(), loc) || varUses(loc.block.Stmts[loc.index], id.Sym) != 1 {
 			continue // the statement may read the new value
+		}
+		if w, ok := loc.block.Stmts[loc.index].(*syntax.While); ok && readsVar(w.Cond, id.Sym) {
+			continue // the condition reads it again: while (i++ < 3)
 		}
 		if u.unreadAfter(id.Sym, v, loc) {
 			c.warnf(id.Pos(), "ASSIGNED_VALUE_IS_NEVER_READ", "assigned value is never read")
@@ -273,7 +321,8 @@ func (u *unusedVars) local(id *syntax.Ident, ok bool) *localVar {
 // in the statement at loc, comes before every lambda, local function and
 // local class that uses v, outside any loop in v's scope.
 func (u *unusedVars) beforeCapture(v *localVar, p syntax.Pos, loc stmtLoc) bool {
-	if !v.captured {
+	if !v.captured || !v.captureReads && !u.inCapture(v, loc) {
+		// What only assigns it can't read a value, wherever it runs.
 		return true
 	}
 	if !before(p, v.capture) {
@@ -292,6 +341,62 @@ func (u *unusedVars) beforeCapture(v *localVar, p syntax.Pos, loc stmtLoc) bool 
 		}
 	}
 	return true
+}
+
+// inCapture reports whether the statement at loc, in variable v's
+// scope, is in a lambda, a local function or a local class there.
+func (u *unusedVars) inCapture(v *localVar, loc stmtLoc) bool {
+	for b := loc.block; b != v.block; {
+		n, ok := u.blockParent[b]
+		if !ok {
+			return true
+		}
+		if _, ok := n.(*syntax.Lambda); ok {
+			return true
+		}
+		l, ok := u.stmtOf(n)
+		if !ok {
+			return true
+		}
+		b = l.block
+	}
+	return false
+}
+
+// unreadFromLambda reports whether the value that a statement at loc, in
+// a lambda that only assigns variable v, writes to v is never read: v is
+// read nowhere after the lambda begins, and the lambda isn't in a loop,
+// whose next iteration may read it. The lambda may run at any time
+// after it is created, so only a read before can't see the value.
+func (u *unusedVars) unreadFromLambda(v *localVar, loc stmtLoc) bool {
+	if !v.captured || v.captureReads || v.block == nil {
+		return false
+	}
+	var lam *syntax.Lambda
+	for b := loc.block; b != v.block; {
+		switch n := u.blockParent[b].(type) {
+		case *syntax.Lambda:
+			lam = n
+			l, ok := u.lambdaLoc[n]
+			if !ok {
+				return false
+			}
+			b = l.block
+		case *syntax.If, *syntax.When, *syntax.Try:
+			l, ok := u.stmtOf(n)
+			if !ok {
+				return false
+			}
+			b = l.block
+		default:
+			return false // a loop, or what kc doesn't follow
+		}
+	}
+	if lam == nil {
+		return false
+	}
+	start := syntax.StartPos(lam)
+	return !slices.ContainsFunc(v.readPos, func(p syntax.Pos) bool { return !before(p, start) })
 }
 
 // stmtOf returns the place of the statement that is if, when or try
@@ -316,6 +421,8 @@ func (u *unusedVars) stmtOf(n any) (stmtLoc, bool) {
 func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 	own := map[*types.VarSym]bool{}
 	var used []*types.VarSym
+	assigned := map[*syntax.Ident]bool{} // the targets of plain assignments
+	reads := map[*types.VarSym]bool{}
 	walkCode([]syntax.Decl{d}, func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.VarStmt:
@@ -328,9 +435,16 @@ func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 			if n.SubjVar != "" {
 				own[n.SubjSym] = true
 			}
+		case *syntax.Assign:
+			if id, ok := n.Target.(*syntax.Ident); ok && n.Op == syntax.ASSIGN {
+				assigned[id] = true
+			}
 		case *syntax.Ident:
 			if n.Sym != nil {
 				used = append(used, n.Sym)
+				if !assigned[n] {
+					reads[n.Sym] = true
+				}
 			}
 		}
 		return true
@@ -341,6 +455,7 @@ func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 				v.capture = p
 			}
 			v.captured = true
+			v.captureReads = v.captureReads || reads[s]
 		}
 	}
 }
@@ -398,7 +513,9 @@ func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bo
 			}
 		}
 		if b == v.block {
-			return true
+			// The condition of a do-while sees its body's variables.
+			w, ok := u.blockParent[b].(*syntax.While)
+			return !ok || !w.Do || !readsVar(w.Cond, sym)
 		}
 		switch p := u.blockParent[b].(type) {
 		case *syntax.If, *syntax.When:
@@ -423,10 +540,39 @@ func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bo
 				return false
 			}
 			b, i = l.block, l.index
+		case *syntax.While, *syntax.For:
+			// The end of a loop's body goes to its condition and then to
+			// its body again, from the start, or out of the loop.
+			if w, ok := p.(*syntax.While); ok && readsVar(w.Cond, sym) {
+				return false
+			}
+			body := u.loopBody(p)
+			if body != b {
+				return false
+			}
+			if u.blockEffect(body, sym) == reads {
+				return false
+			}
+			l, ok := u.stmtOf(p)
+			if !ok {
+				return false
+			}
+			b, i = l.block, l.index
 		default:
 			return false
 		}
 	}
+}
+
+// loopBody returns the body of loop n, a while or a for.
+func (u *unusedVars) loopBody(n any) *syntax.Block {
+	switch n := n.(type) {
+	case *syntax.While:
+		return n.Body
+	case *syntax.For:
+		return n.Body
+	}
+	return nil
 }
 
 // effect returns what statement st does with the value of variable sym.
@@ -435,6 +581,32 @@ func (u *unusedVars) effect(st syntax.Stmt, sym *types.VarSym) int {
 		return reads
 	}
 	switch st := st.(type) {
+	case *syntax.While:
+		// A loop without break or continue: its body runs at least once
+		// after do, and while (true) never ends; otherwise the value may
+		// pass it, but not be read in it.
+		switch {
+		case st.Do:
+			switch u.blockEffect(st.Body, sym) {
+			case kills:
+				return kills
+			case passes:
+				if !readsVar(st.Cond, sym) {
+					return passes
+				}
+			}
+			return reads
+		case readsVar(st.Cond, sym) || u.blockEffect(st.Body, sym) == reads:
+			return reads
+		case st.Infinite && u.blockEffect(st.Body, sym) == kills:
+			return kills
+		}
+		return passes
+	case *syntax.For:
+		if readsVar(st.Range, sym) || u.blockEffect(st.Body, sym) == reads {
+			return reads
+		}
+		return passes
 	case *syntax.Assign:
 		if id, ok := st.Target.(*syntax.Ident); ok && id.Sym == sym && st.Op == syntax.ASSIGN {
 			if varUses(st.Value, sym) > 0 {
@@ -615,4 +787,276 @@ func walkNode(n any, f func(any) bool) {
 		return true
 	}
 	syntax.Inspect(n, visit)
+}
+
+// writeCount is how many times paths through code may assign a variable,
+// as writes counts them: on those that complete it, on those that leave
+// it by return, throw or break, and on those that continue a loop. Each
+// count is -1 if no path does, and capped at 2, for more than once.
+type writeCount struct{ cont, out, back int }
+
+// plusCount returns a+b of two counts, either of which may be -1.
+func plusCount(a, b int) int {
+	if a < 0 || b < 0 {
+		return -1
+	}
+	return min(a+b, 2)
+}
+
+// atMostOnce reports whether the variable sym, declared without an
+// initializer as statement i of block b, is assigned at most once on
+// every path, as kotlinc's CanBeValChecker judges it: then it can be a
+// val. Loops whose bodies may assign it and run again, and lambdas,
+// local functions and classes that assign it, unless the lambda is run
+// once in place, make it more.
+func atMostOnce(sym *types.VarSym, b *syntax.Block, i int) bool {
+	w, ok := writes(sym, b.Stmts[i+1:])
+	return ok && w.cont <= 1 && w.out <= 1 && w.back <= 1
+}
+
+// writes counts the assignments of sym in statements stmts, run in turn
+// (see writeCount). It reports false where it can't tell.
+func writes(sym *types.VarSym, stmts []syntax.Stmt) (writeCount, bool) {
+	w := writeCount{cont: 0, out: -1, back: -1}
+	for _, s := range stmts {
+		sw, ok := stmtWrites(sym, s)
+		if !ok {
+			return w, false
+		}
+		w.out = max(w.out, plusCount(w.cont, sw.out))
+		w.back = max(w.back, plusCount(w.cont, sw.back))
+		w.cont = plusCount(w.cont, sw.cont)
+		if w.cont < 0 {
+			break // what follows can't run
+		}
+	}
+	return w, true
+}
+
+// blockWrites is writes of block b, which may be nil.
+func blockWrites(sym *types.VarSym, b *syntax.Block) (writeCount, bool) {
+	if b == nil {
+		return writeCount{cont: 0, out: -1, back: -1}, true
+	}
+	return writes(sym, b.Stmts)
+}
+
+// branchWrites joins the counts of alternatives.
+func branchWrites(ws ...writeCount) writeCount {
+	j := writeCount{cont: -1, out: -1, back: -1}
+	for _, w := range ws {
+		j.cont, j.out, j.back = max(j.cont, w.cont), max(j.out, w.out), max(j.back, w.back)
+	}
+	return j
+}
+
+// seqWrites is a followed by b.
+func seqWrites(a, b writeCount) writeCount {
+	return writeCount{
+		cont: plusCount(a.cont, b.cont),
+		out:  max(a.out, plusCount(a.cont, b.out)),
+		back: max(a.back, plusCount(a.cont, b.back)),
+	}
+}
+
+// stmtWrites counts the assignments of sym in statement s.
+func stmtWrites(sym *types.VarSym, s syntax.Stmt) (writeCount, bool) {
+	switch s := s.(type) {
+	case *syntax.ExprStmt:
+		return exprWrites(sym, s.X)
+	case *syntax.VarStmt:
+		if s.Delegate != nil {
+			return flatWrites(sym, s)
+		}
+		return exprWrites(sym, s.Init)
+	case *syntax.Assign:
+		w, ok := exprWrites(sym, s.Value)
+		if !ok {
+			return w, false
+		}
+		if id, ok := s.Target.(*syntax.Ident); ok && id.Sym == sym {
+			if s.Op != syntax.ASSIGN {
+				return w, false // x += v reads it, assigned before
+			}
+			return seqWrites(w, writeCount{cont: 1, out: -1, back: -1}), true
+		}
+		t, ok := flatWrites(sym, s.Target)
+		return seqWrites(t, w), ok
+	case *syntax.While:
+		cond, ok1 := exprWrites(sym, s.Cond)
+		body, ok2 := blockWrites(sym, s.Body)
+		if !ok1 || !ok2 || cond.cont != 0 || cond.out > 0 {
+			return writeCount{}, false
+		}
+		return loopWrites(body)
+	case *syntax.For:
+		r, ok1 := exprWrites(sym, s.Range)
+		body, ok2 := blockWrites(sym, s.Body)
+		if !ok1 || !ok2 {
+			return writeCount{}, false
+		}
+		l, ok := loopWrites(body)
+		return seqWrites(r, l), ok
+	}
+	return flatWrites(sym, s)
+}
+
+// loopWrites counts the assignments of a loop with body counts body: none
+// on a path that runs it again, and then those of its paths out of it,
+// which, return or break, are taken to complete it.
+func loopWrites(body writeCount) (writeCount, bool) {
+	if body.cont > 0 || body.back > 0 {
+		return writeCount{}, false
+	}
+	return writeCount{cont: max(body.out, 0), out: -1, back: -1}, true
+}
+
+// exprWrites counts the assignments of sym in expression x, which may be
+// nil.
+func exprWrites(sym *types.VarSym, x syntax.Expr) (writeCount, bool) {
+	switch x := x.(type) {
+	case nil:
+		return writeCount{cont: 0, out: -1, back: -1}, true
+	case *syntax.If:
+		cond, ok1 := exprWrites(sym, x.Cond)
+		then, ok2 := blockWrites(sym, x.Then)
+		els, ok3 := blockWrites(sym, x.Else)
+		return seqWrites(cond, branchWrites(then, els)), ok1 && ok2 && ok3
+	case *syntax.When:
+		w, ok := exprWrites(sym, x.Subject)
+		if !ok {
+			return w, false
+		}
+		var bs []writeCount
+		if !whenHasElse(x) {
+			bs = append(bs, writeCount{cont: 0, out: -1, back: -1}) // no branch matches
+		}
+		for _, br := range x.Branches {
+			for _, c := range br.Conds {
+				if cw, ok := flatWrites(sym, c.X); !ok || cw.cont != 0 {
+					return w, false
+				}
+			}
+			if gw, ok := flatWrites(sym, br.Guard); !ok || gw.cont != 0 {
+				return w, false
+			}
+			bw, ok := blockWrites(sym, br.Body)
+			if !ok {
+				return w, false
+			}
+			bs = append(bs, bw)
+		}
+		return seqWrites(w, branchWrites(bs...)), true
+	case *syntax.Try:
+		// A catch may be entered after any of the body's statements.
+		body, ok := blockWrites(sym, x.Body)
+		if !ok {
+			return body, false
+		}
+		before := max(body.cont, body.out, body.back, 0)
+		w := body
+		for _, ct := range x.Catches {
+			cw, ok := blockWrites(sym, ct.Body)
+			if !ok {
+				return cw, false
+			}
+			w = branchWrites(w, seqWrites(writeCount{cont: before, out: -1, back: -1}, cw))
+		}
+		if x.Finally != nil {
+			fw, ok := blockWrites(sym, x.Finally)
+			if !ok || fw.cont < 0 {
+				return fw, false
+			}
+			w = writeCount{cont: plusCount(w.cont, fw.cont), out: plusCount(w.out, fw.cont), back: plusCount(w.back, fw.cont)}
+		}
+		return w, true
+	case *syntax.Jump:
+		w, ok := exprWrites(sym, x.X)
+		if !ok || w.cont < 0 {
+			return w, ok
+		}
+		if x.Kind == syntax.CONTINUE {
+			return writeCount{cont: -1, out: w.out, back: max(w.back, w.cont)}, true
+		}
+		return writeCount{cont: -1, out: max(w.out, w.cont), back: w.back}, true
+	case *syntax.Lambda:
+		if x.Once && x.Inline && x.Ref == nil && !x.Anon {
+			// Run once, in place: its returns leave it, or more.
+			w, ok := blockWrites(sym, x.Body)
+			return writeCount{cont: max(w.cont, w.out), out: -1, back: w.back}, ok
+		}
+		if assignsVar(x, sym) {
+			return writeCount{}, false // run any number of times
+		}
+	case *syntax.ObjectExpr:
+		if assignsVar(x, sym) {
+			return writeCount{}, false
+		}
+	}
+	return flatWrites(sym, x)
+}
+
+// flatWrites counts the assignments of sym in n, which has no statements
+// of its own that it may skip or repeat: there must be none, other than
+// in lambdas run once in place (see exprWrites).
+func flatWrites(sym *types.VarSym, n any) (writeCount, bool) {
+	w := writeCount{cont: 0, out: -1, back: -1}
+	ok := true
+	walkNode(n, func(m any) bool {
+		if !ok {
+			return false
+		}
+		if m == n {
+			return true
+		}
+		switch m := m.(type) {
+		case *syntax.Assign:
+			if id, isID := m.Target.(*syntax.Ident); isID && id.Sym == sym {
+				ok = false
+			}
+		case *syntax.Unary:
+			if id, isID := m.X.(*syntax.Ident); isID && id.Sym == sym && (m.Op == syntax.INC || m.Op == syntax.DEC) {
+				ok = false
+			}
+		case *syntax.Lambda, *syntax.If, *syntax.When, *syntax.Try, *syntax.Jump:
+			if !assignsVar(m, sym) {
+				return false
+			}
+			if x, isExpr := m.(syntax.Expr); isExpr {
+				ew, eok := exprWrites(sym, x)
+				if !eok || ew.cont < 0 || ew.out >= 0 || ew.back >= 0 {
+					ok = false // a branch that jumps, in the middle of n
+				} else {
+					w.cont = plusCount(w.cont, ew.cont)
+				}
+				return false
+			}
+		case *syntax.LocalFun, *syntax.LocalClass, *syntax.ObjectExpr:
+			if assignsVar(m, sym) {
+				ok = false
+			}
+			return false
+		}
+		return true
+	})
+	return w, ok
+}
+
+// assignsVar reports whether n assigns sym.
+func assignsVar(n any, sym *types.VarSym) bool {
+	found := false
+	walkNode(n, func(m any) bool {
+		switch m := m.(type) {
+		case *syntax.Assign:
+			if id, ok := m.Target.(*syntax.Ident); ok && id.Sym == sym {
+				found = true
+			}
+		case *syntax.Unary:
+			if id, ok := m.X.(*syntax.Ident); ok && id.Sym == sym && (m.Op == syntax.INC || m.Op == syntax.DEC) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }

@@ -191,7 +191,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3521 of the 3667 warnings the tests expect (96.0%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3550 of the 3667 warnings the tests expect (96.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -200,15 +200,15 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
-| `USELESS_IS_CHECK` | 127 | 116 | 0 |
+| `USELESS_IS_CHECK` | 127 | 118 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
-| `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
-| `SENSELESS_COMPARISON` | 91 | 81 | 1 |
-| `USELESS_CAST` | 91 | 83 | 2 |
+| `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
+| `SENSELESS_COMPARISON` | 91 | 85 | 1 |
+| `USELESS_CAST` | 91 | 86 | 2 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
-| `UNCHECKED_CAST` | 88 | 76 | 1 |
+| `UNCHECKED_CAST` | 88 | 84 | 1 |
 | `OPT_IN_USAGE` | 83 | 78 | 0 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 71 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
@@ -222,7 +222,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
-| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 25 | 0 |
+| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 30 | 0 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 | 27 | 0 |
 | `OVERRIDE_DEPRECATION` | 30 | 30 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
@@ -251,7 +251,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
 | `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 | 13 | 0 |
-| `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 12 | 0 |
+| `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 13 | 0 |
 | `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 | 12 | 0 |
 | `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 | 12 | 0 |
 | `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
@@ -314,6 +314,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_SETTER_PARAMETER_TYPE` | 2 | 2 | 0 |
 | `REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE` | 2 | 2 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
+| `CAN_BE_VAL_DELAYED_INITIALIZATION` | 1 | 1 | 0 |
+| `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION` | 1 | 1 | 0 |
 | `LABEL_NAME_CLASH` | 1 | 1 | 0 |
 | `NEWER_VERSION_IN_SINCE_KOTLIN` | 1 | 1 | 0 |
 | `OPT_IN_WITHOUT_ARGUMENTS` | 1 | 1 | 0 |
@@ -328,8 +330,6 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `REDUNDANT_RETURN` | 2 |
 | `CANNOT_CHANGE_ACCESS_PRIVILEGE_WARNING` | 1 |
 | `CANNOT_INFER_VISIBILITY_WARNING` | 1 |
-| `CAN_BE_VAL_DELAYED_INITIALIZATION` | 1 |
-| `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION` | 1 |
 | `EXPANSIVE_INHERITANCE_IN_JAVA` | 1 |
 | `FINITE_BOUNDS_VIOLATION_IN_JAVA` | 1 |
 | `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY` | 1 |

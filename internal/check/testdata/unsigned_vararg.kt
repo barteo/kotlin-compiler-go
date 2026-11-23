@@ -22,3 +22,19 @@ fun local() {
     val f = fun(vararg a: UInt) {} // USELESS_VARARG_ON_PARAMETER
 }
 fun arr(a: UIntArray) {} // OPT_IN_USAGE
+
+// Their calls: the parameter is of the array class.
+@OptIn(ExperimentalUnsignedTypes::class)
+fun calls() {
+    uint(1u)
+    Plain(1u)
+}
+fun calls2() {
+    uint() // OPT_IN_USAGE
+    uint(1u, 2u) // OPT_IN_USAGE
+    plain(1u)
+    Plain(1u) // OPT_IN_USAGE
+    Sec(1u) // OPT_IN_USAGE
+    opted(1u) // OPT_IN_USAGE
+    ValueParam(1uL) // OPT_IN_USAGE
+}
