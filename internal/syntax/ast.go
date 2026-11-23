@@ -1365,6 +1365,7 @@ type Binary struct {
 	exprBase
 	Op     Kind
 	X, Y   Expr
+	Paren  bool       // written in parentheses: (a + b)
 	OpType types.Type // operand type for arithmetic and comparisons
 	// Call is the operator call of an arithmetic operator or a comparison
 	// on other types than the built-in ones: x.plus(y), x.compareTo(y),

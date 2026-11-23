@@ -875,6 +875,8 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			s, ok := literalString(arg.Toks[0])
 			if ok && !kotlinVersion.MatchString(s) {
 				w.errorf(arg.Toks[0].Pos, "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
+			} else if ok && a.Is("SinceKotlin") && newerThanAPI(s) {
+				w.c.warnf(arg.Toks[0].Pos, "NEWER_VERSION_IN_SINCE_KOTLIN", "the version is greater than the specified API version %s", apiVersion)
 			}
 		}
 	}
@@ -2201,4 +2203,29 @@ func notHidden(d depr) depr {
 		return depr{}
 	}
 	return d
+}
+
+// apiVersion is the API version kotlinc 2.4 compiles against by default.
+const apiVersion = "2.4"
+
+// newerThanAPI reports whether Kotlin version v, major.minor or
+// major.minor.patch, is later than apiVersion, as 2.4.1 is: its parts
+// are compared as numbers of any length.
+func newerThanAPI(v string) bool {
+	parts := strings.Split(v, ".")
+	api := strings.Split(apiVersion, ".")
+	for len(api) < len(parts) {
+		api = append(api, "0")
+	}
+	for i, p := range parts {
+		p = strings.TrimLeft(p, "0")
+		q := strings.TrimLeft(api[i], "0")
+		if len(p) != len(q) {
+			return len(p) > len(q)
+		}
+		if p != q {
+			return p > q
+		}
+	}
+	return false
 }

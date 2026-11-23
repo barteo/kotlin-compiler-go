@@ -82,13 +82,22 @@ func (c *Checker) whenNullWarnings(x *syntax.When) {
 	for _, br := range x.Branches {
 		for i := range br.Conds {
 			cond := &br.Conds[i]
-			if cond.Is || cond.NotIs || cond.In || cond.NotIn || !isNullLit(cond.X) {
+			if cond.Is || cond.NotIs || cond.In || cond.NotIn || cond.X == nil {
 				continue
 			}
+			if !isNullLit(cond.X) {
+				// A value that is always null, as a variable smart cast
+				// to Nothing?.
+				if ct := cond.X.Type(); ct.K == types.Null && definitelyNonNull(t) {
+					c.warnf(cond.X.Pos(), "SENSELESS_NULL_IN_WHEN", "Expression under 'when' is never equal to null.")
+				}
+				continue
+			}
+			null, noted := c.nullConds[cond]
 			switch {
-			case definitelyNonNull(t):
+			case definitelyNonNull(t), noted && !null:
 				c.warnf(cond.X.Pos(), "SENSELESS_NULL_IN_WHEN", "Expression under 'when' is never equal to null.")
-			case t.K == types.Null, c.nullConds[cond]:
+			case t.K == types.Null, null:
 				c.warnf(cond.X.Pos(), "SENSELESS_COMPARISON", "condition is always 'true'")
 			}
 		}

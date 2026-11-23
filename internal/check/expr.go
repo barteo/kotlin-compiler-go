@@ -4895,12 +4895,15 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					whenTrue = append(whenTrue, c.safeReceivers(x.Subject)...)
 				}
 				if _, ok := cond.X.(*syntax.NullLit); ok {
-					if hasSubj && subjType().K == types.Null && st.K != types.Null {
-						// The branches before left it null alone.
-						if c.nullConds == nil {
-							c.nullConds = map[*syntax.WhenCond]bool{}
+					if hasSubj && st.K != types.Null && !definitelyNonNull(st) {
+						// The branches before left it null alone, or
+						// ruled null out.
+						if nt := subjType(); nt.K == types.Null || definitelyNonNull(nt) {
+							if c.nullConds == nil {
+								c.nullConds = map[*syntax.WhenCond]bool{}
+							}
+							c.nullConds[cond] = nt.K == types.Null
 						}
-						c.nullConds[cond] = true
 					}
 					// Later branches see a non-null subject, and this one
 					// a null one, of type Nothing?.

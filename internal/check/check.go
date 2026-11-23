@@ -308,8 +308,8 @@ type Checker struct {
 	// noteRedundantElse.
 	redundantElses map[*syntax.When]bool
 	// nullConds are the null conditions of whens whose subject the
-	// branches before left null alone, as after is Any: see
-	// whenNullWarnings.
+	// branches before left null alone, as after is Any (true), or ruled
+	// null out, as after null -> (false): see whenNullWarnings.
 	nullConds map[*syntax.WhenCond]bool
 	// blockJumps are the blocks with a statement that always jumps, and
 	// its index: what follows it is unreachable.

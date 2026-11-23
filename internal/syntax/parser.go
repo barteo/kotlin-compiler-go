@@ -3595,5 +3595,7 @@ func Parenthesized(x Expr) {
 		x.Paren = true
 	case *Index:
 		x.Paren = true
+	case *Binary:
+		x.Paren = true
 	}
 }

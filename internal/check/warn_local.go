@@ -160,6 +160,7 @@ func (c *Checker) localWarnings() {
 		case *syntax.If:
 			c.inferredInvisibleBranches(n)
 		case *syntax.Block:
+			c.sameLineAnnotations(n)
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)
 			}
@@ -624,4 +625,45 @@ func ownParams(t types.Type) bool {
 		}
 	}
 	return t.A.Len() > 0
+}
+
+// sameLineAnnotations warns of the statements of block b that begin with
+// an annotation followed, on its line, by a binary operator, an infix
+// call or an assignment, @A x + y, as kotlinc's
+// ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE: a line break
+// after it makes it the whole statement's, and otherwise it is x's.
+func (c *Checker) sameLineAnnotations(b *syntax.Block) {
+	if b == nil || len(c.file.Annotated) == 0 {
+		return
+	}
+	for _, st := range b.Stmts {
+		var n any
+		var op syntax.Pos // the outermost operator
+		switch st := st.(type) {
+		case *syntax.ExprStmt:
+			n = st.X
+			switch x := st.X.(type) {
+			case *syntax.Binary:
+				if !x.Paren {
+					op = x.P
+				}
+			case *syntax.Call:
+				if m, ok := x.Fun.(*syntax.Member); ok && x.Infix && !x.Paren {
+					op = m.P
+				}
+			}
+		case *syntax.Assign:
+			if st.Op == syntax.ASSIGN {
+				// Not y += 1, of which kotlinc reports the wrapped
+				// left-hand side alone.
+				n, op = st, st.P
+			}
+		}
+		if op == (syntax.Pos{}) {
+			continue
+		}
+		if as := c.file.Annotated[n]; len(as) > 0 && as[0].P.Line == op.Line {
+			c.warnf(as[0].P, "ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE", "annotations on block-level expressions are being parsed differently depending on presence of a new line after them. Use new line if whole block-level expression must be annotated or wrap annotated expression in parentheses")
+		}
+	}
 }

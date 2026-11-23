@@ -316,3 +316,19 @@ fun try10(b: Boolean) {
     }
     use(foo)
 }
+// CAN_BE_VAL: a var initialized and never assigned again; x += v that
+// calls plusAssign doesn't assign it.
+class PlusAcc { operator fun plusAssign(i: Int) {} }
+fun canBeVal(): Int {
+    var a = 1 // CAN_BE_VAL
+    var b = 2
+    b++
+    var c = 3
+    val l = { c = 4 }
+    l()
+    var d = PlusAcc() // CAN_BE_VAL
+    d += 1
+    var e = 5
+    e += 1
+    return a + b + c + e + d.hashCode()
+}

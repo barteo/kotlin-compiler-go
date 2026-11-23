@@ -920,3 +920,11 @@ func TestWarningsRedundantTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestWarningsSmall checks small warnings — versions newer than the API,
+// clashing labels, annotations on the same line as a block-level
+// expression, null when-conditions of a narrowed subject — against
+// kotlinc's of testdata/smallwarn.kt.
+func TestWarningsSmall(t *testing.T) {
+	checkReference(t, "testdata/smallwarn.kt", Options{Warnings: true})
+}
