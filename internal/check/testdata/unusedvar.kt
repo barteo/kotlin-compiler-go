@@ -332,3 +332,69 @@ fun canBeVal(): Int {
     e += 1
     return a + b + c + e + d.hashCode()
 }
+fun loops1(n: Int) {
+    var a = 1 // CAN_BE_VAL
+    var b = 2 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    var c = 3
+    for (i in 0..n) {
+        if (a == 2) {
+            b = c // ASSIGNED_VALUE_IS_NEVER_READ
+            c = a
+        } else {
+            b = a
+            c = b
+        }
+    }
+    use(c)
+}
+fun loops2(n: Int) {
+    var x = 0 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    while (n > 0) {
+        x = 1
+        use(x)
+        x = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+    }
+    var y = 0
+    while (y < n) { y = 5 }
+    var z = 0 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    do { z = 1 } while (z < 3)
+    var w = 0
+    for (i in 0..n) { w = i }
+    use(w)
+    var v = 0
+    for (i in 0..n) { use(v); v = i }
+}
+fun wonly1() {
+    var foo = 1 // VARIABLE_INITIALIZER_IS_REDUNDANT
+    try {
+        foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+        later3 { foo = 4 }
+        foo = 3 // ASSIGNED_VALUE_IS_NEVER_READ
+    } catch (_: Throwable) {
+        foo = 4
+        use(foo)
+    } finally {
+        foo = 5 // ASSIGNED_VALUE_IS_NEVER_READ
+        foo = 6 // ASSIGNED_VALUE_IS_NEVER_READ
+    }
+}
+fun wonly2() {
+    later3 {
+        var foo = 1
+        use(foo)
+        later3 {
+            foo = 2 // ASSIGNED_VALUE_IS_NEVER_READ
+        }
+    }
+}
+fun wonly3(c: Boolean) {
+    var foo = 1
+    use(foo)
+    while (c) {
+        use(foo)
+        later3 { foo = 2 }
+    }
+    var bar = 1
+    later3 { bar = 2 }
+    use(bar)
+}

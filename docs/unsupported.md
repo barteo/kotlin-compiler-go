@@ -234,10 +234,12 @@ own tests.
     `ASSIGNED_VALUE_IS_NEVER_READ` and
     `VARIABLE_INITIALIZER_IS_REDUNDANT` only where no statement that
     may read the value comes before it is overwritten or out of scope,
-    through `if`, `when` and `try` but not loops, a catch taken as
-    entered after any statement of the `try`, and, for a variable a
-    lambda, a local function or a local class uses, only before the
-    first of them and outside loops; `UNUSED_ANONYMOUS_PARAMETER` not
+    through `if`, `when`, `try` and loops without `break` or
+    `continue`, a catch taken as entered after any statement of the
+    `try`, and, for a variable a lambda, a local function or a local
+    class reads, only before the first of them and outside loops, and
+    in a lambda that only assigns it, not inline, only where nothing
+    reads it after the lambda; `UNUSED_ANONYMOUS_PARAMETER` not
     of a parameter whose name the lambda's body uses for another
     variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
     `var` whose modifier may widen a setter it inherits, an override

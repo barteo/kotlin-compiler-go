@@ -17,13 +17,17 @@ import (
 // by the code's control flow graph. kc reports them only where the code's
 // structure makes it certain: the value is overwritten, or the variable
 // goes out of scope or the function returns, before any statement that
-// reads the variable, going through if, when and try statements but not
-// loops. In a try, a catch may be entered after any statement, and the
-// finally block from anywhere. For a variable that a lambda, a local
-// function or a local class uses, kotlinc judges the writes before the
-// first of them, which reads the variable if it uses it other than by
-// assigning it; kc judges these writes too, but not in loops, where the
-// capture may come before them.
+// reads the variable, going through if, when and try statements, and
+// loops without break or continue, whose body runs again from its start.
+// In a try, a catch may be entered after any statement, and the finally
+// block from anywhere. For a variable that a lambda, a local function or
+// a local class uses, kotlinc judges the writes before the first of
+// them, which reads the variable if it uses it other than by assigning
+// it; kc judges these writes too, but not in loops, where the capture may
+// come before them. One that only assigns the variable can't read a
+// value, so the writes outside it are judged as if it weren't there, and
+// a write in a lambda, which may run any time after it is created, only
+// where nothing reads the variable after the lambda begins.
 
 // localVar is what unusedVars knows of a local variable.
 type localVar struct {
@@ -35,7 +39,11 @@ type localVar struct {
 	incDec   bool       // x++ or x-- assigns it
 	captured bool       // used in a lambda, a local function or a local class
 	capture  syntax.Pos // where the first of these begins
-	annot    bool       // named in an annotation's argument
+	// captureReads says that one of these reads it, rather than only
+	// assigning it.
+	captureReads bool
+	annot        bool         // named in an annotation's argument
+	readPos      []syntax.Pos // where it is read
 }
 
 // stmtLoc is a statement's place: its block and its index there.
@@ -52,6 +60,7 @@ type unusedVars struct {
 	stmtLoc     map[syntax.Stmt]stmtLoc         // a block's statements
 	exprStmt    map[syntax.Expr]stmtLoc         // an if or when that is a statement
 	writeLoc    map[syntax.Expr]stmtLoc         // the innermost statement of x++ and x--
+	lambdaLoc   map[*syntax.Lambda]stmtLoc      // the innermost statement of a lambda
 	tries       map[*syntax.Block][]*syntax.Try // the try constructs a block is in
 	postfix     []*syntax.Unary
 }
@@ -61,6 +70,7 @@ type unusedVars struct {
 func (c *Checker) unusedVarWarnings() {
 	u := &unusedVars{vars: map[*types.VarSym]*localVar{}, blockParent: map[*syntax.Block]any{},
 		stmtLoc: map[syntax.Stmt]stmtLoc{}, exprStmt: map[syntax.Expr]stmtLoc{}, writeLoc: map[syntax.Expr]stmtLoc{},
+		lambdaLoc: map[*syntax.Lambda]stmtLoc{},
 		tries: map[*syntax.Block][]*syntax.Try{}}
 	declare := func(sym *types.VarSym, name string, decl any, b *syntax.Block) {
 		if sym == nil || name == "_" || strings.HasPrefix(name, "<") || strings.HasPrefix(name, "$") || u.vars[sym] != nil {
@@ -89,8 +99,13 @@ func (c *Checker) unusedVarWarnings() {
 					}
 				}
 				syntax.Inspect(st, func(m any) bool {
-					if x, ok := m.(*syntax.Unary); ok && (x.Op == syntax.INC || x.Op == syntax.DEC) {
-						u.writeLoc[x] = stmtLoc{n, i}
+					switch x := m.(type) {
+					case *syntax.Unary:
+						if x.Op == syntax.INC || x.Op == syntax.DEC {
+							u.writeLoc[x] = stmtLoc{n, i}
+						}
+					case *syntax.Lambda:
+						u.lambdaLoc[x] = stmtLoc{n, i}
 					}
 					return true
 				})
@@ -150,6 +165,7 @@ func (c *Checker) unusedVarWarnings() {
 					v.writes = append(v.writes, n)
 				} else {
 					v.read = true
+					v.readPos = append(v.readPos, id.Pos())
 					if !plusAssign(n) {
 						v.updates = append(v.updates, n)
 					}
@@ -164,6 +180,7 @@ func (c *Checker) unusedVarWarnings() {
 				id, ok := n.X.(*syntax.Ident)
 				if v := u.local(id, ok); v != nil {
 					v.read, v.incDec = true, true
+					v.readPos = append(v.readPos, id.Pos())
 					if !n.Prefix {
 						u.postfix = append(u.postfix, n)
 					}
@@ -173,6 +190,7 @@ func (c *Checker) unusedVarWarnings() {
 		case *syntax.Ident:
 			if v := u.local(n, true); v != nil {
 				v.read = true
+				v.readPos = append(v.readPos, n.Pos())
 			}
 		}
 		return true
@@ -227,7 +245,7 @@ func (c *Checker) unusedVarWarnings() {
 			}
 		}
 		for _, w := range append(v.writes[:len(v.writes):len(v.writes)], v.updates...) {
-			if loc, ok := u.stmtLoc[w]; ok && u.beforeCapture(v, w.Target.Pos(), loc) && u.unreadAfter(sym, v, loc) {
+			if loc, ok := u.stmtLoc[w]; ok && (u.beforeCapture(v, w.Target.Pos(), loc) && u.unreadAfter(sym, v, loc) || u.unreadFromLambda(v, loc)) {
 				c.warnf(w.Target.Pos(), "ASSIGNED_VALUE_IS_NEVER_READ", "assigned value is never read")
 			}
 		}
@@ -273,7 +291,8 @@ func (u *unusedVars) local(id *syntax.Ident, ok bool) *localVar {
 // in the statement at loc, comes before every lambda, local function and
 // local class that uses v, outside any loop in v's scope.
 func (u *unusedVars) beforeCapture(v *localVar, p syntax.Pos, loc stmtLoc) bool {
-	if !v.captured {
+	if !v.captured || !v.captureReads && !u.inCapture(v, loc) {
+		// What only assigns it can't read a value, wherever it runs.
 		return true
 	}
 	if !before(p, v.capture) {
@@ -292,6 +311,62 @@ func (u *unusedVars) beforeCapture(v *localVar, p syntax.Pos, loc stmtLoc) bool 
 		}
 	}
 	return true
+}
+
+// inCapture reports whether the statement at loc, in variable v's
+// scope, is in a lambda, a local function or a local class there.
+func (u *unusedVars) inCapture(v *localVar, loc stmtLoc) bool {
+	for b := loc.block; b != v.block; {
+		n, ok := u.blockParent[b]
+		if !ok {
+			return true
+		}
+		if _, ok := n.(*syntax.Lambda); ok {
+			return true
+		}
+		l, ok := u.stmtOf(n)
+		if !ok {
+			return true
+		}
+		b = l.block
+	}
+	return false
+}
+
+// unreadFromLambda reports whether the value that a statement at loc, in
+// a lambda that only assigns variable v, writes to v is never read: v is
+// read nowhere after the lambda begins, and the lambda isn't in a loop,
+// whose next iteration may read it. The lambda may run at any time
+// after it is created, so only a read before can't see the value.
+func (u *unusedVars) unreadFromLambda(v *localVar, loc stmtLoc) bool {
+	if !v.captured || v.captureReads || v.block == nil {
+		return false
+	}
+	var lam *syntax.Lambda
+	for b := loc.block; b != v.block; {
+		switch n := u.blockParent[b].(type) {
+		case *syntax.Lambda:
+			lam = n
+			l, ok := u.lambdaLoc[n]
+			if !ok {
+				return false
+			}
+			b = l.block
+		case *syntax.If, *syntax.When, *syntax.Try:
+			l, ok := u.stmtOf(n)
+			if !ok {
+				return false
+			}
+			b = l.block
+		default:
+			return false // a loop, or what kc doesn't follow
+		}
+	}
+	if lam == nil {
+		return false
+	}
+	start := syntax.StartPos(lam)
+	return !slices.ContainsFunc(v.readPos, func(p syntax.Pos) bool { return !before(p, start) })
 }
 
 // stmtOf returns the place of the statement that is if, when or try
@@ -316,6 +391,8 @@ func (u *unusedVars) stmtOf(n any) (stmtLoc, bool) {
 func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 	own := map[*types.VarSym]bool{}
 	var used []*types.VarSym
+	assigned := map[*syntax.Ident]bool{} // the targets of plain assignments
+	reads := map[*types.VarSym]bool{}
 	walkCode([]syntax.Decl{d}, func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.VarStmt:
@@ -328,9 +405,16 @@ func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 			if n.SubjVar != "" {
 				own[n.SubjSym] = true
 			}
+		case *syntax.Assign:
+			if id, ok := n.Target.(*syntax.Ident); ok && n.Op == syntax.ASSIGN {
+				assigned[id] = true
+			}
 		case *syntax.Ident:
 			if n.Sym != nil {
 				used = append(used, n.Sym)
+				if !assigned[n] {
+					reads[n.Sym] = true
+				}
 			}
 		}
 		return true
@@ -341,6 +425,7 @@ func (u *unusedVars) capture(d syntax.Decl, p syntax.Pos) {
 				v.capture = p
 			}
 			v.captured = true
+			v.captureReads = v.captureReads || reads[s]
 		}
 	}
 }
@@ -423,10 +508,39 @@ func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bo
 				return false
 			}
 			b, i = l.block, l.index
+		case *syntax.While, *syntax.For:
+			// The end of a loop's body goes to its condition and then to
+			// its body again, from the start, or out of the loop.
+			if w, ok := p.(*syntax.While); ok && readsVar(w.Cond, sym) {
+				return false
+			}
+			body := u.loopBody(p)
+			if body != b {
+				return false
+			}
+			if u.blockEffect(body, sym) == reads {
+				return false
+			}
+			l, ok := u.stmtOf(p)
+			if !ok {
+				return false
+			}
+			b, i = l.block, l.index
 		default:
 			return false
 		}
 	}
+}
+
+// loopBody returns the body of loop n, a while or a for.
+func (u *unusedVars) loopBody(n any) *syntax.Block {
+	switch n := n.(type) {
+	case *syntax.While:
+		return n.Body
+	case *syntax.For:
+		return n.Body
+	}
+	return nil
 }
 
 // effect returns what statement st does with the value of variable sym.
@@ -435,6 +549,32 @@ func (u *unusedVars) effect(st syntax.Stmt, sym *types.VarSym) int {
 		return reads
 	}
 	switch st := st.(type) {
+	case *syntax.While:
+		// A loop without break or continue: its body runs at least once
+		// after do, and while (true) never ends; otherwise the value may
+		// pass it, but not be read in it.
+		switch {
+		case st.Do:
+			switch u.blockEffect(st.Body, sym) {
+			case kills:
+				return kills
+			case passes:
+				if !readsVar(st.Cond, sym) {
+					return passes
+				}
+			}
+			return reads
+		case readsVar(st.Cond, sym) || u.blockEffect(st.Body, sym) == reads:
+			return reads
+		case st.Infinite && u.blockEffect(st.Body, sym) == kills:
+			return kills
+		}
+		return passes
+	case *syntax.For:
+		if readsVar(st.Range, sym) || u.blockEffect(st.Body, sym) == reads {
+			return reads
+		}
+		return passes
 	case *syntax.Assign:
 		if id, ok := st.Target.(*syntax.Ident); ok && id.Sym == sym && st.Op == syntax.ASSIGN {
 			if varUses(st.Value, sym) > 0 {
