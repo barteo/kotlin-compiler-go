@@ -3211,6 +3211,12 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			return c.invokeValue(x, types.ClassType(cls), want, sink)
 		}
 		if cls != nil && len(fs) == 0 {
+			if alias == nil && c.libraryAliasOf(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true
+			}
 			return c.construct(x, cls, fn.P, want, sink)
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls == nil && len(fs) == 0 && len(a.TypeParams) == 0 {
@@ -3314,6 +3320,12 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 					c.recordAlias(x, a)
 					return c.aliasConstruct(x, a, cls, fn.P, want, sink) // a.b.Alias(1)
 				}
+			}
+			if name := c.qualifiedName(fn); name != "" && c.libraryAliasPath(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true // kotlin.collections.HashSet(c)
 			}
 			return c.construct(x, cls, fn.P, want, sink) // java.util.Random(1)
 		}

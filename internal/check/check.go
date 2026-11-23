@@ -453,6 +453,13 @@ type Checker struct {
 	// aliasCtors are the calls of typealiases' constructors, with their
 	// aliases: see ownParamArg.
 	aliasCtors map[*syntax.Call]*types.AliasSym
+	// libAliasCtors are the calls of constructors through a library's
+	// typealias, which resolves to its class: HashSet(c) (see
+	// tvar.strictFlex).
+	libAliasCtors map[*syntax.Call]bool
+	// aliasClassImports are the names of imports of a library's typealias
+	// that imports holds as its class: import kotlin.collections.HashSet.
+	aliasClassImports map[string]bool
 	// aliasTypeArgs are the type arguments of the calls of typealiases'
 	// constructors with explicit ones, rewritten as their classes'.
 	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg

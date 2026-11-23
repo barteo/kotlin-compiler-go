@@ -1016,6 +1016,12 @@ func (c *Checker) resolveImports() {
 		if cls != nil {
 			c.imports[alias] = cls
 			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
+			if c.libraryAliasPath(imp.Path, cls) {
+				if c.aliasClassImports == nil {
+					c.aliasClassImports = map[string]bool{}
+				}
+				c.aliasClassImports[alias] = true
+			}
 		}
 		var ta *types.AliasSym
 		if cls == nil && ext.kotlin {
@@ -1388,6 +1394,37 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 		}
 	}
 	return nil
+}
+
+// libraryAliasOf reports whether simple name name, which resolves to
+// class cls, is a library's typealias of it, as HashSet is
+// kotlin.collections' of java.util.HashSet: a class on the class path that
+// isn't imported, explicitly or by a star import, by its own name.
+func (c *Checker) libraryAliasOf(name string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	if cls == nil || !cls.External || !ext.kotlin || kotlinTypes[name] {
+		return false
+	}
+	if _, ok := c.imports[name]; ok {
+		return c.aliasClassImports[name]
+	}
+	for _, r := range slices.Concat(c.starPkgs(), ext.defaultRefs()) {
+		if k := ext.pkgClassIn(r, name); k != nil {
+			return k == cls && ext.pkgClassAlias(r, name) == cls
+		}
+	}
+	return false
+}
+
+// libraryAliasPath reports whether qualified name qname is a library's
+// typealias of class cls: kotlin.collections.HashSet of java.util.HashSet.
+func (c *Checker) libraryAliasPath(qname string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	i := strings.LastIndexByte(qname, '.')
+	if i < 0 || cls == nil || !cls.External || !ext.kotlin || ext.class(strings.ReplaceAll(qname, ".", "/")) != nil {
+		return false
+	}
+	return ext.pkgClassAlias(ext.pkgRef(qname[:i]), qname[i+1:]) == cls
 }
 
 // extClass resolves a simple name of a class on the class path.

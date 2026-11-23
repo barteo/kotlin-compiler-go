@@ -91,6 +91,11 @@ type tvar struct {
 	// equalityWins), so JavaBox(s) for a String? s is a JavaBox<String>
 	// where one is expected.
 	flexLower []types.Type
+	// strictFlex is set for the variables of a typealias's constructor,
+	// whose Foo? <: V! K2 keeps as Foo? <: V: kotlin.collections.HashSet(
+	// setOf(null)) is a HashSet<Nothing?> where a Set<String> is expected,
+	// though java.util.HashSet(setOf(null)) isn't.
+	strictFlex bool
 }
 
 type inferError struct {
@@ -411,8 +416,10 @@ func (s *system) sub(a, b types.Type) {
 			// explicit type arguments, which kc substitutes, make it
 			// flexible: S of Renderer.create { it.length } for a
 			// Renderer<in T?> of comboBox<String> is a String!.
-			s.addFlexLower(tv, a)
-			return
+			if !tv.strictFlex {
+				s.addFlexLower(tv, a)
+				return
+			}
 		case b.P && !a.N && a.K != types.TypeVar && a.K != types.Nothing:
 			// And Foo <: V! gives Foo! <: V, a flexible lower bound,
 			// which V is then fixed before others for: Key<T> <: Key<K!>

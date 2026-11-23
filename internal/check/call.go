@@ -961,6 +961,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			cd.sub = cd.sys.fresh(tps, base, x.P)
 		}
+		if c.aliasCtors[x] != nil || c.libAliasCtors[x] {
+			// A typealias's constructor, HashSet(setOf(null)) for a
+			// Set<String>: K2 keeps Foo? <: V of its Java parameters.
+			for _, tv := range cd.sys.vars {
+				tv.strictFlex = true
+			}
+		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
 			if cl.param(j).UnsafeVariance && !useSiteProjected(cl.recv, cl.argType(j, x.Args)) {
