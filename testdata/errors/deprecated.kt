@@ -42,3 +42,16 @@ fun since() = 1
 @DeprecatedSinceKotlin(warningSince = "1.0") // ERROR only allowed in the kotlin package
 @Deprecated("x")
 fun outside() = 1
+
+// Number's toChar(), an error since Kotlin 2.3, but not an override's.
+fun numberToChar(n: Number) = n.toChar() // ERROR is deprecated
+class NumberToChar : Number() {
+    override fun toChar(): Char = 'x'
+    override fun toInt(): Int = 0
+    override fun toByte(): Byte = 0
+    override fun toDouble(): Double = 0.0
+    override fun toFloat(): Float = 0f
+    override fun toLong(): Long = 0
+    override fun toShort(): Short = 0
+}
+fun numberToChar2(n: NumberToChar) = n.toChar()

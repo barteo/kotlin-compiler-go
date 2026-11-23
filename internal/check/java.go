@@ -619,9 +619,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		// And toChar(), which java.lang.Number doesn't have: kotlinc
 		// compiles its calls as toInt().toChar(), and an override is an
-		// ordinary method.
+		// ordinary method. It is deprecated, an error from Kotlin 2.3 on.
 		cls.Methods["toChar"] = append(cls.Methods["toChar"], &types.FunSym{Name: "toChar", Owner: cls, Ret: types.CharType,
-			Builtin: types.ToChar, Desc: "()C", Resolved: true})
+			Builtin: types.ToChar, Desc: "()C", Resolved: true, Deprecated: &numberToCharDeprecation})
 	}
 	for _, fd := range info.Fields {
 		pkgPrivate := samePkg && packagePrivate(fd.Access)
@@ -3935,6 +3935,10 @@ func lowerASCII(s string) string {
 	}
 	return string(b)
 }
+
+// numberToCharDeprecation is that of kotlin.Number's toChar().
+var numberToCharDeprecation = types.Deprecation{Level: "ERROR", Message: "Direct conversion to Char is deprecated. Use toInt().toChar() or Char constructor instead.\n" +
+	"If you override toChar() function in your Number inheritor, it's recommended to gradually deprecate the overriding function and then remove it."}
 
 // numberConversions are kotlin.Number's functions and the methods of
 // java.lang.Number that they are.
