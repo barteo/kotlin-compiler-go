@@ -319,6 +319,10 @@ type Checker struct {
 	// class that is a Kotlin one, java.lang.Integer of
 	// java.lang.Integer::class.java: the Kotlin class's name.
 	platformArgs map[any]string
+	// emptyInters are the calls with a type argument they infer that is
+	// an intersection that is or may be empty: see
+	// noteEmptyIntersection.
+	emptyInters map[*syntax.Call]emptyInter
 	// deadClasses are the local classes and object expressions in code
 	// reported unreachable, which classDeadCode doesn't judge.
 	deadClasses map[*syntax.ClassDecl]bool

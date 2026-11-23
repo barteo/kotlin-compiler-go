@@ -108,8 +108,15 @@ func (c *Checker) localWarnings() {
 					return true
 				})
 			}
+		case *syntax.VarStmt:
+			if n.Get != nil {
+				// x$delegate.getValue(null, ref), which isn't written:
+				// reported at the delegate.
+				c.emptyIntersectionWarningAt(n.Get, syntax.StartPos(n.Delegate))
+			}
 		case *syntax.Call:
 			c.platformArgWarning(n)
+			c.emptyIntersectionWarningAt(n, delegateAt(n, calleePos(n)))
 			c.atomicWarnings(n)
 			c.redundantSpreads(n)
 			c.varargNothing(n)

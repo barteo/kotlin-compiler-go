@@ -588,6 +588,13 @@ func TestWarningsDeprecation(t *testing.T) {
 // TestWarningsNullSmartCasts checks the null checks and casts that the
 // smart casts of is Any, of safe calls and casts, and of a value that is
 // always null decide, and casts of platform types.
+// TestWarningsEmptyIntersection checks the warnings of type arguments
+// inferred as empty intersections against kotlinc's of
+// testdata/emptyinter.kt.
+func TestWarningsEmptyIntersection(t *testing.T) {
+	checkReference(t, "testdata/emptyinter.kt", Options{Warnings: true})
+}
+
 func TestWarningsNullSmartCasts(t *testing.T) {
 	checkReference(t, "testdata/nullsmart.kt", Options{Warnings: true})
 }

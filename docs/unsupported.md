@@ -71,10 +71,10 @@ own tests.
     makes them an `_ERROR`, `kc` reports only
     `IMPOSSIBLE_IS_CHECK_WARNING`,
     `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING` and
-    `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`,
-    not, for example, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING`.
+    `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`
+    and, in part, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING`
+    (see below).
   - Those of types and type arguments:
-    `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION`,
     `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING`,
@@ -170,6 +170,12 @@ own tests.
     and a class compared with `===`.
   - `INCOMPATIBLE_TYPES_WARNING` only of a `when` whose subject is a
     smart-cast variable.
+  - `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` and
+    `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` of a call's
+    type argument that `kc` infers as an intersection, or that only
+    upper constraints and its declared bounds give, and of a delegated
+    property's `getValue`; not of a callable reference's vararg
+    adaptation or a lambda's last expression after a bare `return`.
   - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
     error name in a `@Suppress`, but not in one on a type or a
     supertype.

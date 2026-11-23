@@ -1292,7 +1292,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
 	if len(x.TypeArgs) == 0 && len(best.tparams) > 0 {
-		sys.fixups = append(sys.fixups, func(s *system) { c.notePlatformArgs(x, best.tparams, best.sub, s) })
+		sys.fixups = append(sys.fixups, func(s *system) {
+			c.notePlatformArgs(x, best.tparams, best.sub, s)
+			c.noteEmptyIntersection(x, best.tparams, best.sub, s)
+		})
 	}
 	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
