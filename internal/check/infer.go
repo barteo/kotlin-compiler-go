@@ -179,7 +179,9 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 				// fun <T : B> bar(t: T), is only Nothing: no argument is.
 				tv.captBound = true
 			}
-			if !b.IsParam() && b.Has(func(u types.Type) bool { return u.IsParam() && base[u.Param()].V != types.Inv && base[u.Param()].T.K != types.Invalid }) {
+			if !b.IsParam() && b.Has(func(u types.Type) bool {
+				return u.IsParam() && base[u.Param()].V != types.Inv && base[u.Param()].T.K != types.Invalid
+			}) {
 				// A bound with a receiver's projection holds its capture,
 				// approximated as K2 approximates it in a parameter's
 				// type: E : Out<T> of an A<out CharSequence> is
@@ -1491,7 +1493,9 @@ func (s *system) equalityWins(tv *tvar, val types.Type, lowers, uppers []types.T
 	}
 	for _, u := range uppers {
 		if !types.MayBeNull(u) && slices.ContainsFunc(lowers, func(l types.Type) bool { return c.sameType(l, u) }) && fits(u) &&
-			!slices.ContainsFunc(lowers, func(l types.Type) bool { return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N) }) &&
+			!slices.ContainsFunc(lowers, func(l types.Type) bool {
+				return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N)
+			}) &&
 			(len(tv.lits) == 0 || litsFit(tv.lits, u) || c.subtype(s.litType(tv, nil), u)) {
 			return u
 		}
