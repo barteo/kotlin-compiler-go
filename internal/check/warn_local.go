@@ -309,7 +309,7 @@ func (c *Checker) binaryWarnings(x *syntax.Binary) {
 		}
 		eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 		if t := other.Type(); definitelyNonNull(t) || t.K == types.Null || t.K == types.Nothing && !t.N {
-			c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", eq == (t.K == types.Null))
+			c.warnf(syntax.StartPos(x.X), "SENSELESS_COMPARISON", "condition is always '%v'", eq == (t.K == types.Null))
 		}
 	case syntax.ELVIS:
 		if x.X == nil {

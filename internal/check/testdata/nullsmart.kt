@@ -107,3 +107,66 @@ fun contradictions(b: A?, d: A?) {
     }
     if (d is Any || d == null) {} else { d.foo() } // SENSELESS_COMPARISON
 }
+
+// A var assigned null is a Nothing? until it is assigned again, as K2's
+// smart casts: not where a path in between may assign it, nor a var
+// declared with null.
+class Na(var n: Int) { operator fun get(i: Int) = i; fun f() = 1 }
+fun naUse(a: Any?) {}
+fun assignedNull(b: Boolean) {
+    var c: Na? = Na(1)
+    c = null
+    naUse(c ?: Na(2))
+    naUse(c?.get(0))
+    naUse(c?.f())
+    c?.n += 1
+    c?.n++
+    naUse(c?.let { it.n })
+    naUse(c is Na)
+    naUse(c as? Na) // USELESS_CAST
+    naUse(c == null) // SENSELESS_COMPARISON
+    naUse(c === null) // SENSELESS_COMPARISON
+    naUse(c!!)
+    var s: String? = "a"
+    if (b) s = null
+    naUse(s != null)
+    s = null
+    while (b) { naUse(s != null); s = "x" }
+    s = null
+    for (i in 0..1) { if (s == null) s = "y" }
+    s = null
+    try { s = "z" } catch (e: Exception) {}
+    naUse(s == null)
+    s = null
+    run { naUse(s == null) } // SENSELESS_COMPARISON
+    var t: String? = null
+    naUse(t != null)
+    t = null
+    naUse(t == null) // SENSELESS_COMPARISON
+    var u: String?
+    u = null
+    naUse(u == null) // SENSELESS_COMPARISON
+}
+
+// A Java method's result is as the Kotlin member it overrides gives it:
+// not null for MutableList's iterator(), which MutableCollection
+// declares, ArrayList's, StringBuilder's toString() and subSequence().
+// Throwable's message is nullable.
+fun javaOverrides(l: List<Int>, ml: MutableList<Int>, a: ArrayList<Int>, sb: StringBuilder, o: Any, cs: CharSequence, hm: HashMap<String, Int>, t: Thread) {
+    naUse(l.iterator() != null) // SENSELESS_COMPARISON
+    naUse(ml.iterator() != null) // SENSELESS_COMPARISON
+    naUse(a.iterator() != null) // SENSELESS_COMPARISON
+    naUse(a.listIterator() != null) // SENSELESS_COMPARISON
+    naUse(sb.toString()!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(o.toString()!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(cs.toString()!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(sb.subSequence(0, 1)!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(hm.keys!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(hm.entries!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(t.toString()!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(a.subList(0, 1)!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(Exception().message!!)
+    naUse(java.io.File("x").toString()!!) // UNNECESSARY_NOT_NULL_ASSERTION
+    naUse(java.io.File("x").getParent()!!)
+    naUse(t.getName()!!)
+}

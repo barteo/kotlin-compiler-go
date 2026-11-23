@@ -960,10 +960,15 @@ func (c *Checker) loopJump(i int, brk bool) {
 }
 
 // assignedVar narrows local var v to the type vt of the value assigned to
-// it, for the rest of the current scope.
-func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
+// it, for the rest of the current scope. A value that is always null
+// narrows it to Nothing? only if null is set: assigned, as K2, which
+// doesn't so narrow var x: T? = null.
+func (c *Checker) assignedVar(v *types.VarSym, vt types.Type, null bool) {
 	t := v.Type
-	if vt.K != types.Invalid && vt.K != types.Null && vt.K != types.Nothing && c.subtype(vt, v.Type) {
+	switch {
+	case vt.K == types.Null && null && !v.Type.P && types.MayBeNull(v.Type):
+		t = types.NullType
+	case vt.K != types.Invalid && vt.K != types.Null && vt.K != types.Nothing && c.subtype(vt, v.Type):
 		t = vt
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})

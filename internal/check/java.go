@@ -2437,14 +2437,30 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 // platform type that, in a Java method it overrides, an annotation makes
 // non-null, with a copy whose parameter is non-null: as in Kotlin, an
 // override inherits the nullability of its parameters, C's foo(F x) of
-// A's foo(@NotNull T x).
+// A's foo(@NotNull T x). So for a result of a platform type that a
+// Kotlin member it overrides gives as not null (see kotlinNonNullRet),
+// as K2 enhances it.
 func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
 	var out []*types.FunSym
 	for i, f := range ms {
-		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || f.Name == "<init>" || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
+		if f.Static || f.Owner == nil || f.Name == "<init>" {
 			continue
 		}
 		var fo *types.FunSym
+		if f.Ret.P && (isJavaClass(f.Owner) || f.Platform && f.Owner.Java != nil) && kotlinNonNullRet(f) {
+			cp := *f
+			cp.Ret.P, cp.Ret.N = false, false
+			fo = &cp
+		}
+		if !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
+			if fo != nil {
+				if out == nil {
+					out = slices.Clone(ms)
+				}
+				out[i] = fo
+			}
+			continue
+		}
 		f.Owner.Supertypes(func(s *types.ClassSym) bool {
 			if s == f.Owner || !isJavaClass(s) {
 				return true
@@ -2482,6 +2498,48 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 		return ms
 	}
 	return out
+}
+
+// kotlinNonNullRet reports whether Java method f overrides a Kotlin
+// member whose result can't be null: a Kotlin class's, a built-in
+// collection type's, or a built-in class's, as Any's toString(). K2
+// takes the nullability of a Java method's result from what it
+// overrides, so that StringBuilder().toString() and
+// ArrayList<Int>().iterator() aren't null.
+// f is a Java class's method, or the Java interface's member of a
+// built-in collection type that doesn't declare it, MutableList's
+// iterator() that MutableCollection does.
+func kotlinNonNullRet(f *types.FunSym) bool {
+	found := false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner {
+			return true
+		}
+		// The Java classes that are Kotlin built-in ones: Any's
+		// toString(): String, CharSequence's subSequence(): CharSequence.
+		switch s.Name {
+		case "java/lang/Object":
+			found = f.Name == "toString" && len(f.Params) == 0
+			return !found
+		case "java/lang/CharSequence":
+			if f.Name == "subSequence" && len(f.Params) == 2 {
+				found = true
+				return false
+			}
+		}
+		if isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if !g.Static && !g.Private && !g.Platform && len(g.Params) == len(f.Params) && len(g.TypeParams) == len(f.TypeParams) &&
+				g.Name == f.Name && jvmDesc(g) == jvmDesc(f) && definitelyNonNull(g.Ret) {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }
 
 // substOverrides reports whether Java method f overrides g, a method of
