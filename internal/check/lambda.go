@@ -1069,6 +1069,7 @@ type inlineJumps struct {
 	inTry       bool
 	composable  bool
 	inMonitor   bool // the callee invokes it holding a monitor
+	critical    bool // the callee is synchronized or withLock
 }
 
 // leave checks a jump that leaves the lambdas c.lambdas[from:]: only

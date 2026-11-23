@@ -1,6 +1,8 @@
 // Checks that kotlinc 2.4's diagnostics tests expect and kc missed, each
 // a case of a check kc has otherwise.
 
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.reflect.KProperty
 
 operator fun Any.provideDelegate(x: Any?, p: Int) {} // ERROR second parameter must be of type KProperty<*> or its supertype
@@ -25,6 +27,15 @@ val numbersC: List<Int> = listOf()
 
 fun readsField() {
     val b: MutableList<Int> = numbersB // ERROR this declaration needs opt-in
+}
+
+suspend fun suspensionPoint() {}
+fun suspendBuilder(c: suspend () -> Unit) {}
+
+fun criticalSections(lock: ReentrantLock) {
+    suspendBuilder {
+        lock.withLock { suspensionPoint() } // ERROR the 'suspensionPoint' suspension point is inside a critical section
+    }
 }
 
 fun stringVararg(vararg args: String) {}

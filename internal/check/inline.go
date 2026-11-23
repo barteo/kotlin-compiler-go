@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -116,6 +118,9 @@ func (c *Checker) markInline(l *syntax.Lambda, f *types.FunSym, b *inline.Body, 
 	}
 	j := c.jumps[l]
 	j.callee, j.composable, j.suspends = f.Name, f.Composable, f.Suspend
+	// As K2's, a critical section is synchronized's lambda or
+	// kotlin.concurrent's withLock's, which holds a lock and not a monitor.
+	j.critical = f.Name == "synchronized" || f.Name == "withLock" && strings.HasPrefix(f.Facade, "kotlin/concurrent/")
 	j.crossinline = j.crossinline || f.Inline.Crossinline[i]
 	l.Crossinline = j.crossinline
 	bp := b.Params[jvmParam(f, b, i)]
