@@ -1774,6 +1774,21 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			fit = append(fit, try)
 		}
 	}
+	if len(fit) == 0 {
+		// As K2, a lambda whose result fits none chooses the one candidate
+		// not marked, if there is one, whose lambda is then checked
+		// against it: flatMap { if (b) listOf("") else null } is
+		// Iterable's flatMap, whose lambda returns a List<String>?.
+		var plain []*candidate
+		for _, cd := range match {
+			if !markedByLambdaResult(cd.f) {
+				plain = append(plain, cd)
+			}
+		}
+		if len(plain) == 1 {
+			return plain[0]
+		}
+	}
 	var maximal []*candidate
 	for _, cd := range fit {
 		if c.mostSpecific(cd, fit, x.Args) {
@@ -1798,6 +1813,16 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 func sourceNotByLambdaResult(f *types.FunSym) bool {
 	d, ok := f.Decl.(*syntax.FunDecl)
 	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
+}
+
+// markedByLambdaResult reports whether f is marked
+// @OverloadResolutionByLambdaReturnType: in the program, or in its class
+// file, whose annotations a function of the class path keeps.
+func markedByLambdaResult(f *types.FunSym) bool {
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return d.Find("", "OverloadResolutionByLambdaReturnType") != nil || d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") != nil
+	}
+	return slices.Contains(f.Annotations, "Lkotlin/OverloadResolutionByLambdaReturnType;")
 }
 
 // branchesClass returns the class of the calls the branches of e, an if
