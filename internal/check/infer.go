@@ -85,6 +85,12 @@ type tvar struct {
 	// for fun <S> foo2(a: JavaBox<out S>) is a mismatch where
 	// foo3(JavaBox(null)) for foo3(a: JavaBox<out String>) isn't (KT-67825).
 	typeArgUp []types.Type
+	// flexLower are the nullable lower bounds added from arguments passed
+	// for the variable's flexible type, Foo? <: V!: as K2's Foo? <: V?, an
+	// equality constraint V = Foo still holds with them (see
+	// equalityWins), so JavaBox(s) for a String? s is a JavaBox<String>
+	// where one is expected.
+	flexLower []types.Type
 }
 
 type inferError struct {
@@ -227,6 +233,7 @@ func (s *system) clone() *system {
 		c.upper = append([]types.Type{}, tv.upper...)
 		c.wantUp = slices.Clip(tv.wantUp)
 		c.typeArgUp = slices.Clip(tv.typeArgUp)
+		c.flexLower = slices.Clip(tv.flexLower)
 		// declUp is edited in place (see addUpper), and boundUp appended to:
 		// a clone that shared them would change the system it is a copy of.
 		c.declUp = slices.Clone(tv.declUp)
@@ -404,6 +411,8 @@ func (s *system) sub(a, b types.Type) {
 			// explicit type arguments, which kc substitutes, make it
 			// flexible: S of Renderer.create { it.length } for a
 			// Renderer<in T?> of comboBox<String> is a String!.
+			s.addFlexLower(tv, a)
+			return
 		case b.P && !a.N && a.K != types.TypeVar && a.K != types.Nothing:
 			// And Foo <: V! gives Foo! <: V, a flexible lower bound,
 			// which V is then fixed before others for: Key<T> <: Key<K!>
@@ -641,12 +650,28 @@ func (s *system) unfixedVar(t types.Type) *tvar {
 func (s *system) addLower(tv *tvar, t types.Type) {
 	for _, l := range tv.lower {
 		if l == t {
+			// Passed for a type that isn't flexible too.
+			tv.flexLower = slices.DeleteFunc(tv.flexLower, func(f types.Type) bool { return f == t })
 			return
 		}
 	}
 	tv.lower = append(tv.lower, t)
 	for _, u := range tv.upper {
 		s.sub(t, u)
+	}
+}
+
+// addFlexLower adds nullable lower bound t from an argument passed for
+// tv's flexible type, Foo? <: V!, which, as K2's Foo? <: V?, an upper
+// bound that doesn't take null holds with (see tvar.flexLower).
+func (s *system) addFlexLower(tv *tvar, t types.Type) {
+	if slices.Contains(tv.lower, t) {
+		return
+	}
+	tv.lower = append(tv.lower, t)
+	tv.flexLower = append(tv.flexLower, t)
+	for _, u := range tv.upper {
+		s.sub(t.NonNull(), u)
 	}
 }
 
@@ -671,6 +696,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 		tv.typeArgUp = append(tv.typeArgUp, t)
 	}
 	for _, l := range tv.lower {
+		if slices.Contains(tv.flexLower, l) {
+			l = l.NonNull()
+		}
 		s.sub(l, t)
 	}
 	// Below another variable, it is below that one's declared bound too,
@@ -1494,13 +1522,21 @@ func (s *system) equalityWins(tv *tvar, val types.Type, lowers, uppers []types.T
 	for _, u := range uppers {
 		if !types.MayBeNull(u) && slices.ContainsFunc(lowers, func(l types.Type) bool { return c.sameType(l, u) }) && fits(u) &&
 			!slices.ContainsFunc(lowers, func(l types.Type) bool {
-				return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N)
+				return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N) && !s.flexLowerFits(tv, l, u)
 			}) &&
 			(len(tv.lits) == 0 || litsFit(tv.lits, u) || c.subtype(s.litType(tv, nil), u)) {
 			return u
 		}
 	}
 	return val
+}
+
+// flexLowerFits reports whether lower bound l of tv is one of its
+// flexLower, whose non-null form is below u: Foo? <: V! holds for V = Foo.
+func (s *system) flexLowerFits(tv *tvar, l, u types.Type) bool {
+	return l.N && s.c.subtype(l.NonNull(), u) && slices.ContainsFunc(tv.flexLower, func(f types.Type) bool {
+		return s.c.sameType(types.ApproxFlexNothing(s.apply(f)), l)
+	})
 }
 
 // finalArg is final for the type of a parameter that an argument is
