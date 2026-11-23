@@ -458,8 +458,11 @@ type candidate struct {
 	sub    types.Subst
 	params []types.Type
 	sys    *system
-	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
-	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// explicit is set when the call's explicit type arguments are
+	// substituted into the candidate's parameters (see tvar.typeArgUp).
+	explicit bool
+	sams     map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
+	susps    map[int]bool          // the arguments converted to suspend function types: see suspendConverted
 	// stubCons are the constraints that constrain recorded in builders'
 	// runs for this candidate, in a builder's lambda: applicable takes
 	// them back, and the chosen candidate's are recorded again.
@@ -932,6 +935,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		case targs != nil && hasUnderscore(x.TypeArgs):
 			cd.sub, cd.sys = underscoreSub(cd.sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
 		case targs != nil:
+			cd.explicit = true
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
 				cd.sub[p] = a
@@ -995,7 +999,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			continue
 		}
 		if single && !cs[0].params[i].HasVars() {
+			if cs[0].typeArgParam(i, x.Args) {
+				c.typeArgWant = a
+			}
 			ts[i] = c.value(a, cs[0].params[i])
+			c.typeArgWant = nil
 			continue
 		}
 		if p, ok := c.sharedFunParam(cs, i); ok {
@@ -1391,8 +1399,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if o := c.operator; o == nil || o.X != syntax.Expr(x) && o.Y != syntax.Expr(x) {
 				trial.expecting++
 			}
+			if c.typeArgWant == syntax.Expr(x) {
+				trial.typeArgs++
+			}
 			trial.sub(ret, want)
-			trial.expecting = 0
+			trial.expecting, trial.typeArgs = 0, 0
 			if trial.ok {
 				sys = trial
 			}
@@ -1404,7 +1415,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	// variable infers materialize's T with it (see joinRun).
 	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 		trial := sys.clone()
+		if c.typeArgWant == syntax.Expr(x) {
+			trial.typeArgs++
+		}
 		trial.sub(ret, want)
+		trial.typeArgs = 0
 		if trial.ok {
 			sys = trial
 		}
@@ -2292,9 +2307,21 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			cd.sys.sub(t, ft)
 			continue
 		}
+		if cd.typeArgParam(i, x.Args) {
+			cd.sys.typeArgs++
+			cd.sys.sub(t, p)
+			cd.sys.typeArgs--
+			continue
+		}
 		cd.sys.sub(t, p)
 	}
 	c.constrainContexts(cd, x)
+}
+
+// typeArgParam reports whether the type of cd's parameter for argument
+// i is given by the call's explicit type arguments (see tvar.typeArgUp).
+func (cd *candidate) typeArgParam(i int, args []syntax.Expr) bool {
+	return cd.explicit && slices.ContainsFunc(cd.tparams, func(tp *types.TypeParamSym) bool { return mentionsParam(cd.argType(i, args), tp) })
 }
 
 // constrainContexts adds the constraints of a candidate's context

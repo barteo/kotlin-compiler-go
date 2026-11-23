@@ -488,6 +488,10 @@ type Checker struct {
 	// elvisWant the type that the right side gives it (see elvisHint).
 	elvisCall *syntax.Call
 	elvisWant types.Type
+	// typeArgWant is the argument being checked against a parameter's
+	// type that its call's explicit type arguments give (see
+	// tvar.typeArgUp).
+	typeArgWant syntax.Expr
 	// elvisFull is the initializer being checked of a local declared
 	// without a type, which nothing else is expected of: an elvis that
 	// is one is completed on its own.

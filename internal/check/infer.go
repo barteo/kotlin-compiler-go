@@ -78,6 +78,13 @@ type tvar struct {
 	// Nothing? only if no other bound decides it, as T of a Java
 	// JavaBox<T>(T) for JavaBox(null) is.
 	flexNull bool
+	// typeArgUp are the upper bounds added from a parameter's type that
+	// the call's explicit type arguments give: as K2's constraints
+	// derived through those arguments' variables, they don't keep a
+	// flexNull variable from being Nothing?, so foo2<String>(JavaBox(null))
+	// for fun <S> foo2(a: JavaBox<out S>) is a mismatch where
+	// foo3(JavaBox(null)) for foo3(a: JavaBox<out String>) isn't (KT-67825).
+	typeArgUp []types.Type
 }
 
 type inferError struct {
@@ -117,6 +124,9 @@ type system struct {
 	// expecting is set while the type expected of the call is added (see
 	// tvar.wantUp).
 	expecting int
+	// typeArgs is set while an argument is constrained by a parameter's
+	// type that explicit type arguments give (see tvar.typeArgUp).
+	typeArgs int
 	// forks are the fork points not resolved yet (see fork).
 	forks []fork
 	// wholeForks is set where a fork's branch is taken only if the whole
@@ -205,6 +215,7 @@ func (s *system) clone() *system {
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
 		c.wantUp = slices.Clip(tv.wantUp)
+		c.typeArgUp = slices.Clip(tv.typeArgUp)
 		// declUp is edited in place (see addUpper), and boundUp appended to:
 		// a clone that shared them would change the system it is a copy of.
 		c.declUp = slices.Clone(tv.declUp)
@@ -645,6 +656,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 	if s.expecting > 0 {
 		tv.wantUp = append(tv.wantUp, t)
 	}
+	if s.typeArgs > 0 {
+		tv.typeArgUp = append(tv.typeArgUp, t)
+	}
 	for _, l := range tv.lower {
 		s.sub(l, t)
 	}
@@ -995,7 +1009,13 @@ func (s *system) fix(tv *tvar) {
 			val = val.Nullable()
 		}
 		if s.flexNull(tv) && len(tv.lits) == 0 && !slices.ContainsFunc(lowers, func(l types.Type) bool { return l.K != types.Nothing }) &&
-			!slices.ContainsFunc(uppers, func(u types.Type) bool { return !types.AcceptsNull(u) }) {
+			!slices.ContainsFunc(tv.upper, func(u types.Type) bool {
+				if slices.Contains(tv.typeArgUp, u) {
+					return false
+				}
+				u = s.apply(u)
+				return !u.HasVars() && !types.AcceptsNull(u)
+			}) {
 			val = types.NullType
 		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {

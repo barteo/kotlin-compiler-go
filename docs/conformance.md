@@ -299,11 +299,9 @@ below), except for the FIR2IR tests:
   expects its new method to be unresolved. Given the library's class
   files on the class path, `kotlinc` resolves it too, as `kc` does.
 
-The other two are `kc`'s own. `regressions/kt334` expects
+The other one is `kc`'s own: `regressions/kt334` expects
 `java.lang.Comparable` to be a type of its own, which `kc` takes as
-`kotlin.Comparable` (see [unsupported](unsupported.md)), and
-`j+k/genericFunAndClassNullabilityInconsistency` expects an error that,
-as the test says, K2 doesn't report consistently.
+`kotlin.Comparable` (see [unsupported](unsupported.md)).
 
 ## Checking the harness
 

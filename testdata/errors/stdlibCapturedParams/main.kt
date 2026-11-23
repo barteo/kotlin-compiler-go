@@ -45,3 +45,20 @@ fun javaNull() {
     val s: JavaBox<String> = JavaBox(null)
     takeString(JavaBox("").a)
 }
+
+// As K2 (KT-67825): null for a Java T! makes T Nothing? against a bound
+// that explicit type arguments give, not one written or substituted from
+// the receiver's type.
+class NullBoxes<R> {
+    fun take(a: JavaBox<out R>) {}
+}
+
+fun <S> takeBoxOf(a: JavaBox<out S>) {}
+
+fun takeStringBox(a: JavaBox<out String>) {}
+
+fun explicitNull(k: NullBoxes<String>) {
+    k.take(JavaBox(null))
+    takeBoxOf<String>(JavaBox(null)) // ERROR type mismatch
+    takeStringBox(JavaBox(null))
+}
