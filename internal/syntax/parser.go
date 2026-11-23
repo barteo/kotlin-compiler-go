@@ -1779,6 +1779,7 @@ func (p *parser) backingField(pd *PropDecl) {
 		if a.Target == "" {
 			a.Target = "field"
 		}
+		a.OnField = true
 		pd.Annotations = append(pd.Annotations, a)
 	}
 	if p.at(COLON) {

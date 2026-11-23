@@ -303,6 +303,7 @@ func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
 		if a.Target == "" {
 			a.Target = "field"
 		}
+		a.OnField = true
 		pd.Annotations = append(pd.Annotations, a)
 	}
 	if t := child(n, psi.KindTYPE_REFERENCE); t.Valid() {

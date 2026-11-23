@@ -439,6 +439,9 @@ type Annotation struct {
 	// on an accessor, @get:A get(), which kotlinc reports: the property
 	// keeps it as if written on the property.
 	OnAccessor bool
+	// OnField is set on an annotation written on an explicit backing
+	// field, field = x, which the property keeps with Target field.
+	OnField bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by
