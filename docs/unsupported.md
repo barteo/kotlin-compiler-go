@@ -386,20 +386,23 @@ Java classes directly for the rest. Also:
 Not supported: generic value classes; interfaces annotated `@Serializable`
 that aren't sealed; local and inner classes and companion objects;
 classes without a primary constructor or that delegate an interface
-(`by`); superclasses from other modules; more than 32 properties;
-properties in the class body that are `lateinit`, set in an `init` block
-rather than initialized, or have accessors of their own; some ways of
-naming serializers of properties (a generic class in `@Serializable(with
-= ...)` on a property, `@Contextual`, `@UseSerializers`,
-`@UseContextualSerialization`); `@Polymorphic`, `@KeepGeneratedSerializer`
-and `@MetaSerializable`; the annotations that formats read
-(`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
-built-in serializers (`Duration`, `Uuid`...). Properties can be of the
-primitive types, `String`, enums, `@Serializable` classes (generic ones
-too), objects and value classes, `UInt`, `ULong`, `UShort`, `UByte`,
-interfaces (polymorphically), the class's type parameters, and `List`,
-`Set`, `Map`, `HashSet`, `HashMap`, `Pair` and `Triple` of these, each
-nullable too.
+(`by`); superclasses from other modules; properties in the class body
+that are set in an `init` block rather than initialized, or have
+accessors of their own; some ways of naming serializers of properties (a
+generic class in `@Serializable(with = ...)` on a property or in
+`@file:UseSerializers`); `@KeepGeneratedSerializer` and
+`@MetaSerializable`; the annotations that formats read (`@JsonNames`,
+`@ProtoNumber`...); `Array<*>`, and the JDK's types without
+`@UseSerializers` or `@Contextual` (`java.util.Date`...). Properties
+can be of the primitive types, `String`, `Unit`, enums, `@Serializable`
+classes (generic ones too), objects and value classes, `UInt`, `ULong`,
+`UShort`, `UByte`, `Duration`, `Instant`, `Uuid`, interfaces
+(polymorphically), the class's type parameters, the primitive and
+unsigned arrays, and `Array`, `List`, `Set`, `Map`, `HashSet`,
+`HashMap`, `Pair` and `Triple` of these, each nullable too; of types
+`@Contextual` or `@Polymorphic` mark, on the property or its type, and of
+those a file's `@UseSerializers` and `@UseContextualSerialization`
+name.
 
 Without `-serialization`, only classes annotated `@Serializable(with =
 S::class)` get their `serializer()`.
@@ -644,10 +647,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   arguments: a Java subclass of `class K : Base<String>()` that names
   `Inner`, declared in `Base<T>`, leaves the name unresolved in the
   signatures `kc` reads, as the inner class's `T` would be lost.
-- Without an expected type, a reference to a vararg function, or to a
-  generic function whose type parameters its receiver's type doesn't
-  give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
-  error.
+- Without an expected type, a reference to a generic function whose
+  type parameters its receiver's type doesn't give (`Box<Int>::first`
+  for `fun <T> Box<T>.first()` is fine) is an error.
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for
@@ -692,9 +694,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the lambdas and local functions of its initializers and `init` blocks
   are static methods of the interface.
 - Class files for a `-jvm-target` above 1.8 are those for 1.8 with a
-  higher version: no `PermittedSubclasses` attributes, which `kotlinc`
-  writes for `-jvm-target 17` and later, and string templates are built
-  with `StringBuilder`, not `kotlinc`'s `StringConcatFactory` of 9 and
+  higher version, and from 17 on `PermittedSubclasses` attributes, as
+  `kotlinc` writes them: string templates are built with
+  `StringBuilder`, not `kotlinc`'s `StringConcatFactory` of 9 and
   later. `InnerClasses` entries are only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`

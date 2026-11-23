@@ -585,6 +585,9 @@ type Checker struct {
 	// serials are the file's classes annotated @Serializable, which the
 	// serialization plugin adds members to: see serialization.go.
 	serials []*serialInfo
+	// serialFile is what the file's @UseSerializers and
+	// @UseContextualSerialization say, or nil.
+	serialFile *serialFileContext
 
 	// typeAnnots are the annotated types to check (typeannot.go).
 	typeAnnots []typeAnnot

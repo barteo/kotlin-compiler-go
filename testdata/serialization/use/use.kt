@@ -1,4 +1,6 @@
+import app.Arrays
 import app.Base
+import app.Big
 import app.Color
 import app.Event
 import app.Framed
@@ -7,6 +9,7 @@ import app.GBox
 import app.GPage
 import app.GRes
 import app.Label
+import app.Late
 import app.Margin
 import app.Outer
 import app.Page
@@ -66,6 +69,19 @@ fun main() {
     val gu = Json.encodeToString(GUseSub2.serializer(Long.serializer()), GUseSub2(5L))
     println("gusesub2: $gu -> ${Json.decodeFromString(GUseSub2.serializer(Long.serializer()), gu)}")
     println(serializer<GBox<String>>().descriptor)
+    // kc's synthetic constructor of a class of more than 32 properties,
+    // which takes two masks, from kotlinc's subclass.
+    val bs = Json.encodeToString(BigSub.serializer(), BigSub(8))
+    println("bigsub: $bs -> ${Json.decodeFromString(BigSub.serializer(), bs)}")
+    println("bigsub: ${Json.decodeFromString(BigSub.serializer(), """{"p0":1,"p31":"a","p34":2,"z":3}""")}")
+    val ar = Json.encodeToString(Arrays.serializer(), Arrays())
+    println("arrays: ${Json.encodeToString(Arrays.serializer(), Json.decodeFromString(Arrays.serializer(), ar)) == ar}")
+    println("late: ${Json.decodeFromString(Late.serializer(), """{"s":"u","list":[2]}""")}")
+}
+
+@Serializable
+class BigSub(val z: Int) : Big(2, p31 = "t", p34 = 3L) {
+    override fun toString() = "BigSub(${super.toString()}, $z)"
 }
 
 @Serializable

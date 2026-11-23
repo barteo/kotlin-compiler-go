@@ -276,6 +276,10 @@ type Options struct {
 	// Cache is shared by the files of a compilation, which compute what
 	// it holds once; if nil, each file has its own.
 	Cache *Cache
+	// JVMTarget is the class files' major version: from Java 17's, a
+	// sealed class or interface lists its subclasses in its
+	// PermittedSubclasses attribute.
+	JVMTarget uint16
 	// Program are the program's named classes, by JVM name (see
 	// ProgramClasses), and ClassFile reads a class of the class path:
 	// the InnerClasses attributes list the nested classes of either that
@@ -1323,6 +1327,21 @@ func classAccess(cd *syntax.ClassDecl) uint16 {
 	return access
 }
 
+// permitted returns the classes of a sealed class's PermittedSubclasses
+// attribute, from Java 17 on: its direct subclasses, by name, as kotlinc
+// orders them.
+func (g *gen) permitted(cls *types.ClassSym) []string {
+	if !cls.Sealed || g.shared.opts.JVMTarget < cf.Java17 {
+		return nil
+	}
+	var names []string
+	for _, s := range cls.Subclasses {
+		names = append(names, s.Name)
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}
+
 func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	cls := cd.Sym
 	if cls.Annotation {
@@ -1357,6 +1376,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	}
 	c.Signature = classSignature(cls, super, c.Interfaces)
 	c.SourceFile = filepath.Base(g.file.Path)
+	c.Permitted = g.permitted(cls)
 	g.cls, g.owner = c, cls
 	for _, v := range cd.Captures {
 		c.AddField(cf.AccFinal|cf.AccSynthetic, captureField(cd, v), storageDesc(v))

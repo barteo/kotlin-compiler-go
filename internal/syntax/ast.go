@@ -847,6 +847,14 @@ func (p *SerialProp) Annotations() []Annotation {
 	return p.Prop.Annotations
 }
 
+// TypeRef returns the property's type as written, or nil.
+func (p *SerialProp) TypeRef() *TypeRef {
+	if p.Param != nil {
+		return p.Param.Type
+	}
+	return p.Prop.Type
+}
+
 // Default returns the property's default value, or its initializer.
 func (p *SerialProp) Default() Expr {
 	if p.Param != nil {

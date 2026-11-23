@@ -324,6 +324,30 @@ gmissing: MissingFieldException: Field 'value' is required for type with serial 
 gmissingBase: MissingFieldException: Field 't' is required for type with serial name 'app.GSub', but it was missing at path: $
 gmissingTwo: MissingFieldException: Fields [m, b] are required for type with serial name 'app.GTwo', but they were missing at path: $
 true
+big: {"p0":1,"p31":"x","p32":7,"p34":2}
+  back: Big(1, 1, 30, x, 7, 33, 2, b1) true
+Big(3, 1, 30, y, 32, 33, 4, z)
+bigMissing: MissingFieldException: Fields [p31, p34] are required for type with serial name 'app.Big', but they were missing at path: $
+bigMissing2: MissingFieldException: Field 'p34' is required for type with serial name 'app.Big', but it was missing at path: $
+bigger: {"p0":0,"p31":"s","p34":9,"q0":5}
+  back: Bigger(Big(0, 1, 30, s, 32, 33, 9, b0), 5, q1) true
+Bigger(Big(1, 1, 30, a, 32, 33, 2, b1), 3, q1)
+biggerMissing: MissingFieldException: Field 'p34' is required for type with serial name 'app.Bigger', but it was missing at path: $
+arrays: {"i":[1,2],"l":[3],"s":[4],"b":[5],"c":["c"],"f":[1.5],"d":[2.5],"z":[true],"ui":[7],"ul":[8],"us":[9],"ub":[10],"strs":["x","y"],"nullable":[null,"n"],"cells":[{"n":1}],"nested":[[1],[]],"boxed":[4,5],"lists":[["a"]],"inList":[[6]]}
+  back: Arrays([1, 2], [7], [x, y], [[1], []], [4, 5], null, 1m 30s, 550e8400-e29b-41d4-a716-446655440000, 2023-11-14T22:13:20Z, kotlin.Unit) true
+Arrays([9], [4294967295], [q], [[1, 2]], [1], [1], 2m, 550e8400-e29b-41d4-a716-446655440000, 2023-11-14T22:13:20Z, kotlin.Unit)
+kotlin.Array(PrimitiveDescriptor(kotlin.String))
+kotlin.time.Duration
+late: {"id":3,"s":"q","after":"a3","list":[1]}
+  back: Late(3, q, a33, [1], false) false
+Late(0, z, a0, [], false)
+lateMissing: MissingFieldException: Fields [s, list] are required for type with serial name 'app.Late', but they were missing at path: $
+lateUnset: lateinit property s has not been initialized
+wallet: {"m":5,"l":[1],"mm":{"k":null},"d":1000,"dl":[2],"box":"<q>","u":"00000000-0000-0001-0000-000000000002","t":{"tag":"y"},"a":{"type":"cat","lives":9},"sh":{"type":"sq","side":3},"ci":7,"ct":{"tag":"z"}}
+  back: Wallet(5, [1], 1000, q, 00000000-0000-0001-0000-000000000002, Tagged(tag=y), Kitty(lives=9), Square(side=3), 7, Tagged(tag=z)) true
+CONTEXTUAL
+kotlinx.serialization.Polymorphic<Critter>?
+noModule: Serializer for class 'Money' is not found.
 true
 [init 5 10 body5 11, init 5 10 body5 11, init 5 10 body5 11, init 1 2 body1 3, init 1 2 body1 3, init 1 2 body1 3, init 3 6 b 7]
 use: {"p":{"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"},"c":"vert","s":{"type":"app.Shape.Rect","w":2,"h":3},"e":{"type":"app.Event.Key","id":2,"code":"k"},"w":{"v":1},"inner":{"q":2},"r":{"type":"app.Page","n":3}}
@@ -342,3 +366,7 @@ ghold: {"b":{"value":"s"},"p":{"items":[{"value":1}]},"r":{"type":"app.GRes.Ok",
 gusesub: {"t":"s","more":4} -> GUseSub(s, 4)
 gusesub2: {"t":5,"v":5} -> GUseSub2(5, 5)
 app.GBox(value: kotlin.String)
+bigsub: {"p0":2,"p31":"t","p34":3,"z":8} -> BigSub(Big(2, 1, 30, t, 32, 33, 3, b2), 8)
+bigsub: BigSub(Big(1, 1, 30, a, 32, 33, 2, b1), 3)
+arrays: true
+late: Late(0, u, a0, [2], false)

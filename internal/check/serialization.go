@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -67,10 +68,17 @@ import (
 // an object, or a new S each time, where kotlinc's plugin keeps one in the
 // class's $childSerializers.
 //
+// A property @Contextual marks, or whose type a file's
+// @UseContextualSerialization names, is written with a
+// ContextualSerializer, which asks the format's module; one @Polymorphic
+// marks with a PolymorphicSerializer; and one whose type a file's
+// @UseSerializers names with that serializer. A class of more than 32
+// properties has a mask for each 32, seen0 and on.
+//
 // Generic value classes, interfaces that aren't sealed, generic
-// serializers of properties, @Contextual, annotations that formats read
-// (@JsonNames, @ProtoNumber...) and the types kc knows no serializer for
-// are unsupported.
+// serializers of properties, annotations that formats read (@JsonNames,
+// @ProtoNumber...) and the types kc knows no serializer for are
+// unsupported.
 
 // serialInfo is a class annotated @Serializable, to which the checker adds
 // the plugin's members.
@@ -193,7 +201,7 @@ const (
 // how the plugin serializes them, or that formats read from descriptors,
 // which kc doesn't support.
 var serialDenied = map[string]bool{
-	"Contextual": true, "Polymorphic": true, "KeepGeneratedSerializer": true, "MetaSerializable": true,
+	"KeepGeneratedSerializer": true, "MetaSerializable": true,
 	"JsonNames": true, "JsonClassDiscriminator": true, "JsonIgnoreUnknownKeys": true,
 	"ProtoNumber": true, "ProtoType": true, "ProtoPacked": true, "ProtoOneOf": true,
 }
@@ -203,12 +211,6 @@ var serialDenied = map[string]bool{
 func (c *Checker) serialization() {
 	if !c.u.serialization {
 		return
-	}
-	for _, a := range c.file.Annotations {
-		if c.serialAnno(a, "UseSerializers") || c.serialAnno(a, "UseContextualSerialization") {
-			c.unsupported(a.P, "serialization", "@%s is not supported", a.Name)
-			return
-		}
 	}
 	prefix := ""
 	if c.file.Package != "" {
@@ -450,10 +452,10 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 			// A delegate's field, set always, and properties without
 			// fields of their own.
 		case pd.Lateinit && !transient:
-			c.unsupported(pd.P, "serialization", "lateinit properties of @Serializable classes are not supported")
-			return
+			// Required, as it has no initializer to fall back on.
+			serial.Props = append(serial.Props, &syntax.SerialProp{Name: c.serialName(pd.Annotations, pd.Name), Prop: pd})
 		case transient:
-			if pd.Init == nil && pd.Getter == nil {
+			if pd.Init == nil && pd.Getter == nil && !pd.Lateinit {
 				c.errorf(pd.P, "this property is marked as @Transient and therefore must have an initializing expression")
 				return
 			}
@@ -630,7 +632,14 @@ func (c *Checker) serialValueClass(in *serialInfo) {
 		return // an error the checker reports
 	}
 	cp := cd.CtorParams[0]
-	if a := deniedAnnotation(cp.Modifiers.Annotations); a != nil {
+	a := deniedAnnotation(cp.Modifiers.Annotations)
+	if a == nil {
+		a = c.findSerial(cp.Modifiers.Annotations, "Contextual")
+	}
+	if a == nil {
+		a = c.findSerial(cp.Modifiers.Annotations, "Polymorphic")
+	}
+	if a != nil {
 		c.unsupported(a.P, "serialization", "@%s is not supported", a.Name)
 		return
 	}
@@ -896,6 +905,9 @@ func replaceIdents(v reflect.Value, repl map[string]syntax.Expr) {
 // the bodies that write and read the properties. It runs once the types
 // are inferred, and before bodies are checked.
 func (c *Checker) serialBodies() {
+	if len(c.serials) > 0 && !c.serialFileAnnotations() {
+		return
+	}
 	for _, in := range c.serials {
 		c.serialFill(in)
 	}
@@ -938,10 +950,6 @@ func (c *Checker) serialFill(in *serialInfo) {
 		}
 	}
 	all = append(all, serial.Props...)
-	if len(all) > 32 {
-		fail("@Serializable classes with more than 32 properties are not supported")
-		return
-	}
 	inherited := len(all) - len(serial.Props)
 	scope := typeSerialScope(cls.TypeParams)
 	// The properties' types as the class sees them: a generic
@@ -972,7 +980,12 @@ func (c *Checker) serialFill(in *serialInfo) {
 			sers[i], custom[i] = s, true
 			continue
 		}
-		if sers[i] = c.serialSerializerIn(t.NonNull(), scope); sers[i] != "" {
+		// The serializer of the type as written, whose annotations and
+		// the file's may name its own: @Contextual, @Polymorphic.
+		if sers[i] = c.serialSerializerAt(t.NonNull(), scope, c.serialFile, p.TypeRef(), p.Annotations()); sers[i] != "" {
+			// A primitive's own serializer is called, not the encoder's
+			// method for the primitive.
+			custom[i] = serialPrimitives[t.K] != "" && sers[i] != c.serialSerializerIn(t.NonNull(), scope)
 			continue
 		}
 		if report {
@@ -997,7 +1010,9 @@ func (c *Checker) serialFill(in *serialInfo) {
 		sc.Params = append(sc.Params, p)
 		f.Params = append(f.Params, p.Sym)
 	}
-	param("seen0", types.IntType)
+	for i := range serialMasks(len(all)) {
+		param(fmt.Sprintf("seen%d", i), types.IntType)
+	}
 	for i, p := range all {
 		t := ts[i]
 		if !t.IsPrimitive() {
@@ -1158,8 +1173,10 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ts 
 	b.WriteString("fun f() {\n" +
 		"val `$d` = descriptor\n" +
 		"var `$flag` = true\n" +
-		"var `$index`: kotlin.Int\n" +
-		"var `$seen0` = 0\n")
+		"var `$index`: kotlin.Int\n")
+	for i := range serialMasks(len(all)) {
+		fmt.Fprintf(&b, "var `$seen%d` = 0\n", i)
+	}
 	for i := range all {
 		t := ts[i]
 		typ, _ := kotlinTypeOf(t, true)
@@ -1181,6 +1198,8 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ts 
 			zero = "0.0"
 		case types.Bool:
 			zero = "false"
+		case types.Unit:
+			zero = "kotlin.Unit" // which has no nullable type in kc
 		}
 		if !t.IsPrimitive() {
 			typ, _ = kotlinTypeOf(t.Nullable(), true)
@@ -1205,11 +1224,14 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ts 
 		"}\n" +
 		"}\n" +
 		"`$c`.endStructure(`$d`)\n")
-	fmt.Fprintf(&b, "return %s(`$seen0`", in.fq)
-	for i := range all {
-		fmt.Fprintf(&b, ", `$v%d`", i)
+	fmt.Fprintf(&b, "return %s(", in.fq)
+	for i := range serialMasks(len(all)) {
+		fmt.Fprintf(&b, "`$seen%d`, ", i)
 	}
-	b.WriteString(", null)\n}\n")
+	for i := range all {
+		fmt.Fprintf(&b, "`$v%d`, ", i)
+	}
+	b.WriteString("null)\n}\n")
 	deserialize := c.serialParse(cd, b.String())
 	if initBody == nil || children == nil || deserialize == nil {
 		return
@@ -1377,7 +1399,19 @@ func serialDecode(t types.Type, i int, ser string, custom bool) string {
 	default:
 		x = fmt.Sprintf("(`$c`.decodeSerializableElement(`$d`, %d, %s, `$v%d`) as %s)", i, ser, i, typ)
 	}
-	return fmt.Sprintf("`$v%d` = %s\n`$seen0` = `$seen0` or %d\n", i, x, 1<<i)
+	bit := strconv.Itoa(1 << (i % 32))
+	if i%32 == 31 {
+		bit = "(1 shl 31)" // not an Int literal
+	}
+	return fmt.Sprintf("`$v%d` = %s\n`$seen%d` = `$seen%[3]d` or %s\n", i, x, i/32, bit)
+}
+
+// serialMasks returns the number of Int masks, seen0 and on, in which the
+// synthetic constructor of a class with n serializable properties, and its
+// deserialize, keep a bit for each property that was read: one for each 32
+// properties, and at least one.
+func serialMasks(n int) int {
+	return max(1, (n+31)/32)
 }
 
 // propSerializer returns the Kotlin of the serializer that a property's
@@ -1493,6 +1527,163 @@ func (c *Checker) serialSerializer(t types.Type) string {
 // serialSerializerIn is serialSerializer in the code of a generic class's
 // serializer, where scope gives the serializers of its type parameters.
 func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
+	return c.serialSerializerAt(t, scope, nil, nil, nil)
+}
+
+// serialFileContext is what a file's annotations tell the plugin about the
+// serializers of its classes' properties.
+type serialFileContext struct {
+	using      map[*types.ClassSym]string // @UseSerializers: a class's serializer
+	contextual map[*types.ClassSym]bool   // @UseContextualSerialization
+}
+
+// serialFileAnnotations reads the file's @UseSerializers and
+// @UseContextualSerialization into c.serialFile. It reports false, after
+// reporting it, for one kc can't read.
+func (c *Checker) serialFileAnnotations() bool {
+	c.serialFile = nil
+	for _, a := range c.file.Annotations {
+		using := c.serialAnno(a, "UseSerializers")
+		if !using && !c.serialAnno(a, "UseContextualSerialization") {
+			continue
+		}
+		if c.serialFile == nil {
+			c.serialFile = &serialFileContext{using: map[*types.ClassSym]string{}, contextual: map[*types.ClassSym]bool{}}
+		}
+		for _, arg := range a.Args {
+			cls := c.classLitArg(arg, a.P)
+			if cls == nil {
+				c.unsupported(a.P, "serialization", "@%s's arguments must be class literals", a.Name)
+				return false
+			}
+			if !using {
+				c.serialFile.contextual[cls] = true
+				continue
+			}
+			// The class a serializer serializes: T of its KSerializer<T>.
+			ks := c.u.ext.class("kotlinx/serialization/KSerializer")
+			st, ok := types.Type{}, false
+			if ks != nil {
+				st, ok = c.asSuper(cls.This(), ks)
+			}
+			if !ok || len(cls.TypeParams) > 0 || st.A == nil || st.A.Len() != 1 || st.A.Get(0).T.NonNull().K != types.Class {
+				c.unsupported(a.P, "serialization", "@%s of %s is not supported", a.Name, fqName(cls))
+				return false
+			}
+			ser := fqName(cls)
+			if !cls.Object {
+				ser += "()"
+			}
+			c.serialFile.using[st.A.Get(0).T.C] = ser
+		}
+	}
+	return true
+}
+
+// classLitArg returns the class that an annotation's argument, X::class,
+// names, or nil.
+func (c *Checker) classLitArg(arg syntax.AnnotationArg, p syntax.Pos) *types.ClassSym {
+	toks := arg.Toks
+	n := len(toks)
+	if n < 3 || toks[n-2].Kind != syntax.COLON_COLON || toks[n-1].Text != "class" {
+		return nil
+	}
+	var name strings.Builder
+	for _, t := range toks[:n-2] {
+		if t.Kind != syntax.IDENT && t.Kind != syntax.DOT {
+			return nil
+		}
+		name.WriteString(t.Text)
+	}
+	cls := c.classRef(qualifiedExpr(name.String(), p))
+	if cls != nil {
+		cls.Ensure()
+	}
+	return cls
+}
+
+// serialSerializerAt is serialSerializerIn of a type written as ref (or
+// nil), with annotations as, in a file whose annotations are ctx (or nil):
+// @Contextual and @Polymorphic, on the property or the type, name the
+// serializer, as do the file's @UseSerializers and
+// @UseContextualSerialization of a class.
+func (c *Checker) serialSerializerAt(t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef, as []syntax.Annotation) string {
+	if ref != nil && len(ref.Annotations) > 0 {
+		as = append(as[:len(as):len(as)], ref.Annotations...)
+	}
+	switch {
+	case t.K == types.TypeParam:
+	case c.findSerialType(as, "Contextual"):
+		return c.contextualSerializer(t, scope, ctx, ref)
+	case c.findSerialType(as, "Polymorphic"):
+		if lit := serialClassLiteral(t, false); lit != "" {
+			return "kotlinx.serialization.PolymorphicSerializer(" + lit + ")"
+		}
+		return ""
+	case ctx != nil && t.K == types.Class:
+		if s := ctx.using[t.C]; s != "" {
+			return s
+		}
+		if ctx.contextual[t.C] {
+			return c.contextualSerializer(t, scope, ctx, ref)
+		}
+	}
+	return c.serialSerializerOf(t, scope, ctx, ref)
+}
+
+// findSerialType reports whether as, the annotations of a property or of
+// a type, include kotlinx.serialization's annotation name.
+func (c *Checker) findSerialType(as []syntax.Annotation, name string) bool {
+	for i := range as {
+		if (as[i].Target == "" || as[i].Target == "property" || as[i].Target == "param") && c.serialAnno(as[i], name) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualSerializer returns the ContextualSerializer of type t, which
+// the format's serializers module gives at run time: with the class's own
+// serializer, if it has one, to fall back on, and those of its type
+// arguments. It returns "" for a type without a class.
+func (c *Checker) contextualSerializer(t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef) string {
+	lit := serialClassLiteral(t, false)
+	if lit == "" {
+		return ""
+	}
+	fallback := c.serialSerializerOf(t, scope, ctx, ref)
+	if fallback == "" {
+		fallback = "null"
+	}
+	var args []string
+	if t.K == types.Class && t.A != nil && !t.C.Array {
+		for i, a := range t.A.List {
+			if a.V == types.Star {
+				return ""
+			}
+			s := c.serialSerializerAt(a.T.NonNull(), scope, ctx, refArg(ref, t, i), nil)
+			if s == "" {
+				return ""
+			}
+			args = append(args, serialNullable(a.T, s))
+		}
+	}
+	return fmt.Sprintf("kotlinx.serialization.ContextualSerializer(%s, %s, arrayOf<kotlinx.serialization.KSerializer<*>>(%s))",
+		lit, fallback, strings.Join(args, ", "))
+}
+
+// refArg returns the i-th type argument as written in ref, a type t, or
+// nil if ref doesn't write t's arguments.
+func refArg(ref *syntax.TypeRef, t types.Type, i int) *syntax.TypeRef {
+	if ref == nil || t.A == nil || len(ref.Args) != t.A.Len() || i >= len(ref.Args) {
+		return nil
+	}
+	return ref.Args[i].Type
+}
+
+// serialSerializerOf is serialSerializerAt without the annotations of the
+// type itself and the file's of its class: the type's own serializer.
+func (c *Checker) serialSerializerOf(t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef) string {
 	switch t.K {
 	case types.TypeParam:
 		return scope.of(t.Param())
@@ -1504,6 +1695,9 @@ func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
 	}
 	if m := serialPrimitives[t.K]; m != "" {
 		return "kotlinx.serialization.internal." + m + "Serializer"
+	}
+	if t.K == types.Unit {
+		return c.serialRuntime("UnitSerializer")
 	}
 	if t.K != types.Class {
 		return ""
@@ -1517,6 +1711,11 @@ func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
 		switch cls.Name {
 		case "kotlin/UInt", "kotlin/ULong", "kotlin/UShort", "kotlin/UByte":
 			return "kotlinx.serialization.internal." + cls.Name[len("kotlin/"):] + "Serializer"
+		case "kotlin/UIntArray", "kotlin/ULongArray", "kotlin/UShortArray", "kotlin/UByteArray",
+			"kotlin/time/Duration":
+			// The runtime's serializers of the standard library's value
+			// classes, where its version has them.
+			return c.serialRuntime(cls.Name[strings.LastIndexByte(cls.Name, '/')+1:] + "Serializer")
 		}
 		if s := c.serializerObject(cls); s != nil {
 			return fqName(s.Outer) + ".`$serializer`"
@@ -1532,7 +1731,7 @@ func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
 			return ""
 		}
 		at := t.A.Get(i).T
-		s := c.serialSerializerIn(at.NonNull(), scope)
+		s := c.serialSerializerAt(at.NonNull(), scope, ctx, refArg(ref, t, i), nil)
 		if s == "" {
 			return ""
 		}
@@ -1569,8 +1768,31 @@ func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
 		return of("PairSerializer", 2)
 	case "kotlin/Triple":
 		return of("TripleSerializer", 3)
+	case "kotlin/time/Instant", "kotlin/uuid/Uuid":
+		return c.serialRuntime(name[strings.LastIndexByte(name, '/')+1:] + "Serializer")
 	}
-	if len(cls.TypeParams) > 0 && !cls.Array && c.hasGenericSerializerFun(cls) {
+	if cls.Array {
+		if cls != types.ArrayClass {
+			// IntArray and the other primitive arrays.
+			m := serialPrimitives[cls.Elem.K]
+			if m == "" || m == "String" {
+				return ""
+			}
+			return c.serialRuntime(m + "ArraySerializer")
+		}
+		// Array<T>, of the elements' class and serializer.
+		if t.A == nil || t.A.Get(0).V == types.Star || t.A.Get(0).V == types.In {
+			return ""
+		}
+		elem := t.A.Get(0).T
+		lit := serialClassLiteral(elem, true)
+		s := arg(0)
+		if lit == "" || s == "" {
+			return ""
+		}
+		return "kotlinx.serialization.internal.ReferenceArraySerializer(" + lit + ", " + s + ")"
+	}
+	if len(cls.TypeParams) > 0 && c.hasGenericSerializerFun(cls) {
 		// A generic class's companion's serializer() takes its type
 		// arguments' serializers.
 		args := make([]string, len(cls.TypeParams))
@@ -1604,6 +1826,49 @@ func (c *Checker) serialSerializerIn(t types.Type, scope serialScope) string {
 		return "kotlinx.serialization.PolymorphicSerializer(" + fqName(cls) + "::class)"
 	}
 	return ""
+}
+
+// serialRuntime returns the qualified name of the serializer object name
+// of kotlinx.serialization's runtime, kotlinx.serialization.internal.name,
+// or "" if the runtime on the class path doesn't have it.
+func (c *Checker) serialRuntime(name string) string {
+	if c.u.ext.class("kotlinx/serialization/internal/"+name) == nil {
+		return ""
+	}
+	return "kotlinx.serialization.internal." + name
+}
+
+// serialClassLiteral returns the class literal of type t's class, X::class,
+// or "" for a type without one. For a primitive type, it is its box's if
+// boxed is set, as the plugin passes a ReferenceArraySerializer the class
+// of the array's elements.
+func serialClassLiteral(t types.Type, boxed bool) string {
+	t = t.NonNull()
+	if t.K == types.Class {
+		if t.IsFunc() {
+			return ""
+		}
+		return fqName(t.C) + "::class"
+	}
+	if b := serialBoxes[t.K]; b != "" && boxed {
+		// The boxed class, of which the runtime makes the array:
+		// Integer[] for an Array<Int>, as kotlinc's plugin passes it.
+		return "java.lang." + b + "::class"
+	}
+	if t.K == types.TypeParam || t.K == types.Null || t.K == types.Nothing {
+		return ""
+	}
+	s, ok := kotlinTypeOf(t, false)
+	if !ok {
+		return ""
+	}
+	return s + "::class"
+}
+
+// serialBoxes are the Java classes of the primitive types' boxes.
+var serialBoxes = map[types.Kind]string{
+	types.Int: "Integer", types.Long: "Long", types.Short: "Short", types.Byte: "Byte", types.Char: "Character",
+	types.Float: "Float", types.Double: "Double", types.Bool: "Boolean",
 }
 
 // serializerObject returns the $serializer object that the plugin gave
