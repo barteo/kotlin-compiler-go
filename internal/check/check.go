@@ -2156,10 +2156,17 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 
 // starVarAmbiguous reports whether v, a top-level property of the
 // program's packages that one star import gives, is also, as another
-// property, given by another: as in Kotlin, the use is ambiguous.
+// property, given by another: as in Kotlin, the use is ambiguous. So is
+// the file's private property that another file of its package declares
+// public.
 func (c *Checker) starVarAmbiguous(name string, v *types.VarSym) bool {
 	if v.Kind != types.Global {
 		return false
+	}
+	if w, ok := c.pkg.Vars[name]; ok && w != v && w.Facade != v.Facade && w.Alt == nil && v.Alt == nil && len(w.Contexts) == 0 && len(v.Contexts) == 0 && c.fileVars[name] == v {
+		// The file's private property and another file's public one of
+		// the package, a redeclaration that a use doesn't resolve.
+		return true
 	}
 	mine, others := false, false
 	for _, p := range c.userStars {
