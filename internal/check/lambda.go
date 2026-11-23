@@ -390,7 +390,8 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	ctx := x.Ctx
 	x.Ctx = nil
 	reported := false
-	if w.ctx > 0 && len(params) >= w.ctx {
+	leading := c.leadingContexts(x, w)
+	if w.ctx > 0 && len(params) >= w.ctx && !leading {
 		for i, t := range params[:w.ctx] {
 			s := &types.VarSym{Name: "$context" + strconv.Itoa(i), Type: t, Kind: types.Param}
 			if reservedContext(t) && !reported {
@@ -425,7 +426,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		params = params[w.ctx:]
 	}
-	if w.recv && len(params) > 0 && !anonRecvParam(x, w) && !(c.branchLambdas[x] && len(x.Params) == len(params)) {
+	if w.recv && len(params) > 0 && !leading && !anonRecvParam(x, w) && !(c.recvParamLambdas[x] && len(x.Params) == len(params)) {
 		// The receiver is the first parameter, and this in the body:
 		// without a label, kotlinc names it <this>.
 		name := "<this>"
@@ -3794,7 +3795,7 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 	} else if x.AnonRecv != nil != w.recv && !anonRecvParam(x, *w) {
 		c.errorf(x.P, "the anonymous function's receiver doesn't match the expected function type")
 		return false
-	} else if len(x.AnonCtx) != w.ctx {
+	} else if len(x.AnonCtx) != w.ctx && !c.leadingContexts(x, *w) {
 		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
@@ -3808,6 +3809,36 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		w.ret, w.check = types.UnitType, true
 	}
 	return true
+}
+
+// markRecvParam notes that e, if it is a lambda with an arrow, may take
+// an expected receiver as its first parameter, as K2 lets a lambda that
+// isn't analyzed against a parameter's function type: val f: String.() ->
+// String = { s -> s }, and id { s: Sample -> } for a Sample.() -> Unit,
+// but not takeLambda { s -> s } for a takeLambda(f: String.() -> String).
+func (c *Checker) markRecvParam(e syntax.Expr) {
+	if l, ok := e.(*syntax.Lambda); ok && l.Arrow && !l.Anon && l.Ref == nil {
+		if c.recvParamLambdas == nil {
+			c.recvParamLambdas = map[*syntax.Lambda]bool{}
+		}
+		c.recvParamLambdas[l] = true
+	}
+}
+
+// leadingContexts reports whether lambda x declares the context
+// parameters of the function type expected, and its receiver, as its
+// first parameters, which K2 lets one that may take a receiver so (see
+// markRecvParam), and an anonymous function that declares neither: { x:
+// String, y -> "" } and fun(x: String, y) = "" for a context(String)
+// (Int) -> String.
+func (c *Checker) leadingContexts(x *syntax.Lambda, w lambdaWant) bool {
+	if w.ctx == 0 || len(x.Params) != len(w.params) {
+		return false
+	}
+	if x.Anon {
+		return len(x.AnonCtx) == 0 && x.AnonRecv == nil
+	}
+	return c.recvParamLambdas[x]
 }
 
 // anonRecvParam reports whether anonymous function x takes the receiver of

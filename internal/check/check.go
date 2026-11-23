@@ -355,10 +355,12 @@ type Checker struct {
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
-	// branchLambdas are the lambdas that are the values of branches of an
-	// if or when, which, as K2's synthetic call's postponed arguments, may
-	// take an expected receiver as their first parameter.
-	branchLambdas map[*syntax.Lambda]bool
+	// recvParamLambdas are the lambdas that may take an expected receiver
+	// as their first parameter, as K2's postponed arguments: the values of
+	// branches of an if or when, initializers of a declared type, and
+	// arguments for a parameter whose type is a type parameter (see
+	// markRecvParam).
+	recvParamLambdas map[*syntax.Lambda]bool
 	// stubDepth is the number of stubInference runs in progress.
 	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
@@ -4257,6 +4259,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		c.jvmFunctionInit(d.Type, d.Init)
 	}
 	if sym.Resolved {
+		c.markRecvParam(d.Init)
 		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init))
 		return
 	}

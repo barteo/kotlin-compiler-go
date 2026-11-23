@@ -4417,10 +4417,7 @@ func (c *Checker) ifBranch(b *syntax.Block, want types.Type, valueUsed, together
 	if n := len(b.Stmts); n > 0 && want.Flex().E {
 		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
 			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && !l.Anon {
-				if c.branchLambdas == nil {
-					c.branchLambdas = map[*syntax.Lambda]bool{}
-				}
-				c.branchLambdas[l] = true
+				c.markRecvParam(l)
 			}
 		}
 	}

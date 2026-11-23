@@ -979,6 +979,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		cs[i] = cd
 	}
+	for j, a := range x.Args {
+		// A lambda for each candidate's T, not a function type, may take
+		// the receiver of the function type T is: id { s: Sample -> }.
+		if _, ok := a.(*syntax.Lambda); ok && !slices.ContainsFunc(byArity, func(cl callee) bool { return !cl.argType(j, x.Args).IsParam() }) {
+			c.markRecvParam(a)
+		}
+	}
 
 	// Arguments are checked once. With a single candidate, a parameter
 	// type without variables is the argument's expected type. Generic

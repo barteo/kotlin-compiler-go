@@ -657,6 +657,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		t = c.resolveType(s.Type)
 	case s.Type != nil:
 		t = c.resolveType(s.Type)
+		c.markRecvParam(s.Init)
 		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
 		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
