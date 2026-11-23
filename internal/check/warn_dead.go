@@ -56,6 +56,25 @@ func (c *Checker) unreachableWarnings(b *syntax.Block) {
 	}
 }
 
+// deadDoWhileCond reports the condition of do-while loop s if its body
+// always jumps, but not by a continue of s, which goes to the condition.
+func (c *Checker) deadDoWhileCond(s *syntax.While) {
+	if c.deadBlocks[s.Body] || !c.blockCFGJumps(s.Body) {
+		return
+	}
+	cont := false
+	syntax.Inspect(s.Body, func(n any) bool {
+		if j, ok := n.(*syntax.Jump); ok && j.Kind == syntax.CONTINUE && j.Loop == s {
+			cont = true
+		}
+		return !cont
+	})
+	if !cont {
+		c.unreachable(syntax.StartPos(s.Cond))
+		c.markDead(s.Cond)
+	}
+}
+
 // partlyDead reports the part of statement s, which always jumps, that
 // can't run.
 func (c *Checker) partlyDead(s syntax.Stmt) {

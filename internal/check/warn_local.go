@@ -166,6 +166,10 @@ func (c *Checker) localWarnings() {
 			if c.u.extraWarnings {
 				c.unreachableWarnings(n)
 			}
+		case *syntax.While:
+			if c.u.extraWarnings && n.Do {
+				c.deadDoWhileCond(n)
+			}
 		case *syntax.StringLit:
 			if c.u.experimentalWarnings {
 				c.prefixWarnings(n)

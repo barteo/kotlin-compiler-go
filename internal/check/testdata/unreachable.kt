@@ -306,3 +306,11 @@ fun breakInDoWhileCond(): String {
     }
     return "OK" // UNREACHABLE_CODE
 }
+// A do-while's condition, after a body that always jumps, but not by a
+// continue of the loop.
+fun dw1(c: Boolean) { do { if (c) continue; return } while (c) }
+fun dw2(c: Boolean) { do { break } while (c) } // UNREACHABLE_CODE
+fun dw3(c: Boolean) { do { throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dw4(c: Boolean) { l@ do { for (i in 0..1) { if (c) continue@l }; return } while (c) }
+fun dw5(c: Boolean) { do { if (c) return else throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dw6(c: Boolean) { do { while (true) {} } while (c) } // UNREACHABLE_CODE
