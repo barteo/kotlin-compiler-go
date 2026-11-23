@@ -91,6 +91,10 @@ type Type struct {
 	Prim string
 	Segs []Seg
 	Dims int
+	// Annotations are the type annotations of the type's class or
+	// primitive, before it or its last segment: @NotNull Object or
+	// java.lang.@NotNull Object, not those of its array dimensions.
+	Annotations []*Annotation
 }
 
 // Seg is a segment of a class type's name: Map or Entry<K, V> of
@@ -475,14 +479,15 @@ var primitives = map[string]bool{
 
 // typ parses a type, with its array dimensions but not a varargs ....
 func (p *parser) typ() *Type {
-	p.modifiers() // type annotations
-	t := &Type{}
+	t := &Type{Annotations: p.modifiers().Annotations}
 	if name := p.tok().text; p.tok().kind == tIdent && primitives[name] {
 		p.next()
 		t.Prim = name
 	} else {
-		for {
-			p.modifiers()
+		for i := 0; ; i++ {
+			if as := p.modifiers().Annotations; i > 0 && len(as) > 0 {
+				t.Annotations = as // java.lang.@NotNull Object
+			}
 			seg := Seg{Name: p.ident()}
 			if p.is("<") {
 				seg.Args = p.typeArgs()
