@@ -527,3 +527,15 @@ fun ul10(v: UVt?) { uUse(v?.get() as? String) } // USELESS_CAST
 fun ul11(v: UVt?) { uUse(v?.get() as String) }
 fun ul12(v: UVt) { uUse(v.get() as? String) }
 fun ul13(v: UVt?) { uUse(v?.get<String>() as? String) } // USELESS_CAST
+// Java classes kotlinc maps to Kotlin ones are judged as those.
+fun um1(s: String) = s as java.lang.Integer // CAST_NEVER_SUCCEEDS PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um2(i: Int) = i as java.lang.Integer // PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um3(i: Int) = i as java.lang.Long // CAST_NEVER_SUCCEEDS PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um4(s: Long) = s as java.lang.Object // PLATFORM_CLASS_MAPPED_TO_KOTLIN
+fun um5(s: String) = s as Number // CAST_NEVER_SUCCEEDS
+fun um6(n: Number) = n as String // CAST_NEVER_SUCCEEDS
+fun um7(n: Number) = n as Int
+fun um8(n: Int) = n as Number
+fun um9(n: Number) = n as java.math.BigDecimal
+fun um10(n: Char) = n as Number // CAST_NEVER_SUCCEEDS
+fun um11(n: Any) { if (n is Number) uUse(n is String) } // IMPOSSIBLE_IS_CHECK_WARNING

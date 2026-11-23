@@ -182,8 +182,27 @@ type castTypeInfo struct {
 var mappedClasses = map[string]bool{
 	"java/lang/Object": true, "java/lang/String": true, "java/lang/Integer": true, "java/lang/Long": true,
 	"java/lang/Short": true, "java/lang/Byte": true, "java/lang/Character": true, "java/lang/Boolean": true,
-	"java/lang/Float": true, "java/lang/Double": true, "java/lang/Void": true, "java/lang/Number": true,
+	"java/lang/Float": true, "java/lang/Double": true, "java/lang/Void": true,
 	"kotlin/Unit": true, "kotlin/Nothing": true,
+}
+
+// javaMappedKind returns the kind of the Kotlin type that kotlinc maps
+// Java class name to, if kc's types tell them apart, and else Invalid.
+func javaMappedKind(name string) types.Kind {
+	switch name {
+	case "java/lang/Object":
+		return types.Any
+	case "java/lang/String":
+		return types.String
+	}
+	if boxedPlatform[name] {
+		for _, k := range types.PrimKinds {
+			if types.PrimOf(k).Box == name {
+				return k
+			}
+		}
+	}
+	return types.Invalid
 }
 
 // castInfo returns t's castTypeInfo. It reports false for a type that
@@ -199,6 +218,11 @@ func (c *Checker) castInfo(t types.Type, depth int) (castTypeInfo, bool) {
 	case types.Class:
 		cls := t.C
 		cls.Ensure()
+		// kotlinc judges a Java class it maps to a Kotlin one as that:
+		// java.lang.Integer as Int.
+		if k := javaMappedKind(cls.Name); k != types.Invalid {
+			return c.castInfo(types.Type{K: k}, depth+1)
+		}
 		if cls.Missing || mappedClasses[cls.Name] || cls.Anonymous {
 			return castTypeInfo{}, false
 		}
