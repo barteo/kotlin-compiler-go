@@ -1,0 +1,44 @@
+OK keep x
+OK keep x
+OK keep x
+OK
+Foo2.access$getProp$jd(Foo2, String) synthetic
+Foo2.access$keep$jd(Foo2, String) synthetic
+Foo2.access$test$jd(Foo2, String) synthetic
+Foo2.getProp(Object) synthetic
+Foo2.getProp(String)
+Foo2.test(Object) synthetic
+Foo2.test(String)
+Foo2$DefaultImpls.getProp(Foo2, String)
+Foo2$DefaultImpls.keep(Foo2, String)
+Foo2$DefaultImpls.test(Foo2, String)
+ok
+keep ok
+Foo3.access$getProp$jd(Foo3, String) synthetic
+Foo3.access$keep$jd(Foo3, String) synthetic
+Foo3.access$test$jd(Foo3, String) synthetic
+Foo3$DefaultImpls.getProp(Foo3, String)
+Foo3$DefaultImpls.keep(Foo3, String)
+Foo3$DefaultImpls.test(Foo3, String)
+ok
+keep ok
+Foo4.access$getProp$jd(Foo4, String) synthetic
+Foo4.access$keep$jd(Foo4, String) synthetic
+Foo4.access$test$jd(Foo4, String) synthetic
+Foo4$DefaultImpls.getProp(Foo4, String)
+Foo4$DefaultImpls.keep(Foo4, String)
+Foo4$DefaultImpls.test(Foo4, String)
+ok
+keep ok
+Base.getProp(Object) synthetic
+Base.getProp(String)
+Base.keep(Object) synthetic
+Base.keep(String)
+Base.test(Object) synthetic
+Base.test(String)
+Direct.getProp(Object) synthetic
+Direct.getProp(String)
+Direct.keep(Object) synthetic
+Direct.keep(String)
+Direct.test(Object) synthetic
+Direct.test(String)

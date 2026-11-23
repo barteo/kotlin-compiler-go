@@ -399,6 +399,11 @@ type VarSym struct {
 	// its accessors are static methods of the object's class, or for a
 	// companion object, static methods of the outer class call them.
 	JvmStatic bool
+	// StaticGetter and StaticSetter are set on a property of an object
+	// whose getter or setter is @JvmStatic: by JvmStatic, both, or by
+	// the accessor's own annotation, @get:JvmStatic or @JvmStatic set,
+	// that one alone.
+	StaticGetter, StaticSetter bool
 	// Bridges are the JVM names and descriptors, getX()I, of the getters
 	// of overridden properties whose erasure or name differs from this
 	// property's getter's.

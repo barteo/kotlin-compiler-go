@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1315,6 +1316,98 @@ func TestLambdaInvoke(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Errorf("%s: methods\n%s\nwant kotlinc's\n%s", name, strings.Join(got, "\n"), strings.Join(want, "\n"))
 		}
+	}
+}
+
+// TestMembers compiles testdata/members/ with kotlinc and kc, both with
+// -jvm-default=disable and then both with -jvm-default=enable, and
+// compares the methods of the classes both write: each has the same
+// methods, by name and descriptor, with the same access flags. The
+// methods of lambdas aren't compared, nor are the accessors of a
+// companion's fields, access$getX$cp, which kotlinc keeps private in the
+// outer class.
+func TestMembers(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	srcs := sources(t, "../../testdata/members")
+	methods := func(t *testing.T, dir string) map[string]map[string]uint16 {
+		out := map[string]map[string]uint16{}
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || !strings.HasSuffix(path, ".class") {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			info, err := classfile.Parse(data)
+			if err != nil {
+				return err
+			}
+			ms := map[string]uint16{}
+			for _, m := range info.Methods {
+				if !strings.Contains(m.Name, "$lambda$") && !(strings.HasPrefix(m.Name, "access$") && strings.HasSuffix(m.Name, "$cp")) {
+					ms[m.Name+m.Desc] = m.Access
+				}
+			}
+			out[info.Name] = ms
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	for _, mode := range []string{"disable", "enable"} {
+		t.Run(mode, func(t *testing.T) {
+			kotlincOut, kcOut := t.TempDir(), t.TempDir()
+			args := append([]string{"-nowarn", "-jvm-default=" + mode, "-d", kotlincOut}, srcs...)
+			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+				t.Fatalf("kotlinc: %v\n%s", err, out)
+			}
+			opts := Options{OutDir: kcOut, Jobs: runtime.NumCPU(), ClassPath: []string{lib},
+				NoJVMDefault: mode == "disable", JVMDefaultCompat: mode == "enable"}
+			if err := Compile(srcs, opts); err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			want, got := methods(t, kotlincOut), methods(t, kcOut)
+			compared := 0
+			for _, cls := range slices.Sorted(maps.Keys(want)) {
+				gm, ok := got[cls]
+				if !ok {
+					t.Errorf("%s: only kotlinc writes the class", cls)
+					continue
+				}
+				for _, m := range slices.Sorted(maps.Keys(want[cls])) {
+					compared++
+					switch access, ok := gm[m]; {
+					case !ok:
+						t.Errorf("%s.%s: only kotlinc writes the method", cls, m)
+					case access != want[cls][m]:
+						t.Errorf("%s.%s: access flags %#x, want kotlinc's %#x", cls, m, access, want[cls][m])
+					}
+				}
+				for _, m := range slices.Sorted(maps.Keys(gm)) {
+					if _, ok := want[cls][m]; !ok {
+						t.Errorf("%s.%s: kotlinc writes no such method", cls, m)
+					}
+				}
+			}
+			for _, cls := range slices.Sorted(maps.Keys(got)) {
+				if _, ok := want[cls]; !ok {
+					t.Errorf("%s: kotlinc writes no such class", cls)
+				}
+			}
+			if compared < 200 {
+				t.Errorf("compared only %d methods", compared)
+			}
+		})
 	}
 }
 

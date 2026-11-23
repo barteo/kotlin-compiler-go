@@ -112,8 +112,11 @@ func (c *Checker) defaultImpls() {
 				return true
 			}
 			var impls *types.ClassSym
-			for _, g := range delegable(s) {
+			for _, g := range append(delegable(s), delegableExts(s)...) {
 				key := g.Name + paramKey(g)
+				if g.Ext {
+					key = "ext " + key + " " + c.memberSubst(this, s).Apply(g.Recv).String()
+				}
 				if g.Abstract {
 					abstract[key] = true
 					continue
@@ -135,6 +138,13 @@ func (c *Checker) defaultImpls() {
 				}
 				f := c.delegatedFun(d, nil, g)
 				f.Decl.(*syntax.Delegated).Impls = name
+				if f.Ext {
+					if cls.ExtMethods == nil {
+						cls.ExtMethods = map[string][]*types.FunSym{}
+					}
+					cls.ExtMethods[f.Name] = append(cls.ExtMethods[f.Name], f)
+					continue
+				}
 				cls.Methods[f.Name] = append(cls.Methods[f.Name], f)
 			}
 			// And its properties' accessors.
@@ -256,8 +266,14 @@ func (c *Checker) forwarders(d *syntax.ClassDecl) {
 	cls := d.Sym
 	seen := map[string]bool{} // overridden, or forwarded
 	this := cls.This()
+	extKey := func(s *types.ClassSym, g *types.FunSym) string {
+		return "ext " + g.Name + paramKey(g) + " " + c.memberSubst(this, s).Apply(g.Recv).String()
+	}
 	for _, g := range delegable(cls) {
 		seen[g.Name+paramKey(g)] = true
+	}
+	for _, g := range delegableExts(cls) {
+		seen[extKey(cls, g)] = true
 	}
 	for _, p := range memberProps(cls) {
 		seen["prop "+p.name] = true
@@ -277,6 +293,26 @@ func (c *Checker) forwarders(d *syntax.ClassDecl) {
 			}
 			impls.Ensure()
 		}
+		// overridden reports whether cls or an interface between it and
+		// s declares a member that match finds: an override of a member
+		// of s, whose body or forwarder, if it has one, is the one cls
+		// has.
+		overridden := func(match func(o *types.ClassSym) bool) bool {
+			found := false
+			cls.Supertypes(func(o *types.ClassSym) bool {
+				found = o != s && o.Interface && o.IsSubclassOf(s) && match(o)
+				return !found
+			})
+			return found
+		}
+		recv := func(g *types.FunSym) types.Type { return c.memberSubst(this, g.Owner).Apply(g.Recv) }
+		sameFun := func(g *types.FunSym) func(o *types.ClassSym) bool {
+			return func(o *types.ClassSym) bool {
+				return slices.ContainsFunc(append(delegable(o), delegableExts(o)...), func(h *types.FunSym) bool {
+					return h.Name == g.Name && c.sameParams(this, h, g) && (!g.Ext || c.sameType(recv(h), recv(g)))
+				})
+			}
+		}
 		forward := func(key string, gs ...*types.FunSym) {
 			if seen[key] {
 				return
@@ -292,12 +328,32 @@ func (c *Checker) forwarders(d *syntax.ClassDecl) {
 			}
 		}
 		for _, g := range delegable(s) {
-			forward(g.Name+paramKey(g), g)
+			if !overridden(sameFun(g)) {
+				forward(g.Name+paramKey(g), g)
+			}
+		}
+		for _, g := range delegableExts(s) {
+			if !overridden(sameFun(g)) {
+				forward(extKey(s, g), g)
+			}
 		}
 		for _, p := range memberProps(s) {
-			forward("prop "+p.name, p.getter, p.setter)
+			declares := func(o *types.ClassSym) bool {
+				return slices.ContainsFunc(memberProps(o), func(q memberProp) bool { return q.name == p.name })
+			}
+			if !overridden(declares) {
+				forward("prop "+p.name, p.getter, p.setter)
+			}
 		}
 		for _, p := range delegableExtProps(s) {
+			declares := func(o *types.ClassSym) bool {
+				return slices.ContainsFunc(delegableExtProps(o), func(q extProp) bool {
+					return q.name == p.name && c.sameType(recv(q.getter), recv(p.getter))
+				})
+			}
+			if overridden(declares) {
+				continue
+			}
 			forward("ext prop "+p.name+" "+c.memberSubst(this, s).Apply(p.getter.Recv).String(), p.getter, p.getter.ExtSetter)
 		}
 		return true

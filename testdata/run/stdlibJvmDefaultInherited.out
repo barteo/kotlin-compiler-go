@@ -1,0 +1,55 @@
+FinCond$DefaultImpls.count2(FinCond, List): int
+FinCond$DefaultImpls.first(FinCond): Fin
+FinCond$DefaultImpls.getTwice(FinCond, Fin): String
+FinCond$DefaultImpls.same(FinCond, Fin, int): Fin
+FinCond$DefaultImpls.tag(FinCond, Fin): String
+FinCond$DefaultImpls.test(FinCond, Fin): boolean
+IntCond$DefaultImpls.count2(IntCond, List): int
+IntCond$DefaultImpls.first(IntCond): Integer
+IntCond$DefaultImpls.getTwice(IntCond, int): String
+IntCond$DefaultImpls.same(IntCond, int, int): Integer
+IntCond$DefaultImpls.tag(IntCond, int): String
+IntCond$DefaultImpls.test(IntCond, int): boolean
+StringLists$DefaultImpls.count2(StringLists, List): int
+StringLists$DefaultImpls.first(StringLists): List
+StringLists$DefaultImpls.getTwice(StringLists, List): String
+StringLists$DefaultImpls.same(StringLists, List, int): List
+StringLists$DefaultImpls.tag(StringLists, List): String
+StringLists$DefaultImpls.test(StringLists, List): boolean
+Sub$DefaultImpls.ext(Sub, String): int
+SubSub$DefaultImpls.ext(SubSub, int): int
+SubSub$DefaultImpls.ext(SubSub, String): int
+Impl.ext(String): int
+a b keep c
+a b keep c
+a b keep c
+own a inherited keep c
+d e
+StringNamed$DefaultImpls.getLabel(StringNamed, String): String
+StringNamed$DefaultImpls.keep(StringNamed, String): String
+StringNamed$DefaultImpls.name(StringNamed, String): String
+Both$DefaultImpls.getLabel(Both, String): String
+Both$DefaultImpls.keep(Both, String): String
+Both$DefaultImpls.name(Both, String): String
+Both2$DefaultImpls.getLabel(Both2, String): String
+Both2$DefaultImpls.keep(Both2, String): String
+Both2$DefaultImpls.name(Both2, String): String
+AbstractNamed$DefaultImpls.getLabel(AbstractNamed, String): String
+AbstractNamed$DefaultImpls.keep(AbstractNamed, String): String
+f
+g
+true
+4
+true
+7
+tag 8
+null
+4
+true 3 null 4 tag 3 33
+true [a] null 4 tag [a] [a][a]
+true
+4
+3
+7
+-1
+2
