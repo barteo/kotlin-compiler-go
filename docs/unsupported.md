@@ -105,9 +105,9 @@ own tests.
     the return value checker: `RETURN_VALUE_NOT_USED`,
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
-  - With `-Wextra`: `CAN_BE_VAL_DELAYED_INITIALIZATION`,
-    `CAN_BE_VAL_LATEINIT` and `REDUNDANT_MODALITY_MODIFIER`; and
-    `CAN_BE_VAL` of a `var` declared without an initializer.
+  - With `-Wextra`: `CAN_BE_VAL_DELAYED_INITIALIZATION` and
+    `CAN_BE_VAL_LATEINIT`; and `CAN_BE_VAL` of a `var` declared without
+    an initializer.
 
   Of a program with a syntax error, which `kc` checks without the
   statements and declarations that have the errors, only the warnings

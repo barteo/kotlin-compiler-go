@@ -633,6 +633,22 @@ func TestWarningsNullCast(t *testing.T) {
 	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
 }
 
+// TestWarningsModality checks the warnings of redundant modality
+// modifiers against those kotlinc reports with -Wextra of
+// testdata/modality.kt, and that there are none without it.
+func TestWarningsModality(t *testing.T) {
+	checkReference(t, "testdata/modality.kt", Options{Warnings: true, ExtraWarnings: true})
+	b, err := os.ReadFile("testdata/modality.kt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range checkWarningsWith(t, string(b), Options{Warnings: true}) {
+		if strings.HasSuffix(g, ":REDUNDANT_MODALITY_MODIFIER") {
+			t.Errorf("without ExtraWarnings: %s", g)
+		}
+	}
+}
+
 // TestWarningsParamName checks the PARAMETER_NAME_CHANGED_ON_OVERRIDE
 // warnings of testdata/paramname.kt.
 func TestWarningsParamName(t *testing.T) {
