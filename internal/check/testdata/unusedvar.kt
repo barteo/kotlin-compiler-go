@@ -407,3 +407,12 @@ fun dw1() { do { var y = 1 } while (y < 10) } // CAN_BE_VAL
 fun dw2() { do { val z = 1; use(2) } while (z < 10) }
 fun dw3() { do { val q = 1; use(2) } while (true) } // UNUSED_VARIABLE
 fun dw4(c: Boolean) { do { var r = 1; r = 2 } while (c && r < 3) } // VARIABLE_INITIALIZER_IS_REDUNDANT
+fun postCond(): Int {
+    var i = 0
+    do continue while (i++ < 3)
+    var j = 1
+    while (3 > j++) { use(1) }
+    var k = 0
+    if (k++ < 3) use(1) // ASSIGNED_VALUE_IS_NEVER_READ
+    return 0
+}

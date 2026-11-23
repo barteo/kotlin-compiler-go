@@ -275,6 +275,9 @@ func (c *Checker) unusedVarWarnings() {
 		if !ok || !u.beforeCapture(v, id.Pos(), loc) || varUses(loc.block.Stmts[loc.index], id.Sym) != 1 {
 			continue // the statement may read the new value
 		}
+		if w, ok := loc.block.Stmts[loc.index].(*syntax.While); ok && readsVar(w.Cond, id.Sym) {
+			continue // the condition reads it again: while (i++ < 3)
+		}
 		if u.unreadAfter(id.Sym, v, loc) {
 			c.warnf(id.Pos(), "ASSIGNED_VALUE_IS_NEVER_READ", "assigned value is never read")
 		}
