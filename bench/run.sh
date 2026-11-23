@@ -8,7 +8,7 @@
 # always gets 5). WARM_RUNS: kotlinc runs in one JVM; the median of the
 # second half is reported. HEAP: kotlinc's maximum heap (default 8g).
 #
-# Needs: go, java (JDK 21), kotlinc, hyperfine. Results go to bench/results/.
+# Needs: go, java (JDK 21), kotlinc and kotlin, hyperfine. Results go to bench/results/.
 # COOLDOWN: seconds to idle before each run, outside the measured time (default 0).
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
