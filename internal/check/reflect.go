@@ -85,6 +85,9 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 	if len(parts) == 1 && (kotlinTypes[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
+	if len(parts) == 2 && parts[0] == "kotlin" && kotlinTypes[parts[1]] && !c.isVar("kotlin") {
+		return name, true // kotlin.String::class, the built-in type
+	}
 	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
 }
 
