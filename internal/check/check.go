@@ -3388,6 +3388,17 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Type != nil {
 		return // only its backing field's type is inferred
 	}
+	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Field != nil && d.Field.DelegateOf == d {
+		// Read in its own delegate, by lazy { x }: reported here, not
+		// at the delegate, as kotlinc reports it.
+		if f := d.Field.Sym; f != nil && f.InProgress && !f.Resolved {
+			f.ReentryReported++
+			v.ReentryReported++
+			c.u.reentries.Add(1)
+			c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+			return
+		}
+	}
 	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
 		v.ReentryReported++
 		if v.InProgress {

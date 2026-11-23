@@ -3277,7 +3277,8 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		// xs.forEach { } is Iterable.forEach's, if the lambda fits.
 		var fit []callee
 		for _, cl := range c.extCallees(fn.Name, rt) {
-			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) {
+			// Not getOrDefault(key, value), which the member hides.
+			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) && !platformDependentExt(cl.f) {
 				fit = append(fit, cl)
 			}
 		}
