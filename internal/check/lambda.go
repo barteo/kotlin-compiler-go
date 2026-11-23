@@ -445,7 +445,8 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	switch {
 	case x.Arrow:
-		if w.known && len(x.Params) != len(params) {
+		count := !w.known || len(x.Params) == len(params)
+		if !count {
 			c.errorf(x.P, "expected %s, but %d were declared", paramsString(params), len(x.Params))
 			ok = false
 		}
@@ -454,7 +455,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			switch {
 			case p.Type != nil:
 				t = c.resolveType(p.Type)
-				if w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
+				if count && w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
 					c.errorf(p.P, "expected parameter of type %s", params[i])
 					ok = false
 				}
@@ -463,7 +464,11 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
 					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
 				}
-			case !w.recover && ok:
+			case !w.recover && (ok || !count && !w.recv && w.ctx == 0 && i >= len(params)):
+				// Also one past those expected: x and y of foo { x, y -> }
+				// for a () -> String, as kotlinc reports both. Not for a
+				// function type with a receiver or contexts, which a lambda may
+				// declare as its first parameters.
 				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
