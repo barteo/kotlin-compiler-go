@@ -644,10 +644,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   arguments: a Java subclass of `class K : Base<String>()` that names
   `Inner`, declared in `Base<T>`, leaves the name unresolved in the
   signatures `kc` reads, as the inner class's `T` would be lost.
-- Without an expected type, a reference to a vararg function, or to a
-  generic function whose type parameters its receiver's type doesn't
-  give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
-  error.
+- Without an expected type, a reference to a generic function whose
+  type parameters its receiver's type doesn't give (`Box<Int>::first`
+  for `fun <T> Box<T>.first()` is fine) is an error.
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for

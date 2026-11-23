@@ -528,16 +528,30 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				}
 				sub, _ = c.recvTypeArgs(f, rt)
 			}
+			// A vararg's parameter takes its array, which the call spreads,
+			// as in Kotlin: ::f is a KFunction1<IntArray, R> for
+			// f(vararg xs: Int).
+			vararg := -1
 			for _, q := range f.Params {
 				if q.Vararg {
-					c.unsupported(p, "callable reference", "a reference to a function with a vararg parameter needs an expected function type: %s", refString(r))
-					return nil, types.InvalidType, false
+					vararg = len(fps)
 				}
 				fps = append(fps, sub.ApplyIn(q.Type))
 			}
 			form := funForm(fps)
 			if static != nil && f.Static && !objectStatic(f) {
 				form = staticForm(fps[1:])
+				if vararg >= 0 {
+					vararg--
+				}
+			}
+			if vararg >= 0 {
+				body := form.body
+				form.body = func() syntax.Expr {
+					spread = vararg
+					defer func() { spread = -1 }()
+					return body()
+				}
 			}
 			form.suspend = f.Suspend
 			forms = append(forms, form)
