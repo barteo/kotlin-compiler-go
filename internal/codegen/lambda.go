@@ -569,6 +569,31 @@ func (g *gen) lambdaClass(x *syntax.Lambda) {
 	if kprop == nil {
 		c.Interfaces = []string{iface}
 	}
+	// A function type's lambda, as kotlinc's: the class has the function
+	// type's signature, as a supertype's (see classSignature), and its
+	// invoke the lambda's own types, which a bridge with the interface
+	// method's calls.
+	plain := x.SAM == nil && kprop == nil && x.KFun == nil && super == "java/lang/Object" && x.T.K == types.Class && x.T.C.Name == iface
+	bridge := ""
+	if plain {
+		var w sigWriter
+		w.WriteString("Ljava/lang/Object;")
+		w.typ(x.T, nil, useSite)
+		if s := w.String(); strings.Contains(s, "<") {
+			c.Signature = s
+		}
+		if tin, tout, ok := ownTypes(x, len(in)); ok {
+			d := "("
+			for _, t := range tin {
+				d += desc(t)
+			}
+			d += ")" + desc(tout)
+			if d != samDesc {
+				bridge, samDesc = samDesc, d
+			}
+			in, out = tin, tout
+		}
+	}
 	if adapted {
 		c.Interfaces = append(c.Interfaces, adapter)
 	}
@@ -636,6 +661,18 @@ func (g *gen) lambdaClass(x *syntax.Lambda) {
 	unit := x.SAM == nil && kprop == nil && strings.HasPrefix(iface, types.KotlinFunctionPackage)
 	reified := false
 	g.classMethod(c, x, method, samDesc, in, out, unit, &reified)
+	if plain {
+		parts := make([]sigPart, len(in))
+		for i, t := range in {
+			parts[i] = sigPart{t: t}
+		}
+		if s := methodSig(nil, parts, sigPart{t: x.Ret}, samDesc, 0, inParam); s != "" {
+			c.LastMethod().SetSignature(s)
+		}
+	}
+	if bridge != "" {
+		g.invokeBridge(c, method, bridge, samDesc)
+	}
 	if kprop != nil && kprop.Set != nil {
 		set := kprop.Set
 		n := len(set.ParamSyms())
@@ -685,6 +722,63 @@ func (g *gen) lambdaClass(x *syntax.Lambda) {
 		g.code.Checkcast(iface)
 	}
 	wrap()
+}
+
+// ownTypes returns the types that the invoke of the class of lambda x, of
+// a function type with n parameters, takes and returns, as kotlinc's:
+// the lambda's parameters' types and its result's, which is a box if a
+// primitive's. It reports false for a lambda whose invoke has the
+// interface method's erased types: a composable or suspend one, or one
+// that takes or returns a value class's value or Unit as a value, takes a
+// Nothing? or returns Nothing.
+func ownTypes(x *syntax.Lambda, n int) (in []types.Type, out types.Type, ok bool) {
+	syms := x.ParamSyms()
+	if x.Composable || x.Suspend || len(syms) != n {
+		return nil, out, false
+	}
+	special := func(t types.Type) bool {
+		switch t.K {
+		case types.Unit, types.Nothing, types.Null, types.Invalid:
+			return true
+		}
+		return types.Unboxed(t) || types.IsValue(t)
+	}
+	for _, p := range syms {
+		if p == nil || special(p.Type) {
+			return nil, out, false
+		}
+		in = append(in, p.Type)
+	}
+	out = x.Ret
+	switch {
+	case out.K == types.Unit && !out.N, out.K == types.Null:
+	case special(out):
+		return nil, out, false
+	case out.IsPrimitive():
+		out = out.Nullable()
+	}
+	return in, out, true
+}
+
+// invokeBridge writes the bridge of a lambda's class c: the interface's
+// method name of descriptor d, which calls the class's own of descriptor
+// target.
+func (g *gen) invokeBridge(c *cf.Class, name, d, target string) {
+	bg := &gen{file: g.file, cls: c, owner: g.owner, shared: g.shared, noLines: 1}
+	bg.code = c.NewMethod(cf.AccPublic|cf.AccSynthetic|cf.AccBridge, name, d)
+	bg.code.AllocLocal("L" + c.Name + ";")
+	bg.code.Local(cf.ALOAD, 0)
+	to := cf.DescParams(target)
+	for i, pd := range cf.DescParams(d) {
+		bg.code.Local(loadOpOf(pd), bg.code.AllocLocal(pd))
+		bg.convertDesc(pd, to[i])
+	}
+	bg.code.Invoke(cf.INVOKEVIRTUAL, c.Name, name, target)
+	if cf.RetDesc(target) == "V" {
+		bg.unitValue()
+	}
+	bg.code.Op(cf.ARETURN)
+	bg.check()
 }
 
 // funAdapter writes the FunctionAdapter methods of class c, the object of

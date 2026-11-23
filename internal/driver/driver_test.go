@@ -1187,8 +1187,7 @@ func TestKotlincLibrary(t *testing.T) {
 // with -jvm-default=disable and then both with -jvm-default=enable, whose
 // interfaces have DefaultImpls classes beside their default methods, and
 // compares the generic signatures, the Signature attributes, of the
-// members both builds have that Java sees: those of classes, fields and
-// methods that aren't synthetic.
+// classes, fields and methods both builds have.
 func TestSignatures(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1234,9 +1233,7 @@ func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string,
 			}
 			sigs[info.Name] = info.Sig
 			for _, m := range append(info.Fields, info.Methods...) {
-				if m.Access&classfile.AccSynthetic == 0 {
-					sigs[info.Name+" "+m.Name+m.Desc] = m.Sig
-				}
+				sigs[info.Name+" "+m.Name+m.Desc] = m.Sig
 			}
 			return nil
 		})
@@ -1264,6 +1261,60 @@ func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string,
 	}
 	if compared < 200 {
 		t.Errorf("compared only %d members", compared)
+	}
+}
+
+// TestLambdaInvoke compiles testdata/signatures/locals.kt with kotlinc
+// and kc and compares the methods of the classes of the lambdas that are
+// inline functions' default values, which copies of the functions in
+// other modules read: invoke takes and returns the lambda's own types,
+// and a synthetic bridge with the interface method's calls it.
+func TestLambdaInvoke(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	src := "../../testdata/signatures/locals.kt"
+	kotlincOut, kcOut := t.TempDir(), t.TempDir()
+	if out, err := exec.Command(kotlinc, "-nowarn", "-d", kotlincOut, src).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc: %v\n%s", err, out)
+	}
+	if err := Compile([]string{src}, Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib}, OutDir: kcOut}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	methods := func(path string) []string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := classfile.Parse(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ms []string
+		for _, m := range info.Methods {
+			ms = append(ms, fmt.Sprintf("%s%s %#x", m.Name, m.Desc, m.Access))
+		}
+		sort.Strings(ms)
+		return ms
+	}
+	classes, err := filepath.Glob(filepath.Join(kotlincOut, "l", "*$dflt*$1.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(classes) < 10 {
+		t.Fatalf("kotlinc wrote only %d lambda classes", len(classes))
+	}
+	for _, c := range classes {
+		name := filepath.Base(c)
+		want, got := methods(c), methods(filepath.Join(kcOut, "l", name))
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: methods\n%s\nwant kotlinc's\n%s", name, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
 	}
 }
 

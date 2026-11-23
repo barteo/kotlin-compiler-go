@@ -75,6 +75,7 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	d := g.localDesc(lf)
 	lf.Desc, lf.This = d, g.thisClass()
 	lg.code = g.cls.NewMethod(access, name, d)
+	g.signLocal(g.cls.LastMethod(), lf, d)
 	lg.retType = f.Ret
 	for _, p := range f.Contexts {
 		g.setSlot(p, lg.code.AllocLocal(paramDesc(p.Type)))

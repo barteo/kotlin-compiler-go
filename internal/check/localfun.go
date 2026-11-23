@@ -64,6 +64,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	saved := c.state
 	c.suppressLocalInline = suppressInline
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
+	s.Outer = saved.tparams
 	c.tparams = append(slices.Clone(sym.TypeParams), saved.tparams...)
 	c.resolveBounds(d.TypeParams)
 	if d.Recv != nil {

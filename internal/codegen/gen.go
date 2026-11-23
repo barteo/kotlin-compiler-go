@@ -877,7 +877,9 @@ func (g *gen) facade() *cf.Class {
 				}
 			}
 			c.AddField(acc|fieldModifiers(p.Annotations), p.Name, d)
-			g.signField(c.LastField(), ft, p.Type, d, p.Mutable, p.Annotations, nil)
+			if p.DelegateOf == nil { // as kotlinc, a delegate's field has none
+				g.signField(c.LastField(), ft, p.Type, d, p.Mutable, p.Annotations, nil)
+			}
 			g.fieldAnnotations(c.LastField(), p.Annotations, sym.Type, placement{site: "field", dflt: onField})
 			if p.Init != nil {
 				inits = append(inits, p)
@@ -1108,7 +1110,7 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 	}
 	g.code = g.cls.NewMethod(access, sym.JVM(), d)
 	m := g.cls.LastMethod()
-	if access&cf.AccSynthetic == 0 {
+	if access&cf.AccSynthetic == 0 || reifiedInline(fd) {
 		this := types.InvalidType
 		if g.implsThis {
 			this = g.owner.This()
@@ -1358,6 +1360,12 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	g.cls, g.owner = c, cls
 	for _, v := range cd.Captures {
 		c.AddField(cf.AccFinal|cf.AccSynthetic, captureField(cd, v), storageDesc(v))
+		// As kotlinc's, with the signature of a result of its type.
+		var w sigWriter
+		w.member(capturePart(v), storageDesc(v), inResult)
+		if s := w.String(); s != storageDesc(v) {
+			c.LastField().SetSignature(s)
+		}
 	}
 	for _, st := range cd.Supers {
 		if st.Delegate != nil && strings.HasPrefix(st.Field, "$$delegate_") {
@@ -2223,7 +2231,11 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 	as, field, _ := classPropAnnotations(p)
 	ft := types.FieldType(p)
 	c.AddField(acc|fieldModifiers(as), p.Name, desc(ft))
-	g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
+	if pd, _ := p.Decl.(*syntax.PropDecl); pd == nil || pd.DelegateOf == nil || p.Owner != nil && p.Owner.CompanionOf != nil {
+		// As kotlinc, a delegate's field has a signature only if it is a
+		// companion object's.
+		g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
+	}
 	g.fieldAnnotations(c.LastField(), as, p.Type, field)
 }
 
