@@ -4304,8 +4304,8 @@ tests/inference/kt40396.kt	rejects invalid	on an expected line
 tests/inference/kt41989.kt	accepts valid		
 tests/inference/kt46515.kt	rejects invalid	on an expected line	
 tests/inference/kt47316.kt	accepts valid		
-tests/inference/kt49658.kt	rejects invalid	elsewhere	
-tests/inference/kt49658Strict.kt	rejects invalid	elsewhere	
+tests/inference/kt49658.kt	rejects invalid	on an expected line	
+tests/inference/kt49658Strict.kt	rejects invalid	on an expected line	
 tests/inference/kt49961.kt	skip	LANGUAGE	
 tests/inference/kt50232a.kt	rejects invalid	on an expected line	
 tests/inference/kt53124.kt	accepts valid		
@@ -5323,7 +5323,7 @@ tests/j+k/genericConstructor/superCall.kt	rejects invalid	on an expected line
 tests/j+k/genericConstructor/superCallImpossibleToInfer.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructor/withClassTypeParameters.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructorWithMultipleBounds.kt	rejects invalid	on an expected line	
-tests/j+k/genericFunAndClassNullabilityInconsistency.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	Test.kt:5: ARGUMENT_TYPE_MISMATCH
+tests/j+k/genericFunAndClassNullabilityInconsistency.kt	rejects invalid	on an expected line	
 tests/j+k/heterogeneousReceiverOverrides.kt	accepts valid		
 tests/j+k/inheritAbstractSamAdapter.kt	accepts valid		
 tests/j+k/inheritanceStaticMethodFromInterface.kt	rejects invalid	on an expected line	

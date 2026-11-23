@@ -390,7 +390,8 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	ctx := x.Ctx
 	x.Ctx = nil
 	reported := false
-	if w.ctx > 0 && len(params) >= w.ctx {
+	leading := c.leadingContexts(x, w)
+	if w.ctx > 0 && len(params) >= w.ctx && !leading {
 		for i, t := range params[:w.ctx] {
 			s := &types.VarSym{Name: "$context" + strconv.Itoa(i), Type: t, Kind: types.Param}
 			if reservedContext(t) && !reported {
@@ -425,7 +426,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		params = params[w.ctx:]
 	}
-	if w.recv && len(params) > 0 && !anonRecvParam(x, w) && !(c.branchLambdas[x] && len(x.Params) == len(params)) {
+	if w.recv && len(params) > 0 && !leading && !anonRecvParam(x, w) && !(c.recvParamLambdas[x] && len(x.Params) == len(params)) {
 		// The receiver is the first parameter, and this in the body:
 		// without a label, kotlinc names it <this>.
 		name := "<this>"
@@ -445,7 +446,8 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	switch {
 	case x.Arrow:
-		if w.known && len(x.Params) != len(params) {
+		count := !w.known || len(x.Params) == len(params)
+		if !count {
 			c.errorf(x.P, "expected %s, but %d were declared", paramsString(params), len(x.Params))
 			ok = false
 		}
@@ -454,7 +456,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			switch {
 			case p.Type != nil:
 				t = c.resolveType(p.Type)
-				if w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
+				if count && w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
 					c.errorf(p.P, "expected parameter of type %s", params[i])
 					ok = false
 				}
@@ -463,7 +465,11 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
 					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
 				}
-			case !w.recover && ok:
+			case !w.recover && (ok || !count && !w.recv && w.ctx == 0 && i >= len(params)):
+				// Also one past those expected: x and y of foo { x, y -> }
+				// for a () -> String, as kotlinc reports both. Not for a
+				// function type with a receiver or contexts, which a lambda may
+				// declare as its first parameters.
 				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
@@ -535,10 +541,17 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		c.retAllowed, c.loops, c.ctorArgs = false, nil, false
 	}
 	c.allowRange = false
+	platUnit := w.ret.P && isUnitClass(w.ret)
+	if platUnit {
+		// A Java Function0<Unit>'s Unit!, or bareUnitResult's: the lambda
+		// is coerced to Unit, but K2 doesn't say its last expression is
+		// unused.
+		w.ret = types.UnitType
+	}
 	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, nothingTail: whenTailReturn(x)}
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], lr)
 	unit := w.ret.K == types.Unit
-	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon
+	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon && !platUnit
 	var bt types.Type
 	if unit {
 		if len(c.stubs) > 0 {
@@ -635,7 +648,12 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	case unit:
 		return ps, types.UnitType, ok
 	case w.ret.K != types.Invalid && w.check:
-		c.assignable(bt, w.ret, resultPos(x))
+		if !lr.bare || !w.ret.N || !isUnitClass(w.ret) {
+			// But a bare return@l, which is an error for a Unit?, drops
+			// the last expression's value: val f: () -> Unit? = l@ {
+			// if (b) return@l; "" }.
+			c.assignable(bt, w.ret, resultPos(x))
+		}
 		return ps, w.ret, ok
 	}
 	return ps, bt, ok
@@ -3541,6 +3559,31 @@ func (c *Checker) nullableUnitResult(raw, t types.Type, sub types.Subst) types.T
 	return t
 }
 
+// bareUnitResult returns function type t, but with Unit for a Unit?
+// result, as K2 has for a lambda argument that leaves with a bare
+// return@l: run<Unit?> l@ { if (b) return@l; "" } is coerced to Unit, and
+// its return@l null is a null for Unit. The Unit is a platform one, as a
+// Java Function0<Unit>'s, whose lambda's last expression isn't unused.
+func bareUnitResult(t types.Type) types.Type {
+	if t.K != types.Class || !t.C.Func || t.A == nil || len(t.A.List) == 0 {
+		return t
+	}
+	n := len(t.A.List) - 1
+	if r := t.A.List[n].T; r.N && isUnitClass(r) {
+		args := slices.Clone(t.A.List)
+		u := types.UnitType
+		u.P = true
+		args[n].T = u
+		t.A = types.MakeArgs(args)
+	}
+	return t
+}
+
+// isUnitClass reports whether t is Unit, of any nullability.
+func isUnitClass(t types.Type) bool {
+	return t.K == types.Unit || t.K == types.Class && t.C.Name == "kotlin/Unit"
+}
+
 // outerBounds gives each variable in a lambda's parameter types that has
 // no proper bounds, but is another variable of s, with a declared bound,
 // that bound, as Kotlin fixes that variable before the lambda: T : Any of
@@ -3752,7 +3795,7 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 	} else if x.AnonRecv != nil != w.recv && !anonRecvParam(x, *w) {
 		c.errorf(x.P, "the anonymous function's receiver doesn't match the expected function type")
 		return false
-	} else if len(x.AnonCtx) != w.ctx {
+	} else if len(x.AnonCtx) != w.ctx && !c.leadingContexts(x, *w) {
 		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
@@ -3766,6 +3809,36 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		w.ret, w.check = types.UnitType, true
 	}
 	return true
+}
+
+// markRecvParam notes that e, if it is a lambda with an arrow, may take
+// an expected receiver as its first parameter, as K2 lets a lambda that
+// isn't analyzed against a parameter's function type: val f: String.() ->
+// String = { s -> s }, and id { s: Sample -> } for a Sample.() -> Unit,
+// but not takeLambda { s -> s } for a takeLambda(f: String.() -> String).
+func (c *Checker) markRecvParam(e syntax.Expr) {
+	if l, ok := e.(*syntax.Lambda); ok && l.Arrow && !l.Anon && l.Ref == nil {
+		if c.recvParamLambdas == nil {
+			c.recvParamLambdas = map[*syntax.Lambda]bool{}
+		}
+		c.recvParamLambdas[l] = true
+	}
+}
+
+// leadingContexts reports whether lambda x declares the context
+// parameters of the function type expected, and its receiver, as its
+// first parameters, which K2 lets one that may take a receiver so (see
+// markRecvParam), and an anonymous function that declares neither: { x:
+// String, y -> "" } and fun(x: String, y) = "" for a context(String)
+// (Int) -> String.
+func (c *Checker) leadingContexts(x *syntax.Lambda, w lambdaWant) bool {
+	if w.ctx == 0 || len(x.Params) != len(w.params) {
+		return false
+	}
+	if x.Anon {
+		return len(x.AnonCtx) == 0 && x.AnonRecv == nil
+	}
+	return c.recvParamLambdas[x]
 }
 
 // anonRecvParam reports whether anonymous function x takes the receiver of

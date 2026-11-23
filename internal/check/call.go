@@ -458,8 +458,11 @@ type candidate struct {
 	sub    types.Subst
 	params []types.Type
 	sys    *system
-	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
-	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// explicit is set when the call's explicit type arguments are
+	// substituted into the candidate's parameters (see tvar.typeArgUp).
+	explicit bool
+	sams     map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
+	susps    map[int]bool          // the arguments converted to suspend function types: see suspendConverted
 	// stubCons are the constraints that constrain recorded in builders'
 	// runs for this candidate, in a builder's lambda: applicable takes
 	// them back, and the chosen candidate's are recorded again.
@@ -757,7 +760,7 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 		for _, b := range p.Bounds {
 			// A bound with a receiver's projection holds its capture,
 			// which only a written type takes: X : C<T> for a B<out N>.
-			if b = s.final(cd.sub.ApplyIn(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+			if b = s.final(cd.sub.ApplyParam(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
 				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
@@ -932,6 +935,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		case targs != nil && hasUnderscore(x.TypeArgs):
 			cd.sub, cd.sys = underscoreSub(cd.sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
 		case targs != nil:
+			cd.explicit = true
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
 				cd.sub[p] = a
@@ -968,9 +972,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			if targs != nil {
 				cd.params[j] = c.nullableUnitResult(cl.argType(j, x.Args), cd.params[j], cd.sub)
+				if l, ok := x.Args[j].(*syntax.Lambda); ok && leftBare(l) {
+					cd.params[j] = bareUnitResult(cd.params[j])
+				}
 			}
 		}
 		cs[i] = cd
+	}
+	for j, a := range x.Args {
+		// A lambda for each candidate's T, not a function type, may take
+		// the receiver of the function type T is: id { s: Sample -> }.
+		if _, ok := a.(*syntax.Lambda); ok && !slices.ContainsFunc(byArity, func(cl callee) bool { return !cl.argType(j, x.Args).IsParam() }) {
+			c.markRecvParam(a)
+		}
 	}
 
 	// Arguments are checked once. With a single candidate, a parameter
@@ -995,7 +1009,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			continue
 		}
 		if single && !cs[0].params[i].HasVars() {
+			if cs[0].typeArgParam(i, x.Args) {
+				c.typeArgWant = a
+			}
 			ts[i] = c.value(a, cs[0].params[i])
+			c.typeArgWant = nil
 			continue
 		}
 		if p, ok := c.sharedFunParam(cs, i); ok {
@@ -1391,8 +1409,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if o := c.operator; o == nil || o.X != syntax.Expr(x) && o.Y != syntax.Expr(x) {
 				trial.expecting++
 			}
+			if c.typeArgWant == syntax.Expr(x) {
+				trial.typeArgs++
+			}
 			trial.sub(ret, want)
-			trial.expecting = 0
+			trial.expecting, trial.typeArgs = 0, 0
 			if trial.ok {
 				sys = trial
 			}
@@ -1404,7 +1425,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	// variable infers materialize's T with it (see joinRun).
 	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 		trial := sys.clone()
+		if c.typeArgWant == syntax.Expr(x) {
+			trial.typeArgs++
+		}
 		trial.sub(ret, want)
+		trial.typeArgs = 0
 		if trial.ok {
 			sys = trial
 		}
@@ -1749,6 +1774,21 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			fit = append(fit, try)
 		}
 	}
+	if len(fit) == 0 {
+		// As K2, a lambda whose result fits none chooses the one candidate
+		// not marked, if there is one, whose lambda is then checked
+		// against it: flatMap { if (b) listOf("") else null } is
+		// Iterable's flatMap, whose lambda returns a List<String>?.
+		var plain []*candidate
+		for _, cd := range match {
+			if !markedByLambdaResult(cd.f) {
+				plain = append(plain, cd)
+			}
+		}
+		if len(plain) == 1 {
+			return plain[0]
+		}
+	}
 	var maximal []*candidate
 	for _, cd := range fit {
 		if c.mostSpecific(cd, fit, x.Args) {
@@ -1773,6 +1813,16 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 func sourceNotByLambdaResult(f *types.FunSym) bool {
 	d, ok := f.Decl.(*syntax.FunDecl)
 	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
+}
+
+// markedByLambdaResult reports whether f is marked
+// @OverloadResolutionByLambdaReturnType: in the program, or in its class
+// file, whose annotations a function of the class path keeps.
+func markedByLambdaResult(f *types.FunSym) bool {
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return d.Find("", "OverloadResolutionByLambdaReturnType") != nil || d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") != nil
+	}
+	return slices.Contains(f.Annotations, "Lkotlin/OverloadResolutionByLambdaReturnType;")
 }
 
 // branchesClass returns the class of the calls the branches of e, an if
@@ -2292,9 +2342,21 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			cd.sys.sub(t, ft)
 			continue
 		}
+		if cd.typeArgParam(i, x.Args) {
+			cd.sys.typeArgs++
+			cd.sys.sub(t, p)
+			cd.sys.typeArgs--
+			continue
+		}
 		cd.sys.sub(t, p)
 	}
 	c.constrainContexts(cd, x)
+}
+
+// typeArgParam reports whether the type of cd's parameter for argument
+// i is given by the call's explicit type arguments (see tvar.typeArgUp).
+func (cd *candidate) typeArgParam(i int, args []syntax.Expr) bool {
+	return cd.explicit && slices.ContainsFunc(cd.tparams, func(tp *types.TypeParamSym) bool { return mentionsParam(cd.argType(i, args), tp) })
 }
 
 // constrainContexts adds the constraints of a candidate's context
@@ -3104,11 +3166,15 @@ func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
 
 // capturedSubst returns sub with the receiver's out projections that
 // function type t, of a parameter that lambda a is passed for, mentions
-// replaced by their bounds, if it has any: K2 approximates the captures
-// in a lambda's parameter types and its result's expected type by their
-// upper bounds, so x.foo { it } on an Inv<out CharSequence>, for foo(x:
-// (E) -> E), returns a CharSequence. Elsewhere an out position takes
-// Nothing (see Subst.ApplyIn).
+// replaced by their captures, if it has any: a type parameter without an
+// owner bounded by the projection's type, which reads as that type and
+// which only itself and Nothing are subtypes of, as K2's captured type.
+// So x.foo { it } on an Inv<out CharSequence>, for foo(x: (E) -> E),
+// returns the capture it takes, but x.foo { "" } returns a String where
+// the capture is expected; a variable of a lambda's input types that a
+// capture gives a lower bound takes the projection's type (see
+// approxCaptures). Elsewhere an out
+// position takes Nothing (see Subst.ApplyIn).
 func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Subst {
 	if _, ok := a.(*syntax.Lambda); !ok || !t.NonNull().IsFunc() {
 		return nil
@@ -3121,9 +3187,38 @@ func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Sub
 		if out == nil {
 			out = maps.Clone(sub)
 		}
-		out[p] = types.Arg{T: ra.T}
+		if ra.T.IsIntersection() {
+			// The capture of an out projection of an intersection, a
+			// G<out X & Z>'s, reads as the intersection itself.
+			out[p] = types.Arg{T: ra.T}
+			continue
+		}
+		capt := &types.TypeParamSym{Name: "CapturedType(out " + ra.T.String() + ")", Bounds: []types.Type{ra.T}, Captured: true}
+		out[p] = types.Arg{T: types.ParamType(capt)}
 	}
 	return out
+}
+
+// approxCaptures returns t with the captures of capturedSubst in it
+// replaced by their projections' types, as K2 approximates a captured
+// type in a lambda's input types: T of it.checkType { } in a lambda that
+// takes the capture is the projection's type, for checkType's
+// CheckTypeInv<T>.() -> Unit.
+func approxCaptures(t types.Type) types.Type {
+	var back types.Subst
+	t.Has(func(u types.Type) bool {
+		if u.K == types.TypeParam && u.Param().Captured {
+			if back == nil {
+				back = types.Subst{}
+			}
+			back[u.Param()] = types.Arg{T: u.Param().Bounds[0]}
+		}
+		return false
+	})
+	if back == nil {
+		return t
+	}
+	return back.Apply(t)
 }
 
 // ambiguousLambdas checks the lambdas of x, a call that is ambiguous,

@@ -221,6 +221,11 @@ type TypeParamSym struct {
 	// intersection type, A & B, a value that is each of its Bounds: see
 	// Intersect. It has no Owner, and erases as a parameter does.
 	Intersection bool
+	// Captured is set on the parameter that stands for K2's captured type
+	// of a receiver's out projection in the result of a lambda's function
+	// type (see check.capturedSubst), bounded by the projection's type.
+	// It has no Owner either.
+	Captured bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to

@@ -78,6 +78,13 @@ type tvar struct {
 	// Nothing? only if no other bound decides it, as T of a Java
 	// JavaBox<T>(T) for JavaBox(null) is.
 	flexNull bool
+	// typeArgUp are the upper bounds added from a parameter's type that
+	// the call's explicit type arguments give: as K2's constraints
+	// derived through those arguments' variables, they don't keep a
+	// flexNull variable from being Nothing?, so foo2<String>(JavaBox(null))
+	// for fun <S> foo2(a: JavaBox<out S>) is a mismatch where
+	// foo3(JavaBox(null)) for foo3(a: JavaBox<out String>) isn't (KT-67825).
+	typeArgUp []types.Type
 }
 
 type inferError struct {
@@ -117,6 +124,9 @@ type system struct {
 	// expecting is set while the type expected of the call is added (see
 	// tvar.wantUp).
 	expecting int
+	// typeArgs is set while an argument is constrained by a parameter's
+	// type that explicit type arguments give (see tvar.typeArgUp).
+	typeArgs int
 	// forks are the fork points not resolved yet (see fork).
 	forks []fork
 	// wholeForks is set where a fork's branch is taken only if the whole
@@ -169,6 +179,17 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 				// fun <T : B> bar(t: T), is only Nothing: no argument is.
 				tv.captBound = true
 			}
+			if !b.IsParam() && b.Has(func(u types.Type) bool {
+				return u.IsParam() && base[u.Param()].V != types.Inv && base[u.Param()].T.K != types.Invalid
+			}) {
+				// A bound with a receiver's projection holds its capture,
+				// approximated as K2 approximates it in a parameter's
+				// type: E : Out<T> of an A<out CharSequence> is
+				// Out<Nothing>, G : In<T> an In<CharSequence> (see
+				// typeArgBounds).
+				vs[i].Bounds = append(vs[i].Bounds, sub.ApplyParam(b))
+				continue
+			}
 			vs[i].Bounds = append(vs[i].Bounds, sub.Apply(b))
 		}
 		s.vars = append(s.vars, tv)
@@ -205,6 +226,7 @@ func (s *system) clone() *system {
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
 		c.wantUp = slices.Clip(tv.wantUp)
+		c.typeArgUp = slices.Clip(tv.typeArgUp)
 		// declUp is edited in place (see addUpper), and boundUp appended to:
 		// a clone that shared them would change the system it is a copy of.
 		c.declUp = slices.Clone(tv.declUp)
@@ -645,6 +667,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 	if s.expecting > 0 {
 		tv.wantUp = append(tv.wantUp, t)
 	}
+	if s.typeArgs > 0 {
+		tv.typeArgUp = append(tv.typeArgUp, t)
+	}
 	for _, l := range tv.lower {
 		s.sub(l, t)
 	}
@@ -881,6 +906,23 @@ func (s *system) flexNull(tv *tvar) bool {
 	return false
 }
 
+// lambdaInput reports whether variable tv is in the types of the
+// receiver, contexts or parameters of a lambda not yet checked.
+func (s *system) lambdaInput(tv *tvar) bool {
+	for _, pl := range s.lambdas {
+		f := s.apply(pl.p).Flex().NonNull()
+		if !f.IsFunc() || f.A == nil {
+			continue
+		}
+		for i := range f.A.Len() - 1 {
+			if f.A.Get(i).T.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == tv.v }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *system) fix(tv *tvar) {
 	if len(s.forks) > 0 {
 		s.resolveForks()
@@ -985,6 +1027,9 @@ func (s *system) fix(tv *tvar) {
 			val = s.withinUppers(val, lowers, uppers)
 			val = s.flexExact(val, lowers, uppers)
 		}
+		if len(lowers) > 1 {
+			val = s.equalityWins(tv, val, lowers, uppers)
+		}
 		// A nullable lower bound with variables makes it nullable too, as
 		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M
 		// String.
@@ -995,7 +1040,13 @@ func (s *system) fix(tv *tvar) {
 			val = val.Nullable()
 		}
 		if s.flexNull(tv) && len(tv.lits) == 0 && !slices.ContainsFunc(lowers, func(l types.Type) bool { return l.K != types.Nothing }) &&
-			!slices.ContainsFunc(uppers, func(u types.Type) bool { return !types.AcceptsNull(u) }) {
+			!slices.ContainsFunc(tv.upper, func(u types.Type) bool {
+				if slices.Contains(tv.typeArgUp, u) {
+					return false
+				}
+				u = s.apply(u)
+				return !u.HasVars() && !types.AcceptsNull(u)
+			}) {
 			val = types.NullType
 		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
@@ -1116,6 +1167,11 @@ func (s *system) fix(tv *tvar) {
 				inBounds[i] = true
 			}
 		}
+	}
+	if len(lowers) > 0 && s.lambdaInput(tv) {
+		// As K2 approximates the input types of a lambda: T of
+		// it.checkType { } for a lambda that takes a capture.
+		val = approxCaptures(val)
 	}
 	if !s.onlyInputOK(tv, val) {
 		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
@@ -1416,6 +1472,31 @@ func (s *system) withinUppers(val types.Type, lowers, uppers []types.Type) types
 			}
 		}
 		if ok {
+			return u
+		}
+	}
+	return val
+}
+
+// equalityWins returns val, the join of tv's lower bounds, but if only a
+// null among them keeps it from an upper bound that is also a lower one,
+// an equality constraint, that bound, as K2 fixes the variable to it: T of put(m, 1,
+// null) for a MutableList<Int> m and put(MutableList<T>, T, T) is Int,
+// and the null is the argument that doesn't fit, not m.
+func (s *system) equalityWins(tv *tvar, val types.Type, lowers, uppers []types.Type) types.Type {
+	c := s.c
+	fits := func(t types.Type) bool {
+		return !slices.ContainsFunc(uppers, func(u types.Type) bool { return !c.subtype(t, u) })
+	}
+	if len(uppers) == 0 || fits(val) || !val.N || !fits(val.NonNull()) {
+		return val
+	}
+	for _, u := range uppers {
+		if !types.MayBeNull(u) && slices.ContainsFunc(lowers, func(l types.Type) bool { return c.sameType(l, u) }) && fits(u) &&
+			!slices.ContainsFunc(lowers, func(l types.Type) bool {
+				return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N)
+			}) &&
+			(len(tv.lits) == 0 || litsFit(tv.lits, u) || c.subtype(s.litType(tv, nil), u)) {
 			return u
 		}
 	}

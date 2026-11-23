@@ -1234,7 +1234,8 @@ func (c *Checker) extRefLocal(name string) bool {
 // whose member function name a call x calls, as boundWith does, but of
 // the bounds with one of n parameters the one whose result is the most
 // specific: B's foo(): String for T : A, T : B, of A's foo(): Any?, as
-// the intersection type's member overrides both.
+// the intersection type's member overrides both, and of a platform type
+// and another, the other.
 func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Type {
 	has := func(cls *types.ClassSym) bool {
 		return len(c.javaMethods(cls, name)) > 0 || !cls.External && c.userProp(cls, name) != nil
@@ -1292,7 +1293,10 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 		if cls := c.classOf(o); cls == nil || !has(cls) {
 			continue
 		}
-		if r, ok := ret(o); ok && !c.subtype(bt, r) && c.subtype(r, bt) {
+		// A Java method's platform result yields to a Kotlin one it
+		// takes, as in K2: foo() of A & B, for A's String foo() and B's
+		// foo(): String?, is a String?, whichever is cast to first.
+		if r, ok := ret(o); ok && (!c.subtype(bt, r) && c.subtype(r, bt) || bt.P && !r.P && c.subtype(r, bt)) {
 			best, bt = o, r
 		}
 	}
