@@ -328,26 +328,26 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,613 | |
-| rejects invalid | 4,447 | 51.6% |
+| rejects invalid | 4,448 | 51.6% |
 | accepts valid | 4,150 | 48.2% |
-| accepts invalid | 16 | 0.2% |
+| accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,709 of the 22,025 expected errors (98.6%) on their lines, and 3,521 of
+21,739 of the 22,025 expected errors (98.7%) on their lines, and 3,521 of
 the 3,667 expected warnings (96.0%), with 18 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 6 of the 16
+none. Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 4) and unresolved names
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 3) and unresolved names
   (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
-  two. All but two are out of reach (see above).
+  two. All but one are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.
 - **Crashes**: none, and no harness errors.
 

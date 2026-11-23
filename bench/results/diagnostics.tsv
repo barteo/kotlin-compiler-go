@@ -5323,7 +5323,7 @@ tests/j+k/genericConstructor/superCall.kt	rejects invalid	on an expected line
 tests/j+k/genericConstructor/superCallImpossibleToInfer.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructor/withClassTypeParameters.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructorWithMultipleBounds.kt	rejects invalid	on an expected line	
-tests/j+k/genericFunAndClassNullabilityInconsistency.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	Test.kt:5: ARGUMENT_TYPE_MISMATCH
+tests/j+k/genericFunAndClassNullabilityInconsistency.kt	rejects invalid	on an expected line	
 tests/j+k/heterogeneousReceiverOverrides.kt	accepts valid		
 tests/j+k/inheritAbstractSamAdapter.kt	accepts valid		
 tests/j+k/inheritanceStaticMethodFromInterface.kt	rejects invalid	on an expected line	
