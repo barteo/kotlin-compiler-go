@@ -434,6 +434,14 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			name = "$this$" + x.Label
 		}
 		x.Recv = &types.VarSym{Name: name, Type: params[0], Kind: types.Param}
+		if x.Anon && x.AnonRecv != nil && w.known {
+			// fun String.() {} for an Int.() -> Unit: as a parameter's
+			// type, the receiver's may be a supertype of the expected one.
+			if rt := c.resolveType(x.AnonRecv); rt.K != types.Invalid && params[0].K != types.Invalid && !c.subtype(params[0], rt) {
+				c.errorf(x.AnonRecv.P, "expected receiver of type %s", params[0])
+				ok = false
+			}
+		}
 		if recv != nil && recv.Name == name {
 			*recv, x.Recv = *x.Recv, recv
 		}
