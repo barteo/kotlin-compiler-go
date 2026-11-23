@@ -23,7 +23,8 @@ func (c *Checker) redundantDeclTypes(d syntax.Decl) {
 			c.warnf(d.Ret.P, "REDUNDANT_RETURN_UNIT_TYPE", "redundant 'Unit' return type")
 		}
 	case *syntax.PropDecl:
-		if s := d.Setter; s != nil && !d.Generated && len(s.Params) == 1 && s.Params[0].Type != nil {
+		// A delegated property's setter is kc's.
+		if s := d.Setter; s != nil && !d.Generated && d.Field == nil && len(s.Params) == 1 && s.Params[0].Type != nil {
 			c.warnf(s.Params[0].Type.P, "REDUNDANT_SETTER_PARAMETER_TYPE", "redundant setter parameter type")
 		}
 	}
