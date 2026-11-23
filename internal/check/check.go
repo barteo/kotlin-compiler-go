@@ -2415,6 +2415,12 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
+	if g := d.Getter; g != nil && g.Ret != nil && d.Type == g.Ret && d.Init != nil {
+		// val x = init get(): T: the parsers give x the getter's type,
+		// for val x get(): T { ... }, but one with an initializer is
+		// of its initializer's type, which the getter's must be.
+		d.Type = nil
+	}
 	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
@@ -2488,7 +2494,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.SetterVis == syntax.Internal && jvmName(&d.Modifiers, "set") == "" {
 		sym.SetterModule = c.internal(&syntax.Modifiers{Visibility: syntax.Internal}, owner, "")
 	}
-	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed) && len(d.Contexts) == 0
+	// A property with context parameters has no field, but one whose
+	// accessors would need one is reported as such (propContexts), and
+	// is checked as if it had one, as kotlinc does.
+	fieldUsed := sym.FieldUsed && len(d.Contexts) == 0 // field is unresolved in the accessors of one with contexts
+	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || fieldUsed)
 	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 	if ext && !sym.Abstract && (owner == nil || !owner.Interface) {
 		// kotlinc gives the property a field, which its external
@@ -2525,7 +2535,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "this property cannot be abstract and delegated")
 	case owner != nil && owner.Interface && hasField:
 		c.errorf(d.P, "property in an interface cannot have a backing field")
-	case d.Init != nil && !hasField && !sym.FieldUsed:
+	case d.Init != nil && !hasField && !fieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
 		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
@@ -2535,7 +2545,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			p = d.SetterVisP // at the modifier, as kotlinc
 		}
 		c.errorf(p, "private setters are not allowed for open properties")
-	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect:
+	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect && (owner != nil || d.BackingField == nil || len(d.Contexts) > 0):
+		// A top-level explicit backing field without an initializer is
+		// reported as such (backingFieldDecl); a class's, if its
+		// constructors don't assign it (definite assignment).
 		switch {
 		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
@@ -2610,6 +2623,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 		if d.Setter != nil {
 			d.Setter.Sym.Params[0].Type = sym.Type
@@ -3334,6 +3348,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 	}
 	if d.Setter != nil {
@@ -3999,6 +4014,24 @@ func noField(p *types.VarSym, d *syntax.FunDecl) bool {
 	return ok && (len(pd.Contexts) > 0 || pd.Getter == d && pd.Type == nil && pd.Init == nil)
 }
 
+// getterRetType checks the return type written on property d's getter,
+// get(): T, which must be the property's type, once that is known. One
+// that isn't is kotlinc's WRONG_GETTER_RETURN_TYPE, and the getter's body
+// is then checked with the type written.
+func (c *Checker) getterRetType(d *syntax.PropDecl) {
+	g := d.Getter
+	if g.Ret == nil || g.Ret == d.Type || d.Field != nil || g.Sym == nil {
+		return
+	}
+	t := c.resolveType(g.Ret)
+	pt := d.Sym.Type
+	if t.K == types.Invalid || pt.K == types.Invalid || t == pt || t.HasVars() || pt.HasVars() || c.subtype(t, pt) && c.subtype(pt, t) {
+		return // the same type, or a platform type's other nullability
+	}
+	c.errorf(g.Ret.P, "getter return type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+	g.Sym.Ret = t
+}
+
 // setterParamType checks the type written on a setter's parameter, set(v:
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
@@ -4008,6 +4041,14 @@ func (c *Checker) setterParamType(d *syntax.PropDecl) {
 	}
 	if t := c.resolveType(p.Type); t.K != types.Invalid && t != d.Sym.Type {
 		c.errorf(p.P, "setter parameter type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+		if p.Sym != nil {
+			// In the setter's body, the parameter is of the type
+			// written, as in kotlinc: field = value is a mismatch. Its
+			// callers still pass the property's type.
+			v := *p.Sym
+			v.Type = t
+			p.Sym = &v
+		}
 	}
 }
 
@@ -4044,7 +4085,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}
 	declareNamedContexts(s, d)
-	for _, p := range sym.Params {
+	for i, p := range sym.Params {
+		if d.Property != "" && i < len(d.Params) && d.Params[i].Sym != nil {
+			p = d.Params[i].Sym // a setter's, of the type written (setterParamType)
+		}
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),

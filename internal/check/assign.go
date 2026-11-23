@@ -319,6 +319,15 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	}
 	for _, pd := range props {
 		if missing[pd] && !c.mustInit[pd.Sym] && !pd.Expect {
+			if bf := pd.BackingField; bf != nil && len(pd.Contexts) == 0 {
+				// kotlinc's EXPLICIT_FIELD_MUST_BE_INITIALIZED, at the
+				// field, unless it has an initializer that what else
+				// the property has keeps from being its own.
+				if bf.Init == nil && pd.Getter == nil && pd.Setter == nil {
+					c.errorf(bf.P, "an explicit backing field must be initialized")
+				}
+				continue
+			}
 			c.errorf(pd.P, "property must be initialized or be abstract")
 		}
 	}
