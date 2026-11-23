@@ -286,3 +286,23 @@ fun u9_l() {
         ""
     )
 }
+// A break in a finally block, or in a do-while's condition, leaves the
+// loop.
+fun breakInFinally(): String {
+    while (true) {
+        try {
+            continue
+        } finally {
+            break
+        }
+    }
+    return "OK"
+}
+fun breakInDoWhileCond(): String {
+    var i = 0
+    while (true) {
+        do { ++i } while (break)
+        if (i != 1) return "FAIL1"
+    }
+    return "OK" // UNREACHABLE_CODE
+}
