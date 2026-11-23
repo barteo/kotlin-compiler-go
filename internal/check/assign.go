@@ -1,6 +1,7 @@
 package check
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -62,13 +63,34 @@ func join(states ...*daState) *daState {
 		}
 	}
 	if out == nil {
-		out = newDAState()
-		out.dead = true
+		// No path reaches the point: what all the dead ones assign is
+		// assigned, as K2's analysis of dead code has it.
 		for _, s := range states {
+			if out == nil {
+				out = s.clone()
+				continue
+			}
+			for v := range out.def {
+				if !s.def[v] {
+					delete(out.def, v)
+				}
+			}
 			out.mergeMaybe(s)
 		}
+		if out == nil {
+			out = newDAState()
+		}
+		out.dead = true
 	}
 	return out
+}
+
+// deadCopy returns a copy of s that no path reaches, for a join: the
+// state at the end of a loop that only a break leaves.
+func deadCopy(s *daState) *daState {
+	c := s.clone()
+	c.dead = true
+	return c
 }
 
 // assignment checks the definite assignment of a function body or of a
@@ -102,6 +124,11 @@ type assignment struct {
 	// inPlaceLambdas are those of the lambdas the code is in that a
 	// contract says are called in place, though maybe not once.
 	inPlaceLambdas int
+	// concurrent counts, for the vals that more than one lambda of a
+	// call assigns, each called once, the walks of those lambdas the
+	// code is in: as K2 has it, they may run in either order, so each
+	// assignment may be a reassignment (KT-59669).
+	concurrent map[*types.VarSym]int
 	// lastLambda is the state at the end of the lambda last walked.
 	lastLambda *daState
 	// libOnce counts the lambdas called once by functions of the class
@@ -195,6 +222,51 @@ func (a *assignment) inPlace(x *syntax.Call, l *syntax.Lambda, s *daState) {
 	*s = *join(append(o.returns, s)...)
 }
 
+// concurrentVals returns the tracked vals that two or more of the
+// lambdas that call x calls exactly once assign.
+func (a *assignment) concurrentVals(x *syntax.Call) []*types.VarSym {
+	var ls []*syntax.Lambda
+	for k, arg := range x.Args {
+		if l, ok := arg.(*syntax.Lambda); ok && calledOnce(x, k) && l.Body != nil {
+			ls = append(ls, l)
+		}
+	}
+	if len(ls) < 2 {
+		return nil
+	}
+	count := map[*types.VarSym]int{}
+	var out []*types.VarSym
+	for _, l := range ls {
+		seen := map[*types.VarSym]bool{}
+		syntax.Inspect(l.Body, func(n any) bool {
+			st, ok := n.(*syntax.Assign)
+			if !ok {
+				return true
+			}
+			var v *types.VarSym
+			switch t := st.Target.(type) {
+			case *syntax.Ident:
+				v = t.Sym
+			case *syntax.Member:
+				if _, this := t.X.(*syntax.This); this {
+					v = t.Prop
+				}
+			}
+			if v != nil && !v.Mutable && a.tracked(v) && !a.inited[v] && !seen[v] {
+				seen[v] = true
+				if count[v]++; count[v] == 2 {
+					out = append(out, v)
+				}
+			}
+			return true
+		})
+	}
+	if out != nil && a.concurrent == nil {
+		a.concurrent = map[*types.VarSym]int{}
+	}
+	return out
+}
+
 // notInlined reports whether one of the lambdas called once that the
 // code is in isn't inlined: passed to a function that isn't inline, or
 // for a noinline or crossinline parameter.
@@ -284,6 +356,37 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	}
 	secs := d.Secondaries()
 	if !d.HasPrimary {
+		// The state at the end of each constructor: one that calls
+		// this(...) starts where the one it calls ends, so a val both
+		// assign is assigned again.
+		ends := map[*syntax.SecondaryCtor]*daState{}
+		var walk func(sc *syntax.SecondaryCtor) *daState
+		walk = func(sc *syntax.SecondaryCtor) *daState {
+			if end, ok := ends[sc]; ok {
+				return end // nil while it is walked
+			}
+			ends[sc] = nil
+			start := s.clone()
+			if sc.ToThis {
+				i := slices.IndexFunc(secs, func(o *syntax.SecondaryCtor) bool { return sc.Delegation != nil && o.Sym == sc.Delegation.Sym })
+				if i < 0 || !delegatesToSuper(sc, secs) {
+					return nil
+				}
+				t := walk(secs[i])
+				if t == nil || t.dead {
+					return t
+				}
+				start = t.clone()
+			}
+			if sc.Body != nil {
+				a.rets = []*daState{}
+				a.block(sc.Body, start)
+				start = join(append(a.rets, start)...)
+				a.rets = nil
+			}
+			ends[sc] = start
+			return start
+		}
 		for _, sc := range secs {
 			if !sc.ToThis && sc.Body == nil || sc.ToThis && !delegatesToSuper(sc, secs) {
 				// constructor() assigns nothing, and kotlinc doesn't
@@ -293,17 +396,11 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 					missing[pd] = true
 				}
 			}
-			if sc.ToThis || sc.Body == nil {
-				continue
-			}
-			end := s.clone()
-			a.rets = []*daState{}
-			a.block(sc.Body, end)
+			end := walk(sc)
 			// A constructor that always throws needn't assign.
-			if end := join(append(a.rets, end)...); !end.dead {
+			if !sc.ToThis && sc.Body != nil && end != nil && !end.dead {
 				check(end)
 			}
-			a.rets = nil
 		}
 	} else {
 		// Code after an initializer or an init block that never ends
@@ -462,8 +559,8 @@ func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
 		}
 		return
 	}
-	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] || a.foreign > 0 {
-		return
+	if v == nil || !a.tracked(v) || s.def[v] || a.quiet > 0 || a.reported[p] || a.foreign > 0 {
+		return // in dead code too, as kotlinc
 	}
 	if (v.Kind == types.Prop || v.Kind == types.Global) && a.lambdas > 0 {
 		return // a lambda may run once the property is assigned
@@ -493,7 +590,16 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 		return
 	}
 	switch {
-	case a.quiet > 0 || s.dead:
+	case a.quiet > 0:
+	case s.dead:
+		// Code no path reaches, which kotlinc checks too.
+		if !v.Mutable && s.maybe[v] && a.lambdas <= a.depth[v] {
+			a.c.errorf(p, "val cannot be reassigned")
+		}
+	case !v.Mutable && a.concurrent[v] > 0 && v.Kind == types.Prop:
+		a.c.errorf(p, "initialization of captured member values is prohibited because of possible reassignments")
+	case !v.Mutable && a.concurrent[v] > 0:
+		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && a.lambdas > a.depth[v]:
 		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && v.Kind == types.Prop && a.notInlined():
@@ -605,7 +711,7 @@ func (a *assignment) loop(node syntax.Stmt, body *syntax.Block, s *daState, fore
 	a.loops = a.loops[:len(a.loops)-1]
 	breaks := l.breaks
 	if forever {
-		*s = *join(breaks...)
+		*s = *join(append(breaks, deadCopy(s))...)
 		return
 	}
 	s.mergeMaybe(second)
@@ -653,7 +759,7 @@ func (a *assignment) doLoop(st *syntax.While, s *daState) {
 	second.mergeMaybe(first)
 	end, l := pass(second)
 	if isTrue(st.Cond) {
-		*s = *join(l.breaks...)
+		*s = *join(append(l.breaks, deadCopy(end))...)
 		return
 	}
 	*s = *join(append([]*daState{end}, l.breaks...)...)
@@ -782,9 +888,37 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
 			as = s.clone() // the arguments don't run on null
 		}
+		concurrent := a.concurrentVals(x)
+		// What one of the lambdas called once assigns isn't assigned in
+		// the others, which may run first.
+		var assigned []*types.VarSym
 		for k, arg := range x.Args {
 			if l, ok := arg.(*syntax.Lambda); ok && calledOnce(x, k) {
+				for _, v := range concurrent {
+					a.concurrent[v]++
+				}
+				var hidden []*types.VarSym
+				for _, v := range assigned {
+					if as.def[v] {
+						delete(as.def, v)
+						hidden = append(hidden, v)
+					}
+				}
+				before := maps.Clone(as.def)
 				a.inPlace(x, l, as)
+				for v := range as.def {
+					if !before[v] {
+						assigned = append(assigned, v)
+					}
+				}
+				if !as.dead {
+					for _, v := range hidden {
+						as.def[v] = true
+					}
+				}
+				for _, v := range concurrent {
+					a.concurrent[v]--
+				}
 				continue
 			}
 			if l, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {

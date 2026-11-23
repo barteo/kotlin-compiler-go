@@ -3602,8 +3602,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		return true
 	})
 	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported &&
-			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported && len(f.TypeParams) == 0 && c.pairedSetter(cls, f, getters) {
 			x.Setter = f
 		}
 	}
@@ -3620,9 +3619,39 @@ const javaDeclTargets = types.TargetClass | types.TargetAnnotationClass | types.
 	types.TargetValueParameter | types.TargetConstructor | types.TargetFunction | types.TargetGetter | types.TargetSetter |
 	types.TargetExpression
 
+// pairedSetter reports whether Java method f of cls is the setter of
+// one of getters: of its type, or overriding a supertype's method that
+// is, as JavaOverride.setFoo(@Nullable String) overrides
+// JavaBase.setFoo(String) for a @NotNull getFoo().
+func (c *Checker) pairedSetter(cls *types.ClassSym, f *types.FunSym, getters []*types.FunSym) bool {
+	paired := func(f *types.FunSym) bool {
+		return slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) })
+	}
+	if paired(f) {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s != cls {
+			for _, m := range c.javaMethods(s, f.Name) {
+				if len(m.Params) == 1 && len(m.TypeParams) == 0 && m.Desc != "" && m.Desc == f.Desc && paired(m) {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 // sameJavaType reports whether setter's parameter is of getter's type,
 // in Java's terms when both are Java methods: their descriptors.
 func sameJavaType(setter, getter *types.FunSym) bool {
+	if p, r := setter.Params[0].Type, getter.Ret; !p.P && !r.P && p.N != r.N && !p.IsPrimitive() {
+		// @Nullable String setFoo's for a @NotNull getFoo(), which
+		// K2 doesn't pair (KT-56506).
+		return false
+	}
 	if setter.Desc != "" && getter.Desc != "" && setter.Decl == nil && getter.Decl == nil {
 		_, ret, _ := strings.Cut(getter.Desc, ")")
 		return strings.HasPrefix(setter.Desc, "("+ret+")")
