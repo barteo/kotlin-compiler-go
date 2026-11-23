@@ -67,7 +67,8 @@ func (c *Checker) localWarnings() {
 					c.warnf(n.P, "NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION", "Non-null assertion (!!) called on a lambda expression.")
 				}
 			}
-			if t := n.X.Type(); definitelyNonNull(t) && !c.maybeNull[n] && !lambdaLike(n.X) {
+			// As for ?:, a receiver of type Nothing too.
+			if t := n.X.Type(); (definitelyNonNull(t) || t.K == types.Nothing && !t.N) && !c.maybeNull[n] && !lambdaLike(n.X) {
 				c.warnf(n.P, "UNNECESSARY_NOT_NULL_ASSERTION", "unnecessary non-null assertion (!!) on a non-null receiver of type '%s'", t)
 			}
 		case *syntax.Member:
@@ -178,7 +179,9 @@ func (c *Checker) prefixWarnings(x syntax.Expr) {
 // noteMaybeNull records that a check of x!! or x ?: y found x of type t,
 // if x may be null.
 func (c *Checker) noteMaybeNull(n syntax.Expr, t types.Type) {
-	if definitelyNonNull(t) || t.K == types.Nothing && !t.N {
+	if definitelyNonNull(t) || t.K == types.Nothing && !t.N || t.HasVars() {
+		// A type with variables not inferred yet says nothing: the
+		// warning judges the type they are inferred to.
 		return
 	}
 	if c.maybeNull == nil {
@@ -242,19 +245,30 @@ func hasInvalid(t types.Type, depth int) bool {
 func (c *Checker) binaryWarnings(x *syntax.Binary) {
 	switch x.Op {
 	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+		if x.X == nil || x.Y == nil {
+			return
+		}
+		// As kotlinc's checkSenselessness, by the operands' types: one
+		// is always null, the literal or a value of type Nothing?, and
+		// the other always is too, or can't be, a value of type Nothing
+		// among those.
 		other := x.X
 		if _, ok := x.X.(*syntax.NullLit); ok {
 			other = x.Y
 		} else if _, ok := x.Y.(*syntax.NullLit); !ok {
-			return
+			switch {
+			case x.Y.Type().K == types.Null:
+			case x.X.Type().K == types.Null:
+				other = x.Y
+			default:
+				return
+			}
 		}
-		if _, ok := other.(*syntax.NullLit); ok || other == nil {
+		if _, ok := other.(*syntax.NullLit); ok {
 			return
 		}
 		eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
-		// Of a value that can't be null, or of type Nothing? and so
-		// always null.
-		if t := other.Type(); definitelyNonNull(t) || t.K == types.Null {
+		if t := other.Type(); definitelyNonNull(t) || t.K == types.Null || t.K == types.Nothing && !t.N {
 			c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", eq == (t.K == types.Null))
 		}
 	case syntax.ELVIS:
@@ -308,18 +322,35 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		// A call of a function whose result is its only type parameter,
 		// which its parameters don't mention, takes its type from the
 		// type the cast expects: foo() as String, for a fun <T> foo(): T.
-		if e.Ctor == nil && expectsTypeFromCast(e.Sym) {
+		// Not a safe call's, which isn't a function call to kotlinc's
+		// checker.
+		if m, ok := e.Fun.(*syntax.Member); e.Ctor == nil && expectsTypeFromCast(e.Sym) && !(ok && m.Safe && !e.Invoke) {
 			return
 		}
 	}
-	t, target := x.X.Type(), x.Target
-	if t.K == types.Invalid || target.K == types.Invalid || t.P || t.K == types.TypeVar || target.K == types.TypeVar {
+	target := x.Target
+	if target.K == types.Invalid || target.K == types.TypeVar {
 		return
 	}
-	if x.Safe && t.N {
-		target = target.Nullable()
+	exact := func(t types.Type) bool {
+		if t.K == types.Invalid || t.K == types.TypeVar {
+			return false
+		}
+		if t.P {
+			t = platformUpper(t) // a platform type's upper bound, T?
+		}
+		target := target
+		if x.Safe && t.N {
+			target = target.Nullable()
+		}
+		return t.N == target.N && (t == target || c.sameType(t, target))
 	}
-	if t.N != target.N || t != target && !c.sameType(t, target) {
+	t := x.X.Type()
+	switch {
+	case exact(t):
+	case x.Safe && t.K == types.Null && !types.MayBeNull(target):
+		// A value that is always null, as? a type that excludes it.
+	default:
 		return
 	}
 	if intLiteral(x.X) {
@@ -340,8 +371,8 @@ func expectsTypeFromCast(f *types.FunSym) bool {
 		return false
 	}
 	tp := f.TypeParams[0]
-	if r := f.Ret; r.K != types.TypeParam || r.Param() != tp {
-		return false
+	if r := f.Ret; r.K != types.TypeParam || r.Param() != tp || r.D {
+		return false // nor a T & Any, as a Java @NotNull T
 	}
 	if f.Ext && mentionsParam(f.Recv, tp) {
 		return false
@@ -404,8 +435,16 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 		return
 	}
 	t, target := x.X.Type(), x.Target
-	if t.P || hasInvalid(t, 0) || hasInvalid(target, 0) || c.subtype(t, target) {
+	if hasInvalid(t, 0) || hasInvalid(target, 0) || c.subtype(t, target) {
 		return
+	}
+	if t.P {
+		// Of a platform type, only what tells nothing of the target's
+		// type arguments: a Class<*>! as Class<T>.
+		t = platformUpper(t)
+		if target.K != types.Class || target.A == nil || !argsTellMore(target) || t.K != types.Class || t.C == nil || t.A == nil || !starArgsOnly(t) || !target.C.IsSubclassOf(t.C) {
+			return
+		}
 	}
 	switch {
 	case target.K == types.TypeParam:

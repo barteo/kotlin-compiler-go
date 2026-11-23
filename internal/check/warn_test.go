@@ -582,6 +582,13 @@ func TestWarningsDeprecation(t *testing.T) {
 
 // TestWarningsNullCast checks the elvis, cast, safe call and null
 // condition warnings of testdata/nullcast.kt.
+// TestWarningsNullSmartCasts checks the null checks and casts that the
+// smart casts of is Any, of safe calls and casts, and of a value that is
+// always null decide, and casts of platform types.
+func TestWarningsNullSmartCasts(t *testing.T) {
+	checkReference(t, "testdata/nullsmart.kt", Options{Warnings: true})
+}
+
 func TestWarningsNullCast(t *testing.T) {
 	checkReference(t, "testdata/nullcast.kt", Options{Warnings: true})
 }

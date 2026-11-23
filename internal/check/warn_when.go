@@ -18,6 +18,18 @@ import (
 // with null, as kotlinc has it.
 func (c *Checker) noteRedundantElse(x *syntax.When, st types.Type, cov *coverage, hasElse, covered bool) {
 	redundant := hasElse && covered && x.Subject != nil && enumerable(st) && !hasInvalid(st, 0)
+	if hasElse && covered && x.Subject != nil && !redundant && !st.P && st.K != types.TypeVar && !st.HasVars() && !hasInvalid(st, 0) {
+		// A branch that is an is check of a type the subject is of
+		// covers it all: is Any of an Int, is Any? of anything.
+		redundant = slices.ContainsFunc(cov.types, func(t types.Type) bool {
+			return t.K != types.Invalid && !t.P && !hasInvalid(t, 0) && c.subtype(st, t)
+		})
+		if c.redundantElses == nil {
+			c.redundantElses = map[*syntax.When]bool{}
+		}
+		c.redundantElses[x] = redundant
+		return
+	}
 	if redundant && st.K == types.Class {
 		cls := st.C
 		redundant = !cls.External || cls.FromKotlin || cls.Entries != nil
@@ -68,14 +80,15 @@ func (c *Checker) whenNullWarnings(x *syntax.When) {
 		t = x.SubjSym.Type
 	}
 	for _, br := range x.Branches {
-		for _, cond := range br.Conds {
+		for i := range br.Conds {
+			cond := &br.Conds[i]
 			if cond.Is || cond.NotIs || cond.In || cond.NotIn || !isNullLit(cond.X) {
 				continue
 			}
 			switch {
 			case definitelyNonNull(t):
 				c.warnf(cond.X.Pos(), "SENSELESS_NULL_IN_WHEN", "Expression under 'when' is never equal to null.")
-			case t.K == types.Null:
+			case t.K == types.Null, c.nullConds[cond]:
 				c.warnf(cond.X.Pos(), "SENSELESS_COMPARISON", "condition is always 'true'")
 			}
 		}

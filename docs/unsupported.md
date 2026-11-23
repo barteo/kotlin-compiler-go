@@ -127,15 +127,18 @@ own tests.
   - Type checks and casts, such as `USELESS_IS_CHECK`,
     `IMPOSSIBLE_IS_CHECK_WARNING`, `USELESS_CAST` and
     `CAST_NEVER_SUCCEEDS`, are judged as `kotlinc` judges them, by the
-    declared type and then by its smart casts, but never where a
-    platform type or a type `kc` couldn't resolve is involved.
+    declared type and then by its smart casts, but never where a type
+    `kc` couldn't resolve is involved, and a platform operand only by
+    its nullable upper bound, for `USELESS_IS_CHECK` and `USELESS_CAST`.
   - `UNCHECKED_CAST` only of a cast to a type parameter that isn't
     reified, to a generic type from `Any` or a star-projected
     supertype, to a function type from another of its class, or to a
     generic type whose type arguments its operand's type doesn't tell,
     judged as `kotlinc` does but only where that type's arguments map
     to the target class's type parameters one by one, without
-    projections, and the operand isn't smart cast.
+    projections, and the operand isn't smart cast; of a platform
+    operand only where its type arguments are all stars, as a cast of
+    `Class.forName(name)`.
   - `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
     `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
     `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names
@@ -156,8 +159,9 @@ own tests.
     `Int`.
   - `DIVISION_BY_ZERO` not in annotation arguments.
   - `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum
-    or a sealed class, not of one exhaustive through an `is` check of
-    the subject's own type, or over a type parameter's value.
+    or a sealed class, or one exhaustive through an unguarded `is`
+    check of a supertype of the subject's type; not over a type
+    parameter's value, a Java enum or a Java sealed class.
   - `INCOMPATIBLE_ENUM_COMPARISON` and
     `FORBIDDEN_IDENTITY_EQUALS_WARNING` not where a platform type is
     involved.
