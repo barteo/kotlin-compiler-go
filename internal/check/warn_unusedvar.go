@@ -71,7 +71,7 @@ func (c *Checker) unusedVarWarnings() {
 	u := &unusedVars{vars: map[*types.VarSym]*localVar{}, blockParent: map[*syntax.Block]any{},
 		stmtLoc: map[syntax.Stmt]stmtLoc{}, exprStmt: map[syntax.Expr]stmtLoc{}, writeLoc: map[syntax.Expr]stmtLoc{},
 		lambdaLoc: map[*syntax.Lambda]stmtLoc{},
-		tries: map[*syntax.Block][]*syntax.Try{}}
+		tries:     map[*syntax.Block][]*syntax.Try{}}
 	declare := func(sym *types.VarSym, name string, decl any, b *syntax.Block) {
 		if sym == nil || name == "_" || strings.HasPrefix(name, "<") || strings.HasPrefix(name, "$") || u.vars[sym] != nil {
 			return

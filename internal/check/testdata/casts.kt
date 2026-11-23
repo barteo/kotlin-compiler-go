@@ -522,3 +522,8 @@ inline fun <reified T> ul6(a: Any) {
 fun <T : List<String>> ul7(t: T) { uUse(t as ArrayList<String>) } // UNCHECKED_CAST
 fun <T : ArrayList<String>> ul8(t: T) { uUse(t as ArrayList<String>) }
 fun <T> ul9(t: T) { uUse(t as List<String>) } // UNCHECKED_CAST
+class UVt { fun <T : CharSequence> get(): T = "" as T } // UNCHECKED_CAST
+fun ul10(v: UVt?) { uUse(v?.get() as? String) } // USELESS_CAST
+fun ul11(v: UVt?) { uUse(v?.get() as String) }
+fun ul12(v: UVt) { uUse(v.get() as? String) }
+fun ul13(v: UVt?) { uUse(v?.get<String>() as? String) } // USELESS_CAST

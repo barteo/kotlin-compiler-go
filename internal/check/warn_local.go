@@ -359,9 +359,18 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		// which its parameters don't mention, takes its type from the
 		// type the cast expects: foo() as String, for a fun <T> foo(): T.
 		// Not a safe call's, which isn't a function call to kotlinc's
-		// checker.
-		if m, ok := e.Fun.(*syntax.Member); e.Ctor == nil && expectsTypeFromCast(e.Sym) && !(ok && m.Safe && !e.Invoke) {
-			return
+		// checker: the cast still gives it its type argument, as kc
+		// doesn't, so that x?.foo() as? String is useless.
+		if m, ok := e.Fun.(*syntax.Member); e.Ctor == nil && expectsTypeFromCast(e.Sym) {
+			if !ok || !m.Safe || e.Invoke {
+				return
+			}
+			if len(e.TypeArgs) == 0 {
+				if x.Safe && c.meetsBounds(x.Target.NonNull(), e.Sym.TypeParams[0]) {
+					c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+				}
+				return
+			}
 		}
 	}
 	target := x.Target
@@ -395,6 +404,24 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		return
 	}
 	c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+}
+
+// meetsBounds reports whether type t, which has no type variables,
+// meets the bounds of type parameter p, which mention no type
+// parameters.
+func (c *Checker) meetsBounds(t types.Type, p *types.TypeParamSym) bool {
+	if !certainCastType(t) {
+		return false
+	}
+	for _, b := range p.Bounds {
+		if b.P {
+			b = platformUpper(b)
+		}
+		if mentionsParam(b, p) || !certainCastType(b) || !c.subtype(t, b) {
+			return false
+		}
+	}
+	return true
 }
 
 // expectsTypeFromCast reports whether f, a function with a single type
