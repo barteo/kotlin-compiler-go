@@ -480,7 +480,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   variable. Other smart casts are to the target type alone: a class type
   of a generic or Java type, a type parameter to another. A call on an
   intersection takes the first component with a member of the name
-  whose parameters take its arguments, and a property read on one is
+  whose parameters take its arguments (of those without parameters, the
+  one with the most specific result, a Kotlin one over a Java method's
+  platform type), and a property read on one is
   the intersection of its types only over components of the same class;
   where a call's variable is constrained by an intersection whose
   components are different instances of one class, inference forks
