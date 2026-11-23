@@ -340,6 +340,13 @@ func TestWarningsCasts(t *testing.T) {
 	checkReference(t, "testdata/casts.kt", Options{Warnings: true})
 }
 
+// TestWarningsContractConds checks the null comparisons and type checks
+// of contracts' conditions against those kotlinc reports of
+// testdata/contractconds.kt.
+func TestWarningsContractConds(t *testing.T) {
+	checkReference(t, "testdata/contractconds.kt", Options{Warnings: true})
+}
+
 // TestWarningsIdentity checks the warnings of identity comparisons of
 // primitives against those kotlinc reports of testdata/identity.kt.
 func TestWarningsIdentity(t *testing.T) {

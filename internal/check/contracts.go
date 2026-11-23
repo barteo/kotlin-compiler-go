@@ -1,6 +1,8 @@
 package check
 
 import (
+	"maps"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -25,7 +27,7 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.InPlace, d.AtLeastOnce, d.Implies, d.Calls = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.AtLeastOnce, d.Implies, d.Calls, d.ContractConds = c.dropContract(d.Body, imported, o)
 					c.misplacedContracts(d.Body, d.ExprBody, imported)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
@@ -193,9 +195,9 @@ func (c *Checker) addContractCall(b *syntax.Block, p syntax.Pos) {
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
 // place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies, calls []syntax.CallsEffect) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies, calls []syntax.CallsEffect, conds []syntax.Expr) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -206,12 +208,12 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	if c.file != nil && c.file.Annotated != nil {
@@ -241,6 +243,14 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		c, ok := n.(*syntax.Call)
 		if !ok {
 			return true
+		}
+		if m, ok := c.Fun.(*syntax.Member); ok && m.Name == "implies" && len(c.Args) == 1 {
+			switch {
+			case o.simpleEffect(m.X) && o.condition(c.Args[0]):
+				conds = append(conds, c.Args[0])
+			case o.condition(m.X) && o.simpleEffect(c.Args[0]):
+				conds = append(conds, m.X)
+			}
 		}
 		if ims, ok := contractImplies(c); ok {
 			implies = append(implies, ims...)
@@ -276,7 +286,7 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		}
 		return true
 	})
-	return once, inPlace, atLeast, implies, calls
+	return once, inPlace, atLeast, implies, calls, conds
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or
@@ -414,6 +424,100 @@ func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 		}
 		sym.Implies = append(sym.Implies, e)
 	}
+	if len(d.ContractConds) > 0 {
+		env := map[string]types.Type{}
+		for i, p := range d.Params {
+			if i < len(sym.Params) {
+				env[p.Name] = sym.Params[i].Type
+			}
+		}
+		for _, cond := range d.ContractConds {
+			c.contractCondWarnings(cond, env, sym)
+		}
+	}
+}
+
+// contractCondWarnings reports the checks in contract condition x, made
+// of parameters, null comparisons, is checks, !, && and ||, that the
+// parameters' types, env, decide, as kotlinc checks the condition as
+// an expression: SENSELESS_COMPARISON and USELESS_IS_CHECK. x && y sees
+// what x being true tells of the parameters, and x || y what x being
+// false does. It returns what x being true, and being false, tells.
+func (c *Checker) contractCondWarnings(x syntax.Expr, env map[string]types.Type, sym *types.FunSym) (onTrue, onFalse map[string]types.Type) {
+	with := func(env, more map[string]types.Type) map[string]types.Type {
+		if len(more) == 0 {
+			return env
+		}
+		m := make(map[string]types.Type, len(env)+len(more))
+		maps.Copy(m, env)
+		maps.Copy(m, more)
+		return m
+	}
+	switch x := x.(type) {
+	case *syntax.Unary:
+		if x.Op == syntax.NOT {
+			t, f := c.contractCondWarnings(x.X, env, sym)
+			return f, t
+		}
+	case *syntax.Binary:
+		switch x.Op {
+		case syntax.AND:
+			lt, _ := c.contractCondWarnings(x.X, env, sym)
+			rt, _ := c.contractCondWarnings(x.Y, with(env, lt), sym)
+			return with(lt, rt), nil
+		case syntax.OR:
+			_, lf := c.contractCondWarnings(x.X, env, sym)
+			_, rf := c.contractCondWarnings(x.Y, with(env, lf), sym)
+			return nil, with(lf, rf)
+		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			id, ok := x.X.(*syntax.Ident)
+			if _, null := x.Y.(*syntax.NullLit); !ok || !null {
+				return nil, nil
+			}
+			t, ok := env[id.Name]
+			if !ok {
+				return nil, nil
+			}
+			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
+			if definitelyNonNull(t) {
+				c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", !eq)
+				return nil, nil
+			}
+			nonNull := map[string]types.Type{id.Name: t.NonNull()}
+			if eq {
+				return nil, nonNull
+			}
+			return nonNull, nil
+		}
+	case *syntax.Is:
+		id, ok := x.X.(*syntax.Ident)
+		if !ok || x.Ref == nil {
+			return nil, nil
+		}
+		t, ok := env[id.Name]
+		if !ok || !certainCastType(t) || t.K == types.Nothing || t.K == types.Null {
+			return nil, nil
+		}
+		c.bareRef, c.bareSubject = x.Ref, t
+		target := c.resolveTypeQuiet(x.Ref)
+		c.bareRef = nil
+		if !certainCastType(target) {
+			return nil, nil
+		}
+		if c.subtype(t, target) {
+			c.warnf(syntax.StartPos(x), "USELESS_IS_CHECK", "check for instance is always '%v'", !x.Not)
+			return nil, nil
+		}
+		if !c.subtype(target, t) {
+			return nil, nil
+		}
+		narrowed := map[string]types.Type{id.Name: target}
+		if x.Not {
+			return nil, narrowed
+		}
+		return narrowed, nil
+	}
+	return nil, nil
 }
 
 // contractOwner is the function, or property accessor, a contract
@@ -581,4 +685,17 @@ func (o contractOwner) value(x syntax.Expr) bool {
 		return x.Label != "" && (x.Label == o.name || x.Label == o.class && !o.recv)
 	}
 	return false
+}
+
+// resolveTypeQuiet resolves type ref as resolveType does, but reports
+// nothing: it returns the invalid type where resolveType reports an
+// error.
+func (c *Checker) resolveTypeQuiet(ref *syntax.TypeRef) types.Type {
+	n := len(c.errs)
+	t := c.resolveType(ref)
+	if len(c.errs) > n {
+		c.errs = c.errs[:n]
+		return types.InvalidType
+	}
+	return t
 }
