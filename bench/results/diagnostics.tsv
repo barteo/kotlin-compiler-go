@@ -10598,7 +10598,7 @@ testsWithStdLib/properties/backingField/backingFieldInitializedInSecondaryConstr
 testsWithStdLib/properties/backingField/backingFieldModifiers.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldTypeModifier.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldVisibility.kt	rejects invalid	on an expected line	
-testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	rejects invalid	elsewhere	
+testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldWithSmartTypeParameters.kt	accepts valid		
 testsWithStdLib/properties/backingField/callableReferenceOnBackingField.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/callableReferenceOnOverride.kt	rejects invalid	on an expected line	
@@ -10629,7 +10629,7 @@ testsWithStdLib/properties/backingField/explicitBackingFieldWithIntersectionAndG
 testsWithStdLib/properties/backingField/explicitBackingFieldWithIntersectionFromTypeConstraints.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldWithIntersectionWithGenericsErased.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldWithIntersectionWithIncompatibleTypes.kt	accepts valid		
-testsWithStdLib/properties/backingField/explicitBackingFieldWithJvmField.kt	rejects invalid	elsewhere	
+testsWithStdLib/properties/backingField/explicitBackingFieldWithJvmField.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldWithNestedSubstitution.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldWithTypeParameter.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldsInEffectivelyPrivateInline.kt	accepts valid		

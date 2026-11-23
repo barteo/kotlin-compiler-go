@@ -9,8 +9,6 @@ tests/StringPrefixAndSuffix.kt	StringPrefixAndSuffix.kt:35	USELESS_IS_CHECK	synt
 tests/StringPrefixAndSuffix.kt	StringPrefixAndSuffix.kt:36	USELESS_IS_CHECK	syntax-error
 tests/TraitOverrideObjectMethods.kt	TraitOverrideObjectMethods.kt:7	REDUNDANT_VISIBILITY_MODIFIER	missing-check
 tests/annotations/parameters/double.kt	double.kt:11	REDUNDANT_CALL_OF_CONVERSION_METHOD	missing-check
-tests/annotations/withUseSiteTarget/ParamAnnotations.kt	ParamAnnotations.kt:24	REDUNDANT_ANNOTATION_TARGET	missing-check
-tests/annotations/withUseSiteTarget/ParamAnnotations.kt	ParamAnnotations.kt:24	REDUNDANT_ANNOTATION_TARGET	missing-check
 tests/callableReference/propertyOfNestedGenericClass.kt	propertyOfNestedGenericClass.kt:30	UNCHECKED_CAST	missing-check
 tests/cast/AsWithOtherParameter.kt	AsWithOtherParameter.kt:17	UNCHECKED_CAST	missing-check
 tests/cast/IsErasedUpcastToNonReified.kt	IsErasedUpcastToNonReified.kt:31	UNCHECKED_CAST	missing-check
