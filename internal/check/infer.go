@@ -1025,6 +1025,9 @@ func (s *system) fix(tv *tvar) {
 			val = s.withinUppers(val, lowers, uppers)
 			val = s.flexExact(val, lowers, uppers)
 		}
+		if len(lowers) > 1 {
+			val = s.equalityWins(tv, val, lowers, uppers)
+		}
 		// A nullable lower bound with variables makes it nullable too, as
 		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M
 		// String.
@@ -1467,6 +1470,29 @@ func (s *system) withinUppers(val types.Type, lowers, uppers []types.Type) types
 			}
 		}
 		if ok {
+			return u
+		}
+	}
+	return val
+}
+
+// equalityWins returns val, the join of tv's lower bounds, but if only a
+// null among them keeps it from an upper bound that is also a lower one,
+// an equality constraint, that bound, as K2 fixes the variable to it: T of put(m, 1,
+// null) for a MutableList<Int> m and put(MutableList<T>, T, T) is Int,
+// and the null is the argument that doesn't fit, not m.
+func (s *system) equalityWins(tv *tvar, val types.Type, lowers, uppers []types.Type) types.Type {
+	c := s.c
+	fits := func(t types.Type) bool {
+		return !slices.ContainsFunc(uppers, func(u types.Type) bool { return !c.subtype(t, u) })
+	}
+	if len(uppers) == 0 || fits(val) || !val.N || !fits(val.NonNull()) {
+		return val
+	}
+	for _, u := range uppers {
+		if !types.MayBeNull(u) && slices.ContainsFunc(lowers, func(l types.Type) bool { return c.sameType(l, u) }) && fits(u) &&
+			!slices.ContainsFunc(lowers, func(l types.Type) bool { return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N) }) &&
+			(len(tv.lits) == 0 || litsFit(tv.lits, u) || c.subtype(s.litType(tv, nil), u)) {
 			return u
 		}
 	}
