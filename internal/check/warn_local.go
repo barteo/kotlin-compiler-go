@@ -485,8 +485,17 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 	switch {
 	case target.K == types.TypeParam:
 		p := target.Param()
-		if p == nil || p.Reified || p.Intersection || t.IsParam() {
+		if p == nil || p.Reified || p.Intersection {
 			return
+		}
+		if t.IsParam() {
+			// Of another type parameter, or the same one nullable (V? as
+			// V), that isn't a subtype of it: not of an intersection or a
+			// smart-cast value, which kc's types may not tell as kotlinc's.
+			// as? T is a cast to T?.
+			if f, ok := c.typeFacts[x]; t.IsIntersection() || !ok || len(f.casts) > 0 || !certainCastType(t) || x.Safe && c.subtype(t, target.Nullable()) {
+				return
+			}
 		}
 		switch t.K {
 		case types.Nothing:
@@ -510,7 +519,7 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 		case t.K == types.Class && t.C != nil && starImplied(t) && target.C.IsSubclassOf(t.C) && x.Ref != nil && x.Ref.Args != nil:
 			// From MutableList<out Any?>, which tells as little, to type
 			// arguments written: those of a bare type follow from it.
-		case c.castErased(x, t, target):
+		case (t.K == types.Class || t.K == types.TypeParam) && c.castErased(x, t, target):
 		default:
 			return
 		}
@@ -526,58 +535,127 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 // statically (findStaticallyKnownSubtype), whose type arguments are
 // those that t's determine and the class's own type parameters, isn't a
 // subtype of target: Class<T> as Class<Any>, or MutableCollection<String>
-// as MutableList<Int>. kc judges only casts whose operand isn't smart
-// cast, that can succeed, and where t's type arguments map to the
-// class's type parameters one by one, without projections.
+// as MutableList<Int>. Of a smart-cast operand, t is the intersection of
+// its declared type and its smart casts, whose parts together determine
+// the type arguments. kc judges only casts that can succeed, and where
+// the parts' type arguments map to the class's type parameters one by
+// one, without projections.
 func (c *Checker) castErased(x *syntax.As, t, target types.Type) bool {
 	f, ok := c.typeFacts[x]
-	if !ok || len(f.casts) > 0 || !f.certain() || !certainCastType(target) || lambdaLike(unchecked(x.X)) {
+	if !ok || !f.certain() || !certainCastType(target) {
+		return false
+	}
+	if lambdaLike(unchecked(x.X)) && (target.C.Interface || target.IsFunc()) {
+		// A lambda or a reference is of a function type, which tells
+		// nothing of a class's type arguments, but kc's may not be
+		// kotlinc's to compare with an interface's.
 		return false
 	}
 	if c.castImpossible(f.orig, []types.Type{f.orig}, target, x.Safe) {
 		return false // CAST_NEVER_SUCCEEDS
 	}
-	t, target = t.NonNull(), target.NonNull()
+	known := []types.Type{t}
+	if len(f.casts) > 0 {
+		if c.castImpossible(f.casts[len(f.casts)-1], f.all(), target, x.Safe) {
+			return false
+		}
+		known = f.all()
+	}
+	// The parts: an intersection's components, but not type parameters,
+	// which tell nothing of the type arguments, as kotlinc judges them,
+	// whatever their bounds: a T : List<String> as ArrayList<String> is
+	// unchecked.
+	var parts []types.Type
+	for _, t := range known {
+		switch {
+		case t.IsIntersection():
+			for _, b := range t.Param().Bounds {
+				if !b.IsParam() {
+					parts = append(parts, b)
+				}
+			}
+		case !t.IsParam():
+			parts = append(parts, t)
+		}
+	}
+	target = target.NonNull()
 	k := target.C
-	if t.K != types.Class || t.C == nil || k.Local || platformArgs(t) || c.subtype(t, target) {
+	if k.Local {
 		return false
 	}
-	known := t
-	if t.C != k {
-		args := make([]types.Arg, len(k.TypeParams))
-		set := make([]bool, len(k.TypeParams))
-		if sup, ok := c.asSuper(k.This(), t.C); ok && sup.A != nil {
-			if t.A == nil || t.A.Len() != sup.A.Len() {
+	args := make([]types.Arg, len(k.TypeParams))
+	set := make([]bool, len(k.TypeParams))
+	conflict := false
+	for _, t := range parts {
+		t = t.NonNull()
+		if t.K == types.Any {
+			continue
+		}
+		if t.K != types.Class || t.C == nil || platformArgs(t) {
+			return false
+		}
+		if c.subtype(t, target) {
+			return false
+		}
+		if t.C == k {
+			if len(parts) == 1 {
+				return true // not a subtype of target, of its own class
+			}
+			if t.A == nil || t.A.Len() != len(k.TypeParams) {
 				return false
 			}
-			for i, a := range sup.A.List {
-				ta := t.A.List[i]
-				j := -1
-				if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N {
-					j = slices.Index(k.TypeParams, a.T.Param())
-				}
-				if j < 0 || ta.V != types.Inv && ta.V != types.Star {
-					return false // not one of k's parameters, or projected
-				}
-				arg := ta
-				if ta.V == types.Star {
-					// What a star tells fits anything.
-					arg = target.A.List[j]
-				}
-				if set[j] && args[j] != arg {
+			for j, ta := range t.A.List {
+				if ta.V != types.Inv && ta.V != types.Star {
 					return false
 				}
-				args[j], set[j] = arg, true
+				if ta.V == types.Star {
+					ta = target.A.List[j]
+				}
+				if set[j] && args[j] != ta {
+					conflict = true
+				}
+				args[j], set[j] = ta, true
 			}
+			continue
 		}
-		for j, p := range k.TypeParams {
-			if !set[j] {
-				args[j] = types.Arg{T: types.ParamType(p)}
+		sup, ok := c.asSuper(k.This(), t.C)
+		if !ok || sup.A == nil {
+			continue // a part that tells nothing of k's type arguments
+		}
+		if t.A == nil || t.A.Len() != sup.A.Len() {
+			return false
+		}
+		for i, a := range sup.A.List {
+			ta := t.A.List[i]
+			j := -1
+			if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N {
+				j = slices.Index(k.TypeParams, a.T.Param())
 			}
+			if j < 0 || ta.V != types.Inv && ta.V != types.Star {
+				return false // not one of k's parameters, or projected
+			}
+			arg := ta
+			if ta.V == types.Star {
+				// What a star tells fits anything.
+				arg = target.A.List[j]
+			}
+			if set[j] && args[j] != arg {
+				conflict = true
+			}
+			args[j], set[j] = arg, true
 		}
-		known = types.GenericType(k, args)
 	}
-	return !c.subtype(known, target)
+	if conflict {
+		// Parts that give a type argument different types, Array<Any?>
+		// and Array<Int>, none of them a subtype of target.
+		return true
+	}
+	for j, p := range k.TypeParams {
+		if !set[j] {
+			args[j] = types.Arg{T: types.ParamType(p)}
+		}
+	}
+	return !c.subtype(types.GenericType(k, args), target)
 }
 
 // argsTellMore reports whether some type argument of class type t

@@ -131,14 +131,15 @@ own tests.
     `kc` couldn't resolve is involved, and a platform operand only by
     its nullable upper bound, for `USELESS_IS_CHECK` and `USELESS_CAST`.
   - `UNCHECKED_CAST` only of a cast to a type parameter that isn't
-    reified, to a generic type from `Any` or a star-projected
+    reified (of another type parameter's value only where it isn't
+    smart cast), to a generic type from `Any` or a star-projected
     supertype, to a function type from another of its class, or to a
-    generic type whose type arguments its operand's type doesn't tell,
-    judged as `kotlinc` does but only where that type's arguments map
-    to the target class's type parameters one by one, without
-    projections, and the operand isn't smart cast; of a platform
-    operand only where its type arguments are all stars, as a cast of
-    `Class.forName(name)`.
+    generic type whose type arguments its operand's type, smart casts
+    included, doesn't tell, judged as `kotlinc` does but only where
+    that type's arguments map to the target class's type parameters
+    one by one, without projections, and not of a lambda or a
+    reference to an interface; of a platform operand only where its
+    type arguments are all stars, as a cast of `Class.forName(name)`.
   - `PARAMETER_NAME_CHANGED_ON_OVERRIDE`,
     `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
     `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names

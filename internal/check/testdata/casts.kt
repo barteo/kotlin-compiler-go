@@ -500,3 +500,25 @@ fun uk29(l: MutableList<String>) { uUse(l as ArrayList<String>) }
 fun uk30(l: MutableList<String>) { uUse(l as ArrayList<Int>) } // UNCHECKED_CAST
 fun uk31(l: List<String>) { uUse(l as MutableList<String>) }
 fun uk32(s: Sequence<Int>) { uUse(s as List<Int>) } // UNCHECKED_CAST
+fun uk33(): Array<Any> {
+    val a = arrayOfNulls<Any>(5)
+    a as Array<Int> // UNCHECKED_CAST
+    return a as Array<Any> // UNCHECKED_CAST
+}
+fun uk34(a: Any) { if (a is MutableList<*>) uUse(a as ArrayList<String>) } // UNCHECKED_CAST
+fun <T> ul1(t: T?) { uUse(t as T) } // UNCHECKED_CAST
+fun <V1, V : V1> ul2(v: V?) { uUse(v as V) } // UNCHECKED_CAST
+fun <V1, V : V1> ul2b(w: V1) { uUse(w as V) } // UNCHECKED_CAST
+fun <T, K> ul3(x: T & Any) { uUse(x as (K & Any)) } // UNCHECKED_CAST
+fun <T> ul4(t: T?) { uUse(t as? T) } // USELESS_CAST
+abstract class UNested<T> { abstract val keyT: T }
+fun ul5() { uUse(UNested<*>::keyT as UNested<Number>) } // UNCHECKED_CAST
+class UBox2<T>
+inline fun <reified T> ul6(a: Any) {
+    a as T
+    a as UBox2<T> // UNCHECKED_CAST
+    a as UBox2<List<T>> // UNCHECKED_CAST
+}
+fun <T : List<String>> ul7(t: T) { uUse(t as ArrayList<String>) } // UNCHECKED_CAST
+fun <T : ArrayList<String>> ul8(t: T) { uUse(t as ArrayList<String>) }
+fun <T> ul9(t: T) { uUse(t as List<String>) } // UNCHECKED_CAST
