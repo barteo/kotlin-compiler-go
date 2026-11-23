@@ -80,7 +80,7 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member function")
 	case d.Name == "equals" && d.Params[0].Sym != nil && d.Params[0].Sym.Type != types.AnyType.Nullable():
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
-	case (d.Name == "getValue" || d.Name == "setValue") && !c.takesKProperty(d.Params[1]):
+	case (d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate") && !c.takesKProperty(d.Params[1]):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
 	case d.Sym.Resolved:
 		c.operatorReturn(d, owner)
