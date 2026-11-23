@@ -4304,8 +4304,8 @@ tests/inference/kt40396.kt	rejects invalid	on an expected line
 tests/inference/kt41989.kt	accepts valid		
 tests/inference/kt46515.kt	rejects invalid	on an expected line	
 tests/inference/kt47316.kt	accepts valid		
-tests/inference/kt49658.kt	rejects invalid	elsewhere	
-tests/inference/kt49658Strict.kt	rejects invalid	elsewhere	
+tests/inference/kt49658.kt	rejects invalid	on an expected line	
+tests/inference/kt49658Strict.kt	rejects invalid	on an expected line	
 tests/inference/kt49961.kt	skip	LANGUAGE	
 tests/inference/kt50232a.kt	rejects invalid	on an expected line	
 tests/inference/kt53124.kt	accepts valid		

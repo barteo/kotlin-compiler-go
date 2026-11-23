@@ -516,9 +516,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   variable has no function type among its bounds.
 - The branches of an `if` or `when` aren't K2's synthetic call: a
   branch that is a lambda without its parameters' types takes them from
-  the other branches only when the `if` has no expected type, and one
-  takes an expected receiver as its first parameter only when it is a
-  branch's value. Only a branch lambda written without parameters
+  the other branches only when the `if` has no expected type. A lambda
+  takes an expected receiver and context parameters as its first
+  parameters, as in K2, only where it is a branch's value, the
+  initializer of a property or variable of a declared type, or an
+  argument for a parameter whose type is a type parameter. Only a branch lambda written without parameters
   (`{ -> }`) of an `if` or `when` that is a generic call's argument is
   postponed with the call, as K2's synthetic call's arguments are.
 - Conversions during inference are partial. A function value passed for
@@ -573,8 +575,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A lambda's result chooses between overloads of the program's
   functions only when one of them is marked
   `@OverloadResolutionByLambdaReturnType`, as in K2, but between
-  library functions' whether or not they are, since `kc` doesn't read
-  the mark from class files. `@HidesMembers` is read only on the
+  library functions' whether or not they are: `kc` reads the mark from
+  class files only to choose the one candidate that isn't marked when
+  the lambda's result fits none. `@HidesMembers` is read only on the
   program's functions; the standard library's `forEach` hides only
   members that just Java's collection interfaces declare.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only

@@ -15,7 +15,7 @@ Of 10827 test files, 2214 are skipped and 8613 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4421.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4423.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -65,18 +65,18 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21739 of 22025 expected errors (98.7%) on their lines.
+kc reports 21745 of 22025 expected errors (98.7%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2508 | 45 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1461 | 30 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 610 | 25 |
-| `RETURN_TYPE_MISMATCH` | 418 | 407 | 11 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 149 | 10 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 243 | 8 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `INVISIBLE_REFERENCE` | 525 | 519 | 6 |
+| `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 423 | 5 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
 | `TYPE_MISMATCH` | 33 | 28 | 5 |
@@ -118,7 +118,6 @@ kc reports 21739 of 22025 expected errors (98.7%) on their lines.
 | `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 0 | 1 |
 | `AMBIGUOUS_ANNOTATION_ARGUMENT` | 4 | 3 | 1 |
 | `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
-| `CANNOT_INFER_IT_PARAMETER_TYPE` | 7 | 6 | 1 |
 | `COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT` | 5 | 4 | 1 |
 | `COMPILER_REQUIRED_ANNOTATION_AMBIGUITY` | 1 | 0 | 1 |
 | `CONSTRUCTOR_IN_OBJECT` | 13 | 12 | 1 |
@@ -129,6 +128,7 @@ kc reports 21739 of 22025 expected errors (98.7%) on their lines.
 | `ERROR_IN_CONTRACT_DESCRIPTION` | 38 | 37 | 1 |
 | `INACCESSIBLE_OUTER_CLASS_RECEIVER` | 40 | 39 | 1 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 145 | 144 | 1 |
+| `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD` | 2 | 1 | 1 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,11 +137,11 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 9.1% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 71 | 24.8% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 26 | 9.3% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 71 | 25.4% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 27 | 9.4% | `ARGUMENT_TYPE_MISMATCH` 4, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 4, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2 |
-| missing-check | 162 | 56.6% | `UNRESOLVED_REFERENCE` 27, `CANNOT_INFER_PARAMETER_TYPE` 20, `ARGUMENT_TYPE_MISMATCH` 18, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 6 |
+| nearby | 21 | 7.5% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 162 | 57.9% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 20, `CANNOT_INFER_PARAMETER_TYPE` 20, `OVERLOAD_RESOLUTION_AMBIGUITY` 10, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 6 |
 
 ## Errors kotlinc doesn't report
 
@@ -159,12 +159,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
-| `expected n parameter of type _ but n were declared` | 13 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `unresolved import: _` | 11 |
-| `ambiguous call: n candidates for '_' take (_)` | 10 |
-| `expected no parameters, but n were declared` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 10 |
@@ -177,9 +174,12 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `multiple labels are forbidden` | 7 |
 | `operator '_' cannot be applied to Any?` | 7 |
 | `unexpected '_'` | 7 |
+| `ambiguous call: n candidates for '_' take (_)` | 6 |
 | `captured values cannot be initialized because of possible reassignments` | 6 |
 | `names _, __, ___, ... are reserved in Kotlin` | 6 |
-| *102 more* | |
+| `this lambda must return a value of type _` | 6 |
+| `val cannot be reassigned` | 6 |
+| *101 more* | |
 
 ## Unsupported features
 
