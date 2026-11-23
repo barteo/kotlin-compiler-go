@@ -1742,7 +1742,7 @@ func neverMarker(desc string) bool {
 // and @Deprecated its metadata keeps.
 func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 	var d *types.Deprecation
-	since := "" // the level @DeprecatedSinceKotlin gives
+	since, notYet := "", false // the level @DeprecatedSinceKotlin gives
 	for _, an := range a.Annotations {
 		s.Annotations = append(s.Annotations, "L"+internalName(an.Class)+";")
 		switch an.Class {
@@ -1759,6 +1759,9 @@ func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 		case "kotlin/DeprecatedSinceKotlin":
 			for _, arg := range an.Args {
 				switch {
+				case classfile.LaterThanAPI(arg.Value.Str):
+					// A version the API version hasn't reached.
+					notYet = notYet || arg.Name == "warningSince"
 				case arg.Name == "hiddenSince":
 					since = "HIDDEN"
 				case arg.Name == "errorSince" && since == "":
@@ -1766,6 +1769,9 @@ func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 				}
 			}
 		}
+	}
+	if notYet {
+		d = nil
 	}
 	if d != nil && (since == "HIDDEN" || since == "ERROR" && d.Level == "WARNING") {
 		d.Level = since

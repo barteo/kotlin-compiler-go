@@ -170,10 +170,11 @@ func javaDeprecation(d *Deprecation) *Deprecation {
 // deprecationPairs reads the element-value pairs of @kotlin.Deprecated,
 // whose message and level it sets in d, or, with d nil, those of
 // @DeprecatedSinceKotlin, and returns the level its versions give: HIDDEN
-// with hiddenSince, ERROR with errorSince, or "". kc takes each version as
-// reached, as kotlinc does with an API version as new as the class path.
+// with hiddenSince, ERROR with errorSince, or "", of those that APIVersion
+// has reached; NONE if it hasn't reached warningSince, before which the
+// declaration isn't deprecated.
 func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
-	since := ""
+	since, notYet := "", false
 	for range r.u2() {
 		name, err := p.utf8(r.u2())
 		if err != nil {
@@ -181,12 +182,20 @@ func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
 			continue
 		}
 		switch tag := r.u1(); {
-		case d == nil && name == "hiddenSince":
-			r.skip(2)
-			since = "HIDDEN"
-		case d == nil && name == "errorSince":
-			r.skip(2)
-			if since == "" {
+		case d == nil && tag == 's' && (name == "warningSince" || name == "errorSince" || name == "hiddenSince"):
+			v, _ := p.utf8(r.u2())
+			switch {
+			case !LaterThanAPI(v):
+			case name == "warningSince":
+				notYet = true
+				continue
+			default:
+				continue // a level the API version hasn't reached
+			}
+			switch {
+			case name == "hiddenSince":
+				since = "HIDDEN"
+			case name == "errorSince" && since != "HIDDEN":
 				since = "ERROR"
 			}
 		case d != nil && tag == 's' && name == "message":
@@ -199,6 +208,9 @@ func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
 			skipValue(r)
 		}
 	}
+	if notYet {
+		return "NONE"
+	}
 	return since
 }
 
@@ -208,6 +220,9 @@ func sinceDeprecation(d *Deprecation, since string) *Deprecation {
 	if since == "" || d == nil || d.Java {
 		return d
 	}
+	if since == "NONE" {
+		return nil
+	}
 	if since == "HIDDEN" || d.Level == "WARNING" {
 		d.Level = since
 	}
@@ -215,6 +230,32 @@ func sinceDeprecation(d *Deprecation, since string) *Deprecation {
 }
 
 var errTruncated = errors.New("truncated class file")
+
+// APIVersion is the API version kotlinc 2.4 compiles against by default,
+// against which @DeprecatedSinceKotlin's versions are judged.
+const APIVersion = "2.4"
+
+// LaterThanAPI reports whether version v, major.minor or
+// major.minor.patch, is later than APIVersion, as 2.4.1 is: its parts
+// compare as numbers.
+func LaterThanAPI(v string) bool {
+	parts := strings.Split(v, ".")
+	api := strings.Split(APIVersion, ".")
+	for len(api) < len(parts) {
+		api = append(api, "0")
+	}
+	for i, p := range parts {
+		p = strings.TrimLeft(p, "0")
+		q := strings.TrimLeft(api[i], "0")
+		if len(p) != len(q) {
+			return len(p) > len(q)
+		}
+		if p != q {
+			return p > q
+		}
+	}
+	return false
+}
 
 type reader struct {
 	b   []byte

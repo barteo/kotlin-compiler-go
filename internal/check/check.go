@@ -291,6 +291,9 @@ type Checker struct {
 	// maybeNull are the x!! and x ?: y whose x some check of them found
 	// may be null: checked again, x may be smart cast by the first check.
 	maybeNull map[syntax.Expr]bool
+	// qualifierSafe are the safe calls on a class without a companion
+	// object or a package: see noteQualifierSafe.
+	qualifierSafe map[*syntax.Member]bool
 	// typeFacts are, for each x is T, x as T and is condition of a when,
 	// what its check knew of x (see noteTypeFacts).
 	typeFacts map[any]typeFacts

@@ -81,6 +81,8 @@ func (c *Checker) localWarnings() {
 				// As for ?:, a receiver of type Nothing too.
 				if t := n.X.Type(); definitelyNonNull(t) || t.K == types.Nothing && !t.N {
 					c.warnf(n.P, "UNNECESSARY_SAFE_CALL", "unnecessary safe call on a non-null receiver of type '%s'", t)
+				} else if c.qualifierSafe[n] {
+					c.warnf(n.P, "UNNECESSARY_SAFE_CALL", "unnecessary safe call on a non-null receiver")
 				}
 			}
 		case *syntax.Binary:

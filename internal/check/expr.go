@@ -2567,6 +2567,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
 	if x.Safe && c.qualifierValue(x.X) {
+		c.noteQualifierSafe(x)
 		return types.InvalidType
 	}
 	if id, ok := x.X.(*syntax.Ident); ok && c.starQualifierAmbiguity(id) {
@@ -3265,6 +3266,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 
 	case *syntax.Member:
 		if fn.Safe && c.qualifierValue(fn.X) {
+			c.noteQualifierSafe(fn)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3291,6 +3293,10 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			id := &syntax.Ident{Name: "String"} // Class.S(), S a typealias of String
 			id.P = fn.P
 			x.Fun, x.Builtin = id, types.NewString
+			if c.aliasCtors == nil {
+				c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
+			}
+			c.aliasCtors[x] = a // for its deprecation
 			return types.StringType
 		}
 		if cls := c.classRef(fn); cls != nil {

@@ -239,8 +239,9 @@ own tests.
     first of them and outside loops; `UNUSED_ANONYMOUS_PARAMETER` not
     of a parameter whose name the lambda's body uses for another
     variable; `REDUNDANT_VISIBILITY_MODIFIER` not on an override
-    property, nor on an override of a member that inherits its
-    visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
+    `var` whose modifier may widen a setter it inherits, an override
+    property's accessors, nor on an override of a member that inherits
+    its visibility; and `USELESS_CALL_ON_NOT_NULL` not of a callable
     reference.
 
 - Local `external` functions inside an interface's members when the
@@ -251,9 +252,9 @@ own tests.
   `@Deprecated` are checked, the class path's read from its class files
   and metadata. Markers and deprecations with level `WARNING` (Java's
   `@Deprecated` and a Java source's javadoc `@deprecated` among them)
-  give the warnings `OPT_IN_USAGE` and `DEPRECATION`. `@DeprecatedSinceKotlin` and
-  `@SinceKotlin` are read as if their versions were reached: `kc` acts
-  as the newest API version, as `kotlinc` does by default, and has no
+  give the warnings `OPT_IN_USAGE` and `DEPRECATION`. `@DeprecatedSinceKotlin`'s
+  versions are judged against API version 2.4, `kotlinc` 2.4's default,
+  and `@SinceKotlin`'s are read as if reached; `kc` has no
   `-api-version`. A class path's typealias opts in to nothing, as the
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.

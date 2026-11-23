@@ -761,6 +761,51 @@ func (w *optWalker) classLitDeprecation(n *syntax.ClassLit) {
 	}
 }
 
+// qualifierDeprecation reports the classes qualifier q names that are
+// deprecated with level WARNING: cls, which its last name names, and the
+// classes cls is nested in, which the names before it name, as far as
+// they are written: Outer.Nested.
+func (w *optWalker) qualifierDeprecation(q syntax.Expr, cls *types.ClassSym) {
+	for ; cls != nil && !w.deprecated(); cls = cls.Outer {
+		var name string
+		var p syntax.Pos
+		var next syntax.Expr
+		switch x := q.(type) {
+		case *syntax.Member:
+			if x.Safe || x.Prop != nil {
+				return
+			}
+			name, p, next = x.Name, x.P, x.X
+		case *syntax.Ident:
+			if x.Sym != nil {
+				return
+			}
+			name, p = x.Name, x.P
+		default:
+			return
+		}
+		if name != simpleName(cls) {
+			return
+		}
+		if d := classDepr(cls); d.level != "" && !d.isError() {
+			w.deprecatedUse(p, cls.DisplayName(), d)
+		}
+		q = next
+	}
+}
+
+// qualifierNames reports whether qualifier q's last name is the simple
+// name of class cls.
+func qualifierNames(q syntax.Expr, cls *types.ClassSym) bool {
+	switch x := q.(type) {
+	case *syntax.Member:
+		return x.Name == simpleName(cls)
+	case *syntax.Ident:
+		return x.Name == simpleName(cls)
+	}
+	return false
+}
+
 // typeParams walks the bounds of type parameters tps.
 func (w *optWalker) typeParams(tps []*syntax.TypeParam) {
 	for _, tp := range tps {
@@ -849,7 +894,7 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 		cls := w.o.annClass(a)
 		if cls != nil {
 			// A deprecated annotation class, used as an annotation.
-			w.deprecatedUse(a.P, cls.DisplayName(), notHidden(classDepr(cls)))
+			w.deprecatedUse(annotationNamePos(a), cls.DisplayName(), notHidden(classDepr(cls)))
 		}
 		if a.Is("OptIn") && !a.Implicit {
 			w.optInArgs(a)
@@ -1506,6 +1551,9 @@ func (w *optWalker) visit(n any) bool {
 			// A class named as an expression, RequiresOptIn::class.
 			w.annotationAsType(n.X.Pos(), n.Class.C, false)
 			w.classLitDeprecation(n)
+			if _, ok := n.X.(*syntax.Member); ok {
+				w.qualifierDeprecation(n.X, n.Class.C) // A.Companion::class
+			}
 		}
 	case *syntax.CallableRef:
 		w.typeRef(n.Type)
@@ -1583,15 +1631,31 @@ func (w *optWalker) call(n *syntax.Call) {
 		level := classDepr(n.Ctor)
 		var alias *types.AliasSym
 		var aliasLevel depr
-		if id, ok := n.Fun.(*syntax.Ident); ok {
-			for _, a := range w.o.aliases[id.Name] {
-				if a.Class() == n.Ctor {
+		name, qual := "", syntax.Expr(nil)
+		switch f := n.Fun.(type) {
+		case *syntax.Ident:
+			name = f.Name
+		case *syntax.Member:
+			// Outer.Nested() or Outer.Alias(), whose qualifier names
+			// classes too.
+			name, qual = f.Name, f.X
+		}
+		if name != "" {
+			for _, a := range w.o.aliases[name] {
+				if a.Class() == n.Ctor && (qual == nil || a.Outer != nil && qualifierNames(qual, a.Outer)) {
 					alias = a
 					w.require(p, w.o.aliasMarkers(a, 0))
 					if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
 						aliasLevel = aliasLevel.or(deprecation(d.Annotations))
 					}
 				}
+			}
+		}
+		if qual != nil {
+			if alias != nil {
+				w.qualifierDeprecation(qual, alias.Outer)
+			} else if simpleName(n.Ctor) == name {
+				w.qualifierDeprecation(qual, n.Ctor.Outer)
 			}
 		}
 		if n.Sym != nil {
@@ -1613,6 +1677,21 @@ func (w *optWalker) call(n *syntax.Call) {
 		}
 		w.deprecatedUse(p, n.Ctor.DisplayName(), level.or(aliasLevel))
 		return
+	}
+	if n.Builtin == types.NewString {
+		// String() by a typealias: A(), or Outer.A(), which the checker
+		// rewrote to String() and recorded.
+		var as []*types.AliasSym
+		if a := w.c.aliasCtors[n]; a != nil {
+			as = append(as, a)
+		} else if id, ok := n.Fun.(*syntax.Ident); ok && id.Name != "String" {
+			as = w.o.aliases[id.Name]
+		}
+		for _, a := range as {
+			if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok && a.Type == types.StringType {
+				w.deprecatedUse(p, a.Name, deprecation(d.Annotations))
+			}
+		}
 	}
 	if n.SAM && n.T.K == types.Class {
 		// A SAM constructor, Runnable { }: the interface's markers and
@@ -2206,26 +2285,7 @@ func notHidden(d depr) depr {
 }
 
 // apiVersion is the API version kotlinc 2.4 compiles against by default.
-const apiVersion = "2.4"
+const apiVersion = classfile.APIVersion
 
-// newerThanAPI reports whether Kotlin version v, major.minor or
-// major.minor.patch, is later than apiVersion, as 2.4.1 is: its parts
-// are compared as numbers of any length.
-func newerThanAPI(v string) bool {
-	parts := strings.Split(v, ".")
-	api := strings.Split(apiVersion, ".")
-	for len(api) < len(parts) {
-		api = append(api, "0")
-	}
-	for i, p := range parts {
-		p = strings.TrimLeft(p, "0")
-		q := strings.TrimLeft(api[i], "0")
-		if len(p) != len(q) {
-			return len(p) > len(q)
-		}
-		if p != q {
-			return p > q
-		}
-	}
-	return false
-}
+// newerThanAPI reports whether version v is later than apiVersion.
+func newerThanAPI(v string) bool { return classfile.LaterThanAPI(v) }

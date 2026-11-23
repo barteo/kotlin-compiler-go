@@ -2212,6 +2212,15 @@ func (c *Checker) qualifierValue(x syntax.Expr) bool {
 	return false
 }
 
+// noteQualifierSafe records safe call x whose receiver qualifierValue
+// reported, which K2 also warns of as UNNECESSARY_SAFE_CALL.
+func (c *Checker) noteQualifierSafe(x *syntax.Member) {
+	if c.qualifierSafe == nil {
+		c.qualifierSafe = map[*syntax.Member]bool{}
+	}
+	c.qualifierSafe[x] = true
+}
+
 // jdkPackage reports whether class name is in one of the JDK's packages,
 // in which Kotlin code can't be.
 func jdkPackage(name string) bool {
