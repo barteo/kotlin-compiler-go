@@ -398,3 +398,12 @@ fun wonly3(c: Boolean) {
     later3 { bar = 2 }
     use(bar)
 }
+// A when's conditions read its subject variable; a do-while's condition
+// sees its body's variables.
+fun subj1(x: Int) { when (val a = x) { 1 -> use(1); else -> use(2) } }
+fun subj2(x: Any) = when (val c = x) { is String -> 1; else -> 2 }
+fun subj3(x: Int) { when (val e = x) { in 1..2 -> use(1) } }
+fun dw1() { do { var y = 1 } while (y < 10) } // CAN_BE_VAL
+fun dw2() { do { val z = 1; use(2) } while (z < 10) }
+fun dw3() { do { val q = 1; use(2) } while (true) } // UNUSED_VARIABLE
+fun dw4(c: Boolean) { do { var r = 1; r = 2 } while (c && r < 3) } // VARIABLE_INITIALIZER_IS_REDUNDANT

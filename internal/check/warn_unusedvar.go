@@ -124,9 +124,21 @@ func (c *Checker) unusedVarWarnings() {
 			}
 			if n.SubjVar != "" {
 				declare(n.SubjSym, n.SubjVar, n, nil)
+				// A branch's condition compares the subject with its
+				// value, which reads it.
+				if v := u.vars[n.SubjSym]; v != nil && slices.ContainsFunc(n.Branches, func(br *syntax.WhenBranch) bool { return len(br.Conds) > 0 }) {
+					v.read = true
+				}
 			}
 		case *syntax.While:
 			u.blockParent[n.Body] = n
+			if n.Do {
+				// The condition sees the body's variables, declared as
+				// the walk enters it.
+				syntax.Inspect(n.Body, visit)
+				syntax.Inspect(n.Cond, visit)
+				return false
+			}
 		case *syntax.For:
 			u.blockParent[n.Body] = n
 		case *syntax.Try:
@@ -483,7 +495,9 @@ func (u *unusedVars) unreadAfter(sym *types.VarSym, v *localVar, loc stmtLoc) bo
 			}
 		}
 		if b == v.block {
-			return true
+			// The condition of a do-while sees its body's variables.
+			w, ok := u.blockParent[b].(*syntax.While)
+			return !ok || !w.Do || !readsVar(w.Cond, sym)
 		}
 		switch p := u.blockParent[b].(type) {
 		case *syntax.If, *syntax.When:
