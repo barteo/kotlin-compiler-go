@@ -2251,7 +2251,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
-		sym.NoInferRet = d.Ret.NoInfer
+		sym.NoInferRet = noInfer(d.Ret) // In<@NoInfer E> too
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:

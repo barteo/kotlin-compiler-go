@@ -1062,7 +1062,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	sym.Params, ok = t.kparams(f.Params, scope, ok)
 	ret, rok := t.ktype(f.Ret, scope)
 	sym.Ret = ret
-	sym.NoInferRet = f.Ret != nil && f.Ret.NoInfer
+	sym.NoInferRet = kNoInfer(f.Ret)
 	sym.MissingAnno = t.missingTypeAnno(f.Ret)
 	for _, p := range f.Params {
 		if a := t.missingTypeAnno(p.Type); a != "" && sym.ParamMissingAnno == "" {

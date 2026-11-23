@@ -2257,6 +2257,12 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	}
 	for i, t := range ts {
 		p := cd.params[i]
+		if cd.param(i).NoInfer && p.HasVars() {
+			// A @NoInfer parameter's argument adds no constraint, an
+			// integer literal's neither: it is checked against the type
+			// the others infer.
+			continue
+		}
 		if lit, ok := x.Args[i].(*syntax.IntLit); ok && !lit.Long && !lit.Unsigned {
 			if p.K == types.TypeVar && cd.sys.addLit(p, lit) {
 				continue
@@ -2274,11 +2280,6 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			}
 			cd.susps[i] = true
 			cd.sys.sub(t, ft)
-			continue
-		}
-		if cd.param(i).NoInfer && p.HasVars() {
-			// A @NoInfer parameter's argument adds no constraint: it is
-			// checked against the type the others infer.
 			continue
 		}
 		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok && !c.ownParamArg(&cd.callee, x, i) {
