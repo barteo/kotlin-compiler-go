@@ -618,10 +618,16 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   a lambda, an anonymous function or a callable reference initializes a
   property or a variable of that type, which is an error, as with
   `kotlinc`: one passed for a parameter of that type is taken.
-- jSpecify's `@Nullable` and `@NonNull` are read only at the top of a
-  Java method's, parameter's or field's type, and `@NullMarked` and
-  `@NullUnmarked` only on the classes and methods of the program's Java
-  sources, not on packages, modules or class files.
+- Nullability annotations, jSpecify's `@Nullable` and `@NonNull` among
+  them, are read only at the top of a Java method's, parameter's or
+  field's type, and of a type parameter's bound: there, from Java sources
+  and class files, a not-null one on a type parameter's only bound, `T
+  extends @NotNull Object`, makes the bound and the type parameter's uses
+  in its class's or method's members non-null, as in K2. One on a bound
+  among several isn't read, nor are those inside a type, such as
+  `JavaBox<@NotNull T>`. `@NullMarked` and `@NullUnmarked` are read only
+  on the classes and methods of the program's Java sources, not on
+  packages, modules or class files.
 - Of Java members, only those of the program's Java sources count
   toward an inherited member that must be overridden because it has
   several implementations; a class-path Java class's do not.

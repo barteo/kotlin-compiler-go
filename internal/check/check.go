@@ -786,7 +786,7 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 			Abstract: m.Access&classfile.AccAbstract != 0}
 		ok := t.signature(f, m.Desc, false)
 		if m.Sig != "" {
-			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
+			ok = t.methodSignature(f, owner, m.Sig, len(f.Params), m.BoundAnnotations)
 		}
 		if !ok {
 			continue
