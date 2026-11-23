@@ -227,7 +227,10 @@ own tests.
   - `DANGEROUS_CHARACTERS` not of a function type's parameter names,
     nor of a destructuring `for` loop's.
   - With `-Wextra`: `UNREACHABLE_CODE` only after a statement that
-    always jumps, not the dead code of a class's initialization order;
+    always jumps, in the right operand of `true ||` and `false &&` and
+    in the body of `while (false)`, not after a loop whose only `break`
+    is in such an operand, nor the dead code of a class's
+    initialization order;
     `ASSIGNED_VALUE_IS_NEVER_READ` and
     `VARIABLE_INITIALIZER_IS_REDUNDANT` only where no statement that
     may read the value comes before it is overwritten or out of scope,

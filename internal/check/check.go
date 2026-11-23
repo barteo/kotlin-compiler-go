@@ -332,6 +332,9 @@ type Checker struct {
 	// deadBlocks are the blocks in code reported as unreachable, and the
 	// bodies of callable references' lambdas, which aren't written.
 	deadBlocks map[*syntax.Block]bool
+	// deadLogic are the && and || operations in code reported as
+	// unreachable, whose right operands deadLogicOperand doesn't judge.
+	deadLogic map[*syntax.Binary]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.

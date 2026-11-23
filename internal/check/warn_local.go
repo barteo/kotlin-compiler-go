@@ -91,6 +91,9 @@ func (c *Checker) localWarnings() {
 				c.emptyRangeWarning(n)
 			}
 			c.binaryWarnings(n)
+			if c.u.extraWarnings {
+				c.deadLogicOperand(n)
+			}
 			c.enumComparisonWarning(n)
 			if n.Op == syntax.EQ_EQ_EQ || n.Op == syntax.NOT_EQ_EQ {
 				c.identityWarnings(n)
@@ -167,8 +170,11 @@ func (c *Checker) localWarnings() {
 				c.unreachableWarnings(n)
 			}
 		case *syntax.While:
-			if c.u.extraWarnings && n.Do {
+			switch {
+			case c.u.extraWarnings && n.Do:
 				c.deadDoWhileCond(n)
+			case c.u.extraWarnings:
+				c.deadWhileBody(n)
 			}
 		case *syntax.StringLit:
 			if c.u.experimentalWarnings {

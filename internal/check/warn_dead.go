@@ -270,7 +270,10 @@ func (c *Checker) operandJumps(e syntax.Expr) bool {
 	case *syntax.Index:
 		return c.cfgJumps(e.X, false) || !hasSafeCall(e.X) && c.anyCFGJumps(e.Args)
 	case *syntax.Binary:
-		return c.cfgJumps(e.X, false) || e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS && c.cfgJumps(e.Y, false)
+		// true && y and false || y always evaluate y.
+		l, lit := unchecked(e.X).(*syntax.BoolLit)
+		always := e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS || lit && l.Val == (e.Op == syntax.AND)
+		return c.cfgJumps(e.X, false) || always && c.cfgJumps(e.Y, false)
 	case *syntax.Unary:
 		return c.cfgJumps(e.X, false)
 	case *syntax.As:
@@ -427,6 +430,13 @@ func (c *Checker) markDead(n any) {
 		switch n := n.(type) {
 		case *syntax.Block:
 			c.markBlockDead(n)
+		case *syntax.Binary:
+			if n.Op == syntax.AND || n.Op == syntax.OR {
+				if c.deadLogic == nil {
+					c.deadLogic = map[*syntax.Binary]bool{}
+				}
+				c.deadLogic[n] = true
+			}
 		case *syntax.ClassDecl:
 			if c.deadClasses == nil {
 				c.deadClasses = map[*syntax.ClassDecl]bool{}
@@ -435,6 +445,37 @@ func (c *Checker) markDead(n any) {
 		}
 		return true
 	})
+}
+
+// deadWhileBody reports while loop s, at its start, if its condition is
+// false, whose body never runs: as kotlinc, only the literal.
+func (c *Checker) deadWhileBody(s *syntax.While) {
+	if l, ok := unchecked(s.Cond).(*syntax.BoolLit); ok && !l.Val && !c.deadBlocks[s.Body] {
+		c.unreachable(s.P)
+		c.markDead(s.Body)
+	}
+}
+
+// deadLogicOperand reports the right operand of x, true || y or
+// false && y, which never runs: as kotlinc, only of a Boolean literal,
+// not a constant, and each operand of a && or || on that side apart, as
+// its graph has them.
+func (c *Checker) deadLogicOperand(x *syntax.Binary) {
+	l, ok := unchecked(x.X).(*syntax.BoolLit)
+	if c.deadLogic[x] || x.Y == nil || !ok || l.Val != (x.Op == syntax.OR) || x.Op != syntax.OR && x.Op != syntax.AND {
+		return
+	}
+	var leaves func(e syntax.Expr)
+	leaves = func(e syntax.Expr) {
+		if b, ok := e.(*syntax.Binary); ok && (b.Op == syntax.AND || b.Op == syntax.OR) && b.X != nil && b.Y != nil {
+			leaves(b.X)
+			leaves(b.Y)
+			return
+		}
+		c.unreachable(syntax.StartPos(e))
+	}
+	leaves(x.Y)
+	c.markDead(x.Y)
 }
 
 func (c *Checker) markBlockDead(b *syntax.Block) {
