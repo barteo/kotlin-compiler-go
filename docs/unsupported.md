@@ -131,7 +131,8 @@ own tests.
     smart cast), to a generic type from `Any` or a star-projected
     supertype, to a function type from another of its class, or to a
     generic type whose type arguments its operand's type, smart casts
-    included, doesn't tell, judged as `kotlinc` does but only where
+    included, doesn't tell (a primitive or a `String` only where it
+    isn't smart cast), judged as `kotlinc` does but only where
     that type's arguments map to the target class's type parameters
     one by one, without projections, and not of a lambda or a
     reference to an interface; of a platform operand only where its

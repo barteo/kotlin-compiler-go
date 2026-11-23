@@ -539,3 +539,29 @@ fun um8(n: Int) = n as Number
 fun um9(n: Number) = n as java.math.BigDecimal
 fun um10(n: Char) = n as Number // CAST_NEVER_SUCCEEDS
 fun um11(n: Any) { if (n is Number) uUse(n is String) } // IMPOSSIBLE_IS_CHECK_WARNING
+
+// A built-in type's cast to a generic type that its own supertype of
+// that class isn't a subtype of, Int's Comparable<Int> of Comparable<Any>.
+fun ub1(i: Int) = i as Comparable<Any> // UNCHECKED_CAST
+fun ub2(i: Int) = i as Comparable<Int>
+fun ub3(i: Int) = i as Comparable<*>
+fun ub4(s: String) = s as Comparable<Any> // UNCHECKED_CAST
+fun ub5(s: String) = s as Comparable<String>
+fun ub6(d: Double?) = d as Comparable<Any> // UNCHECKED_CAST
+fun ub7(b: Boolean) = b as? Comparable<Any?> // UNCHECKED_CAST
+fun ub8(l: Long) = l as Comparable<Number> // UNCHECKED_CAST
+fun ub9(c: Char) = c as Comparable<Char>
+fun ub10(s: String) = s as CharSequence
+fun <T> ub11(i: Int) = i as Comparable<T> // UNCHECKED_CAST
+fun ub12(i: Int) { i as Comparable<Any>; uUse(i as? Comparable<Any>) } // UNCHECKED_CAST
+
+// Unit is a final class; null is a Nothing?.
+fun uu1(i: Int) = i as? Unit // CAST_NEVER_SUCCEEDS
+fun uu2(s: String) = s as Unit // CAST_NEVER_SUCCEEDS
+fun uu3(a: Any) = a as Unit
+fun uu4(u: Unit) = u is Unit // USELESS_IS_CHECK
+fun un1() = null is String? // USELESS_IS_CHECK
+fun un2() = null !is String? // USELESS_IS_CHECK
+fun un3() = null !is Nothing
+fun un4() = null is Any
+fun un5(x: Nothing?) = x is Int? // USELESS_IS_CHECK

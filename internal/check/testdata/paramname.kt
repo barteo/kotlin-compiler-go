@@ -42,3 +42,10 @@ abstract class PnS : CharSequence {
 abstract class PnC : Comparable<PnC> { override fun compareTo(o: PnC) = 0 } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
 abstract class PnE : MutableMap.MutableEntry<String, String> { override fun setValue(newValue: String) = "" }
 abstract class PnJ : java.util.AbstractList<String>() { override fun get(i: Int) = "" }
+
+// A Java interface's equals(Object), as Comparator's, doesn't override
+// Any's; a Java class's does, as AbstractList's.
+interface PnEq { override fun equals(other: Any?): Boolean }
+class PnEq1 : PnEq { override fun equals(x: Any?) = true } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+abstract class PnEq2 : Comparator<String> { override fun equals(x: Any?) = true } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+abstract class PnEq3 : java.util.AbstractList<String>() { override fun equals(x: Any?) = true }

@@ -557,6 +557,7 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 			// From MutableList<out Any?>, which tells as little, to type
 			// arguments written: those of a bare type follow from it.
 		case (t.K == types.Class || t.K == types.TypeParam) && c.castErased(x, t, target):
+		case c.builtinCastErased(x, t, target):
 		default:
 			return
 		}
@@ -564,6 +565,24 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 		return
 	}
 	c.warnf(x.P, "UNCHECKED_CAST", "unchecked cast of '%s' to '%s'", t, target)
+}
+
+// builtinCastErased reports whether cast x of a value of a built-in type
+// t, a primitive or String, nullable or not, to class type target, which
+// has type arguments, is unchecked: t's supertype of target's class, as
+// Comparable<Int> of Int, isn't a subtype of target, Comparable<Any>.
+// Not of a smart-cast value, whose smart casts may tell more.
+func (c *Checker) builtinCastErased(x *syntax.As, t, target types.Type) bool {
+	t = t.NonNull()
+	if !t.IsPrimitive() && t.K != types.String {
+		return false
+	}
+	f, ok := c.typeFacts[x]
+	if !ok || len(f.casts) > 0 || !f.certain() || !certainCastType(target) {
+		return false
+	}
+	sup, ok := c.asSuper(t, target.C)
+	return ok && certainCastType(sup) && !c.subtype(sup, target.NonNull())
 }
 
 // castErased reports whether cast x of a value of class type t to class

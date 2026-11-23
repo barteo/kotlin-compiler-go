@@ -74,9 +74,13 @@ func stableParamNames(f *types.FunSym) bool {
 
 // overriddenByAnother reports whether another of the functions over,
 // one of a subclass of o's class, overrides o: then o isn't overridden
-// directly.
+// directly. As with kotlinc, a Java interface's equals(Object), as
+// Comparator's, doesn't override Any's.
 func overriddenByAnother(o *types.FunSym, over []*types.FunSym) bool {
 	for _, g := range over {
+		if o.Owner.Name == "java/lang/Object" && g.Owner.Interface && isJavaClass(g.Owner) {
+			continue
+		}
 		if g != o && g.Owner != o.Owner && g.Owner.IsSubclassOf(o.Owner) {
 			return true
 		}

@@ -223,6 +223,9 @@ func (c *Checker) castInfo(t types.Type, depth int) (castTypeInfo, bool) {
 		if k := javaMappedKind(cls.Name); k != types.Invalid {
 			return c.castInfo(types.Type{K: k}, depth+1)
 		}
+		if cls.Name == "kotlin/Unit" {
+			return c.castInfo(types.UnitType, depth+1) // the object's class, of is Unit
+		}
 		if cls.Missing || mappedClasses[cls.Name] || cls.Anonymous {
 			return castTypeInfo{}, false
 		}
