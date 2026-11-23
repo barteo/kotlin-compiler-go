@@ -2,6 +2,7 @@
 //
 //	kc [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
 //	kc -serve
+//	kc -version
 //
 // kc -serve compiles again and again, as a tool that runs many small
 // compiles (bench/conformance) asks: see serve.go.
@@ -16,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 
@@ -25,7 +27,16 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
 
+// version is the release this kc was built as. The release workflow
+// (.github/workflows/release.yml) sets it with
+// -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "-version" || os.Args[1] == "--version") {
+		printVersion(os.Stdout)
+		return
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "-serve" || os.Args[1] == "--serve") {
 		// The answers go to stdout, where what the compiler wrote would
 		// garble them.
@@ -39,6 +50,34 @@ func main() {
 	}
 	code, _ := compile(os.Args[1:], os.Stderr, nil)
 	os.Exit(code)
+}
+
+// printVersion writes kc's version, the Go release it was built with and
+// its platform. A build that isn't a release's names its commit, if Go
+// recorded one.
+func printVersion(w io.Writer) {
+	v := version
+	if v == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			var rev, modified string
+			for _, s := range info.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					rev = s.Value
+				case "vcs.modified":
+					modified = s.Value
+				}
+			}
+			if rev != "" {
+				v += " (" + rev
+				if modified == "true" {
+					v += ", modified"
+				}
+				v += ")"
+			}
+		}
+	}
+	fmt.Fprintf(w, "kc %s %s %s/%s\n", v, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 // compile compiles as the command line args say, writing diagnostics to
@@ -93,7 +132,7 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	multiPlatform := flags.Bool("Xmulti-platform", false, "compile multiplatform sources' expect and actual declarations, as kotlinc's -Xmulti-platform, without which they are errors")
 	jvmDefault := flags.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(stderr, "usage: kc -version | kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] files-or-dirs...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
