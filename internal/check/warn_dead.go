@@ -36,17 +36,7 @@ func (c *Checker) unreachableWarnings(b *syntax.Block) {
 	if c.deadBlocks[b] {
 		return
 	}
-	// The statement that jumps in kotlinc's graph, by kc's judgment
-	// (stmtJumps) or not: x::f of an x that jumps, an object expression
-	// whose superclass's constructor call jumps.
-	n, j := len(b.Stmts), -1
-	if k, ok := c.blockJumps[b]; ok {
-		n, j = k+1, k
-	}
-	i := slices.IndexFunc(b.Stmts[:n], func(s syntax.Stmt) bool {
-		_, loop := s.(*syntax.While)
-		return (!loop || j >= 0 && s == b.Stmts[j]) && c.stmtCFGJumps(s)
-	})
+	i := c.jumpingStmt(b)
 	if i < 0 {
 		return
 	}
@@ -56,10 +46,26 @@ func (c *Checker) unreachableWarnings(b *syntax.Block) {
 	}
 }
 
+// jumpingStmt returns the index of the statement of block b that always
+// jumps in kotlinc's graph, by kc's judgment (stmtJumps) or not: x::f of
+// an x that jumps, an object expression whose superclass's constructor
+// call jumps. A loop is one only if kc found it never ends. It returns -1
+// if there is none.
+func (c *Checker) jumpingStmt(b *syntax.Block) int {
+	n, j := len(b.Stmts), -1
+	if k, ok := c.blockJumps[b]; ok {
+		n, j = k+1, k
+	}
+	return slices.IndexFunc(b.Stmts[:n], func(s syntax.Stmt) bool {
+		_, loop := s.(*syntax.While)
+		return (!loop || j >= 0 && s == b.Stmts[j]) && c.stmtCFGJumps(s)
+	})
+}
+
 // deadDoWhileCond reports the condition of do-while loop s if its body
 // always jumps, but not by a continue of s, which goes to the condition.
 func (c *Checker) deadDoWhileCond(s *syntax.While) {
-	if c.deadBlocks[s.Body] || !c.blockCFGJumps(s.Body) {
+	if c.deadBlocks[s.Body] || c.jumpingStmt(s.Body) < 0 {
 		return
 	}
 	cont := false
