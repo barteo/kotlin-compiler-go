@@ -110,6 +110,10 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 			c.errorf(cb.Type.P, "non-reified type parameters cannot be used by catch parameters")
 			t = types.InvalidType
 		}
+		if t.K == types.Nothing && !t.N {
+			c.errorf(cb.Type.P, "throwable type mismatch: actual type is 'Nothing'")
+			t = types.InvalidType
+		}
 		if t.K != types.Invalid && !c.throwable(t) {
 			c.errorf(cb.Type.P, "the type of a catch parameter must be a subtype of Throwable")
 			t = types.InvalidType

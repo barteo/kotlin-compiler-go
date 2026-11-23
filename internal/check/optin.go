@@ -1496,6 +1496,13 @@ func (w *optWalker) visit(n any) bool {
 		if _, ok := n.(*syntax.VarStmt); ok {
 			w.markerTargetErrors(as, true)
 		}
+		if _, ok := n.(*syntax.ObjectExpr); ok {
+			for i := range as {
+				if as[i].Is("SubclassOptInRequired") {
+					w.errorf(as[i].P, "'@SubclassOptInRequired' is not applicable to a final class")
+				}
+			}
+		}
 		w.push(as)
 		prev := w.entered
 		w.entered = n

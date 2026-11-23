@@ -3,6 +3,7 @@ package check
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -492,6 +493,13 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 			for _, g := range c.overridden(cls, f) {
 				conflict = conflict || component && !g.Abstract
 				copies = copies || !component
+				if component && g.Suspend {
+					p := d.P
+					if cp := dataProp(d, name); cp != nil {
+						p = cp.P
+					}
+					c.errorf(p, "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", name, name, g.Owner.DisplayName())
+				}
 			}
 		}
 	}
@@ -501,6 +509,23 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 	if copies {
 		c.errorf(d.P, "the copy function of data class '%s' overrides a function of a supertype, whose default values it can't declare", cls.DisplayName())
 	}
+}
+
+// dataProp returns the parameter of data class d's primary constructor
+// whose property componentN, name, returns, or nil.
+func dataProp(d *syntax.ClassDecl, name string) *syntax.CtorParam {
+	n, err := strconv.Atoi(strings.TrimPrefix(name, "component"))
+	if err != nil {
+		return nil
+	}
+	for _, cp := range d.CtorParams {
+		if cp.IsProp {
+			if n--; n == 0 {
+				return cp
+			}
+		}
+	}
+	return nil
 }
 
 // checkDelegatedMembers checks the members that class d's delegation

@@ -905,7 +905,12 @@ func (c *Checker) resolveImports() {
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
 			if starred[imp.Path] {
-				continue // imported twice: its members aren't overloads of themselves
+				// Imported twice: its members aren't overloads of
+				// themselves. An object's is an error each time.
+				if owner := c.importOwner(imp.Path); c.u.Pkgs[imp.Path] == nil && owner != nil && owner.Object && !owner.External && !ext.hasPackage(name) && !ext.isKotlinPackage(imp.Path) {
+					c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+				}
+				continue
 			}
 			starred[imp.Path] = true
 			user := c.u.Pkgs[imp.Path]
@@ -3026,6 +3031,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	}
 	if cls.Entries != nil && !cls.External {
 		c.errorf(p, "enum types cannot be instantiated")
+		c.args(x, nil)
+		return types.InvalidType
+	}
+	if cls.Annotation && x.FromRef {
+		c.errorf(p, "annotation class cannot be instantiated")
 		c.args(x, nil)
 		return types.InvalidType
 	}

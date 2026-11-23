@@ -1030,15 +1030,19 @@ func (p *parser) parseParenType() *TypeRef {
 	pos := p.expect(LPAREN).Pos
 	var params []*TypeRef
 	var named []Pos
+	var names []string
 	for {
 		p.skipNL()
 		if p.at(RPAREN) {
 			break
 		}
+		name := ""
 		if p.at(IDENT) && p.toks[p.i+1].Kind == COLON {
 			named = append(named, p.toks[p.i].Pos)
+			name = p.toks[p.i].Text
 			p.i += 2
 		}
+		names = append(names, name)
 		params = append(params, p.parseType())
 		p.skipNL()
 		if !p.comma() {
@@ -1048,7 +1052,7 @@ func (p *parser) parseParenType() *TypeRef {
 	p.expect(RPAREN)
 	if p.peekPastNL() == ARROW {
 		p.op()
-		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named}
+		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named, Names: names}
 	}
 	if len(params) != 1 {
 		p.unexpected("'->'")
@@ -2203,6 +2207,11 @@ func (p *parser) annotation() Annotation {
 	if p.at(LBRACK) {
 		p.i = p.matching(p.i) + 1
 		return a
+	}
+	if prev := p.toks[p.i-1]; p.tok().Pos != (Pos{prev.Pos.Line, prev.Pos.Col + 1}) {
+		// An entry of a list, @[A B], which the lexer made @A @B: the
+		// annotation is at its name.
+		a.P = p.tok().Pos
 	}
 	last := p.ident()
 	a.Name = last.Text

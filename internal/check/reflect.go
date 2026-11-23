@@ -268,7 +268,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	spread := -1 // pass this parameter, an array, to a vararg
 	// call calls fn with the parameters ps[from:].
 	call := func(fn syntax.Expr, ps []types.Type, from int) syntax.Expr {
-		cl := &syntax.Call{Fun: fn, RefArgs: ps[from:]}
+		cl := &syntax.Call{Fun: fn, RefArgs: ps[from:], FromRef: true}
 		cl.P = p
 		for i := from; i < len(ps); i++ {
 			a := ident(refParam(i))

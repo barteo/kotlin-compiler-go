@@ -1207,6 +1207,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			}
 		}
 		own := memberDesc(f)
+		if !fd.Explicit {
+			c.inferredVisibility(fd, over)
+		}
 		for _, o := range over {
 			if o.Infix {
 				f.Infix = true // an override of an infix function is one
@@ -2102,6 +2105,11 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 				has = impl
 			}
 		}
+		if i := slices.IndexFunc(cls.Supers, func(st types.Type) bool { return st.C != nil && st.C.Name == "java/lang/Cloneable" }); i >= 0 && len(has) == 1 && name == "clone" && !has[0].C.IsSubclassOf(cls.Supers[i].C) {
+			// kotlin.Cloneable declares clone(), which java.lang.Cloneable
+			// doesn't: a superclass's is one of two.
+			has = append(has, cls.Supers[i])
+		}
 		if len(has) > 1 {
 			c.errorf(s.P, "many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<%s>'", has[0].C.DisplayName())
 			return types.InvalidType, false
@@ -2631,6 +2639,31 @@ func (c *Checker) overrideVisibility(p syntax.Pos, name string, ov, v syntax.Vis
 		c.errorf(p, "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
 	case cmp > 0:
 		c.errorf(p, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	}
+}
+
+// inferredVisibility reports override fd, without a visibility, of
+// members over none of which is the wider of the others, as an internal
+// and a protected one: kotlinc then gives it the protected one, which
+// the internal one's can't change to.
+func (c *Checker) inferredVisibility(fd *syntax.FunDecl, over []*types.FunSym) {
+	var internal *types.FunSym
+	protected := false
+	for _, o := range over {
+		if o.PackagePrivate || inheritsVisibility(o.Decl) {
+			continue
+		}
+		switch memberVisibility(o) {
+		case syntax.Public:
+			return
+		case syntax.Internal:
+			internal = o
+		case syntax.Protected:
+			protected = true
+		}
+	}
+	if internal != nil && protected {
+		c.overrideVisibility(fd.P, fd.Name, syntax.Protected, syntax.Internal, internal.Owner)
 	}
 }
 
