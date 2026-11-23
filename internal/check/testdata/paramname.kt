@@ -32,3 +32,13 @@ class D2 : D1() {
 class F : (String) -> Unit {
     override fun invoke(name: String) {}
 }
+// The members of Kotlin's built-in classes have Kotlin's names.
+class PnA { override fun equals(o: Any?) = true; override fun hashCode() = 0 } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+abstract class PnL : List<String> { override fun contains(o: String) = true } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+abstract class PnS : CharSequence {
+    override fun subSequence(a: Int, endIndex: Int): CharSequence = "" // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+    override fun get(i: Int) = 'a' // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+}
+abstract class PnC : Comparable<PnC> { override fun compareTo(o: PnC) = 0 } // PARAMETER_NAME_CHANGED_ON_OVERRIDE
+abstract class PnE : MutableMap.MutableEntry<String, String> { override fun setValue(newValue: String) = "" }
+abstract class PnJ : java.util.AbstractList<String>() { override fun get(i: Int) = "" }

@@ -604,6 +604,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	mapCollectionMembers(cls)
 	purelyImplement(cls, pure)
 	kotlinParamNames(cls)
+	builtinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
 		// intValue() methods on the JVM. They are all abstract, though
