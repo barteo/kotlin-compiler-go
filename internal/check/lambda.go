@@ -535,10 +535,17 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		c.retAllowed, c.loops, c.ctorArgs = false, nil, false
 	}
 	c.allowRange = false
+	platUnit := w.ret.P && isUnitClass(w.ret)
+	if platUnit {
+		// A Java Function0<Unit>'s Unit!, or bareUnitResult's: the lambda
+		// is coerced to Unit, but K2 doesn't say its last expression is
+		// unused.
+		w.ret = types.UnitType
+	}
 	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, nothingTail: whenTailReturn(x)}
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], lr)
 	unit := w.ret.K == types.Unit
-	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon
+	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon && !platUnit
 	var bt types.Type
 	if unit {
 		if len(c.stubs) > 0 {
@@ -635,7 +642,12 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	case unit:
 		return ps, types.UnitType, ok
 	case w.ret.K != types.Invalid && w.check:
-		c.assignable(bt, w.ret, resultPos(x))
+		if !lr.bare || !w.ret.N || !isUnitClass(w.ret) {
+			// But a bare return@l, which is an error for a Unit?, drops
+			// the last expression's value: val f: () -> Unit? = l@ {
+			// if (b) return@l; "" }.
+			c.assignable(bt, w.ret, resultPos(x))
+		}
 		return ps, w.ret, ok
 	}
 	return ps, bt, ok
@@ -3539,6 +3551,31 @@ func (c *Checker) nullableUnitResult(raw, t types.Type, sub types.Subst) types.T
 		t.A = types.MakeArgs(args)
 	}
 	return t
+}
+
+// bareUnitResult returns function type t, but with Unit for a Unit?
+// result, as K2 has for a lambda argument that leaves with a bare
+// return@l: run<Unit?> l@ { if (b) return@l; "" } is coerced to Unit, and
+// its return@l null is a null for Unit. The Unit is a platform one, as a
+// Java Function0<Unit>'s, whose lambda's last expression isn't unused.
+func bareUnitResult(t types.Type) types.Type {
+	if t.K != types.Class || !t.C.Func || t.A == nil || len(t.A.List) == 0 {
+		return t
+	}
+	n := len(t.A.List) - 1
+	if r := t.A.List[n].T; r.N && isUnitClass(r) {
+		args := slices.Clone(t.A.List)
+		u := types.UnitType
+		u.P = true
+		args[n].T = u
+		t.A = types.MakeArgs(args)
+	}
+	return t
+}
+
+// isUnitClass reports whether t is Unit, of any nullability.
+func isUnitClass(t types.Type) bool {
+	return t.K == types.Unit || t.K == types.Class && t.C.Name == "kotlin/Unit"
 }
 
 // outerBounds gives each variable in a lambda's parameter types that has
