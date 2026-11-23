@@ -87,7 +87,12 @@ func (c *Checker) unusedVarWarnings() {
 				u.stmtLoc[st] = stmtLoc{n, i}
 				switch st := st.(type) {
 				case *syntax.VarStmt:
-					declare(st.Sym, st.Name, st, n)
+					// Not for (x: T in xs)'s x, which the checker declares
+					// as val x: T = <element>: kotlinc doesn't report a
+					// loop's variable.
+					if id, ok := st.Init.(*syntax.Ident); !ok || !strings.HasPrefix(id.Name, "<element") {
+						declare(st.Sym, st.Name, st, n)
+					}
 				case *syntax.Destructure:
 					for _, vs := range st.Stmts {
 						declare(vs.Sym, vs.Name, vs, n)

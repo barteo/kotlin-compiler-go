@@ -416,3 +416,8 @@ fun postCond(): Int {
     if (k++ < 3) use(1) // ASSIGNED_VALUE_IS_NEVER_READ
     return 0
 }
+fun loopVars(m: Map<Int, Int>) {
+    for (i: Int? in 1 downTo 0) {}
+    for (j: Any in listOf(1)) {}
+    for ((a, b) in m) {} // UNUSED_VARIABLE
+}
