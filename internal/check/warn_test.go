@@ -928,3 +928,56 @@ func TestWarningsRedundantTypes(t *testing.T) {
 func TestWarningsSmall(t *testing.T) {
 	checkReference(t, "testdata/smallwarn.kt", Options{Warnings: true})
 }
+
+// TestWarningsOptInParallel checks files with @OptIn arguments on
+// several goroutines, as the files' checks run in parallel, and expects
+// each file's warning of an @OptIn without arguments.
+func TestWarningsOptInParallel(t *testing.T) {
+	lib, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skip(err)
+	}
+	jdk, err := classpath.FindJDK()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open(jdk, []string{lib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker, errs := syntax.Parse("exp.kt", "@RequiresOptIn annotation class Exp\n@Exp fun exp() {}\n")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	fs := []*syntax.File{marker}
+	for i := range 16 {
+		f, errs := syntax.Parse(fmt.Sprintf("f%d.kt", i), fmt.Sprintf(`@OptIn(Exp::class) fun a%d() = exp()
+fun b%d() {
+    @OptIn(Exp::class) fun local() = exp()
+    local()
+}
+@OptIn() fun c%d() {}
+`, i, i, i))
+		if len(errs) > 0 {
+			t.Fatal(errs[0])
+		}
+		fs = append(fs, f)
+	}
+	ds, err := CheckOptions(context.Background(), fs, NewLibrary(cp), 8, nil, Options{Warnings: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, d := range ds {
+		if !d.IsWarning() {
+			t.Errorf("%s:%d: %s", d.File, d.Pos.Line, d.Msg)
+			continue
+		}
+		if d.Name == "OPT_IN_WITHOUT_ARGUMENTS" && d.Pos.Line == 6 {
+			got[d.File]++
+		}
+	}
+	if len(got) != 16 {
+		t.Errorf("OPT_IN_WITHOUT_ARGUMENTS in %d files, want 16: %v", len(got), got)
+	}
+}

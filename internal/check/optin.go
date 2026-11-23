@@ -931,7 +931,7 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 // arguments, and its arguments that aren't the classes of opt-in
 // requirement markers.
 func (w *optWalker) optInArgs(a *syntax.Annotation) {
-	values, ok := w.o.u.optInValues[a]
+	stored, ok := w.o.u.optInValues.Load(a)
 	if !ok {
 		return // not kotlin.OptIn, or its arguments have errors
 	}
@@ -939,7 +939,7 @@ func (w *optWalker) optInArgs(a *syntax.Annotation) {
 		w.c.warnf(a.P, "OPT_IN_WITHOUT_ARGUMENTS", "'@OptIn' without arguments has no effect")
 		return
 	}
-	for _, v := range values {
+	for _, v := range stored.([]syntax.AnnotationValue) {
 		for _, e := range v.Elems {
 			lit, ok := e.X.(*syntax.ClassLit)
 			if !ok || lit.Class.K != types.Class || lit.Class.C == nil || lit.Class.C.Missing || w.o.marker(lit.Class.C) != nil {
