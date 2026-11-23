@@ -1341,21 +1341,35 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 // an interface A and a class B is allowed, and so is a === b for an open
 // class and an abstract one, and a == b for two nullable enums.
 func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	return c.equalityCompat(op, xt, yt) == eqError
+}
+
+// The results of equalityCompat.
+const (
+	eqOK = iota
+	eqWarning
+	eqError
+)
+
+// equalityCompat is equalityInapplicable with K2's warning:
+// EQUALITY_NOT_APPLICABLE_WARNING where it is inapplicable but K1 let
+// both types have subtypes.
+func (c *Checker) equalityCompat(op syntax.Kind, xt, yt types.Type) int {
 	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
 	if op == syntax.EQ || op == syntax.NE {
 		if (c.enumType(x) || c.enumType(y)) && types.MayBeNull(xt) && types.MayBeNull(yt) {
 			// K1 let a nullable enum be compared with any nullable type,
 			// as both may be null: K2 only warns (see
 			// enumComparisonWarning).
-			return false
+			return eqOK
 		}
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
-			return false
+			return eqOK
 		}
 	} else if !types.IsPrimitiveKind(x.K) && !types.IsPrimitiveKind(y.K) && types.MayBeNull(xt) && types.MayBeNull(yt) {
 		// A primitive has no identity, nullable or not: a === b for an
 		// Int? and a String? is an error.
-		return false
+		return eqOK
 	}
 	final := func(t types.Type) bool {
 		switch t.K {
@@ -1374,12 +1388,12 @@ func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 		return t.K != types.TypeParam
 	}
 	if !final(x) && !final(y) && !(class(x) && class(y)) {
-		return false
+		return eqOK
 	}
 	if canHaveSubtypesK1(x) && canHaveSubtypesK1(y) && c.missedByK1Enums(xt, yt) {
-		return false // only a warning
+		return eqWarning
 	}
-	return true
+	return eqError
 }
 
 // paramEqualityInapplicable reports whether K2 rejects comparing a value
@@ -1452,7 +1466,8 @@ func (c *Checker) missedByK1Enums(xt, yt types.Type) bool {
 }
 
 // canHaveSubtypesK1 reports whether a non-null type t can have subtypes,
-// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final can,
+// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final or
+// is an enum can,
 // and so can a final generic one with a star, an in projection or an out
 // argument that can.
 func canHaveSubtypesK1(t types.Type) bool {
@@ -1464,7 +1479,9 @@ func canHaveSubtypesK1(t types.Type) bool {
 		return false
 	}
 	t.C.Ensure()
-	if t.C.Interface || !t.C.Final {
+	if t.C.Interface || !t.C.Final || t.C.Super != nil && t.C.Super.Name == "java/lang/Enum" {
+		// K1's isFinalClass is false of an enum class, whose entries
+		// may be its subclasses.
 		return true
 	}
 	if t.A == nil {
@@ -4844,10 +4861,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.OpType.K == types.Invalid {
 					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
-					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid && c.incompatibleEnums(st, ct) {
-						// A subject smart cast to an enum, compared with a
-						// value its declared type may be equal to: as
-						// kotlinc, only a warning (see whenEnumWarnings).
+					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid {
+						// A smart-cast subject, compared with a value its
+						// declared type may be equal to: as kotlinc, only
+						// a warning (see whenEnumWarnings).
 						m := len(c.errs)
 						if t := c.equality(cond.X.Pos(), syntax.EQ, dt, ct); t.K != types.Invalid {
 							c.errs, cond.OpType = c.errs[:n], t

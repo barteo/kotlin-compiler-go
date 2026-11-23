@@ -242,12 +242,37 @@ func hasInvalid(t types.Type, depth int) bool {
 	return false
 }
 
+// equalityWarning reports comparison x as kotlinc's
+// EQUALITY_NOT_APPLICABLE_WARNING: its operands' types are unrelated, but
+// K1 let both have subtypes (see equalityCompat). It follows the path of
+// equality to that check.
+func (c *Checker) equalityWarning(x *syntax.Binary) {
+	xt, yt := x.X.Type(), x.Y.Type()
+	for _, t := range []types.Type{xt, yt} {
+		switch {
+		case t.K == types.Invalid, t.K == types.Unit, t.K == types.Null, t.K == types.Nothing, t.IsParam(), t.HasVars(), types.IsValue(t):
+			return
+		}
+	}
+	if xt.K == types.Class && yt.K == types.Class && xt.C == yt.C {
+		return
+	}
+	xn, yn := xt.NonNull(), yt.NonNull()
+	if xn == yn || c.subtype(xn, yn) || c.subtype(yn, xn) || c.mayBeSame(xn, yn) {
+		return
+	}
+	if c.equalityCompat(x.Op, xt, yt) == eqWarning {
+		c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
+	}
+}
+
 func (c *Checker) binaryWarnings(x *syntax.Binary) {
 	switch x.Op {
 	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
 		if x.X == nil || x.Y == nil {
 			return
 		}
+		c.equalityWarning(x)
 		// As kotlinc's checkSenselessness, by the operands' types: one
 		// is always null, the literal or a value of type Nothing?, and
 		// the other always is too, or can't be, a value of type Nothing

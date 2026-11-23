@@ -73,7 +73,7 @@ own tests.
     `IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_WARNING` and
     `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING`,
     not, for example, `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING`.
-  - Those of types and type arguments: `INCOMPATIBLE_TYPES_WARNING`,
+  - Those of types and type arguments:
     `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION`,
     `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
@@ -157,7 +157,6 @@ own tests.
     members of the program's classes and of the class path's Kotlin
     classes, not of Java classes or built-in types such as `List` and
     `Int`.
-  - `DIVISION_BY_ZERO` not in annotation arguments.
   - `REDUNDANT_ELSE_IN_WHEN` only of a `when` over a Boolean, an enum
     or a sealed class, or one exhaustive through an unguarded `is`
     check of a supertype of the subject's type; not over a type
@@ -165,8 +164,12 @@ own tests.
   - `INCOMPATIBLE_ENUM_COMPARISON` and
     `FORBIDDEN_IDENTITY_EQUALS_WARNING` not where a platform type is
     involved.
-  - `EQUALITY_NOT_APPLICABLE_WARNING` only of smart-cast values, not of
-    enums nor an identity comparison of a value without identity.
+  - `EQUALITY_NOT_APPLICABLE_WARNING` of smart-cast values, not of
+    enums nor an identity comparison of a value without identity, and
+    of unrelated types that K1 let both have subtypes, as an interface
+    and a class compared with `===`.
+  - `INCOMPATIBLE_TYPES_WARNING` only of a `when` whose subject is a
+    smart-cast variable.
   - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
     error name in a `@Suppress`, but not in one on a type or a
     supertype.

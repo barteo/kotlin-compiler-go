@@ -66,6 +66,9 @@ fun f(s: String, n: String?) {
     s!!.length
     n!!.length
 }`, []string{"3:UNNECESSARY_NOT_NULL_ASSERTION"}},
+		{"blank trimMargin prefix in an annotation", `
+annotation class Ann(val s: String)
+@Ann("".trimMargin(" ")) val a = 1`, []string{"3:TRIM_MARGIN_BLANK_PREFIX", "3:error"}},
 		{"safe call", `
 fun f(s: String, n: String?) {
     s?.length
