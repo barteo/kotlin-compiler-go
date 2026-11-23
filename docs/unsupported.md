@@ -143,8 +143,9 @@ own tests.
     `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` and
     `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` compare parameter names
     only where they are stable, of the program's and Kotlin libraries'
-    functions, not Java methods, and the last two only of the program's
-    Kotlin members.
+    functions and the built-in classes' members (`Any`, `CharSequence`,
+    `Comparable` and the collections), not Java methods, and the last
+    two only of the program's Kotlin members.
   - `PLATFORM_CLASS_MAPPED_TO_KOTLIN` where the Java class is named,
     not through a typealias, and at a call that infers it as a type
     argument only for a boxed primitive's class, as
