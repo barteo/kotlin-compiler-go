@@ -534,11 +534,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   so a parameter of the argument's own or a supertype's type takes it
   (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
   error. A member's parameter whose type holds a projected argument
-  takes `Nothing` there, except a lambda's function type, whose `out`
-  projections are their bounds in its parameters and result, as K2
-  approximates them; a function value passed for it can't return the
-  capture, and a member's explicit type argument is checked against a
-  bound with a projection approximated as such a parameter is. Two reads
+  takes `Nothing` there, except a lambda's function type (see below);
+  a function value passed for it can't return the capture, and a
+  member's type parameter, explicit or inferred, is checked against a
+  bound with a projection approximated as such a parameter is (`E :
+  Out<T>` of an `A<out CharSequence>` is bounded by `Out<Nothing>`). Two reads
   of one `Out<*>` value are the same type, where they are different
   captures in Kotlin: only an elvis's left call, inferred with the right
   side's type, sees a star of it as below its bound. A star for a
@@ -559,7 +559,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   backing field through a stable receiver whose type projects the
   field's type parameters, `o.num` for an `o: C<*>`: the receiver is
   smart cast to its type with the projections captured, whose members
-  then take the field's value, `o.consume(o.num)`.
+  then take the field's value, `o.consume(o.num)`; and those of a
+  receiver's `out` projection, not of an intersection, in the function
+  type of a member's parameter that a lambda is passed for: the lambda
+  takes the capture, which reads as the projection's type, and returns
+  only the capture or `Nothing` (`a.foo { "" }` is a mismatch for
+  `foo(block: () -> E)` of an `A<out CharSequence>`, `x.foo { it }`
+  isn't for `foo(f: (E) -> E)`). A variable of another lambda's input
+  types fixed to the capture takes the projection's type, as K2
+  approximates it; other variables keep the capture.
 - A lambda's result chooses between overloads of the program's
   functions only when one of them is marked
   `@OverloadResolutionByLambdaReturnType`, as in K2, but between

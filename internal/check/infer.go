@@ -179,6 +179,15 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 				// fun <T : B> bar(t: T), is only Nothing: no argument is.
 				tv.captBound = true
 			}
+			if !b.IsParam() && b.Has(func(u types.Type) bool { return u.IsParam() && base[u.Param()].V != types.Inv && base[u.Param()].T.K != types.Invalid }) {
+				// A bound with a receiver's projection holds its capture,
+				// approximated as K2 approximates it in a parameter's
+				// type: E : Out<T> of an A<out CharSequence> is
+				// Out<Nothing>, G : In<T> an In<CharSequence> (see
+				// typeArgBounds).
+				vs[i].Bounds = append(vs[i].Bounds, sub.ApplyParam(b))
+				continue
+			}
 			vs[i].Bounds = append(vs[i].Bounds, sub.Apply(b))
 		}
 		s.vars = append(s.vars, tv)
@@ -895,6 +904,23 @@ func (s *system) flexNull(tv *tvar) bool {
 	return false
 }
 
+// lambdaInput reports whether variable tv is in the types of the
+// receiver, contexts or parameters of a lambda not yet checked.
+func (s *system) lambdaInput(tv *tvar) bool {
+	for _, pl := range s.lambdas {
+		f := s.apply(pl.p).Flex().NonNull()
+		if !f.IsFunc() || f.A == nil {
+			continue
+		}
+		for i := range f.A.Len() - 1 {
+			if f.A.Get(i).T.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == tv.v }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *system) fix(tv *tvar) {
 	if len(s.forks) > 0 {
 		s.resolveForks()
@@ -1136,6 +1162,11 @@ func (s *system) fix(tv *tvar) {
 				inBounds[i] = true
 			}
 		}
+	}
+	if len(lowers) > 0 && s.lambdaInput(tv) {
+		// As K2 approximates the input types of a lambda: T of
+		// it.checkType { } for a lambda that takes a capture.
+		val = approxCaptures(val)
 	}
 	if !s.onlyInputOK(tv, val) {
 		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +

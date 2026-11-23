@@ -760,7 +760,7 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 		for _, b := range p.Bounds {
 			// A bound with a receiver's projection holds its capture,
 			// which only a written type takes: X : C<T> for a B<out N>.
-			if b = s.final(cd.sub.ApplyIn(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+			if b = s.final(cd.sub.ApplyParam(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
 				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
@@ -3131,11 +3131,15 @@ func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
 
 // capturedSubst returns sub with the receiver's out projections that
 // function type t, of a parameter that lambda a is passed for, mentions
-// replaced by their bounds, if it has any: K2 approximates the captures
-// in a lambda's parameter types and its result's expected type by their
-// upper bounds, so x.foo { it } on an Inv<out CharSequence>, for foo(x:
-// (E) -> E), returns a CharSequence. Elsewhere an out position takes
-// Nothing (see Subst.ApplyIn).
+// replaced by their captures, if it has any: a type parameter without an
+// owner bounded by the projection's type, which reads as that type and
+// which only itself and Nothing are subtypes of, as K2's captured type.
+// So x.foo { it } on an Inv<out CharSequence>, for foo(x: (E) -> E),
+// returns the capture it takes, but x.foo { "" } returns a String where
+// the capture is expected; a variable of a lambda's input types that a
+// capture gives a lower bound takes the projection's type (see
+// approxCaptures). Elsewhere an out
+// position takes Nothing (see Subst.ApplyIn).
 func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Subst {
 	if _, ok := a.(*syntax.Lambda); !ok || !t.NonNull().IsFunc() {
 		return nil
@@ -3148,9 +3152,38 @@ func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Sub
 		if out == nil {
 			out = maps.Clone(sub)
 		}
-		out[p] = types.Arg{T: ra.T}
+		if ra.T.IsIntersection() {
+			// The capture of an out projection of an intersection, a
+			// G<out X & Z>'s, reads as the intersection itself.
+			out[p] = types.Arg{T: ra.T}
+			continue
+		}
+		capt := &types.TypeParamSym{Name: "CapturedType(out " + ra.T.String() + ")", Bounds: []types.Type{ra.T}, Captured: true}
+		out[p] = types.Arg{T: types.ParamType(capt)}
 	}
 	return out
+}
+
+// approxCaptures returns t with the captures of capturedSubst in it
+// replaced by their projections' types, as K2 approximates a captured
+// type in a lambda's input types: T of it.checkType { } in a lambda that
+// takes the capture is the projection's type, for checkType's
+// CheckTypeInv<T>.() -> Unit.
+func approxCaptures(t types.Type) types.Type {
+	var back types.Subst
+	t.Has(func(u types.Type) bool {
+		if u.K == types.TypeParam && u.Param().Captured {
+			if back == nil {
+				back = types.Subst{}
+			}
+			back[u.Param()] = types.Arg{T: u.Param().Bounds[0]}
+		}
+		return false
+	})
+	if back == nil {
+		return t
+	}
+	return back.Apply(t)
 }
 
 // ambiguousLambdas checks the lambdas of x, a call that is ambiguous,
