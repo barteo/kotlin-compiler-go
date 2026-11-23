@@ -98,7 +98,7 @@ script](#use-it-in-a-gradle-build). `kc` still needs a JDK, and
 `kotlin-stdlib.jar` on the class path for most programs (below).
 
 ```sh
-V=v0.1.0 P=linux_amd64  # or linux_arm64, darwin_amd64, darwin_arm64
+V=2.4.21-1 P=linux_amd64  # or linux_arm64, darwin_amd64, darwin_arm64
 curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/kc_${V}_$P.tar.gz
 curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS  # on macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
@@ -307,18 +307,22 @@ Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/l
 
 ## Releasing
 
-Versions follow [SemVer](https://semver.org), at `0.x` while `kc` is a
-prototype. To release, push an annotated tag on a commit of `main` whose
-checks passed:
+A release is named `<kotlin>-<n>`: the Kotlin release whose `kotlinc` `kc`
+is checked against (`KOTLIN_VERSION` in
+[.github/workflows/pr-checks.yml](.github/workflows/pr-checks.yml)), and
+`kc`'s n-th release for it. The first is `2.4.21-1`; when `kc` moves to
+another Kotlin release, n starts again at 1. To release, push an annotated
+tag on a commit of `main` whose checks passed:
 
 ```sh
-git tag -a v0.1.0 -m "kc v0.1.0" && git push origin v0.1.0
+git tag -a 2.4.21-1 -m "kc 2.4.21-1" && git push origin 2.4.21-1
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) builds the four
 archives, runs each binary on its own platform, and publishes them with
-`SHA256SUMS` and notes generated from the merged pull requests. A tag with a
-hyphen, such as `v0.1.0-rc.1`, makes a prerelease. Running the workflow by hand
+`SHA256SUMS` and notes generated from the merged pull requests. It fails on a
+tag whose Kotlin release isn't `KOTLIN_VERSION`. A suffix, such as
+`2.4.21-2-rc.1`, makes a prerelease. Running the workflow by hand
 builds and tests the archives without publishing them.
 
 ## License

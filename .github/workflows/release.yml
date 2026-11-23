@@ -1,9 +1,13 @@
 name: Release
 
 # Builds kc for Linux and macOS, on amd64 and arm64, and smoke-tests each
-# binary on its own platform. A pushed v* tag also publishes the archives
-# and their SHA256SUMS as a GitHub release; a tag with a hyphen, such as
-# v0.1.0-rc.1, makes a prerelease. Run by hand (workflow_dispatch), it
+# binary on its own platform. A pushed release tag also publishes the
+# archives and their SHA256SUMS as a GitHub release.
+#
+# A release is named <kotlin>-<n>: the Kotlin release kc is checked against
+# (KOTLIN_VERSION in pr-checks.yml, which the tag must match), and kc's
+# n-th release for it, such as 2.4.21-1. A suffix after that, such as
+# 2.4.21-2-rc.1, makes a prerelease. Run by hand (workflow_dispatch), it
 # builds and tests only, and leaves the archives as the run's artifacts.
 #
 # kc is pure Go (only cmd/libkc needs cgo), so one runner cross-compiles
@@ -11,7 +15,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['[0-9]+.[0-9]+.[0-9]+-[0-9]+*']
   workflow_dispatch:
 
 permissions:
@@ -56,6 +60,15 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             version=$GITHUB_REF_NAME
+            if ! [[ $version =~ ^([0-9]+\.[0-9]+\.[0-9]+)-[1-9][0-9]*(-[0-9A-Za-z.]+)?$ ]]; then
+              echo "::error::tag $version isn't <kotlin>-<n>[-<prerelease>], such as 2.4.21-1"
+              exit 1
+            fi
+            kotlin=$(sed -n 's/^  KOTLIN_VERSION: *//p' .github/workflows/pr-checks.yml)
+            if [ "${BASH_REMATCH[1]}" != "$kotlin" ]; then
+              echo "::error::tag $version is for Kotlin ${BASH_REMATCH[1]}, but kc is checked against $kotlin (pr-checks.yml)"
+              exit 1
+            fi
           else
             version=dev-${GITHUB_SHA::12}
           fi
@@ -156,7 +169,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           flags=()
-          if [[ $TAG == *-* ]]; then
+          if ! [[ $TAG =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]; then
             flags+=(--prerelease)
           fi
           gh release create "$TAG" dist/kc_*.tar.gz dist/SHA256SUMS \
