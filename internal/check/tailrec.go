@@ -15,10 +15,120 @@ import (
 // but not its last statement, which doesn't leave it: those jumps run
 // the finally blocks of the inlined body's trys they leave, as kotlinc's
 // do. Calls in other lambdas, local functions, object expressions and
-// try blocks aren't, and stay calls: kotlinc warns about them, kc has no
-// warnings. Neither are a suspend function's in inline lambdas, which
-// codegen can't always turn into jumps.
+// try blocks aren't, and stay calls, which tailWarnings reports as
+// kotlinc does. Neither are a suspend function's in inline lambdas,
+// which codegen can't always turn into jumps.
 func (c *Checker) tailCalls(d *syntax.FunDecl) {
+	c.tailPositions(d, false, func(call *syntax.Call) { call.Tail = true })
+	// kotlinc finds more tail calls than codegen makes jumps of, but not
+	// those in code that can't run: it warns of the calls that are none
+	// of those, and that there are no tail calls only where none is one.
+	if !c.tailWarnings(d) && (d.Body != nil || d.ExprBody != nil) {
+		p := d.P
+		for _, w := range d.Written {
+			if w.Name == "tailrec" {
+				p = w.P
+			}
+		}
+		c.warnf(p, "NO_TAIL_CALLS_FOUND", "a function is marked as tail-recursive but no tail calls are found")
+	}
+}
+
+// tailWarnings reports, as kotlinc does, tailrec function d's calls of
+// itself that aren't tail calls: NON_TAIL_RECURSIVE_CALL where the
+// function goes on after it, in lambdas, local functions and object
+// expressions too, or where it is on another instance of d's class than
+// this, and TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED where it is in a try,
+// catch or finally block. Calls in code that can't run aren't reported.
+// It reports whether any call is a tail call to kotlinc.
+func (c *Checker) tailWarnings(d *syntax.FunDecl) bool {
+	sym := d.Sym
+	if sym == nil || d.Body == nil && d.ExprBody == nil {
+		return false
+	}
+	var body any = d.Body
+	if d.ExprBody != nil {
+		body = d.ExprBody
+	}
+	tail := map[*syntax.Call]bool{}
+	c.tailPositions(d, true, func(call *syntax.Call) { tail[call] = true })
+	var calls []*syntax.Call
+	inTry, dead := map[*syntax.Call]bool{}, map[*syntax.Call]bool{}
+	self := func(n any) (*syntax.Call, bool) {
+		call, ok := n.(*syntax.Call)
+		return call, ok && call.Sym == sym && !call.Invoke
+	}
+	mark := func(n any, m map[*syntax.Call]bool) {
+		syntax.Inspect(n, func(n any) bool {
+			if call, ok := self(n); ok {
+				m[call] = true
+			}
+			return true
+		})
+	}
+	var visit func(n any) bool
+	visit = func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Try:
+			mark(n, inTry)
+		case *syntax.Block:
+			if i, ok := c.blockJumps[n]; ok && i+1 < len(n.Stmts) {
+				for _, st := range n.Stmts[i+1:] {
+					mark(st, dead)
+				}
+			}
+		case *syntax.ObjectExpr:
+			walkCode([]syntax.Decl{n.Decl}, visit)
+			return false
+		case *syntax.LocalClass:
+			walkCode([]syntax.Decl{n.Decl}, visit)
+			return false
+		}
+		if call, ok := self(n); ok {
+			calls = append(calls, call)
+		}
+		return true
+	}
+	syntax.Inspect(body, visit)
+	valid := false
+	for _, call := range calls {
+		switch {
+		case otherReceiver(call, sym):
+			c.warnf(syntax.StartPos(call), "NON_TAIL_RECURSIVE_CALL", "recursive call is not a tail call")
+		case dead[call]:
+		case inTry[call]:
+			c.warnf(syntax.StartPos(call), "TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED", "tail recursion optimization inside try/catch/finally is not supported")
+		case !tail[call]:
+			c.warnf(syntax.StartPos(call), "NON_TAIL_RECURSIVE_CALL", "recursive call is not a tail call")
+		default:
+			valid = true
+		}
+	}
+	return valid
+}
+
+// otherReceiver reports whether call of member function f, a call of
+// itself, may be on another instance than this, which kotlinc doesn't
+// make a tail call: other than this of f's class, unless f is a member of
+// an object. An extension's receiver may be any.
+func otherReceiver(call *syntax.Call, f *types.FunSym) bool {
+	if f.Owner == nil || f.Ext || f.Owner.Object {
+		return false
+	}
+	m, ok := call.Fun.(*syntax.Member)
+	if !ok {
+		return false
+	}
+	t, ok := m.X.(*syntax.This)
+	return !ok || t.Recv != nil
+}
+
+// tailPositions calls mark with each call of tailrec function d to itself
+// in tail position, as tailCalls describes. With loose, it also takes
+// those kotlinc does that codegen doesn't make jumps of: calls on another
+// receiver, the left side of ?: where d's result isn't nullable, returns labeled with d's name and those
+// in a suspend function's inline lambdas.
+func (c *Checker) tailPositions(d *syntax.FunDecl, loose bool, mark func(*syntax.Call)) {
 	sym := d.Sym
 	var tail func(e syntax.Expr)
 	tailStmt := func(s syntax.Stmt) {
@@ -34,8 +144,8 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	tail = func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.Call:
-			if e.Sym == sym && selfCall(e, sym) && !(sym.DefaultsOf != nil && omitsArgs(e, sym)) {
-				e.Tail = true
+			if e.Sym == sym && (loose || selfCall(e, sym)) && !(sym.DefaultsOf != nil && omitsArgs(e, sym)) {
+				mark(e)
 			}
 		case *syntax.If:
 			tailBlock(e.Then)
@@ -48,8 +158,11 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 			if e.Op == syntax.ELVIS || e.Op == syntax.AND || e.Op == syntax.OR {
 				tail(e.Y)
 			}
+			if loose && e.Op == syntax.ELVIS && !types.MayBeNull(sym.Ret) {
+				tail(e.X)
+			}
 		case *syntax.Jump:
-			if e.Kind == syntax.RETURN && e.Label == "" && e.X != nil {
+			if e.Kind == syntax.RETURN && (e.Label == "" || loose && e.Label == d.Name) && e.X != nil {
 				tail(e.X)
 			}
 		}
@@ -57,7 +170,7 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	walk := func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.Lambda:
-			return n.Inline && !sym.Suspend
+			return n.Inline && (loose || !sym.Suspend)
 		case *syntax.LocalFun, *syntax.ObjectExpr, *syntax.Try:
 			return false
 		case *syntax.Jump:
@@ -123,7 +236,8 @@ func selfCall(call *syntax.Call, f *types.FunSym) bool {
 	case *syntax.Ident:
 		return true
 	case *syntax.Member:
-		if _, ok := fn.X.(*syntax.This); ok && !fn.Safe {
+		// Not this of a lambda with a receiver, with(a) { f() }: a's f.
+		if t, ok := fn.X.(*syntax.This); ok && t.Recv == nil && !fn.Safe {
 			return true
 		}
 		if f.Owner != nil && !fn.Safe && namedObject(fn.X) == f.Owner {

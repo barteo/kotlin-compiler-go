@@ -43,3 +43,19 @@ func TestMangle(t *testing.T) {
 		t.Errorf("Desc(Name?) = %s", d)
 	}
 }
+
+// TestModuleSuffix checks the suffixes against those kotlinc 2.4 gives the
+// internal members of modules of these names.
+func TestModuleSuffix(t *testing.T) {
+	for module, want := range map[string]string{
+		"":        "$main",
+		"my-lib":  "$my_lib",
+		"a.b c":   "$a_b_c",
+		"ä+x$y_1": "$ä_x_y_1",
+		"1é":      "$1é",
+	} {
+		if got := ModuleSuffix(module); got != want {
+			t.Errorf("ModuleSuffix(%q) = %s, want %s", module, got, want)
+		}
+	}
+}

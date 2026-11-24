@@ -3,7 +3,7 @@
 # with kc and kotlinc, and writes bench/results/time-coroutines.md.
 #
 #   bench/coroutines-time.sh                       # about 2 minutes
-#   RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/coroutines-time.sh
 #
 # Both compilers get the build's options: the module name and
 # -jvm-default=enable, and kotlinc also the others (explicit API mode,
@@ -59,7 +59,7 @@ module=kotlinx-coroutines-core
 optins=$(for o in kotlin.ExperimentalMultiplatform kotlin.experimental.ExperimentalTypeInference kotlinx.coroutines.DelicateCoroutinesApi \
 	kotlinx.coroutines.ExperimentalCoroutinesApi kotlinx.coroutines.ObsoleteCoroutinesApi kotlinx.coroutines.InternalCoroutinesApi \
 	kotlinx.coroutines.FlowPreview; do printf ' -opt-in=%s' "$o"; done)
-opts="-module-name $module -jvm-default=enable$optins"
+opts="-module-name $module -jvm-default=enable -Xmulti-platform$optins"
 kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,concurrent,jvm
 	-Xfragment-refines=concurrent:common,jvm:concurrent -Xfragment-sources=$fragments
 	-progressive -Xexplicit-api=strict -Xdont-warn-on-error-suppression -Xno-param-assertions -Xno-call-assertions

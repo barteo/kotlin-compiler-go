@@ -1,6 +1,11 @@
 package syntax
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"regexp"
+	"slices"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // File is a parsed source file.
 type File struct {
@@ -10,7 +15,17 @@ type File struct {
 	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
-	Facade      string // JVM internal name of the class holding top-level declarations
+	// AmbiguousLT is set when the file has a comparison x < (... > ...),
+	// which kotlinc's parser takes for type arguments if its recovering
+	// type parser ends at the >, as x < (if (y > 1) 1 else 2), making a
+	// syntax error of it: the driver asks psi, which has its grammar.
+	AmbiguousLT bool
+	// Dangling are the annotations of modifier lists at the top level that
+	// no declaration follows, which kotlinc resolves and checks, as the
+	// checker does, but annotate nothing. The file then has a syntax
+	// error.
+	Dangling []Annotation
+	Facade   string // JVM internal name of the class holding top-level declarations
 	// Part is set on a file annotated @file:JvmMultifileClass: the class
 	// that holds its top-level declarations, Facade__FileKt, whose
 	// non-private ones Facade, the multi-file class, calls. Others call
@@ -26,6 +41,11 @@ type File struct {
 	// does: context parameters where Kotlin doesn't allow them, which the
 	// checker reports.
 	Errors []*Error
+	// RedundantPrefixes are, in a file with syntax errors, the string
+	// literals with a redundant interpolation prefix, among them those of
+	// the statements and declarations left out of the file, which
+	// kotlinc reports all the same (REDUNDANT_INTERPOLATION_PREFIX).
+	RedundantPrefixes []Pos
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
@@ -85,6 +105,7 @@ func (f *File) HasFacade() bool {
 // Import is `import a.b.C`, `import a.b.C as D` or `import a.b.*`.
 type Import struct {
 	P     Pos
+	PathP Pos    // where the path starts
 	Path  string // dotted, without the .*
 	Star  bool
 	Alias string
@@ -97,6 +118,9 @@ type TypeRef struct {
 	Name     string     // may be qualified: java.util.Random
 	Args     []*TypeArg // as written; nil if there are none
 	Nullable bool
+	// Quest is the position of a nullable type's ?, and Redundant that of
+	// a second one, T??, which kotlinc warns of.
+	Quest, Redundant Pos
 	// Known is set on a type of a declaration the checker writes: the
 	// type, which needs no resolving.
 	Known *types.Type
@@ -106,6 +130,12 @@ type TypeRef struct {
 	Params []*TypeRef
 	Ret    *TypeRef
 	Recv   *TypeRef
+	// Named are the positions of the names of a function type's named
+	// parameters, (x: A) -> R, which a supertype can't have.
+	Named []Pos
+	// Names are the names of a function type's parameters, one for each
+	// of Params, "" for one not named.
+	Names []string
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
 	// Contexts are the context parameters' types of a context function
@@ -118,12 +148,21 @@ type TypeRef struct {
 	// class's type arguments, Outer<A>.Inner: Outer<A>. Name is then the
 	// qualified name, Outer.Inner, and Args the inner class's own.
 	Outer *TypeRef
+	// Parts are the positions of the names Name adds to its Outer's, or
+	// of all its names if it has no Outer, and ArgsP that of the < of
+	// its Args: where kotlinc reports misplaced type arguments of a
+	// callable reference's left side.
+	Parts []Pos
+	ArgsP Pos
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool
 	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
 	// doesn't infer a call's type arguments.
 	NoInfer bool
+	// Exact is set on a type annotated @kotlin.internal.Exact: a
+	// parameter's argument must be of that type, not a subtype.
+	Exact bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).
@@ -181,9 +220,12 @@ type TypeParam struct {
 	Variance types.Variance // Inv, Out or In
 	// Bounds are its upper bounds, none for Any?: the one declared with
 	// it, then those of the declaration's where clause, in their order.
-	Bounds  []*TypeRef
-	Sym     *types.TypeParamSym
-	Reified bool
+	Bounds []*TypeRef
+	// DeclBound is set if a bound is declared with it, and WhereBound if
+	// the where clause has one.
+	DeclBound, WhereBound bool
+	Sym                   *types.TypeParamSym
+	Reified               bool
 	// Annotations are the type parameter's annotations as written.
 	Annotations []Annotation
 	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.
@@ -257,6 +299,103 @@ type Mod struct {
 	P    Pos
 }
 
+// Set records modifier keyword name, written at p, in m: in Written, and
+// in its flag and position. It reports false if name is no modifier. Both
+// front ends read modifiers with it.
+func (m *Modifiers) Set(name string, p Pos) bool {
+	flag, pos := m.modifier(name)
+	if flag == nil {
+		return false
+	}
+	*flag = true
+	if pos != nil {
+		*pos = p
+	}
+	if v, ok := visibilities[name]; ok {
+		m.Visibility = v
+	}
+	m.Written = append(m.Written, Mod{Name: name, P: p})
+	return true
+}
+
+// noModifiers is only read, by isModifier.
+var noModifiers Modifiers
+
+// isModifier reports whether s is a modifier keyword.
+func isModifier(s string) bool {
+	flag, _ := noModifiers.modifier(s)
+	return flag != nil
+}
+
+// modifier returns the flag of modifier keyword name in m, and the field
+// of its position if m keeps one; nil if name is no modifier.
+func (m *Modifiers) modifier(name string) (flag *bool, pos *Pos) {
+	switch name {
+	case "private", "public", "internal", "protected":
+		return &m.Explicit, nil
+	case "open":
+		return &m.Open, nil
+	case "abstract":
+		return &m.Abstract, nil
+	case "override":
+		return &m.Override, nil
+	case "final":
+		return &m.Final, nil
+	case "companion":
+		return &m.Companion, nil
+	case "data":
+		return &m.Data, nil
+	case "enum":
+		return &m.Enum, nil
+	case "sealed":
+		return &m.Sealed, nil
+	case "const":
+		return &m.Const, nil
+	case "vararg":
+		return &m.Vararg, &m.VarargP
+	case "operator":
+		return &m.Operator, nil
+	case "infix":
+		return &m.Infix, nil
+	case "expect":
+		return &m.Expect, &m.ExpectP
+	case "actual":
+		return &m.Actual, nil
+	case "annotation":
+		return &m.Annotation, nil
+	case "value":
+		return &m.Value, nil
+	case "inline":
+		return &m.Inline, nil
+	case "noinline":
+		return &m.Noinline, nil
+	case "crossinline":
+		return &m.Crossinline, nil
+	case "suspend":
+		return &m.Suspend, nil
+	case "lateinit":
+		return &m.Lateinit, nil
+	case "tailrec":
+		return &m.Tailrec, nil
+	case "inner":
+		return &m.Inner, nil
+	case "external":
+		return &m.External, &m.ExternalP
+	}
+	return nil, nil
+}
+
+// PosOf returns the position of written modifier name, or p if it isn't
+// written.
+func (m *Modifiers) PosOf(name string, p Pos) Pos {
+	for _, w := range m.Written {
+		if w.Name == name {
+			return w.P
+		}
+	}
+	return p
+}
+
 // Has reports whether name is among the written modifiers.
 func (m *Modifiers) Has(name string) bool {
 	for _, w := range m.Written {
@@ -296,6 +435,13 @@ type Annotation struct {
 	// Accessor is set on an annotation written on an accessor, @A get(),
 	// which the property keeps with Target get or set.
 	Accessor bool
+	// OnAccessor is set on an annotation with a use-site target written
+	// on an accessor, @get:A get(), which kotlinc reports: the property
+	// keeps it as if written on the property.
+	OnAccessor bool
+	// OnField is set on an annotation written on an explicit backing
+	// field, field = x, which the property keeps with Target field.
+	OnField bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by
@@ -402,7 +548,10 @@ func (m *Modifiers) Hidden() bool {
 
 type FunDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
@@ -438,9 +587,16 @@ type FunDecl struct {
 	// InPlace names those it says it calls in place, callsInPlace of
 	// any kind.
 	InPlace map[string]bool
+	// AtLeastOnce names those it says it calls at least once.
+	AtLeastOnce map[string]bool
+	// Calls are the contract's callsInPlace effects, in order.
+	Calls []CallsEffect
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
+	// ContractConds are the conditions its contract's effects imply, as
+	// written, for the warnings about them.
+	ContractConds []Expr
 	// Plugin is set on a function that kc declares as a compiler plugin
 	// of kotlinc's would: serialization's serializer().
 	Plugin bool
@@ -454,13 +610,17 @@ type FunDecl struct {
 }
 
 // SourceInline returns the declaration of f if a call of f copies its
-// body: a top-level or extension inline function of the program.
+// body: an inline function of the program, top-level or a member that
+// can't be overridden: final, or private to an interface.
 func SourceInline(f *types.FunSym) *FunDecl {
-	if f == nil || f.Owner != nil && (!f.Final || f.Owner.Interface || f.Owner.Value) {
+	if f == nil {
 		return nil
 	}
 	d, ok := f.Decl.(*FunDecl)
 	if !ok || !d.Inline || d.Body == nil && d.ExprBody == nil || d.Inlinable == nil {
+		return nil
+	}
+	if f.Owner != nil && !f.Final && !(f.Owner.Interface && d.Visibility == Private) {
 		return nil
 	}
 	return d
@@ -468,7 +628,10 @@ func SourceInline(f *types.FunSym) *FunDecl {
 
 type PropDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	Name       string
 	Mutable    bool
 	TypeParams []*TypeParam // only on an extension property: val <T> List<T>.x
@@ -477,11 +640,16 @@ type PropDecl struct {
 	Init       Expr       // nil for an abstract property, or one with a getter
 	Getter     *FunDecl   // get() = ..., or nil
 	SetterVis  Visibility // private set, ...
+	// SetterVisP is the position of the setter's visibility modifier, if
+	// it has one.
+	SetterVisP Pos
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
 	// AccessorMods are the modifiers written on each accessor.
 	AccessorMods [][]Mod
+	// AccessorSets tells which of AccessorMods are a setter's.
+	AccessorSets []bool
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -517,8 +685,8 @@ type BackingField struct {
 	Init Expr     // nil: initialized in an init block or a constructor
 	Mods []Mod    // the modifiers written on it, which it can't take
 	// Checked is set by the checker, and Allowed on a field that the
-	// property can have.
-	Checked, Allowed bool
+	// property can have, and Redundant on one of the property's type.
+	Checked, Allowed, Redundant bool
 }
 
 // TypeAliasDecl is a typealias, typealias Name<T> = Type, at the top
@@ -543,7 +711,13 @@ type CtorParam struct {
 
 type ClassDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Dangling are the annotations of modifier lists in the class's body
+	// that no member follows (see File.Dangling).
+	Dangling []Annotation
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool
@@ -605,6 +779,9 @@ type ClassDecl struct {
 	// in its header, or the implicit one of a class without secondary
 	// constructors.
 	HasPrimary bool
+	// WrittenPrimary is set if the class's header declares a primary
+	// constructor's parameter list, if an empty one: interface I().
+	WrittenPrimary bool
 	// Parcelize is set by the checker on a class annotated @Parcelize, to
 	// which it adds the parcelize plugin's members: its static field
 	// CREATOR holds an instance of its class Creator.
@@ -670,6 +847,14 @@ func (p *SerialProp) Annotations() []Annotation {
 	return p.Prop.Annotations
 }
 
+// TypeRef returns the property's type as written, or nil.
+func (p *SerialProp) TypeRef() *TypeRef {
+	if p.Param != nil {
+		return p.Param.Type
+	}
+	return p.Prop.Type
+}
+
 // Default returns the property's default value, or its initializer.
 func (p *SerialProp) Default() Expr {
 	if p.Param != nil {
@@ -695,6 +880,9 @@ type EnumEntry struct {
 	Name        string
 	Call        *Call // the constructor call that creates it, with its arguments
 	Annotations []Annotation
+	// External is where the entry's external modifier is, which means
+	// nothing there and is deprecated; or the zero Pos.
+	External Pos
 	// Body is the class of an entry with a body, whose superclass's
 	// constructor call is Call; or nil.
 	Body *ClassDecl
@@ -835,6 +1023,9 @@ type LocalFun struct {
 	// enclosing functions it uses, also through the local functions it
 	// calls, and whether it uses the enclosing class's this.
 	Frame *Lambda
+	// Outer are the type parameters in scope where the function is
+	// declared, those of the declarations around it, innermost first.
+	Outer []*types.TypeParamSym
 	// Method is set by codegen: the name of the static method the function
 	// is, such as main$g, of class Owner, and Desc its descriptor. This is
 	// the class whose this the frame captures.
@@ -1084,14 +1275,24 @@ type CharLit struct {
 }
 
 // Implies is a contract's returns(value) implies (p != null) or (p is T)
-// effect: Returns is 1 for returns(true), 0 for returns(false) and -1 for
-// returns(); Param names the parameter, "this" the extension receiver;
+// effect: Returns is 1 for returns(true), 0 for returns(false), -1 for
+// returns() and 2 for returnsNotNull(); Param names the parameter, "this" the extension receiver;
 // Is is T, or nil for p != null.
 type Implies struct {
 	Returns int
 	Param   string
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
+	Negated bool // with Holds, implies (!p): p is false
+}
+
+// CallsEffect is a contract's callsInPlace(Param, InvocationKind.Kind)
+// effect, written at P: Kind is AT_MOST_ONCE, EXACTLY_ONCE,
+// AT_LEAST_ONCE or UNKNOWN, which is also the kind without an argument.
+type CallsEffect struct {
+	P     Pos
+	Param string
+	Kind  string
 }
 
 type BoolLit struct {
@@ -1136,6 +1337,37 @@ type TmplPart struct {
 type StringLit struct {
 	exprBase
 	Parts []TmplPart
+	// Prefix is the number of $ of its interpolation prefix ($$"..."), 0
+	// if it has none, and Src its source after the prefix, quotes
+	// included, which escapes ("\$") make differ from Parts.
+	Prefix int
+	Src    string
+}
+
+// redundantPrefix matches what looks like an interpolation in a string
+// literal's source: kotlinc's RedundantInterpolationPrefixCheckerLiteral.
+var redundantPrefix = regexp.MustCompile("(\\$+)(\\w|\\{|`[^`])")
+
+// RedundantPrefix reports whether the literal's interpolation prefix is
+// redundant, as kotlinc's experimental REDUNDANT_INTERPOLATION_PREFIX
+// warning says: a single $, or a longer prefix of a literal without
+// template entries none of whose text looks like one.
+func (s *StringLit) RedundantPrefix() bool {
+	entries := slices.ContainsFunc(s.Parts, func(p TmplPart) bool { return p.X != nil })
+	return RedundantPrefixOf(s.Prefix, entries, s.Src)
+}
+
+// RedundantPrefixOf is RedundantPrefix of a string literal with an
+// interpolation prefix of prefix $, whose source after it is src, and
+// which has template entries if entries.
+func RedundantPrefixOf(prefix int, entries bool, src string) bool {
+	switch {
+	case prefix == 1:
+		return true
+	case prefix == 0 || entries:
+		return false
+	}
+	return !redundantPrefix.MatchString(src)
 }
 
 type Unary struct {
@@ -1158,6 +1390,7 @@ type Binary struct {
 	exprBase
 	Op     Kind
 	X, Y   Expr
+	Paren  bool       // written in parentheses: (a + b)
 	OpType types.Type // operand type for arithmetic and comparisons
 	// Call is the operator call of an arithmetic operator or a comparison
 	// on other types than the built-in ones: x.plus(y), x.compareTo(y),
@@ -1202,6 +1435,11 @@ type Member struct {
 	Safe    bool
 	Prop    *types.VarSym
 	Builtin types.Builtin
+	// Written is set by the parser on x.f and x?.f as written, outside
+	// parentheses: a property of an explicit receiver, x.f() for an f:
+	// B.() -> Unit, isn't invoked with an implicit B, as (x.f)() is. The
+	// checker's own member accesses, this.f() for f(), don't have it.
+	Written bool
 	// Groups is set by the checker on a safe call in composable code that
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.
@@ -1272,7 +1510,14 @@ type Call struct {
 	SAM      bool // Runnable { ... }: the value is the lambda argument
 	Infix    bool // a f b, which is a.f(b)
 	Literal  bool // [a, b], a collection literal, which is arrayOf(a, b)
-	Recv     bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
+	// TrailingNL is set on a call whose trailing lambda is on a line
+	// after the call's: f()\n{ }.
+	TrailingNL bool
+	// Dropped is set by the checker on such a call that takes no lambda
+	// there: the lambda, which isn't an argument, and is reported
+	// wherever the call is checked.
+	Dropped Expr
+	Recv    bool // r.(f)(b), which is (f)(r, b): Fun is a value of a function type with a receiver
 	// Outer is set by the checker on a call of an inner class's
 	// constructor: the instance of the outer class it is in, which the
 	// constructor takes first.
@@ -1309,6 +1554,9 @@ type Call struct {
 	// parameters, which go to the callee's as Kotlin adapts a reference
 	// (see refNames).
 	RefArgs []types.Type
+	// FromRef is set by the checker on the call a callable reference's
+	// lambda makes.
+	FromRef bool
 	// Value is set by the checker on a call that a compiler plugin
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
@@ -1325,6 +1573,11 @@ type Call struct {
 // parameter: a lambda after the parentheses, or the value of an indexed
 // assignment's call of set (see PassLast).
 func (c *Call) Trailing() bool { return c.trailing }
+
+// DropTrailing removes the call's trailing lambda (see Call.Dropped).
+func (c *Call) DropTrailing() {
+	c.Dropped, c.Args, c.trailing = c.Args[len(c.Args)-1], c.Args[:len(c.Args)-1], false
+}
 
 // PassLast makes the last argument go to the last parameter, as an
 // indexed assignment's value goes to set's: a[i] = v passes v after the
@@ -1355,12 +1608,20 @@ func (c *Call) Name(i int) string {
 // destructuring declaration, (a, b). The checker names a destructured
 // parameter and declares its components at the start of the body.
 type LambdaParam struct {
-	P     Pos
-	Name  string
-	Names []string   // the names of a destructured parameter's components
-	Types []*TypeRef // and their types, nil where omitted
-	Type  *TypeRef   // nil: from the expected type
-	Sym   *types.VarSym
+	P    Pos
+	Name string
+	// Quoted is set on a name written in backticks: `_` is a name, which
+	// _ isn't.
+	Quoted bool
+	Names  []string   // the names of a destructured parameter's components
+	Types  []*TypeRef // and their types, nil where omitted
+	Type   *TypeRef   // nil: from the expected type
+	Sym    *types.VarSym
+	// Mods are the modifiers written on an anonymous function's
+	// parameter, which ignores them: fun (vararg x: Int) {}, and
+	// Annotations its annotations, whose @Suppress the checker reads.
+	Mods        []Mod
+	Annotations []Annotation
 }
 
 // Lambda is a lambda literal: { x, y -> body } or { body }.
@@ -1397,6 +1658,10 @@ type Lambda struct {
 	// parameter, whose body isn't the code around the call's: Compose's
 	// plugin doesn't remember lambdas in it.
 	Crossinline bool
+	// InlineArg is set on a lambda passed for a parameter of an inline
+	// function that isn't noinline, inlined or not: Compose's plugin
+	// doesn't keep it in a ComposableSingletons class.
+	InlineArg bool
 	// Once is set by the checker on a lambda passed to a function that
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
@@ -1440,6 +1705,9 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonExpr is set on an anonymous function with an expression body,
+	// fun (): Unit = x, whose value isn't coerced to Unit.
+	AnonExpr bool
 	// AnonCtx are the context parameters of an anonymous function,
 	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
 	// names a lambda's it makes too, without types: see suspendConverted.
@@ -1453,6 +1721,10 @@ type Lambda struct {
 	// Composable is set by the checker on a composable lambda: its
 	// expected type is a composable function type, or it is Annotated.
 	Composable bool
+	// UnitCoerced is set by the checker on a lambda literal whose body it
+	// checked against an expected Unit result, as kotlinc's coercion to
+	// Unit: the value of its last statement is dropped.
+	UnitCoerced bool
 }
 
 // CallableRef is a callable reference: ::f, C::m, x::m, ::C, or the same
@@ -1511,12 +1783,12 @@ func (l *Lambda) RefName() string {
 
 // Singleton reports whether the composable lambda l is one that Compose
 // creates once, in its file's ComposableSingletons class, as kotlinc's
-// plugin does: one that returns Unit, isn't inlined and captures nothing,
-// as the checker found, nor calls a local function, or creates an
-// instance of a local class, declared outside it, which the plugin
-// counts as captures.
+// plugin does: one that returns Unit, isn't an inline function's lambda
+// and captures nothing, as the checker found, nor calls a local function,
+// or creates an instance of a local class, declared outside it, which the
+// plugin counts as captures.
 func (l *Lambda) Singleton() bool {
-	if !l.Composable || l.Ret.K != types.Unit || l.Ret.N || l.Inline || l.SAM != nil || l.KProp != nil || l.This || len(l.Captures) > 0 {
+	if !l.Composable || l.Ret.K != types.Unit || l.Ret.N || l.Inline || l.InlineArg || l.SAM != nil || l.KProp != nil || l.This || len(l.Captures) > 0 {
 		return false
 	}
 	inner := map[any]bool{}
@@ -1644,6 +1916,7 @@ type Try struct {
 type Catch struct {
 	P           Pos
 	Name        string
+	Quoted      bool // the name is in backticks: `_` names the exception, _ doesn't
 	Type        *TypeRef
 	Sym         *types.VarSym
 	Body        *Block

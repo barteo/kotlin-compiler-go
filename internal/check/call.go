@@ -1,10 +1,13 @@
 package check
 
 import (
+	"maps"
+	"math/bits"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -30,6 +33,11 @@ type callee struct {
 	// names are the call's argument names, with amap: a named argument
 	// of a vararg parameter is its array.
 	names []string
+	// given are the arguments of some of tparams that the call is given,
+	// as by explicit type arguments, but not written: a secondary
+	// constructor's super(...) call's, the superclass's, are the
+	// supertype's (see superCtorCands).
+	given types.Subst
 }
 
 // param returns the parameter argument i is passed to.
@@ -50,6 +58,50 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 		return types.VarargElem(p.Type)
 	}
 	return p.Type
+}
+
+// ownParamArg reports whether argument i of call x is passed for a
+// parameter whose declared type is one of the callee's own type
+// parameters. As in kotlinc, a lambda isn't converted to the fun interface
+// that gives it, as for C.g<Runnable> { } with Java's static <R> void g(R
+// r), or listOf<Runnable>({ }), though it is to one a receiver's type or a
+// typealias gives: c.f { } with C<K>'s void f(K k) for a C<Runnable>, or
+// RBox { } for typealias RBox = Box<Runnable>. A class's type parameter
+// that a typealias gives its own, as TA<K> = Box<K> does, is the alias's.
+// A call that infers the type parameter, passed itself for a parameter of
+// a fun interface type, does convert it to that: consumeTicker(select({
+// num -> num.dec() }, null)), but not consumeTicker(id(select(...))).
+func (c *Checker) ownParamArg(cl *callee, x *syntax.Call, i int) bool {
+	t := cl.argType(i, x.Args)
+	if t.K != types.TypeParam || !slices.Contains(cl.tparams, t.Param()) {
+		return false
+	}
+	if c.samArg == x && len(x.TypeArgs) == 0 {
+		return false
+	}
+	a := c.aliasCtors[x]
+	if a == nil || x.Ctor == nil {
+		return true
+	}
+	j := slices.Index(x.Ctor.TypeParams, t.Param())
+	if j < 0 || a.Type.K != types.Class || a.Type.C != x.Ctor || j >= a.Type.A.Len() {
+		return false
+	}
+	at := a.Type.A.Get(j).T
+	return at.K == types.TypeParam && slices.Contains(a.TypeParams, at.Param())
+}
+
+// isCallArg reports whether argument x is a call, spread or not.
+func isCallArg(x syntax.Expr) bool {
+	switch y := x.(type) {
+	case *syntax.Spread:
+		x = y.X
+	case *syntax.NotNull:
+		// As K2's checkNotNull call: id(emptyList()!!) for a List<Int>.
+		x = y.X
+	}
+	_, ok := x.(*syntax.Call)
+	return ok
 }
 
 func isSpread(x syntax.Expr) bool {
@@ -120,6 +172,26 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 		}
 	}
 	return out, len(out) < len(cs)
+}
+
+// hidingExts returns the extensions name of a receiver of type rt
+// annotated @kotlin.internal.HidesMembers that may take call x, which
+// come before its members.
+func (c *Checker) hidingExts(name string, rt types.Type, x *syntax.Call) []callee {
+	var out []callee
+	for _, cl := range c.extCalleesFor(name, rt, x) {
+		if hidesMembers(cl.f) && c.mayTake(cl.f, x) {
+			out = append(out, cl)
+		}
+	}
+	return out
+}
+
+// hidesMembers reports whether function f of the program is annotated
+// @kotlin.internal.HidesMembers.
+func hidesMembers(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && (d.Find("", "internal.HidesMembers") != nil || d.Find("", "HidesMembers") != nil)
 }
 
 // notLowPriority leaves out the candidates marked
@@ -195,7 +267,9 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	amap := make([]int, n)
 	limit, positional := len(ps), n
 	if x.Trailing() && n > 0 && len(ps) > 0 {
-		if ps[len(ps)-1].Type.K == types.Invalid {
+		if ps[len(ps)-1].Type.K == types.Invalid || ps[len(ps)-1].Vararg {
+			// A trailing lambda isn't a vararg's argument
+			// (VARARG_OUTSIDE_PARENTHESES, see arityError).
 			return nil, false
 		}
 		amap[n-1] = len(ps) - 1
@@ -268,7 +342,7 @@ func mapNamed(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 		name := x.Name(i)
 		switch {
 		case x.Trailing() && i == len(x.Args)-1:
-			if len(ps) == 0 || used[len(ps)-1] {
+			if len(ps) == 0 || used[len(ps)-1] || ps[len(ps)-1].Vararg {
 				return nil, false
 			}
 			amap[i] = len(ps) - 1
@@ -384,23 +458,47 @@ type candidate struct {
 	sub    types.Subst
 	params []types.Type
 	sys    *system
-	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
-	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// explicit is set when the call's explicit type arguments are
+	// substituted into the candidate's parameters (see tvar.typeArgUp).
+	explicit bool
+	sams     map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
+	susps    map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// stubCons are the constraints that constrain recorded in builders'
+	// runs for this candidate, in a builder's lambda: applicable takes
+	// them back, and the chosen candidate's are recorded again.
+	stubCons map[*stubRun][][2]types.Type
+	// pre is sys before constrain added the arguments' constraints, kept
+	// where an argument is a smart-cast variable of a type parameter's
+	// type: see declaredCastArgs.
+	pre *system
 }
 
 // args checks call arguments against the parameter types of cl (nil: no
 // expectation, after an error).
 func (c *Checker) args(x *syntax.Call, cl *callee) []types.Type {
 	ts := make([]types.Type, len(x.Args))
+	plain := cl != nil && c.plainArgs(x)
 	for i := range x.Args {
 		want := noWant
 		var f *types.FunSym
 		if cl != nil {
 			want, f = cl.argType(i, x.Args), cl.f
 		}
+		saved := c.argWant
+		if plain {
+			c.argWant = x.Args[i]
+		}
 		ts[i] = c.argValue(&x.Args[i], want, f)
+		c.argWant = saved
 	}
 	return ts
+}
+
+// plainArgs reports whether call x's arguments are constrained by their
+// parameters' types as arguments (see tvar.argUp): not those of a call
+// with explicit type arguments or of an indexing operator.
+func (c *Checker) plainArgs(x *syntax.Call) bool {
+	return len(x.TypeArgs) == 0 && !c.indexCalls[x]
 }
 
 // innerLambdas returns the bodies of the lambdas in x, but those nested
@@ -625,6 +723,7 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 			}
 		}
 	}
+	relateUnderscores(sys, tparams, typeArgs, sub)
 	return sub, sys
 }
 
@@ -661,7 +760,9 @@ func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []typ
 // Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
 // A plugin's code isn't checked (state.plugin).
 func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
-	if c.state.plugin {
+	if c.state.plugin || c.aliasDeprecated[x] {
+		// A typealias's constructor call whose expansion only drew a
+		// warning: its class's type arguments are the expansion's.
 		return
 	}
 	for j, p := range cd.tparams {
@@ -670,7 +771,9 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 			continue
 		}
 		for _, b := range p.Bounds {
-			if b = s.final(cd.sub.Apply(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+			// A bound with a receiver's projection holds its capture,
+			// which only a written type takes: X : C<T> for a B<out N>.
+			if b = s.final(cd.sub.ApplyParam(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
 				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
@@ -702,6 +805,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 			c.invisibleFun(x.Fun.Pos(), f)
 		} else if m, ok := x.Fun.(*syntax.Member); ok && f.PrivateToThis {
 			c.checkPrivateToThis(m.X, f.Name, f.Owner, m.P)
+		} else if !ok || f.Owner != nil && namesObject(m.X) == f.Owner {
+			c.companionProtectedFun(f, x.Fun.Pos())
 		}
 	case f.Owner != nil && !f.Owner.External && ctorVisibility(f) == syntax.Private && !c.canSee(syntax.Private, f.Owner, ""):
 		// A superclass's private constructor, which only the classes
@@ -723,10 +828,15 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
 	if (v.Kind == types.Global || v.Kind == types.Prop) && !c.propVisible(v) {
 		c.invisibleProp(p, v)
+	} else {
+		c.companionProtectedProp(v, p)
 	}
 }
 
 func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink *system) types.Type {
+	if x.Dropped != nil && !c.hasErrorAt(x.Dropped.Pos(), "unexpected trailing lambda") {
+		c.errorf(x.Dropped.Pos(), "unexpected trailing lambda on a new line")
+	}
 	name := cands[0].f.Name
 	byArity := cands[:0] // cands is the caller's own slice
 	unsupported, why, feature := false, "", "inline-only call"
@@ -767,10 +877,20 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
 			c.noContextArg(x.P, noCtx)
+		case unsupported && c.javaMissingClass(x, cands):
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
+		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
+			// Only @Deprecated(level = HIDDEN) ones, as a Java method's.
+			c.errorf(x.P, "unresolved reference: %s", name)
+		case x.Trailing() && x.TrailingNL && newLineLambdaExcess(x, cands):
+			// As kotlinc, the call is resolved without the lambda, which
+			// is reported.
+			x.DropTrailing()
+			return c.resolve1(x, cands, want, sink)
 		default:
-			c.errorf(x.P, "no function '%s' takes %d arguments", name, len(x.Args))
+			c.arityError(x, name, cands)
+			return types.InvalidType
 		}
 		c.args(x, nil)
 		return types.InvalidType
@@ -828,6 +948,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		case targs != nil && hasUnderscore(x.TypeArgs):
 			cd.sub, cd.sys = underscoreSub(cd.sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
 		case targs != nil:
+			cd.explicit = true
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
 				cd.sub[p] = a
@@ -836,20 +957,54 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				cd.sub[p] = types.Arg{T: targs[j]}
 			}
 		default:
-			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
+			tps, base := cl.tparams, cl.recv
+			if cl.given != nil {
+				tps, base = nil, types.Subst{}
+				for p, a := range cl.recv {
+					base[p] = a
+				}
+				for p, a := range cl.given {
+					base[p] = a
+				}
+				for _, p := range cl.tparams {
+					if _, ok := cl.given[p]; !ok {
+						tps = append(tps, p)
+					}
+				}
+			}
+			cd.sub = cd.sys.fresh(tps, base, x.P)
+		}
+		if c.aliasCtors[x] != nil || c.libAliasCtors[x] {
+			// A typealias's constructor, HashSet(setOf(null)) for a
+			// Set<String>: K2 keeps Foo? <: V of its Java parameters.
+			for _, tv := range cd.sys.vars {
+				tv.strictFlex = true
+			}
 		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
-			if cl.param(j).UnsafeVariance {
+			if cl.param(j).UnsafeVariance && !useSiteProjected(cl.recv, cl.argType(j, x.Args)) {
 				cd.params[j] = cd.sub.Apply(cl.argType(j, x.Args))
+			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
+				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
 			} else {
-				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
+				cd.params[j] = cd.sub.ApplyParam(cl.argType(j, x.Args))
 			}
 			if targs != nil {
 				cd.params[j] = c.nullableUnitResult(cl.argType(j, x.Args), cd.params[j], cd.sub)
+				if l, ok := x.Args[j].(*syntax.Lambda); ok && leftBare(l) {
+					cd.params[j] = bareUnitResult(cd.params[j])
+				}
 			}
 		}
 		cs[i] = cd
+	}
+	for j, a := range x.Args {
+		// A lambda for each candidate's T, not a function type, may take
+		// the receiver of the function type T is: id { s: Sample -> }.
+		if _, ok := a.(*syntax.Lambda); ok && !slices.ContainsFunc(byArity, func(cl callee) bool { return !cl.argType(j, x.Args).IsParam() }) {
+			c.markRecvParam(a)
+		}
 	}
 
 	// Arguments are checked once. With a single candidate, a parameter
@@ -874,7 +1029,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			continue
 		}
 		if single && !cs[0].params[i].HasVars() {
+			if cs[0].typeArgParam(i, x.Args) {
+				c.typeArgWant, c.typeArgStrict = a, cs[0].strictTypeArgParam(i, x.Args)
+			} else if c.plainArgs(x) {
+				c.argWant = a
+			}
 			ts[i] = c.value(a, cs[0].params[i])
+			c.typeArgWant, c.typeArgStrict, c.argWant = nil, false, nil
 			continue
 		}
 		if p, ok := c.sharedFunParam(cs, i); ok {
@@ -884,8 +1045,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			ts[i] = c.value(a, p)
 			continue
 		}
-		if _, isCall := a.(*syntax.Call); isCall {
+		if isCallArg(a) {
 			inner := newSystem(c)
+			for _, b := range x.Args[:i] {
+				if l, ok := b.(*syntax.Lambda); ok && untypedParams(l) {
+					inner.openLambdas = append(inner.openLambdas, l)
+				}
+			}
 			c.sink = inner
 			ts[i] = c.value(a, noWant)
 			if plain && len(inner.lambdas) == 0 && !inner.freeLits() && inner.selfInferable(ts[i]) {
@@ -898,6 +1064,22 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				continue
 			}
 			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
+				partials = append(partials, inner)
+			}
+			continue
+		}
+		if branchValue(a) && !plain {
+			// As K2's synthetic call of an if or a when, branches that are
+			// generic calls not inferred on their own are inferred with
+			// this call: compareBy's T in nullsLast(if (b) compareBy({
+			// it.a }) else compareBy({ it.b })) for a Comparator<Foo?>.
+			inner := newSystem(c)
+			c.branchSink, c.branchArg = inner, true
+			t := c.value(a, noWant)
+			ts[i] = t
+			c.branchSink, c.branchArg = nil, false
+			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
+				inner.fixups = append(inner.fixups, func(s *system) { a.SetType(s.final(t)) })
 				partials = append(partials, inner)
 			}
 			continue
@@ -920,20 +1102,67 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// others: assertEquals(long, long) for assertEquals(1, aLong),
 		// not assertEquals(Object, Object).
 		match := c.applicable(cs, x, ts, partials, false)
+		// As in K2, an Int! candidate, a Java Integer, doesn't make the
+		// literal an Int: foo(Integer) and foo(long) for foo(1) is
+		// ambiguous, neither being more specific.
 		if wide := c.applicable(cs, x, ts, partials, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) &&
+			(slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) ||
+				platformLitParams(match, wide, x.Args, func(cd *candidate) *callee { return &cd.callee })) &&
 			!slices.ContainsFunc(match, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) {
 			match = wide
 		}
 		match = c.notPropRefs(x, match)
+		if fit := slices.DeleteFunc(slices.Clone(match), func(cd *candidate) bool { return !c.refsFit(cd, x) }); len(fit) > 0 {
+			// As in Kotlin, a reference that doesn't fit a candidate's
+			// parameter makes it inapplicable.
+			match = fit
+		}
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
+		if strict, ok := c.noRefAdaptation(x, match); ok {
+			match = strict
+		}
+		match = fewestKotlinJavaSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
 				maximal = append(maximal, cd)
 			}
 		}
-		maximal = overriddenGiveWay(maximal)
+		maximal = c.overriddenGiveWay(maximal)
+		if len(maximal) > 1 {
+			if orig := c.origSAMMaximal(maximal, x.Args); len(orig) == 1 {
+				maximal = orig
+			}
+		}
+		if len(maximal) > 1 {
+			// As K2, a candidate that takes its arguments without varargs
+			// or defaults, or one that isn't generic, is chosen before
+			// conversions to Kotlin fun interfaces are counted:
+			// bar(x: MyAction<String>) over bar(name: String = "",
+			// x: String.() -> Unit), bar(x: MyRunnable) over
+			// bar<T>(x: suspend () -> T).
+			if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
+				maximal = maximal[i : i+1]
+			} else if ng := c.nonGenericMaximal(maximal, x.Args); len(ng) == 1 {
+				maximal = ng
+			}
+		}
+		if len(maximal) > 1 {
+			// Of equally specific ones, which a conversion to a Kotlin fun
+			// interface makes (see funInterfaceView), those converting
+			// fewer arguments: foo(f: () -> Unit) for foo { }, not
+			// foo(r: KRunnable).
+			if fewer, ok := fewestConversions(maximal, x.Args); ok {
+				maximal = fewer
+			}
+		}
+		if len(maximal) == 0 {
+			// Generics are discriminated before SAM conversions:
+			// bar(x: MyRunnable) over bar<T>(x: suspend () -> T).
+			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
+				maximal = ng
+			}
+		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee }); ok {
 				for _, cd := range fewer {
@@ -946,6 +1175,31 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if len(maximal) != 1 {
 			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
 				maximal = ng
+			}
+		}
+		if len(maximal) == 0 && len(c.stubs) > 0 {
+			// In a builder's lambda, a stub in the candidates' parameter
+			// types leaves none more specific than the others: the one
+			// candidate without a vararg is chosen, make(it: Iterable<T>)
+			// of B<T>'s two for make(listOf("a")). Candidates that differ
+			// in the parameters left to their defaults stay ambiguous,
+			// which the builder's other lambdas resolve (see
+			// stubInference): Entry(key: T, id: Any = key) and
+			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			// Not candidates whose parameter types have no stub, as
+			// extensions' of their own type parameters: those stay
+			// ambiguous, T1.fooExt(vararg T1) and fooExt(Inv<T2>).
+			stubbed := false
+			for _, cd := range match {
+				if !cd.usesVararg() {
+					maximal = append(maximal, cd)
+				}
+				for i := range x.Args {
+					stubbed = stubbed || c.hasStub(cd.recv.ApplyIn(cd.argType(i, x.Args)))
+				}
+			}
+			if len(maximal) != 1 || !stubbed {
+				maximal = nil
 			}
 		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
@@ -970,10 +1224,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
+				c.ambiguousLambdas(x)
 			}
 			return types.InvalidType
 		}
 	}
+	c.restoreStubCons(best.stubCons)
 	for i, a := range x.Args {
 		if lit, ok := a.(*syntax.IntLit); ok && fitsLit(lit, best.params[i]) {
 			lit.T = best.params[i].NonNull()
@@ -983,7 +1240,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	for i, m := range best.sams {
 		x.Args[i] = c.samConverted(x.Args[i], m, best.params[i])
 	}
+	var lateSusps map[int]bool // converted once the variables are fixed
 	for i := range best.susps {
+		if best.params[i].HasVars() {
+			if lateSusps == nil {
+				lateSusps = map[int]bool{}
+			}
+			lateSusps[i] = true
+			continue
+		}
 		x.Args[i] = c.suspendConverted(x.Args[i], best.params[i])
 	}
 	f := best.f
@@ -993,6 +1258,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	c.dslCall(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
+	c.recursiveFunRef(f, x.P)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	c.inlineCall(x, &best.callee)
@@ -1000,7 +1266,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if f.Name == "<init>" {
 		ret = best.sub.Apply(f.Owner.This())
 	}
+	c.declaredCastArgs(x, best, ts, partials, ret, want)
 	sys := best.sys
+	fixups0 := len(sys.fixups)
 	params := best.params
 	for _, i := range lambdas {
 		l := x.Args[i].(*syntax.Lambda)
@@ -1015,10 +1283,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
 			// And so does one of whose callables only one fits.
 			sys = trial
+		} else if trial := c.refArgFit(sys, l, params[i]); trial != nil {
+			sys = trial
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i), false})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
@@ -1038,15 +1308,40 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if view, ok := c.capturable(f, best.ext, nothing); ok {
 				want = captured(view, recvParam, want)
 			}
+			n := len(c.errs)
 			c.assignable(best.ext, want, x.Fun.Pos())
+			if len(c.errs) == n {
+				c.exactRecvMismatch(x, best, ts, s)
+			}
 		})
 	}
 	if hasReified(f) {
 		sys.fixups = append(sys.fixups, func(s *system) { c.reifiedArgs(x, f, best.sub, s) })
+	} else if f.Name == "<init>" && slices.ContainsFunc(best.tparams, func(tp *types.TypeParamSym) bool { return tp.Reified }) {
+		// A class's reified type parameter is an error, but its
+		// constructor's calls are still checked as an inline function's.
+		sys.fixups = append(sys.fixups, func(s *system) {
+			for i, tp := range best.tparams {
+				if t := s.final(best.sub.Apply(types.ParamType(tp))); tp.Reified && t.IsParam() && !t.Param().Reified {
+					p := x.P
+					if len(x.TypeArgs) == len(best.tparams) {
+						p = x.TypeArgs[i].P
+					}
+					c.errorf(p, "cannot use '%s' as reified type parameter", t.Param().Name)
+				}
+			}
+		})
 	}
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
+	if len(x.TypeArgs) == 0 && len(best.tparams) > 0 {
+		sys.fixups = append(sys.fixups, func(s *system) {
+			c.notePlatformArgs(x, best.tparams, best.sub, s)
+			c.noteEmptyIntersection(x, best.tparams, best.sub, s)
+		})
+	}
+	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {
 			if _, ok := a.(*syntax.Lambda); ok {
@@ -1056,10 +1351,28 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				ch.T = s.final(params[i]).NonNull()
 				continue
 			}
+			if lateSusps[i] {
+				x.Args[i] = c.suspendConverted(a, s.final(params[i]))
+				continue
+			}
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			c.assignable(a.Type(), captured(a.Type(), params[i], s.finalArg(params[i])), a.Pos())
+			x.Args[i] = c.retypeArith(a, s.final(params[i]))
+			a = x.Args[i]
+			pt := s.finalArg(params[i])
+			if pt.K == types.Unit && params[i].HasVars() && safeCallOf(a) && a.Type().N {
+				// A variable inferred from the Unit? of a safe call, which
+				// the Unit it is written as stands for.
+				continue
+			}
+			want := captured(a.Type(), params[i], pt)
+			c.assignable(a.Type(), want, syntax.StartPos(a))
+			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
+			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
+				// @Exact: the argument's type must be the parameter's.
+				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
+			}
 		}
 		for _, p := range f.Params {
 			if p.Vararg {
@@ -1067,19 +1380,68 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 	})
+	if c.pclaRun() != nil {
+		// Run again once a builder's variables are inferred (see
+		// pclaCommit), the fixups are of this resolution of the call,
+		// which another may have replaced since.
+		for i := fixups0; i < len(sys.fixups); i++ {
+			fix := sys.fixups[i]
+			sys.fixups[i] = func(s *system) {
+				if !c.pclaStale(x, f) {
+					fix(s)
+				}
+			}
+		}
+	}
+	if sink != nil && sink == c.tailSink && hasLambda(x.Args) && !c.lambdasReady(sys) {
+		// A call taking a lambda whose parameter types aren't known yet,
+		// a builder's, is inferred on its own (see endsWithCall).
+		sink = nil
+	}
 	if sink != nil {
-		c.runLambdas(sys, true)
+		if c.afterOpenLambda(sink, x) && c.nestedInputs(sys) {
+			// A lambda of the call this one is an argument of, written
+			// before it, may come first (see readyFirst).
+			for i := range sys.lambdas {
+				sys.lambdas[i].deferred = true
+			}
+		} else {
+			c.runLambdas(sys, true)
+		}
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
-			sys.fixups = append(sys.fixups, func(s *system) { x.T = c.unitResult(f.Ret, s.final(x.T)) })
+			sys.fixups = append(sys.fixups, func(s *system) {
+				// A safe call whose result is inferred as Unit here is an
+				// argument: the Unit object or null.
+				x.T = c.safeUnit(x, c.unitResult(f.Ret, s.final(x.T)))
+			})
 			sink.merge(sys)
 			return ret
 		}
 	}
+	if x == c.elvisCall && want.K == types.Invalid {
+		sys.elvisRet, sys.elvisWant = ret, c.elvisWant
+	}
 	if len(sys.lambdas) > 0 {
-		// The expected type can help infer the lambdas' parameters.
-		if want.K != types.Invalid && !want.HasVars() && ret.HasVars() {
+		// The expected type can help infer the lambdas' parameters. One
+		// of a builder's stubs relates the call's variables to them: as
+		// in Kotlin, myBuilder2 { add("") } that myBuilder1's lambda ends
+		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
+		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 			trial := sys.clone()
+			if o := c.operator; o == nil || o.X != syntax.Expr(x) && o.Y != syntax.Expr(x) {
+				trial.expecting++
+			}
+			if c.typeArgWant == syntax.Expr(x) {
+				trial.typeArgs++
+				if c.typeArgStrict {
+					trial.strictArgs++
+				}
+			}
+			if c.argWant == syntax.Expr(x) {
+				trial.argParams++
+			}
 			trial.sub(ret, want)
+			trial.expecting, trial.typeArgs, trial.argParams, trial.strictArgs = 0, 0, 0, 0
 			if trial.ok {
 				sys = trial
 			}
@@ -1089,15 +1451,101 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	// A builder's variable that stubInference infers counts as known: as
 	// in Kotlin, o.p = materialize() for a p of the builder's type
 	// variable infers materialize's T with it (see joinRun).
-	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
+	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 		trial := sys.clone()
+		if c.typeArgWant == syntax.Expr(x) {
+			trial.typeArgs++
+			if c.typeArgStrict {
+				trial.strictArgs++
+			}
+		}
+		if c.argWant == syntax.Expr(x) {
+			trial.argParams++
+		}
 		trial.sub(ret, want)
+		trial.typeArgs, trial.argParams, trial.strictArgs = 0, 0, 0
 		if trial.ok {
 			sys = trial
 		}
 	}
+	sys.dep = c.dependentRun(best, ts, want)
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))
+}
+
+// exactRecvArgs constrains the type arguments of extension candidate
+// cd's receiver type that are annotated @kotlin.internal.Exact to be
+// those of receiver recv's type, not their supertypes: V of
+// Map<out K, @Exact V> is Int for a Map<String, Int>, which a parameter
+// V1 : V? then bounds.
+func (c *Checker) exactRecvArgs(cd *candidate, recv, want types.Type) {
+	d, ok := cd.f.Decl.(*syntax.FunDecl)
+	if !ok || d.Recv == nil || want.K != types.Class || want.A == nil || len(d.Recv.Args) != len(want.A.List) {
+		return
+	}
+	var sup types.Type
+	for j, a := range d.Recv.Args {
+		if a.Type == nil || !a.Type.Exact {
+			continue
+		}
+		if sup.K == types.Invalid {
+			if sup, ok = c.asSuper(recv.NonNull(), want.C); !ok || sup.A == nil || len(sup.A.List) != len(want.A.List) {
+				return
+			}
+		}
+		if ra, wa := sup.A.List[j], want.A.List[j]; ra.V != types.Star && wa.V != types.Star {
+			cd.sys.sub(wa.T, ra.T)
+		}
+	}
+}
+
+// exactRecvMismatch reports, of call x of extension candidate cd, an
+// argument that a type argument of the receiver annotated @Exact (see
+// exactRecvArgs), inferred as another type, doesn't take: "string" of
+// getOrDefault(key, "string") for a Map<String, Int>'s
+// Map<out K, @Exact V>.getOrDefault(key: K, defaultValue: V1) with
+// V1 : V?. As kotlinc, the argument is reported against the bound with
+// the receiver's type argument.
+func (c *Checker) exactRecvMismatch(x *syntax.Call, cd *candidate, ts []types.Type, s *system) {
+	d, ok := cd.f.Decl.(*syntax.FunDecl)
+	want := cd.sub.ApplyIn(cd.f.Recv)
+	if !ok || d.Recv == nil || want.K != types.Class || want.A == nil || len(d.Recv.Args) != len(want.A.List) {
+		return
+	}
+	sup, ok := c.asSuper(cd.ext.NonNull(), want.C)
+	if !ok || sup.A == nil || len(sup.A.List) != len(want.A.List) {
+		return
+	}
+	exact := types.Subst{}
+	for j, a := range d.Recv.Args {
+		ra, wa := sup.A.List[j], cd.f.Recv.A.List[j]
+		if a.Type == nil || !a.Type.Exact || ra.V == types.Star || wa.T.K != types.TypeParam {
+			continue
+		}
+		if got := s.final(cd.sub.Apply(wa.T)); got.K == types.Invalid || c.sameType(got, ra.T) {
+			continue
+		}
+		exact[wa.T.Param()] = types.Arg{V: types.Inv, T: ra.T}
+	}
+	if len(exact) == 0 {
+		return
+	}
+	for i, t := range ts {
+		if i >= len(x.Args) || i >= len(cd.f.Params) {
+			break
+		}
+		p := cd.f.Params[i].Type
+		if p.K != types.TypeParam {
+			continue
+		}
+		for _, b := range p.Param().Bounds {
+			b = exact.Apply(b)
+			if !b.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cd.f.TypeParams, u.Param()) }) && !c.subtype(t, b) {
+				c.errorf(x.Args[i].Pos(), "argument type mismatch: actual type is %s but %s was expected", t, b)
+				return
+			}
+		}
+	}
 }
 
 // notPropRefs drops from match the candidates that take a property
@@ -1142,6 +1590,22 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 // bar(f: () -> Unit). A function's result fits a parameter whose result
 // is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
+	refs := c.argRefShapes(x)
+	if len(refs) == 0 {
+		return nil
+	}
+	// One that takes a reference without dropping its result first:
+	// schedule(this::flush, ...) is schedule(Callable<V>, ...), not
+	// schedule(Runnable, ...), for a flush that returns a value.
+	if best := c.byRefShape1(x, match, refs, false); best != nil {
+		return best
+	}
+	return c.byRefShape1(x, match, refs, true)
+}
+
+// argRefShapes returns the types each argument of x that is a callable
+// reference may have (see refShapes), by argument index.
+func (c *Checker) argRefShapes(x *syntax.Call) map[int][]types.Type {
 	refs := map[int][]types.Type{}
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
@@ -1150,25 +1614,15 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 			}
 		}
 	}
-	if len(refs) == 0 {
-		return nil
-	}
+	return refs
+}
+
+// byRefShape1 is byRefShape, where a function's result fits a parameter
+// whose result is Unit only if unit is set.
+func (c *Checker) byRefShape1(x *syntax.Call, match []*candidate, refs map[int][]types.Type, unit bool) *candidate {
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys
-		for i, ts := range refs {
-			var fit *system
-			for _, ft := range ts {
-				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
-					fit = s
-					break
-				}
-			}
-			if trial = fit; trial == nil {
-				break
-			}
-		}
-		if trial == nil {
+		if !c.refShapesFit(x, cd, refs, unit) {
 			continue
 		}
 		if best != nil {
@@ -1177,6 +1631,51 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 		best = cd
 	}
 	return best
+}
+
+// refShapesFit reports whether candidate cd's parameters take one of the
+// types refs gives each reference argument, a function's result one whose
+// result is Unit only if unit is set, and its lambdas still fit then.
+func (c *Checker) refShapesFit(x *syntax.Call, cd *candidate, refs map[int][]types.Type, unit bool) bool {
+	trial := cd.sys
+	for i, ts := range refs {
+		var fit *system
+		for _, ft := range ts {
+			if s, ok := c.refFits1(trial, ft, cd.params[i], unit); ok {
+				fit = s
+				break
+			}
+		}
+		if trial = fit; trial == nil {
+			return false
+		}
+	}
+	// With the references' types, a lambda may no longer fit: in
+	// foo(B::arg0) { }, not foo(f: KFunction1<T1, R>, arg1: T1), whose
+	// T1 is a B.
+	with := *cd
+	with.sys = trial
+	return c.lambdasFit(&with, x)
+}
+
+// noRefAdaptation returns the candidates among cs that take each callable
+// reference argument without dropping its result, and whether that
+// leaves some out: as in Kotlin, schedule(this::flush) is
+// schedule(j: Job<V>), not the more specific schedule(a: Action) of a
+// fun interface Action { fun run() }, for a flush that returns a value.
+func (c *Checker) noRefAdaptation(x *syntax.Call, cs []*candidate) ([]*candidate, bool) {
+	if len(cs) < 2 {
+		return cs, false
+	}
+	refs := c.argRefShapes(x)
+	if len(refs) == 0 {
+		return cs, false
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return !c.refShapesFit(x, cd, refs, false) })
+	if len(out) == 0 || len(out) == len(cs) {
+		return cs, false
+	}
+	return out, true
 }
 
 // eagerRefType returns the type of a reference ::f to a local or top-level
@@ -1243,7 +1742,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			li = i
 		}
 	}
-	if li < 0 {
+	if li < 0 || !slices.ContainsFunc(match, func(cd *candidate) bool { return !sourceNotByLambdaResult(cd.f) }) {
 		return nil
 	}
 	l := x.Args[li].(*syntax.Lambda)
@@ -1255,8 +1754,15 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		if !ok {
 			return nil
 		}
+		n := len(sys.errs)
 		for _, p := range ps {
 			sys.fixVarsIn(p)
+		}
+		if len(sys.errs) > n {
+			// As in K2, a lambda whose parameter types need its body to
+			// infer, as a builder's MutableList<E1> receiver, doesn't
+			// choose: buildL { add(""); "" } is ambiguous.
+			return nil
 		}
 		for i := range ps {
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {
@@ -1280,17 +1786,41 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if cd := c.byLambdaResultClass(l, li, match, params); cd != nil {
 		return cd
 	}
+	c.resultChecked = l
 	_, bt, _ := c.checkLambda(l, lambdaWant{params: params, known: true, recv: match[0].params[li].Flex().E, ctx: match[0].params[li].Flex().Contexts(), suspend: isSuspendFunc(match[0].params[li]), composable: isComposableFunc(match[0].params[li]), ret: noWant})
 	if bt.K == types.Invalid {
 		return nil
 	}
 	var fit []*candidate
+	byLit := map[*candidate]bool{}
 	for _, cd := range match {
 		_, r, _ := funcParts(cd.params[li])
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		if lit := resultLit(l); lit != nil && !r.HasVars() && fitsLit(lit, r) {
+			// An integer literal is of the type expected, if it fits:
+			// debounce { 0 } for a (T) -> Long.
+			fit = append(fit, try)
+			byLit[try] = true
+			continue
+		}
 		try.sys.sub(bt, r)
 		if try.sys.ok && c.withinBounds(try) {
 			fit = append(fit, try)
+		}
+	}
+	if len(fit) == 0 {
+		// As K2, a lambda whose result fits none chooses the one candidate
+		// not marked, if there is one, whose lambda is then checked
+		// against it: flatMap { if (b) listOf("") else null } is
+		// Iterable's flatMap, whose lambda returns a List<String>?.
+		var plain []*candidate
+		for _, cd := range match {
+			if !markedByLambdaResult(cd.f) {
+				plain = append(plain, cd)
+			}
+		}
+		if len(plain) == 1 {
+			return plain[0]
 		}
 	}
 	var maximal []*candidate
@@ -1302,8 +1832,71 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if len(maximal) != 1 {
 		return nil
 	}
-	c.checked[l] = bt
+	if !byLit[maximal[0]] {
+		c.checked[l] = bt // else checked again, its literal of the type expected
+	}
 	return maximal[0]
+}
+
+// sourceNotByLambdaResult reports whether f is a function of the program
+// not marked @OverloadResolutionByLambdaReturnType. A lambda's result
+// chooses only between overloads one of which is marked: e {} for
+// e(block: () -> String) and e(block: () -> Unit) is ambiguous. A library
+// function's mark isn't read: those of the standard library that a
+// lambda's result chooses between are marked.
+func sourceNotByLambdaResult(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
+}
+
+// markedByLambdaResult reports whether f is marked
+// @OverloadResolutionByLambdaReturnType: in the program, or in its class
+// file, whose annotations a function of the class path keeps.
+func markedByLambdaResult(f *types.FunSym) bool {
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return d.Find("", "OverloadResolutionByLambdaReturnType") != nil || d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") != nil
+	}
+	return slices.Contains(f.Annotations, "Lkotlin/OverloadResolutionByLambdaReturnType;")
+}
+
+// branchesClass returns the class of the calls the branches of e, an if
+// or a when with an else in lambda l, end in, if they are all calls of
+// functions l doesn't declare, without lambdas, whose results are of the
+// same class.
+func (c *Checker) branchesClass(l *syntax.Lambda, e syntax.Expr) *types.ClassSym {
+	var bodies []*syntax.Block
+	switch e := e.(type) {
+	case *syntax.If:
+		bodies = []*syntax.Block{e.Then, e.Else}
+	case *syntax.When:
+		for _, b := range e.Branches {
+			bodies = append(bodies, b.Body)
+		}
+	}
+	var cls *types.ClassSym
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return nil
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return nil
+		}
+		call, ok := es.X.(*syntax.Call)
+		if !ok || hasLambda(call.Args) {
+			return nil
+		}
+		fn, ok := call.Fun.(*syntax.Ident)
+		if !ok || declaredIn(l)[fn.Name] {
+			return nil
+		}
+		bc := c.peekClass(call)
+		if bc == nil || cls != nil && bc != cls {
+			return nil
+		}
+		cls = bc
+	}
+	return cls
 }
 
 // byLambdaResultClass chooses among the candidates of byLambdaResult
@@ -1314,6 +1907,21 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 // is the Iterable one, not the Sequence one. The lambda is then checked
 // once, after the candidate is chosen, so that a generic call it ends
 // with can be inferred with the call's other constraints.
+// resultLit returns the integer literal lambda l's body ends with, if it
+// does.
+func resultLit(l *syntax.Lambda) *syntax.IntLit {
+	n := len(l.Body.Stmts)
+	if n == 0 {
+		return nil
+	}
+	es, ok := l.Body.Stmts[n-1].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	lit, _ := es.X.(*syntax.IntLit)
+	return lit
+}
+
 func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candidate, params []types.Type) *candidate {
 	n := len(l.Body.Stmts)
 	if n == 0 {
@@ -1323,12 +1931,24 @@ func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candida
 	if !ok {
 		return nil
 	}
+	var cls *types.ClassSym
+	if branchValue(es.X) {
+		// Branches that end in calls of the same class: setOf() in
+		// flatMapTo(dest) { if (b) setOf() else setOf() }.
+		cls = c.branchesClass(l, es.X)
+		if cls == nil {
+			return nil
+		}
+	}
 	call, ok := es.X.(*syntax.Call)
-	if !ok || hasLambda(call.Args) {
+	if cls == nil && (!ok || hasLambda(call.Args)) {
 		return nil
 	}
-	var cls *types.ClassSym
-	switch fn := call.Fun.(type) {
+	var fn syntax.Expr
+	if cls == nil {
+		fn = call.Fun
+	}
+	switch fn := fn.(type) {
 	case *syntax.Ident:
 		if declaredIn(l)[fn.Name] {
 			return nil
@@ -1396,6 +2016,78 @@ func (c *Checker) memberResultClass(rt types.Type, name string) *types.ClassSym 
 	return out
 }
 
+// arityError reports call x, of the function name, that no candidate of
+// cands takes its number of arguments. As kotlinc, the first argument
+// none of them has a place for is reported where it is if there is one
+// candidate: one too many (TOO_MANY_ARGUMENTS), or a trailing lambda after
+// a vararg's arguments (VARARG_OUTSIDE_PARENTHESES).
+// The arguments before it are checked against their parameters, as
+// kotlinc does (ARGUMENT_TYPE_MISMATCH), where their types are known.
+func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
+	report := func(p syntax.Pos) { c.errorf(p, "no function '%s' takes %d arguments", name, len(x.Args)) }
+	excess, vararg := excessArg(x, cands)
+	switch {
+	case excess < 0 || len(cands) > 1:
+		report(x.P)
+	case vararg:
+		c.errorf(x.Args[excess].Pos(), "passing value as a vararg is only allowed inside a parenthesized argument list")
+	default:
+		report(x.Args[excess].Pos())
+		f := cands[0].f
+		for i := range x.Args {
+			want := noWant
+			if i < excess && !f.Params[i].Type.HasParams() {
+				if _, lambda := x.Args[i].(*syntax.Lambda); !lambda {
+					want = f.Params[i].Type
+				}
+			}
+			t := c.argValue(&x.Args[i], want, nil)
+			if want != noWant && t.K != types.Invalid && !c.subtype(t, want) {
+				c.errorf(x.Args[i].Pos(), "type mismatch: inferred type is %s but %s was expected", t, want)
+			}
+		}
+		return
+	}
+	c.args(x, nil)
+}
+
+// newLineLambdaExcess reports whether call x's trailing lambda, on a new
+// line, is the only argument that no candidate of cands has a place for:
+// kotlinc reports it (UNEXPECTED_TRAILING_LAMBDA_ON_A_NEW_LINE) and
+// resolves the call without it.
+func newLineLambdaExcess(x *syntax.Call, cands []callee) bool {
+	excess, vararg := excessArg(x, cands)
+	return excess == len(x.Args)-1 && !vararg // a vararg's is reported as such
+}
+
+// excessArg returns the index of the first argument of call x, which no
+// candidate of cands takes, that none of them has a place for, and
+// whether it is a trailing lambda after a vararg's arguments; -1 if
+// that isn't known: with named or spread arguments, a receiver among
+// them (r.(f)(b)), or a vararg that takes any number.
+func excessArg(x *syntax.Call, cands []callee) (int, bool) {
+	if x.Names != nil || x.Recv || slices.ContainsFunc(x.Args, isSpread) {
+		return -1, false
+	}
+	last := len(x.Args) - 1
+	lambda := x.Trailing() && last >= 0
+	excess, vararg := 0, false
+	for _, cl := range cands {
+		n := len(cl.f.Params)
+		if i := slices.IndexFunc(cl.f.Params, func(q *types.VarSym) bool { return q.Vararg }); i >= 0 {
+			if !lambda || i < n-1 {
+				return -1, false
+			}
+			n, vararg = last, true // all but the lambda
+		}
+		excess = max(excess, n)
+	}
+	if excess > last {
+		return -1, false
+	}
+	return excess, vararg && excess == last
+}
+
 // spreadMisplaced reports whether a call spreads an array where none of
 // the candidates takes a vararg.
 func spreadMisplaced(x *syntax.Call, cands []callee) bool {
@@ -1434,7 +2126,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		c.samArgs(x, ts, func(i int) types.Type { return best.argType(i, x.Args) })
 		for i, t := range ts {
 			if ch, ok := x.Args[i].(*syntax.Checked); !ok || ch.SAM == nil {
-				c.assignable(t, best.argType(i, x.Args), x.Args[i].Pos())
+				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]))
 			}
 		}
 		if best.ext.K != types.Invalid {
@@ -1451,21 +2143,54 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
 		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) &&
-			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) {
+			(slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) ||
+				platformLitParams(match, wide, x.Args, func(cl *callee) *callee { return cl })) &&
+			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) {
 			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
+		match = fewestKotlinJavaSAM(match, x.Args, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
-			if c.plainMostSpecific(cl, match, x.Args) {
+			if c.plainMostSpecific(cl, match, x.Args, ts) {
 				maximal = append(maximal, cl)
+			}
+		}
+		if len(maximal) > 1 {
+			c.origSAM = true
+			var orig []*callee
+			for _, cl := range maximal {
+				if c.plainMostSpecific(cl, maximal, x.Args, ts) {
+					orig = append(orig, cl)
+				}
+			}
+			c.origSAM = false
+			if len(orig) == 1 {
+				maximal = orig
 			}
 		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cl *callee) *callee { return cl }); ok {
 				for _, cl := range fewer {
-					if c.plainMostSpecific(cl, fewer, x.Args) {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
+						maximal = append(maximal, cl)
+					}
+				}
+			}
+		}
+		if len(maximal) != 1 && len(match) > 1 {
+			// Those that convert fewer values to fun interfaces: foo(f) for
+			// f: () -> Unit is foo(f: () -> Unit), not foo(r: KRunnable).
+			from := maximal
+			if len(from) == 0 {
+				from = match
+			}
+			n := func(cl *callee) int { return c.plainConversions(cl, x.Args, ts) }
+			least := slices.MinFunc(from, func(a, b *callee) int { return n(a) - n(b) })
+			if fewer := slices.DeleteFunc(slices.Clone(from), func(cl *callee) bool { return n(cl) != n(least) }); len(fewer) < len(from) {
+				maximal = maximal[:0]
+				for _, cl := range fewer {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
 						maximal = append(maximal, cl)
 					}
 				}
@@ -1484,6 +2209,8 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
 				c.ambiguities++
+				c.pclaAmbiguous(ts)
+				c.ambiguousLambdas(x)
 			}
 			return types.InvalidType
 		}
@@ -1500,7 +2227,9 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.receiverShadowed(x, best)
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
+	c.javaVariances(x, best, func(i int) types.Type { return best.argType(i, x.Args) })
 	ensureFun(f)
+	c.recursiveFunRef(f, x.P)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	if len(cs) > 1 {
@@ -1540,10 +2269,11 @@ func (c *Checker) plainApplicable(cs []callee, args []syntax.Expr, ts []types.Ty
 	return out
 }
 
-func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr) bool {
+func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr, ts []types.Type) bool {
 	for _, g := range cs {
 		for i := range args {
-			if fa, ga := f.argType(i, args), g.argType(i, args); boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
+			fa, ga := c.plainFunInterfaceView(f, i, args, ts), c.plainFunInterfaceView(g, i, args, ts)
+			if boxedPrimitive(fa, ga) || enhancedBoxed(f, g, i, fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
 				return false
 			}
 		}
@@ -1569,17 +2299,56 @@ func (c *Checker) sharedFunParam(cs []*candidate, i int) (types.Type, bool) {
 	return p, true
 }
 
+// platformRecv returns ext, the type of the receiver of extension call
+// x, as the platform type the receiver has, if it has one: as in Kotlin,
+// T of a T.checkType() on a Java String! is the String!, which takes
+// null, though the call sees the receiver as non-null.
+func (c *Checker) platformRecv(x *syntax.Call, ext types.Type) types.Type {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok || m.Safe || ext.P || ext.N {
+		return ext
+	}
+	if xt := m.X.Type(); xt.P && c.sameType(xt.NonNull(), ext) {
+		return xt
+	}
+	return ext
+}
+
 // constrain adds the constraints of a call's arguments to a candidate's
 // system. If longLits, integer literals may be passed as Long.
 func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, partials []*system, longLits bool) {
+	if cd.pre == nil && slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return castParamArg(a) != nil }) {
+		cd.pre = cd.sys.clone()
+	}
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
 	}
+	switch {
+	case cd.f.Name == "<init>" && cd.f.Owner != nil:
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
+	case len(cd.sys.vars) > 0 && !cd.f.InProgress:
+		// Only a candidate with type variables needs its return type
+		// here. Inferring it for the others, which K2 doesn't to find
+		// the applicable ones, made a recursive problem of the function
+		// being inferred, as kotlinpoet's
+		// fun emitCode(s: String) = emitCode(CodeBlock.of(s)), and of
+		// its overloads that call it back.
+		ensureFun(cd.f)
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
+	}
 	if cd.ext.K != types.Invalid {
-		cd.sys.sub(cd.ext, cd.sub.ApplyIn(cd.f.Recv))
+		recv, want := c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv)
+		cd.sys.sub(recv, want)
+		c.exactRecvArgs(cd, recv, want)
 	}
 	for i, t := range ts {
 		p := cd.params[i]
+		if cd.param(i).NoInfer && p.HasVars() {
+			// A @NoInfer parameter's argument adds no constraint, an
+			// integer literal's neither: it is checked against the type
+			// the others infer.
+			continue
+		}
 		if lit, ok := x.Args[i].(*syntax.IntLit); ok && !lit.Long && !lit.Unsigned {
 			if p.K == types.TypeVar && cd.sys.addLit(p, lit) {
 				continue
@@ -1588,7 +2357,10 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 				continue
 			}
 		}
-		if ft, ok := c.suspendConstraint(t, p, x.Args[i]); ok {
+		if lit := arithLit(x.Args[i]); lit != nil && p.K == types.TypeVar && cd.sys.addLit(p, lit) {
+			continue
+		}
+		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {
 				cd.susps = map[int]bool{}
 			}
@@ -1596,7 +2368,7 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			cd.sys.sub(t, ft)
 			continue
 		}
-		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok {
+		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok && !c.ownParamArg(&cd.callee, x, i) {
 			if cd.sams == nil {
 				cd.sams = map[int]*types.FunSym{}
 			}
@@ -1604,9 +2376,44 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			cd.sys.sub(t, ft)
 			continue
 		}
+		if cd.typeArgParam(i, x.Args) {
+			strict := cd.strictTypeArgParam(i, x.Args)
+			cd.sys.typeArgs++
+			if strict {
+				cd.sys.strictArgs++
+			}
+			cd.sys.sub(t, p)
+			cd.sys.typeArgs--
+			if strict {
+				cd.sys.strictArgs--
+			}
+			continue
+		}
+		if c.plainArgs(x) {
+			cd.sys.argParams++
+			cd.sys.sub(t, p)
+			cd.sys.argParams--
+			continue
+		}
 		cd.sys.sub(t, p)
 	}
 	c.constrainContexts(cd, x)
+}
+
+// typeArgParam reports whether the type of cd's parameter for argument
+// i is given by the call's explicit type arguments (see tvar.typeArgUp).
+func (cd *candidate) typeArgParam(i int, args []syntax.Expr) bool {
+	return cd.explicit && slices.ContainsFunc(cd.tparams, func(tp *types.TypeParamSym) bool { return mentionsParam(cd.argType(i, args), tp) })
+}
+
+// strictTypeArgParam reports whether the type of cd's parameter for
+// argument i uses a type parameter the call's explicit type arguments give
+// as a type that isn't flexible: a Kotlin function's, or a Java one's
+// whose bound is annotated not-null (see tvar.strictArg).
+func (cd *candidate) strictTypeArgParam(i int, args []syntax.Expr) bool {
+	return cd.typeArgParam(i, args) && cd.argType(i, args).Has(func(u types.Type) bool {
+		return u.IsParam() && !u.P && slices.Contains(cd.tparams, u.Param())
+	})
 }
 
 // constrainContexts adds the constraints of a candidate's context
@@ -1643,17 +2450,39 @@ func (c *Checker) constrainContexts(cd *candidate, x *syntax.Call) {
 // value that a candidate takes for a suspend function type p only by
 // suspend conversion (see suspendConverted), and returns the function
 // type it takes without it: () -> String for suspend () -> String.
-func (c *Checker) suspendConstraint(t, p types.Type, a syntax.Expr) (types.Type, bool) {
+func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Expr) (types.Type, bool) {
 	pt := p.NonNull()
 	switch a.(type) {
 	case *syntax.Lambda, *syntax.Checked:
 		return types.InvalidType, false
 	}
-	ft, _ := c.funcView(t, pt.A.Len()-1)
+	vt := t
+	if t.K == types.TypeVar && cd != nil && p.HasVars() {
+		// A generic call's result, as id(f)'s, by the function value
+		// it is inferred from.
+		if tv := cd.sys.byVar[t.Param()]; tv != nil && len(tv.lower) == 1 && !tv.fixed {
+			vt = tv.lower[0]
+		}
+	}
+	ft, _ := c.funcView(vt, pt.A.Len()-1)
 	ft = ft.NonNull()
-	if !pt.IsSuspendFunc() || p.HasVars() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
-		ft.A.Len() != pt.A.Len() || types.MayBeNull(t) && !types.AcceptsNull(p) {
+	if !pt.IsSuspendFunc() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
+		ft.A.Len() != pt.A.Len() || types.MayBeNull(vt) && !types.AcceptsNull(p) {
 		return types.InvalidType, false
+	}
+	if p.HasVars() {
+		if cd == nil {
+			return types.InvalidType, false
+		}
+		// The conversion's constraint, as K2 adds it, when the type
+		// itself doesn't fit: (Int) -> String for suspend (T) -> String
+		// gives T := Int.
+		trial := cd.sys.clone()
+		if trial.sub(vt, p); trial.ok {
+			return types.InvalidType, false
+		}
+	} else if !c.subtype(vt, c.unsuspended(p)) {
+		return types.InvalidType, false // a () -> String? for a suspend () -> String
 	}
 	return c.unsuspended(p), true
 }
@@ -1751,12 +2580,73 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 	for _, cd := range cs {
 		// Each attempt starts from a fresh copy of the candidate.
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		mark := c.markStubCons()
 		c.constrain(try, x, ts, partials, longLits)
+		// What a candidate records doesn't count for the others: B<T>'s
+		// make(vararg T) for make(listOf("a")) doesn't give T a List.
+		try.stubCons = c.takeStubCons(mark)
 		if try.sys.ok && try.sys.litsFitUppers() && c.lambdasFit(try, x) && c.withinBounds(try) {
 			out = append(out, try)
 		}
 	}
+	if len(cs) > 1 {
+		// As in K2, among several candidates, one whose variable's upper
+		// constraints have an empty intersection is inapplicable: S of
+		// greater(x: Bar<in S>, t: T) for S : T would be Long & Bar<Long>.
+		// A single one only gets a warning.
+		out = slices.DeleteFunc(out, c.emptyUppers)
+	}
 	return out
+}
+
+// emptyUppers reports whether a variable of candidate cd without lower
+// constraints has upper constraints, its declared bounds among them,
+// whose intersection is or may be empty (see emptyIntersection), as
+// K2's CheckIncompatibleTypeVariableUpperBounds finds them.
+func (c *Checker) emptyUppers(cd *candidate) bool {
+	s := cd.sys.clone()
+	for _, p := range cd.tparams {
+		if v := cd.sub[p].T; v.K == types.TypeVar {
+			for _, b := range v.Param().Bounds {
+				s.sub(v, b)
+			}
+		}
+	}
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper) {
+			continue
+		}
+		var ups []types.Type
+		seen := map[*tvar]bool{}
+		var collect func(tv *tvar)
+		collect = func(tv *tvar) {
+			if seen[tv] {
+				return
+			}
+			seen[tv] = true
+			for _, u := range tv.upper {
+				u = s.apply(u)
+				if u.K == types.TypeVar {
+					if uv := s.byVar[u.Param()]; uv != nil && !uv.fixed {
+						collect(uv)
+					}
+					continue
+				}
+				if !u.HasVars() && (u.K == types.Class || u.IsParam() || isBuiltin(u)) {
+					ups = append(ups, u)
+				}
+			}
+		}
+		collect(tv)
+		for i := range ups {
+			for _, u := range ups[i+1:] {
+				if c.emptyIntersection(ups[i], u) || c.mayBeEmptyIntersection(ups[i], u) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // withinBounds reports whether a candidate's type parameters can satisfy
@@ -1781,6 +2671,13 @@ func (c *Checker) withinBounds(cd *candidate) bool {
 // candidate, as Kotlin decides: g accepts f's parameters as arguments.
 // f's own type parameters are kept as they are, g's are inferred.
 func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr) bool {
+	// In a builder's lambda (see stubInference), comparing the
+	// candidates' parameter types records nothing, and a stub is no
+	// supertype of every type: make(it: Iterable<T>) is more specific
+	// than make(vararg values: T) for make(listOf("a")) of a B<T>.
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
 	for _, g := range cs {
 		if g == f {
 			continue
@@ -1797,7 +2694,8 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 		for i := range args {
 			fa, ga := f.recv.ApplyIn(f.argType(i, args)), sub.ApplyIn(g.argType(i, args))
-			if boxedPrimitive(fa, ga) {
+			fa, ga = c.funInterfaceView(f, i, args, fa), c.funInterfaceView(g, i, args, ga)
+			if boxedPrimitive(fa, ga) || enhancedBoxed(&f.callee, &g.callee, i, fa, ga) {
 				return false
 			}
 			if numberMoreSpecific(fa, ga) {
@@ -1817,6 +2715,147 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 	}
 	return true
+}
+
+// plainConversions returns the number of arguments of candidate cl,
+// of types ts, that convert to fun interfaces: lambdas or values.
+func (c *Checker) plainConversions(cl *callee, args []syntax.Expr, ts []types.Type) int {
+	n := cl.samArgs(args)
+	for i, t := range ts {
+		if _, lambda := args[i].(*syntax.Lambda); lambda || t.K == types.Invalid {
+			continue
+		}
+		if p := cl.argType(i, args); !c.subtype(t, p) {
+			if _, sam := c.samValue(t, p); sam {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// plainFunInterfaceView is funInterfaceView for a candidate without
+// type parameters, whose arguments have types ts.
+func (c *Checker) plainFunInterfaceView(cl *callee, i int, args []syntax.Expr, ts []types.Type) types.Type {
+	t := cl.argType(i, args)
+	pt := t.Flex().NonNull()
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
+		return t
+	}
+	if _, lambda := args[i].(*syntax.Lambda); !lambda && (i >= len(ts) || ts[i].K == types.Invalid || c.subtype(ts[i], t)) {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
+}
+
+// fewestConversions returns the candidates among cs that convert the
+// fewest arguments to fun interfaces, lambdas or values, and whether
+// that leaves some out.
+func fewestConversions(cs []*candidate, args []syntax.Expr) ([]*candidate, bool) {
+	n := func(cd *candidate) int { return cd.samArgs(args) + len(cd.sams) }
+	least := -1
+	for _, cd := range cs {
+		if k := n(cd); least < 0 || k < least {
+			least = k
+		}
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return n(cd) != least })
+	return out, len(out) < len(cs)
+}
+
+// funInterfaceView returns parameter type t of candidate cd's i'th
+// argument, or if it is a Kotlin fun interface the argument converts to,
+// its function type: as in Kotlin, foo(i: Int, r: KRunnable) is more
+// specific than foo(n: Number, f: () -> Unit) for foo(1, ::bar). So is a
+// Java interface a lambda converts to: test(FObject) for test { }, whose
+// (Any!) -> Unit is more specific than a test(Function1<Integer, Unit>).
+// Unless c.origSAM, when candidates as specific as each other compare by
+// the interfaces themselves, as K2 does: bar(Fn2<String, Object>) over
+// bar(Fn<String, Object>).
+func (c *Checker) funInterfaceView(cd *candidate, i int, args []syntax.Expr, t types.Type) types.Type {
+	pt := t.Flex().NonNull()
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
+		return t
+	}
+	_, lambda := args[i].(*syntax.Lambda)
+	if !lambda && cd.sams[i] == nil {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
+}
+
+// javaSAMView reports whether parameter type pt is a Java interface
+// whose function type a lambda argument a compares by.
+func javaSAMView(pt types.Type, a syntax.Expr) bool {
+	l, lambda := a.(*syntax.Lambda)
+	return lambda && l.Ref == nil && pt.C.Interface && pt.C.External && pt.C.KotlinName == "" && pt.C.Java == nil
+}
+
+// kotlinJavaSAMArgs returns the number of a call's lambdas that callee
+// cl, a Kotlin function, converts to Java interfaces. As K2 resolves those
+// for compatibility, they lose to the candidates that convert none: the
+// generic bar(action: () -> T) for bar { foo() }, not bar(r: Runnable),
+// and foo(m: Tom) for a fun interface Tom, not foo(j: Jerry).
+func (cl *callee) kotlinJavaSAMArgs(args []syntax.Expr) int {
+	if o := cl.f.Owner; o != nil && o.External && o.KotlinName == "" && o.Java == nil {
+		return 0
+	}
+	n := 0
+	for i, a := range args {
+		if pt := cl.argType(i, args).Flex().NonNull(); pt.K == types.Class && !pt.IsFunc() && javaSAMView(pt, a) {
+			n++
+		}
+	}
+	return n
+}
+
+// fewestKotlinJavaSAM returns the candidates among cs that convert the
+// fewest lambdas to Java interfaces as Kotlin functions (see
+// kotlinJavaSAMArgs).
+func fewestKotlinJavaSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) []C {
+	least := -1
+	for _, c := range cs {
+		if n := cl(c).kotlinJavaSAMArgs(args); least < 0 || n < least {
+			least = n
+		}
+	}
+	if least != 0 {
+		return cs
+	}
+	return slices.DeleteFunc(slices.Clone(cs), func(c C) bool { return cl(c).kotlinJavaSAMArgs(args) != 0 })
+}
+
+// origSAMMaximal returns the most specific of candidates cs, all as
+// specific as each other by the function types of the interfaces their
+// lambdas convert to, by the interfaces themselves, if one is.
+func (c *Checker) origSAMMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	c.origSAM = true
+	defer func() { c.origSAM = false }()
+	var out []*candidate
+	for _, cd := range cs {
+		if c.mostSpecific(cd, cs, args) {
+			out = append(out, cd)
+		}
+	}
+	return out
 }
 
 // nonGenericMaximal returns the most specific of the candidates without
@@ -1847,7 +2886,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 			out = append(out, cd)
 		}
 	}
-	return overriddenGiveWay(out)
+	return c.overriddenGiveWay(out)
 }
 
 // overriddenGiveWay drops the candidates among equally specific ones
@@ -1855,7 +2894,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 // parameters, overrides: Kotlin sees only the override, as value class
 // Tag's Int.ext(n) for the T.ext(n) of its supertype Ext<Int>, which
 // dropOverridden keeps, as their JVM descriptors differ.
-func overriddenGiveWay(cs []*candidate) []*candidate {
+func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 	if len(cs) < 2 {
 		return cs
 	}
@@ -1865,8 +2904,10 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 	var out []*candidate
 	for _, f := range cs {
 		overridden := slices.ContainsFunc(cs, func(g *candidate) bool {
-			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name &&
-				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
+			// A Java static method overrides none: C.foo(Runnable) hides
+			// A.foo(Runnable), not A.foo(Function0<Unit>).
+			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
+				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f) && !c.notOverridden(g.f, f.f)
 		})
 		if !overridden {
 			out = append(out, f)
@@ -1879,7 +2920,9 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 // a is more specific than one of number type b, though neither is a
 // subtype of the other: f(Int?) is more specific than f(Long?) for
 // f(null). As in kotlinc, Double comes before Float, Int before Long,
-// Short and Byte, and Short before Byte.
+// Short and Byte, and Short before Byte; any signed integer type before
+// any unsigned one, UInt before the other unsigned types, and UShort
+// before UByte.
 func numberMoreSpecific(a, b types.Type) bool {
 	if a.P || b.P || a.N && !b.N {
 		return false
@@ -1888,11 +2931,66 @@ func numberMoreSpecific(a, b types.Type) bool {
 	case types.Double:
 		return b.K == types.Float
 	case types.Int:
-		return b.K == types.Short || b.K == types.Byte || b.K == types.Long
-	case types.Short:
-		return b.K == types.Byte
+		return b.K == types.Short || b.K == types.Byte || b.K == types.Long || isUnsigned(b)
+	case types.Short, types.Byte, types.Long:
+		return a.K == types.Short && b.K == types.Byte || isUnsigned(b)
+	}
+	if isUnsigned(a) && isUnsigned(b) {
+		switch a.C.Name {
+		case "kotlin/UInt":
+			return b.C.Name != "kotlin/UInt"
+		case "kotlin/UShort":
+			return b.C.Name == "kotlin/UByte"
+		}
 	}
 	return false
+}
+
+// platformLitParams reports whether every candidate of match takes an
+// integer literal argument as Int!, a Java method's Integer, and one of
+// wide that match leaves out takes it as a type that isn't a platform
+// one, a Java long: as in K2, neither is more specific. Of Java's Integer
+// and Long, Integer is.
+func platformLitParams[T comparable](match, wide []T, args []syntax.Expr, cl func(T) *callee) bool {
+	for i, a := range args {
+		if _, ok := a.(*syntax.IntLit); !ok || len(match) == 0 {
+			continue
+		}
+		if slices.ContainsFunc(match, func(c T) bool {
+			p := cl(c).argType(i, args)
+			return !p.P || p.K != types.Int
+		}) {
+			continue
+		}
+		if slices.ContainsFunc(wide, func(c T) bool {
+			return !slices.Contains(match, c) && !cl(c).argType(i, args).P
+		}) {
+			return true
+		}
+	}
+	return false
+}
+
+// enhancedBoxed reports whether argument i of a call goes to a Java boxed
+// primitive parameter of f that an annotation makes non-null, and to the
+// primitive parameter of g: both are Int to Kotlin, but foo(int) is more
+// specific than foo(@NotNull Integer) (KT-9182).
+func enhancedBoxed(f, g *callee, i int, fa, ga types.Type) bool {
+	return fa.IsPrimitive() && !fa.P && !ga.P && fa.K == ga.K && fa.N == ga.N && javaBoxedParam(f, i) && !javaBoxedParam(g, i)
+}
+
+// javaBoxedParam reports whether the parameter that argument i of a call
+// of cl is passed to is a Java method's boxed primitive, Integer, which
+// Kotlin sees as a primitive type, Int, where an annotation makes it
+// non-null.
+func javaBoxedParam(cl *callee, i int) bool {
+	f := cl.f
+	if f.Desc == "" || f.Owner == nil || !isJavaClass(f.Owner) {
+		return false
+	}
+	ds := classfile.DescParams(f.Desc)
+	j := slices.Index(f.Params, cl.param(i))
+	return len(ds) == len(f.Params) && j >= 0 && strings.HasPrefix(ds[j], "Ljava/lang/")
 }
 
 // boxedPrimitive reports whether a is a Java boxed primitive, Long!, and b
@@ -1993,4 +3091,202 @@ func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type)
 		}
 	}
 	return trial
+}
+
+// branchValue reports whether e is an if with an else or a when with an
+// else branch, whose value is one of its branches'.
+func branchValue(e syntax.Expr) bool {
+	switch e := e.(type) {
+	case *syntax.If:
+		return e.Else != nil
+	case *syntax.When:
+		return len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
+	}
+	return false
+}
+
+// castParamArg returns argument a if it is a variable of a type
+// parameter's type that a smart cast gives another type, as o of type T
+// after o is String.
+func castParamArg(a syntax.Expr) *syntax.Ident {
+	id, ok := a.(*syntax.Ident)
+	if !ok || !id.Cast || id.Sym == nil || !id.Sym.Type.IsParam() || id.Sym.Type.IsIntersection() {
+		return nil
+	}
+	return id
+}
+
+// declaredCastArgs passes the smart-cast arguments of type parameter
+// types (see castParamArg) as their declared types if the arguments'
+// constraints otherwise don't hold, or the call's result ret isn't within
+// want, and then do and is. K2's smart cast is an
+// intersection with the declared type, T & String, which a variable of
+// T fits: listOf(o) for an expected Collection<T> is a List<T>.
+func (c *Checker) declaredCastArgs(x *syntax.Call, best *candidate, ts []types.Type, partials []*system, ret, want types.Type) {
+	if best.pre == nil {
+		return
+	}
+	// Either the arguments' constraints don't hold, as the value of
+	// m[o] = o for a MutableMap<String, T>, or the result isn't within
+	// want.
+	wanted := want.K != types.Invalid && !want.HasVars() && ret.HasVars()
+	if best.sys.ok && (!wanted || c.subOK(best.sys.clone(), ret, want)) {
+		return
+	}
+	var idx []int // the arguments that may be passed as declared
+	for i, a := range x.Args {
+		if castParamArg(a) != nil && i < len(ts) {
+			idx = append(idx, i)
+		}
+	}
+	if len(idx) == 0 || len(idx) > 4 {
+		return
+	}
+	// The fewest of them that make the call hold: the key of m[o] = o
+	// stays a String, its value is passed as a T.
+	masks := make([]int, 0, 1<<len(idx))
+	for m := 1; m < 1<<len(idx); m++ {
+		masks = append(masks, m)
+	}
+	slices.SortStableFunc(masks, func(a, b int) int { return bits.OnesCount(uint(a)) - bits.OnesCount(uint(b)) })
+	for _, m := range masks {
+		alt := slices.Clone(ts)
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				dt := castParamArg(x.Args[i]).Sym.Type
+				if !types.MayBeNull(ts[i]) {
+					dt = dt.NonNull()
+				}
+				alt[i] = dt
+			}
+		}
+		cd := *best
+		cd.sys = best.pre.clone()
+		c.constrain(&cd, x, alt, partials, false)
+		if !cd.sys.ok || wanted && !c.subOK(cd.sys.clone(), ret, want) {
+			continue
+		}
+		best.sys = cd.sys
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				id := castParamArg(x.Args[i])
+				id.Cast = false
+				id.SetType(alt[i])
+			}
+		}
+		copy(ts, alt)
+		return
+	}
+}
+
+// subOK adds the constraint a <: b to s and reports whether s still holds.
+func (c *Checker) subOK(s *system, a, b types.Type) bool {
+	s.sub(a, b)
+	return s.ok
+}
+
+// markStubCons returns the number of constraints each builder's run (see
+// stubInference) has recorded so far, or nil outside a builder's lambda.
+func (c *Checker) markStubCons() map[*stubRun]int {
+	if len(c.stubs) == 0 {
+		return nil
+	}
+	m := map[*stubRun]int{}
+	for _, r := range c.stubs {
+		m[r] = len(r.cons)
+	}
+	return m
+}
+
+// takeStubCons removes the constraints the runs of mark recorded since,
+// and returns them.
+func (c *Checker) takeStubCons(mark map[*stubRun]int) map[*stubRun][][2]types.Type {
+	var out map[*stubRun][][2]types.Type
+	for r, n := range mark {
+		if len(r.cons) > n {
+			if out == nil {
+				out = map[*stubRun][][2]types.Type{}
+			}
+			out[r] = slices.Clone(r.cons[n:])
+			r.cons = r.cons[:n]
+		}
+	}
+	return out
+}
+
+// restoreStubCons records again the constraints that takeStubCons took.
+func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
+	for r, ks := range cons {
+		r.cons = append(r.cons, ks...)
+	}
+}
+
+// capturedSubst returns sub with the receiver's out projections that
+// function type t, of a parameter that lambda a is passed for, mentions
+// replaced by their captures, if it has any: a type parameter without an
+// owner bounded by the projection's type, which reads as that type and
+// which only itself and Nothing are subtypes of, as K2's captured type.
+// So x.foo { it } on an Inv<out CharSequence>, for foo(x: (E) -> E),
+// returns the capture it takes, but x.foo { "" } returns a String where
+// the capture is expected; a variable of a lambda's input types that a
+// capture gives a lower bound takes the projection's type (see
+// approxCaptures). Elsewhere an out
+// position takes Nothing (see Subst.ApplyIn).
+func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Subst {
+	if _, ok := a.(*syntax.Lambda); !ok || !t.NonNull().IsFunc() {
+		return nil
+	}
+	var out types.Subst
+	for p, ra := range recv {
+		if ra.V != types.Out || ra.T.HasVars() || !t.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == p }) {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(sub)
+		}
+		if ra.T.IsIntersection() {
+			// The capture of an out projection of an intersection, a
+			// G<out X & Z>'s, reads as the intersection itself.
+			out[p] = types.Arg{T: ra.T}
+			continue
+		}
+		capt := &types.TypeParamSym{Name: "CapturedType(out " + ra.T.String() + ")", Bounds: []types.Type{ra.T}, Captured: true}
+		out[p] = types.Arg{T: types.ParamType(capt)}
+	}
+	return out
+}
+
+// approxCaptures returns t with the captures of capturedSubst in it
+// replaced by their projections' types, as K2 approximates a captured
+// type in a lambda's input types: T of it.checkType { } in a lambda that
+// takes the capture is the projection's type, for checkType's
+// CheckTypeInv<T>.() -> Unit.
+func approxCaptures(t types.Type) types.Type {
+	var back types.Subst
+	t.Has(func(u types.Type) bool {
+		if u.K == types.TypeParam && u.Param().Captured {
+			if back == nil {
+				back = types.Subst{}
+			}
+			back[u.Param()] = types.Arg{T: u.Param().Bounds[0]}
+		}
+		return false
+	})
+	if back == nil {
+		return t
+	}
+	return back.Apply(t)
+}
+
+// ambiguousLambdas checks the lambdas of x, a call that is ambiguous,
+// without an expected type, as kotlinc does: their bodies have no
+// receiver and no it, f { append("") } of f(StringBuilder.() -> Int) and
+// f(StringBuilder.() -> String). Not one that was checked to choose by
+// its result (see byLambdaResult) and fits no candidate.
+func (c *Checker) ambiguousLambdas(x *syntax.Call) {
+	for _, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref == nil && !l.Anon && l.T.K == types.Invalid && l != c.resultChecked {
+			c.lambda(l, noWant)
+		}
+	}
 }

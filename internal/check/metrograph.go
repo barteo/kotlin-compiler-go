@@ -181,7 +181,7 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 		}
 	}
 	if gr.m.cfg.kclassToClass && isMapType(t) {
-		if kt := t.A.List[0].T; isJavaClass(kt) {
+		if kt := t.A.List[0].T; isJavaLangClass(kt) {
 			args := slices.Clone(t.A.List)
 			args[0] = types.Arg{V: args[0].V, T: gr.kclassOf(kt)}
 			t = types.GenericType(t.C, args)
@@ -194,7 +194,8 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 	return r, ok
 }
 
-func isJavaClass(t types.Type) bool {
+// isJavaLangClass reports whether t is java.lang.Class<X>.
+func isJavaLangClass(t types.Type) bool {
 	return t.K == types.Class && t.A != nil && t.C.Name == "java/lang/Class"
 }
 
@@ -219,7 +220,7 @@ func (m *metroAnalysis) wrapperOf(t types.Type) byte {
 		return 'f'
 	case t.C.Name == mProvider:
 		return 'p'
-	case t.C.KotlinName == "kotlin/Lazy":
+	case t.C.Name == "kotlin/Lazy":
 		return 'l'
 	case m.cfg.javax && t.C.Name == "javax/inject/Provider":
 		return 'j'
@@ -287,13 +288,22 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 // setup reads the graph's annotation a, its factory, annotated
 // factoryAnn, and its members and contributions, and adds their bindings.
 func (gr *mGraph) setup(a *mAnn, factoryAnn, factoryName string) bool {
-	m, cls := gr.m, gr.g
+	m, cls := gr.m, ensured(gr.g)
 	if len(cls.TypeParams) > 0 {
 		gr.unsupported("Metro graphs with type parameters are not supported")
 		return false
 	}
 	if !cls.Interface && !cls.Abstract {
 		gr.errorf("%s must be an interface or an abstract class", cls.DisplayName())
+		return false
+	}
+	closeable := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		closeable = s.Name == mCloseableGraph
+		return !closeable
+	})
+	if closeable {
+		gr.unsupported("Metro graph lifecycle callbacks (CloseableGraph) are not supported")
 		return false
 	}
 	// The graph itself.
@@ -717,7 +727,7 @@ func (gr *mGraph) mapElem(key *mAnn, v types.Type, q string, b *mBinding) error 
 		return err
 	}
 	kt = kt.NonNull() // a Java annotation's String!
-	if isJavaClass(kt) {
+	if isJavaLangClass(kt) {
 		// A Java annotation's Class (Dagger's ClassKey) is Kotlin's KClass.
 		kt = gr.kclassOf(kt)
 	}
@@ -951,7 +961,7 @@ func (gr *mGraph) bind(b *mBinding, anns []*mAnn, t types.Type) {
 			gr.unsupported("%v", err)
 		}
 	default:
-		if m.cfg.kclassToClass && isMapType(t) && isJavaClass(t.A.List[0].T) {
+		if m.cfg.kclassToClass && isMapType(t) && isJavaLangClass(t.A.List[0].T) {
 			gr.unsupported("kc doesn't support bindings of maps with Class keys with enable-kclass-to-class-interop (%s)", b.what)
 			return
 		}
@@ -1867,13 +1877,14 @@ func (gr *mGraph) extensionBinding(r *mReq, cls *types.ClassSym) *mBinding {
 		}
 		impl := child.impl
 		return &mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return impl + "()" }}
-	case find(anns, mGraphExtensionFactory) != nil && cls.Outer != nil && find(gr.m.annsOf(cls.Outer), mGraphExtension) != nil:
-		child := gr.extension(cls.Outer)
+	case find(anns, mGraphExtensionFactory) != nil && gr.m.outer(cls) != nil && find(gr.m.annsOf(gr.m.outer(cls)), mGraphExtension) != nil:
+		ext := gr.m.outer(cls)
+		child := gr.extension(ext)
 		if child == nil {
 			return nil
 		}
 		if child.factory != cls {
-			gr.errorf("%s is not the factory of graph extension %s", cls.DisplayName(), cls.Outer.DisplayName())
+			gr.errorf("%s is not the factory of graph extension %s", cls.DisplayName(), ext.DisplayName())
 			return nil
 		}
 		params, args := createParams(child.create)

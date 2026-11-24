@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Access flags read from class files, in addition to those used for writing.
@@ -62,11 +63,33 @@ type Info struct {
 	DebugMetadata map[string][]string
 	// Deprecated is the class's deprecation, or nil.
 	Deprecated *Deprecation
+	// OptInLevel is the level of an annotation class's @RequiresOptIn,
+	// ERROR or WARNING, or "" if it isn't an opt-in requirement marker.
+	OptInLevel string
+	// SubclassOptIn are the internal names of the markers of the class's
+	// @SubclassOptInRequired, which inheriting from it needs opt-in to.
+	SubclassOptIn []string
+	// PurelyImplements is the argument of the class's
+	// @kotlin.jvm.PurelyImplements, the qualified name of the Kotlin
+	// collection type it implements with its type arguments as they are,
+	// or "".
+	PurelyImplements string
 	// Unresolved has, if a supertype a Java source class wrote doesn't
 	// resolve, an entry per written supertype in order: the simple name of
 	// one that doesn't, "" for one that does. Super and Interfaces have
 	// java/lang/Object in place of the unresolved ones.
 	Unresolved []string
+	// Sealed is set on a sealed Java class or interface: one with a
+	// PermittedSubclasses attribute, whose classes are Permitted.
+	Sealed    bool
+	Permitted []string
+	// RecordComponents are the names of a Java record's components, from
+	// its Record attribute.
+	RecordComponents []string
+	// BoundAnnotations are the descriptors of the type annotations on the
+	// class's type parameters' bounds, at the top of a bound's type, by
+	// type parameter, or nil if there are none: T extends @NotNull Object.
+	BoundAnnotations [][]string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -86,6 +109,8 @@ type KotlinMeta struct {
 	XS string   // multi-file part: the facade's internal name
 	PN string   // package name, if it differs from the JVM package
 	XI int      // extra flags
+	// KWritten is set when k is written, not taken as its default 1.
+	KWritten bool
 }
 
 // Member is a field or method.
@@ -100,10 +125,19 @@ type Member struct {
 	LowPriority bool
 	// Hidden is set on a method annotated @Deprecated(level = HIDDEN) or
 	// @DeprecatedSinceKotlin(hiddenSince = ...), which calls can't choose.
+	// Deprecated has its level, raised by @DeprecatedSinceKotlin.
 	Hidden bool
 	// Constant is a field's ConstantValue: an int32, int64, float32,
 	// float64 or string, or nil.
 	Constant any
+	// MaybeConstant is set by javasrc on a static final field of a Java
+	// source without a Constant only because its initializer reads a
+	// Kotlin class's field: kotlinc may find it constant.
+	MaybeConstant bool
+	// KotlinReads are, with MaybeConstant, the Kotlin classes' fields
+	// that the initializer reads, as Class.field of the class's internal
+	// name.
+	KotlinReads []string
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
 	// Annotations are the descriptors of the member's annotations, kept
@@ -116,6 +150,10 @@ type Member struct {
 	ParamAnnotations [][]string
 	// Deprecated is the member's deprecation, or nil.
 	Deprecated *Deprecation
+	// BoundAnnotations are, for a generic method, as Info's for a class,
+	// the descriptors of the type annotations on its type parameters'
+	// bounds.
+	BoundAnnotations [][]string
 }
 
 // Deprecation is the deprecation of a class or member: the message and
@@ -137,7 +175,95 @@ func javaDeprecation(d *Deprecation) *Deprecation {
 	return &Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
 }
 
+// deprecationPairs reads the element-value pairs of @kotlin.Deprecated,
+// whose message and level it sets in d, or, with d nil, those of
+// @DeprecatedSinceKotlin, and returns the level its versions give: HIDDEN
+// with hiddenSince, ERROR with errorSince, or "", of those that APIVersion
+// has reached; NONE if it hasn't reached warningSince, before which the
+// declaration isn't deprecated.
+func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
+	since, notYet := "", false
+	for range r.u2() {
+		name, err := p.utf8(r.u2())
+		if err != nil {
+			skipValue(r)
+			continue
+		}
+		switch tag := r.u1(); {
+		case d == nil && tag == 's' && (name == "warningSince" || name == "errorSince" || name == "hiddenSince"):
+			v, _ := p.utf8(r.u2())
+			switch {
+			case !LaterThanAPI(v):
+			case name == "warningSince":
+				notYet = true
+				continue
+			default:
+				continue // a level the API version hasn't reached
+			}
+			switch {
+			case name == "hiddenSince":
+				since = "HIDDEN"
+			case name == "errorSince" && since != "HIDDEN":
+				since = "ERROR"
+			}
+		case d != nil && tag == 's' && name == "message":
+			d.Message, _ = p.utf8(r.u2())
+		case d != nil && tag == 'e' && name == "level":
+			r.skip(2) // the enum's type
+			d.Level, _ = p.utf8(r.u2())
+		default:
+			r.pos--
+			skipValue(r)
+		}
+	}
+	if notYet {
+		return "NONE"
+	}
+	return since
+}
+
+// sinceDeprecation returns deprecation d raised to level since, the level
+// of the declaration's @DeprecatedSinceKotlin, if that is higher.
+func sinceDeprecation(d *Deprecation, since string) *Deprecation {
+	if since == "" || d == nil || d.Java {
+		return d
+	}
+	if since == "NONE" {
+		return nil
+	}
+	if since == "HIDDEN" || d.Level == "WARNING" {
+		d.Level = since
+	}
+	return d
+}
+
 var errTruncated = errors.New("truncated class file")
+
+// APIVersion is the API version kotlinc 2.4 compiles against by default,
+// against which @DeprecatedSinceKotlin's versions are judged.
+const APIVersion = "2.4"
+
+// LaterThanAPI reports whether version v, major.minor or
+// major.minor.patch, is later than APIVersion, as 2.4.1 is: its parts
+// compare as numbers.
+func LaterThanAPI(v string) bool {
+	parts := strings.Split(v, ".")
+	api := strings.Split(APIVersion, ".")
+	for len(api) < len(parts) {
+		api = append(api, "0")
+	}
+	for i, p := range parts {
+		p = strings.TrimLeft(p, "0")
+		q := strings.TrimLeft(api[i], "0")
+		if len(p) != len(q) {
+			return len(p) > len(q)
+		}
+		if p != q {
+			return p > q
+		}
+	}
+	return false
+}
 
 type reader struct {
 	b   []byte
@@ -329,6 +455,10 @@ func Parse(data []byte) (*Info, error) {
 					size = 0
 				case name == "Deprecated":
 					m.Deprecated = javaDeprecation(m.Deprecated)
+				case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+					end := min(r.pos+size, len(r.b))
+					m.BoundAnnotations = boundAnnotations(m.BoundAnnotations, readTypeAnnotations(r, p), TargetTypeParamBound)
+					r.pos, size = end, 0
 				case name == "RuntimeInvisibleParameterAnnotations", name == "RuntimeVisibleParameterAnnotations":
 					end := r.pos + size
 					n := int(r.u1())
@@ -360,6 +490,7 @@ func Parse(data []byte) (*Info, error) {
 					size = end - r.pos
 				case name == "RuntimeVisibleAnnotations":
 					end := r.pos + size
+					since := ""
 					for range r.u2() {
 						typ, e := p.utf8(r.u2())
 						if e != nil {
@@ -369,40 +500,19 @@ func Parse(data []byte) (*Info, error) {
 						if typ == "Ljava/lang/Deprecated;" {
 							m.Deprecated = javaDeprecation(m.Deprecated)
 						}
-						if typ != "Lkotlin/Deprecated;" && typ != "Lkotlin/DeprecatedSinceKotlin;" {
-							skipPairs(r)
-							continue
-						}
-						d := &Deprecation{Level: "WARNING"}
-						for range r.u2() {
-							elem, e := p.utf8(r.u2())
-							if e != nil {
-								break
-							}
-							if elem == "hiddenSince" {
-								// @DeprecatedSinceKotlin(hiddenSince = "1.6"),
-								// of a version before kc's standard library.
-								m.Hidden = true
-							}
-							tag := r.u1()
-							if tag == 's' && elem == "message" {
-								d.Message, _ = p.utf8(r.u2())
-								continue
-							}
-							if tag != 'e' || elem != "level" {
-								r.pos--
-								skipValue(r)
-								continue
-							}
-							r.skip(2) // the enum's type
-							level, _ := p.utf8(r.u2())
-							d.Level = level
-							m.Hidden = m.Hidden || level == "HIDDEN"
-						}
-						if typ == "Lkotlin/Deprecated;" {
+						switch typ {
+						case "Lkotlin/Deprecated;":
+							d := &Deprecation{Level: "WARNING"}
+							deprecationPairs(r, p, d)
 							m.Deprecated = d
+						case "Lkotlin/DeprecatedSinceKotlin;":
+							since = deprecationPairs(r, p, nil)
+						default:
+							skipPairs(r)
 						}
 					}
+					m.Deprecated = sinceDeprecation(m.Deprecated, since)
+					m.Hidden = m.Hidden || m.Deprecated != nil && m.Deprecated.Level == "HIDDEN"
 					size = end - r.pos
 				}
 				r.skip(size)
@@ -419,6 +529,10 @@ func Parse(data []byte) (*Info, error) {
 		case name == "Signature" && size == 2:
 			info.Sig = must(p.utf8(r.u2()))
 			size = 0
+		case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+			end := min(r.pos+size, len(r.b))
+			info.BoundAnnotations = boundAnnotations(info.BoundAnnotations, readTypeAnnotations(r, p), TargetClassTypeParamBound)
+			r.pos, size = end, 0
 		case name == "InnerClasses":
 			for range r.u2() {
 				inner, outer := r.u2(), r.u2()
@@ -436,6 +550,23 @@ func Parse(data []byte) (*Info, error) {
 			size = 0
 		case name == "Deprecated":
 			info.Deprecated = javaDeprecation(info.Deprecated)
+		case name == "PermittedSubclasses":
+			info.Sealed = true
+			for range r.u2() {
+				info.Permitted = append(info.Permitted, must(p.class(r.u2())))
+			}
+			size = 0
+		case name == "Record":
+			end := r.pos + size
+			for range r.u2() {
+				info.RecordComponents = append(info.RecordComponents, must(p.utf8(r.u2())))
+				r.u2() // the descriptor
+				for range r.u2() {
+					r.u2()
+					r.skip(int(r.u4()))
+				}
+			}
+			size = end - r.pos
 		case name == "RuntimeVisibleAnnotations":
 			end := r.pos + size
 			k, e := kotlinMeta(r, p, info)
@@ -452,8 +583,36 @@ func Parse(data []byte) (*Info, error) {
 					break
 				}
 				info.Invisible = append(info.Invisible, typ)
-				if typ == "Landroidx/compose/runtime/internal/StabilityInferred;" {
+				switch typ {
+				case "Landroidx/compose/runtime/internal/StabilityInferred;":
 					info.StabilityInferred = intArg(r, p, "parameters")
+					continue
+				case "Lkotlin/RequiresOptIn;":
+					info.OptInLevel = "ERROR"
+					for range r.u2() {
+						name, _ := p.utf8(r.u2())
+						if name != "level" {
+							skipValue(r)
+							continue
+						}
+						if v, err := enumValue(r, p); err == nil {
+							info.OptInLevel = v
+						}
+					}
+					continue
+				case "Lkotlin/SubclassOptInRequired;":
+					for range r.u2() {
+						name, _ := p.utf8(r.u2())
+						v, ok := readValue(r, p, 1)
+						if !ok || name != "markerClass" {
+							continue
+						}
+						for _, e := range append([]ElementValue{v}, v.Elems...) {
+							if e.Tag == 'c' && strings.HasPrefix(e.Class, "L") && strings.HasSuffix(e.Class, ";") {
+								info.SubclassOptIn = append(info.SubclassOptIn, e.Class[1:len(e.Class)-1])
+							}
+						}
+					}
 					continue
 				}
 				skipPairs(r)
@@ -476,6 +635,7 @@ func Parse(data []byte) (*Info, error) {
 // class's retention and targets in info, and the others' descriptors.
 func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 	var meta *KotlinMeta
+	since := "" // the level @DeprecatedSinceKotlin gives
 	for range r.u2() {
 		typ, err := p.utf8(r.u2())
 		if err != nil {
@@ -550,26 +710,35 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			}
 			continue
 		}
-		if typ == "Lkotlin/Deprecated;" {
+		if typ == "Lkotlin/jvm/PurelyImplements;" {
 			info.Visible = append(info.Visible, typ)
-			d := &Deprecation{Level: "WARNING"}
 			for range r.u2() {
 				name, err := p.utf8(r.u2())
 				if err != nil {
 					return nil, err
 				}
-				switch tag := r.u1(); {
-				case tag == 's' && name == "message":
-					d.Message, _ = p.utf8(r.u2())
-				case tag == 'e' && name == "level":
-					r.skip(2) // the enum's type
-					d.Level, _ = p.utf8(r.u2())
-				default:
+				if r.u1() != 's' || name != "value" {
 					r.pos--
 					skipValue(r)
+					continue
+				}
+				if v, err := p.utf8(r.u2()); err == nil {
+					info.PurelyImplements = v
 				}
 			}
-			info.Deprecated = d
+			continue
+		}
+		if typ == "Lkotlin/Deprecated;" {
+			info.Visible = append(info.Visible, typ)
+			d := &Deprecation{Level: "WARNING"}
+			deprecationPairs(r, p, d)
+			info.Deprecated = sinceDeprecation(d, since)
+			continue
+		}
+		if typ == "Lkotlin/DeprecatedSinceKotlin;" {
+			info.Visible = append(info.Visible, typ)
+			since = deprecationPairs(r, p, nil)
+			info.Deprecated = sinceDeprecation(info.Deprecated, since)
 			continue
 		}
 		if typ != "Lkotlin/Metadata;" {
@@ -589,6 +758,7 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			switch name {
 			case "k":
 				meta.K, err = intValue(r, p)
+				meta.KWritten = true
 			case "xi":
 				meta.XI, err = intValue(r, p)
 			case "xs":
@@ -807,22 +977,45 @@ func decodeModifiedUTF8(b []byte) string {
 	if ascii {
 		return string(b)
 	}
-	u := make([]uint16, 0, len(b))
+	// Straight to UTF-8, without the UTF-16 units in between: Kotlin
+	// metadata is mostly such strings, and the copies were a tenth of
+	// reading it. Lone surrogates become U+FFFD, as utf16.Decode makes them.
+	out := make([]byte, 0, len(b)+len(b)/2)
 	for i := 0; i < len(b); {
-		c := b[i]
-		switch {
-		case c < 0x80:
-			u = append(u, uint16(c))
-			i++
-		case c&0xE0 == 0xC0 && i+1 < len(b):
-			u = append(u, uint16(c&0x1F)<<6|uint16(b[i+1]&0x3F))
-			i += 2
-		case i+2 < len(b):
-			u = append(u, uint16(c&0x0F)<<12|uint16(b[i+1]&0x3F)<<6|uint16(b[i+2]&0x3F))
-			i += 3
-		default:
-			i = len(b)
+		u, n := modifiedUnit(b, i)
+		if n == 0 {
+			break
 		}
+		i += n
+		r := rune(u)
+		if utf16.IsSurrogate(r) {
+			r = utf8.RuneError
+			if u < 0xDC00 { // a high surrogate: is a low one next?
+				if u2, n2 := modifiedUnit(b, i); n2 > 0 && u2 >= 0xDC00 && u2 < 0xE000 {
+					r = utf16.DecodeRune(rune(u), rune(u2))
+					i += n2
+				}
+			}
+		}
+		out = utf8.AppendRune(out, r)
 	}
-	return string(utf16.Decode(u))
+	return string(out)
+}
+
+// modifiedUnit decodes the UTF-16 unit of modified UTF-8 at b[i:], and
+// returns it and its length in bytes, or 0 at a truncated end.
+func modifiedUnit(b []byte, i int) (uint16, int) {
+	if i >= len(b) {
+		return 0, 0
+	}
+	c := b[i]
+	switch {
+	case c < 0x80:
+		return uint16(c), 1
+	case c&0xE0 == 0xC0 && i+1 < len(b):
+		return uint16(c&0x1F)<<6 | uint16(b[i+1]&0x3F), 2
+	case i+2 < len(b):
+		return uint16(c&0x0F)<<12 | uint16(b[i+1]&0x3F)<<6 | uint16(b[i+2]&0x3F), 3
+	}
+	return 0, 0
 }

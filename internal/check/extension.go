@@ -51,13 +51,13 @@ func (c *Checker) funModifiers(m syntax.Modifiers, p syntax.Pos, what string) {
 		c.errorf(m.ExternalP, "modifier 'external' is not applicable to '%s'", what)
 	}
 	if m.Operator {
-		c.errorf(p, "modifier 'operator' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("operator", p), "modifier 'operator' is not applicable to '%s'", what)
 	}
 	if m.Infix {
-		c.errorf(p, "modifier 'infix' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("infix", p), "modifier 'infix' is not applicable to '%s'", what)
 	}
 	if m.Annotation && what != "class" {
-		c.errorf(p, "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("annotation", p), "modifier 'annotation' is not applicable to '%s'", what)
 	}
 }
 
@@ -160,13 +160,13 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	}
 	gs := g.Sym
 	c.externalAccessors(d, gs.Owner)
+	virtual := c.virtualInlineProp(d, gs.Owner)
 	for _, tp := range d.TypeParams {
 		switch {
-		case !tp.Reified:
-		case !d.Inline && !d.InlineGetter || d.Setter != nil && !d.Inline && !d.InlineSetter:
+		case !tp.Reified, virtual:
+		case !d.Inline && !d.InlineGetter || d.Setter != nil && !d.Inline && !d.InlineSetter,
+			gs.Owner != nil && !copiedMember(d.Modifiers, gs.Owner): // an open member isn't inlined
 			c.errorf(tp.P, "only type parameters of inline functions can be reified")
-		case gs.Owner != nil:
-			c.unsupported(tp.P, "reified member property type parameter", "reified type parameters of member extension properties are not supported")
 		default:
 			// Reads copy the getter and writes the setter, as calls of
 			// an inline function do.
@@ -174,12 +174,22 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 			if d.Setter != nil {
 				d.Setter.Inline = true
 			}
+			if gs.Owner != nil && gs.Owner.Interface {
+				// Private, as the property is, which lets calls copy
+				// them.
+				g.Visibility = syntax.Private
+				if d.Setter != nil {
+					d.Setter.Visibility = syntax.Private
+				}
+			}
 		}
 	}
 	gs.TypeParams = c.declareTypeParams(d.TypeParams, gs, false)
 	c.tparams = funTypeParams(gs, gs.Owner)
 	defer func() { c.tparams = nil }()
+	c.overrideBounds = d.Override
 	c.resolveBounds(d.TypeParams)
+	c.overrideBounds = false
 	gs.Recv = c.resolveType(d.Recv).WithMarkers(c.annotationMarkers(d.RecvAnnotations))
 	g.RecvSym = &types.VarSym{Name: "$this$" + d.Name, Type: gs.Recv, Kind: types.Param, Decl: g}
 	sym.Getter = gs
@@ -190,6 +200,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Setter = ss
 	}
 	c.propContexts(d, sym)
+	c.unusedPropTypeParams(d, gs.Recv, sym.Contexts)
 	switch {
 	case d.Type != nil:
 		sym.Type, sym.Resolved = c.resolveType(d.Type), true
@@ -282,7 +293,11 @@ func (c *Checker) overriddenExtProps(cls *types.ClassSym, name string, f *types.
 		}
 		for _, g := range s.ExtProps[name] {
 			ensureFun(g)
-			if r := c.memberSubst(this, g.Owner).Apply(g.Recv); c.sameType(r, f.Recv) {
+			// The type parameters of generic ones correspond by position.
+			if len(g.TypeParams) != len(f.TypeParams) {
+				continue
+			}
+			if r := c.overrideSubst(this, f, g).Apply(g.Recv); c.sameType(r, f.Recv) {
 				out = append(out, g)
 			}
 		}
@@ -443,4 +458,40 @@ func (c *Checker) thisExtProp(x *syntax.Ident) (types.Type, bool) {
 	m.P = x.P
 	x.Member = m
 	return c.expr(m, noWant), true
+}
+
+// unusedPropTypeParams reports the type parameters of an extension
+// property that neither its receiver type nor its context parameters
+// mention, directly or through the bounds of those they mention, as
+// kotlinc's TYPE_PARAMETER_OF_PROPERTY_NOT_USED_IN_RECEIVER and
+// INCORRECT_TYPE_PARAMETER_OF_PROPERTY: a read couldn't infer them.
+func (c *Checker) unusedPropTypeParams(d *syntax.PropDecl, recv types.Type, ctxs []*types.VarSym) {
+	if len(d.TypeParams) == 0 || recv.K == types.Invalid {
+		return
+	}
+	used := map[*types.TypeParamSym]bool{}
+	var mark func(t types.Type)
+	mark = func(t types.Type) {
+		t.Has(func(u types.Type) bool {
+			if !u.IsParam() {
+				return false
+			}
+			if p := u.Param(); p != nil && !used[p] {
+				used[p] = true
+				for _, b := range p.Bounds {
+					mark(b)
+				}
+			}
+			return false
+		})
+	}
+	mark(recv)
+	for _, v := range ctxs {
+		mark(v.Type)
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Sym != nil && !used[tp.Sym] {
+			c.errorf(tp.P, "type parameter of a property must be used in its receiver type or context parameters")
+		}
+	}
 }

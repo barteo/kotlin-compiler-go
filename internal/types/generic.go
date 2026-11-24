@@ -34,6 +34,10 @@ func (v Variance) String() string {
 type Arg struct {
 	V Variance
 	T Type
+	// Raw is set in the substitution of a raw Java type's parameter,
+	// whose members Kotlin erases: the parameter is T, its erasure, and
+	// the members' generic types are raw, as List<T> is List.
+	Raw bool
 }
 
 func (a Arg) String() string {
@@ -202,6 +206,11 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
+	// JavaNotNull is set on a Java type parameter whose only bound is
+	// annotated not-null, T extends @NotNull Object: its bound isn't a
+	// platform type and nor are its uses in its class's or method's
+	// members, as in K2.
+	JavaNotNull bool
 	// OnlyInput is set on a parameter annotated @kotlin.internal.OnlyInputTypes,
 	// as T of contains(element: T): what a call infers for it must be the
 	// type of one of its inputs.
@@ -217,6 +226,11 @@ type TypeParamSym struct {
 	// intersection type, A & B, a value that is each of its Bounds: see
 	// Intersect. It has no Owner, and erases as a parameter does.
 	Intersection bool
+	// Captured is set on the parameter that stands for K2's captured type
+	// of a receiver's out projection in the result of a lambda's function
+	// type (see check.capturedSubst), bounded by the projection's type.
+	// It has no Owner either.
+	Captured bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to
@@ -269,7 +283,9 @@ func (p *TypeParamSym) ErasureBound() Type {
 
 // Bound returns the first upper bound, or Any? if there is none.
 func (p *TypeParamSym) Bound() Type {
-	if len(p.Bounds) == 0 {
+	if len(p.Bounds) == 0 || p.Bounds[0].IsParam() && ParamCycle(p) {
+		// No bound, or bounds that are each other's parameters, as Java
+		// sources can declare (<A extends B, B extends A>): Any?.
 		return AnyType.Nullable()
 	}
 	return p.Bounds[0]
@@ -411,7 +427,7 @@ func (s Subst) ApplyArg(t Type) Type {
 			if args == nil {
 				args = slices.Clone(r.A.List)
 			}
-			args[i] = Arg{c.V, withFlags(c.T, a.T)}
+			args[i] = Arg{V: c.V, T: withFlags(c.T, a.T)}
 		}
 	}
 	if args != nil {
@@ -420,8 +436,29 @@ func (s Subst) ApplyArg(t Type) Type {
 	return r
 }
 
+// ApplyParam is ApplyIn for the type of a parameter that a call passes an
+// argument to, where an invariant argument that a star or an in
+// projection replaces is the receiver's captured type, which takes no
+// argument of another type: KC<*>.set(w: Wrapper<E>) takes no
+// Wrapper<String>. An assignment and a property reference's setter,
+// which K2 types with the projection approximated (KT-51045 and
+// MUTABLE_PROPERTY_WITH_CAPTURED_TYPE), take ApplyIn's.
+func (s Subst) ApplyParam(t Type) Type {
+	t, _ = s.applyA(t, In, substParam)
+	return t
+}
+
+// A substMode says how a substitution approximates projections.
+type substMode uint8
+
+const (
+	substApprox substMode = iota // as a type read or written to
+	substExact                   // not at all, as a type alias's arguments
+	substParam                   // as a call's parameter (ApplyParam)
+)
+
 func (s Subst) apply(t Type, pos Variance) Type {
-	t, _ = s.applyA(t, pos, false)
+	t, _ = s.applyA(t, pos, substApprox)
 	return t
 }
 
@@ -429,7 +466,7 @@ func (s Subst) apply(t Type, pos Variance) Type {
 // alias's arguments are: Array2D<out Number> for Array<Array<T>> is
 // Array<Array<out Number>>.
 func (s Subst) ApplyExact(t Type) Type {
-	t, _ = s.applyA(t, Out, true)
+	t, _ = s.applyA(t, Out, substExact)
 	return t
 }
 
@@ -438,7 +475,7 @@ func (s Subst) ApplyExact(t Type) Type {
 // read, an invariant argument that holds one is then out projected, as
 // Kotlin approximates Array<Array<C>> for C, the capture of out Int, by
 // Array<out Array<out Int>>.
-func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
+func (s Subst) applyA(t Type, pos Variance, mode substMode) (Type, bool) {
 	if len(s) == 0 {
 		return t, false
 	}
@@ -448,12 +485,27 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		if !ok {
 			return t, false
 		}
+		if a.Raw {
+			if !t.P && !t.N && !jdkParam(t.Param()) {
+				// An enhanced @NotNull T: its erasure, non-null. Not a T of
+				// the JDK, which has no such annotations: there T is K2's
+				// predefined enhancement, and a raw type's erasure Any!.
+				return withFlags(a.T.NonNull(), t), false
+			}
+			return withFlags(a.T, t), false
+		}
 		var r Type
 		switch {
 		case a.V == Inv:
 			r = a.T
 		case pos == Out && a.V == Out:
 			r = a.T
+			if t.P && t.K == TypeVar && r.N && !r.P && r.K != Null && r.K != Nothing {
+				// A Java F! read through the capture of out X?, as K2
+				// approximates it: X!. F of wait(Future<F>) for a
+				// CompletableFuture<*> of S : CharSequence?.
+				r = r.Platform()
+			}
 		case pos == In && a.V == In:
 			r = a.T
 		case pos == In:
@@ -465,17 +517,46 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			// B<*, Int>.
 			p := t.Param()
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
+		case a.V == Star && pos == Out && ParamCycle(t.Param()):
+			// Bounds that are each other's parameters, Java's <A extends
+			// B, B extends A>, which kotlinc reads as Any!: substituting
+			// the bound would never end.
+			r = AnyType.Nullable().Platform()
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
-			if t.P && r.N && !r.P {
-				// A Java T!, whose bound is Any!: the value read has a
-				// platform type, as kotlinc's capture of the projection.
+			if r.K == Class && r.A == nil && !r.C.Array && r.C.Raw() {
+				// A raw bound, as B<E extends A>'s: the projection's
+				// approximation is flexible, not raw, an A<Any!>.
+				args := make([]Arg, len(r.C.TypeParams))
+				for i, tp := range r.C.TypeParams {
+					// Each parameter's bound, erased: a StubElement<T
+					// extends CharSequence>'s is CharSequence!.
+					b := tp.Bound()
+					switch {
+					case b.IsParam():
+						b = AnyType
+					case b.K == Class && !b.C.Array:
+						b.A = nil
+					}
+					args[i] = Arg{T: b.Platform()}
+				}
+				r.A = MakeArgs(args)
+				r = r.Platform()
+			}
+			if (t.P || !t.N && javaParam(t.Param())) && r.N && !r.P {
+				// A Java T!, or an enhanced T of a Java class, whose bound
+				// is Any!: the value read has a platform type, as kotlinc's
+				// capture of the projection. Supplier<*>'s get() is Any!.
 				r = r.Platform()
 			}
 		}
 		return withFlags(r, t), a.V == Out || a.V == In
 	case Class:
 		if t.A == nil {
+			return t, false
+		}
+		if !t.C.Array && s.erases(t) {
+			t.A = nil // raw, as Java erases it; an array is not
 			return t, false
 		}
 		args := make([]Arg, len(t.A.List))
@@ -486,8 +567,8 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				v = declaredVar(t.C, i)
 			}
 			var ax bool
-			args[i], ax = s.applyArgA(a, pos, v, exact)
-			if ax && a.V == Inv && !exact {
+			args[i], ax = s.applyArgA(a, pos, v, mode)
+			if ax && a.V == Inv && mode != substExact {
 				switch dv := declaredVar(t.C, i); {
 				case args[i].V == Inv && dv == Inv && pos == Out:
 					args[i].V = Out
@@ -501,7 +582,7 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				// argument is Kotlin's captured type, which only Nothing
 				// is a subtype of: Continuation<*>.resumeWith takes a
 				// Result<Nothing>.
-				args[i] = Arg{Out, withFlags(NothingType, a.T)}
+				args[i] = Arg{V: Out, T: withFlags(NothingType, a.T)}
 			}
 			changed = changed || args[i] != a
 		}
@@ -512,6 +593,28 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		return t, approx
 	}
 	return t, false
+}
+
+// erases reports whether s is a raw type's substitution (see Arg.Raw),
+// which erases the generic types of its members, as Java does, and t is
+// one: a raw B's foo(Map<String, String>) takes a raw Map. As in K2, a
+// type with a generic method's own parameter isn't: <E> foo(ML<E>) still
+// takes an ML<E>.
+func (s Subst) erases(t Type) bool {
+	raw := false
+	for _, a := range s {
+		if a.Raw {
+			raw = true
+			break
+		}
+	}
+	return raw && !t.Has(func(u Type) bool {
+		if !u.IsParam() {
+			return false
+		}
+		a, ok := s[u.Param()]
+		return !ok || !a.Raw
+	})
 }
 
 // projected reports whether t is a parameter that s replaces by an out or
@@ -543,7 +646,7 @@ func declaredVar(c *ClassSym, i int) Variance {
 // In a type written to, as a parameter's, an out projection is a type
 // only Nothing is a subtype of, as Kotlin's captured type is: nothing but
 // Box<Nothing> can be passed for a Box<T> or a Box<out T> then.
-func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
+func (s Subst) applyArgA(a Arg, pos, v Variance, mode substMode) (Arg, bool) {
 	if a.V == Star {
 		return a, false
 	}
@@ -558,7 +661,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				if v == In {
 					pos = Out + In - pos
 				}
-				t, _ := s.applyA(a.T, pos, exact)
+				t, _ := s.applyA(a.T, pos, mode)
 				return Arg{T: t}, true
 			}
 			switch {
@@ -568,7 +671,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				// through a Base<*> of Base<T : Base<T>>, a List<T> is a
 				// List<out Base<*>>.
 				if b, ok := starBound(a.T.Param()); ok {
-					return Arg{Out, withFlags(b, a.T)}, r.V == Out || r.V == In
+					return Arg{V: Out, T: withFlags(b, a.T)}, r.V == Out || r.V == In
 				}
 				if p := a.T.Param(); a.T.D && len(p.Bounds) <= 1 {
 					// T & Any is within the bound made not null.
@@ -576,31 +679,48 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					if len(p.Bounds) == 1 {
 						b = p.Bounds[0].NonNull()
 					}
-					return Arg{Out, b}, true
+					return Arg{V: Out, T: b}, true
 				}
 				if p := a.T.Param(); len(p.Bounds) > 1 {
 					// Kotlin's is the intersection of its bounds, as
 					// is the parameter itself: E of Exp<*> for an
 					// Exp<E> where E : Enum<E>, E : Variant.
-					return Arg{Out, a.T}, r.V == Out || r.V == In
+					return Arg{V: Out, T: a.T}, r.V == Out || r.V == In
 				}
 				return r, true
+			case pos == In && r.V == In && a.V == In:
+				// Written to, in of an in projection's capture is in its
+				// parameter's bound: B<in CharSequence>.foo(x: A<in E>)
+				// takes an A<in Any?>.
+				if p := a.T.Param(); len(p.Bounds) == 0 {
+					return Arg{V: In, T: withFlags(AnyType.Nullable(), a.T)}, true
+				} else if len(p.Bounds) == 1 && !p.Bounds[0].HasParams() {
+					return Arg{V: In, T: withFlags(p.Bounds[0], a.T)}, true
+				}
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, true
+			case mode == substParam && pos == In && a.V == Inv && v == Inv && (r.V == Star || r.V == In):
+				// Passed to a parameter, an invariant argument replaced by
+				// a star or an in projection is Kotlin's captured type,
+				// which no type but itself is: KC<*>.setW(w: Wrapper<E>)
+				// and KC<in String>'s take no Wrapper<String>. As for an
+				// out projection, only a Wrapper<Nothing> passes.
+				return Arg{V: Out, T: withFlags(NothingType, a.T)}, true
 			case r.V == Star:
 				// Read, a star in an invariant argument is a capture
 				// approximated, which makes the argument out: T of
 				// B<*, *> for B<R, T : B<List<R>, T>> is B<out List<*>, *>.
 				return r, pos == Out
 			case r.V == Inv:
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In && r.V == Out && a.V != In:
-				return Arg{Out, withFlags(NothingType, a.T)}, r.V == Out || r.V == In
+				return Arg{V: Out, T: withFlags(NothingType, a.T)}, r.V == Out || r.V == In
 			case a.V == Inv || a.V == r.V:
-				return Arg{r.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: r.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In:
 				// Written to, an argument projected the other way than
 				// its capture is within the projection's type: Optional<out
 				// E>.map takes a Function<in E, …>.
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			}
 			return Arg{V: Star}, false
 		}
@@ -609,8 +729,45 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 	if v == In {
 		pos = Out + In - pos
 	}
-	t, approx := s.applyA(a.T, pos, exact)
-	return Arg{a.V, t}, approx
+	t, approx := s.applyA(a.T, pos, mode)
+	return Arg{V: a.V, T: t}, approx
+}
+
+// javaParam reports whether p is a type parameter of a Java class without
+// bounds, whose bound is Any!.
+func javaParam(p *TypeParamSym) bool {
+	c, ok := p.Owner.(*ClassSym)
+	return ok && len(p.Bounds) == 0 && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
+}
+
+// jdkParam reports whether p is a type parameter of a JDK class or of
+// one of its methods.
+func jdkParam(p *TypeParamSym) bool {
+	var c *ClassSym
+	switch o := p.Owner.(type) {
+	case *ClassSym:
+		c = o
+	case *FunSym:
+		c = o.Owner
+	}
+	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
+}
+
+// ParamCycle reports whether the bounds of p, followed through the type
+// parameters they are, lead back to p.
+func ParamCycle(p *TypeParamSym) bool {
+	seen := map[*TypeParamSym]bool{}
+	for q := p; len(q.Bounds) > 0 && q.Bounds[0].IsParam(); {
+		q = q.Bounds[0].Param()
+		if q == p {
+			return true
+		}
+		if seen[q] {
+			return false
+		}
+		seen[q] = true
+	}
+	return false
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.
@@ -663,7 +820,7 @@ func starred(t Type, ps map[*TypeParamSym]bool) Type {
 		case a.T.IsParam() && ps[a.T.Param()]:
 			args[i] = Arg{V: Star}
 		default:
-			args[i] = Arg{a.V, starred(a.T, ps)}
+			args[i] = Arg{V: a.V, T: starred(a.T, ps)}
 		}
 	}
 	t.A = MakeArgs(args)
@@ -682,15 +839,43 @@ func withFlags(r, occ Type) Type {
 		return r
 	case occ.N && !occ.P:
 		return r.Nullable()
+	case occ.P && occ.D && occ.K == TypeVar:
+		// An inference variable's (T & Any .. T?): see check's
+		// system.sub.
+		if r.K == Nothing || r.K == Null {
+			return NullType.Platform()
+		}
+		if r.P || r.K == Unit {
+			return r
+		}
+		return r.NonNull().Platform()
 	case occ.D:
 		return r.NonNull()
 	case occ.P:
-		if r.N || r.K == Unit || r.K == Nothing {
+		if r.K == Nothing {
+			// Kotlin's Nothing!, of a Java T for a T inferred from null:
+			// a platform Nothing?, which takes null and is a Nothing, but
+			// returns, unlike Nothing: set(key, null) of a Java <T> T
+			// set(String, T) isn't the end of the code.
+			return NullType.Platform()
+		}
+		if r.N || r.K == Unit {
 			return r
 		}
 		r.N, r.P, r.D = true, true, false
 	}
 	return r
+}
+
+// ApproxFlexNothing returns t, the type of a declaration or a
+// variable's bound, with Kotlin's Nothing! (see withFlags) as the Nothing?
+// it approximates to: val x = set(key, null) of a Java <T> T set(String,
+// T) is a Nothing?, not a Nothing that a String takes.
+func ApproxFlexNothing(t Type) Type {
+	if t.K == Null && t.P {
+		return NullType
+	}
+	return t
 }
 
 // TypeParamsString formats type parameters as in a declaration: <K, V>.

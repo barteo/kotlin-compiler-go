@@ -1,11 +1,16 @@
 // Package classfile writes JVM class files (version 52, Java 8, with
-// StackMapTable frames) and reads the parts of them the compiler needs.
+// StackMapTable frames, which SetMajor raises for a higher JVM target)
+// and reads the parts of them the compiler needs.
 package classfile
 
 import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -26,7 +31,54 @@ const (
 	AccStrict       = 0x0800
 
 	majorVersion = 52 // Java 8
+	// Java17 is Java 17's major version, from which classes have a
+	// PermittedSubclasses attribute.
+	Java17 = 61
 )
+
+// TargetMajor returns the class file major version of JVM target, as
+// kotlinc's -jvm-target names it: 1.8 or 9 and later. "" is 1.8.
+func TargetMajor(target string) (uint16, bool) {
+	if target == "" || target == "1.8" {
+		return majorVersion, true
+	}
+	n, err := strconv.Atoi(target)
+	if err != nil || n < 9 || n > 25 || strconv.Itoa(n) != target {
+		return 0, false
+	}
+	return uint16(44 + n), true
+}
+
+// TargetName returns the JVM target of class file major version major,
+// as kotlinc's -jvm-target names it.
+func TargetName(major int) string {
+	if major <= majorVersion {
+		return "1." + strconv.Itoa(major-44)
+	}
+	return strconv.Itoa(major - 44)
+}
+
+// Major returns the major version of class file data, or 0 if data isn't
+// one.
+func Major(data []byte) int {
+	if len(data) < 8 || binary.BigEndian.Uint32(data) != 0xCAFEBABE {
+		return 0
+	}
+	return int(binary.BigEndian.Uint16(data[6:8]))
+}
+
+// SetMajor returns class file data with major version major if this
+// package wrote it, as version 52: a copy, data is left as it is. Other
+// class files, such as a library's that the compiler copies, keep their
+// version.
+func SetMajor(data []byte, major uint16) []byte {
+	if major == majorVersion || Major(data) != majorVersion {
+		return data
+	}
+	out := append([]byte(nil), data...)
+	binary.BigEndian.PutUint16(out[6:8], major)
+	return out
+}
 
 const (
 	tagUtf8               = 1
@@ -57,31 +109,50 @@ type poolKey struct {
 
 // Pool is a constant pool with deduplication. It also holds the class's
 // bootstrap methods, which InvokeDynamic constants refer to by index.
+//
+// Most constants are found by the indexes of the constants they hold, as
+// a Methodref by its Class and NameAndType, so only Utf8 constants are
+// found by a string.
 type Pool struct {
-	buf       []byte
-	count     uint16 // next free index
-	index     map[poolKey]uint16
-	utf8      map[string]uint16 // most entries need only a string key
-	bootstrap [][]uint16        // each a method handle and its arguments
-	bsmIndex  map[string]uint16
+	buf   []byte
+	count uint16            // next free index
+	utf8  map[string]uint16 // most entries need only a string key
+	// The Class and String constants of each Utf8 constant, by its index,
+	// or 0.
+	classOf, stringOf []uint16
+	nat               map[uint32]uint16  // NameAndType: name<<16 | desc
+	refs              map[uint64]uint16  // Fieldref, Methodref, InterfaceMethodref: tag<<32 | class<<16 | nat
+	index             map[poolKey]uint16 // the other constants
+	bootstrap         [][]uint16         // each a method handle and its arguments
+	bsmIndex          map[string]uint16
+}
+
+// poolHint is the number of Utf8 constants of the last class written, the
+// size its successor's maps start at, so that they rarely grow.
+var poolHint atomic.Int32
+
+// reserve makes room for a constant of slots slots and returns its index.
+func (p *Pool) reserve(slots uint16) uint16 {
+	if p.count == 0 {
+		p.count = 1
+	}
+	if int(p.count)+int(slots) > math.MaxUint16 {
+		panic("constant pool overflow")
+	}
+	i := p.count
+	p.count += slots
+	return i
 }
 
 func (p *Pool) add(k poolKey, entry []byte, slots uint16) uint16 {
 	if p.index == nil {
 		p.index = map[poolKey]uint16{}
 	}
-	if p.count == 0 {
-		p.count = 1
-	}
 	if i, ok := p.index[k]; ok {
 		return i
 	}
-	if int(p.count)+int(slots) > math.MaxUint16 {
-		panic("constant pool overflow")
-	}
-	i := p.count
+	i := p.reserve(slots)
 	p.buf = append(p.buf, entry...)
-	p.count += slots
 	p.index[k] = i
 	return i
 }
@@ -196,7 +267,7 @@ func (p *Pool) Utf8(s string) uint16 {
 		panic("constant pool overflow")
 	}
 	if p.utf8 == nil {
-		p.utf8 = map[string]uint16{}
+		p.utf8 = make(map[string]uint16, max(16, poolHint.Load()))
 	}
 	i := p.count
 	p.count++
@@ -205,22 +276,42 @@ func (p *Pool) Utf8(s string) uint16 {
 	return i
 }
 
+// of returns the constant that of holds for Utf8 constant u, or 0.
+func of(of []uint16, u uint16) uint16 {
+	if int(u) < len(of) {
+		return of[u]
+	}
+	return 0
+}
+
+// setOf records i as the constant of Utf8 constant u in *of.
+func setOf(of *[]uint16, u, i uint16) {
+	if int(u) >= len(*of) {
+		*of = append(*of, make([]uint16, int(u)+1-len(*of)+len(*of)/2)...)
+	}
+	(*of)[u] = i
+}
+
 func (p *Pool) Class(name string) uint16 {
-	k := poolKey{tag: tagClass, a: name}
-	if i, ok := p.index[k]; ok {
+	n := p.Utf8(name)
+	if i := of(p.classOf, n); i != 0 {
 		return i
 	}
-	n := p.Utf8(name)
-	return p.add(k, u2([]byte{tagClass}, n), 1)
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagClass, byte(n>>8), byte(n))
+	setOf(&p.classOf, n, i)
+	return i
 }
 
 func (p *Pool) String(s string) uint16 {
-	k := poolKey{tag: tagString, a: s}
-	if i, ok := p.index[k]; ok {
+	n := p.Utf8(s)
+	if i := of(p.stringOf, n); i != 0 {
 		return i
 	}
-	n := p.Utf8(s)
-	return p.add(k, u2([]byte{tagString}, n), 1)
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagString, byte(n>>8), byte(n))
+	setOf(&p.stringOf, n, i)
+	return i
 }
 
 func (p *Pool) Int(v int32) uint16 {
@@ -244,39 +335,47 @@ func (p *Pool) Double(v float64) uint16 {
 }
 
 func (p *Pool) NameAndType(name, desc string) uint16 {
-	k := poolKey{tag: tagNameAndType, a: name, b: desc}
-	if i, ok := p.index[k]; ok {
+	n, d := p.Utf8(name), p.Utf8(desc)
+	k := uint32(n)<<16 | uint32(d)
+	if i, ok := p.nat[k]; ok {
 		return i
 	}
-	n, d := p.Utf8(name), p.Utf8(desc)
-	return p.add(k, u2(u2([]byte{tagNameAndType}, n), d), 1)
+	if p.nat == nil {
+		p.nat = make(map[uint32]uint16, max(8, poolHint.Load()/4))
+	}
+	i := p.reserve(1)
+	p.buf = append(p.buf, tagNameAndType, byte(n>>8), byte(n), byte(d>>8), byte(d))
+	p.nat[k] = i
+	return i
+}
+
+// ref returns the Fieldref, Methodref or InterfaceMethodref constant of
+// tag for a member.
+func (p *Pool) ref(tag byte, owner, name, desc string) uint16 {
+	c, nt := p.Class(owner), p.NameAndType(name, desc)
+	k := uint64(tag)<<32 | uint64(c)<<16 | uint64(nt)
+	if i, ok := p.refs[k]; ok {
+		return i
+	}
+	if p.refs == nil {
+		p.refs = make(map[uint64]uint16, max(8, poolHint.Load()/4))
+	}
+	i := p.reserve(1)
+	p.buf = append(p.buf, tag, byte(c>>8), byte(c), byte(nt>>8), byte(nt))
+	p.refs[k] = i
+	return i
 }
 
 func (p *Pool) Field(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagFieldref, a: owner, b: name + ":" + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagFieldref}, c), nt), 1)
+	return p.ref(tagFieldref, owner, name, desc)
 }
 
 func (p *Pool) Method(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagMethodref, a: owner, b: name + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagMethodref}, c), nt), 1)
+	return p.ref(tagMethodref, owner, name, desc)
 }
 
 func (p *Pool) InterfaceMethod(owner, name, desc string) uint16 {
-	k := poolKey{tag: tagInterfaceMethodref, a: owner, b: name + desc}
-	if i, ok := p.index[k]; ok {
-		return i
-	}
-	c, nt := p.Class(owner), p.NameAndType(name, desc)
-	return p.add(k, u2(u2([]byte{tagInterfaceMethodref}, c), nt), 1)
+	return p.ref(tagInterfaceMethodref, owner, name, desc)
 }
 
 // MethodHandle returns a method handle constant of the given kind for a
@@ -352,6 +451,13 @@ type Class struct {
 	// class itself if it is nested, and the nested classes it declares
 	// or refers to.
 	InnerClasses []InnerClassEntry
+	// Nested, if set, gives the entry of a class the class file names,
+	// whether it is nested: Bytes adds those the class's constants name,
+	// in descriptors and generic signatures too, as the JVM specification
+	// asks and kotlinc writes them. A Kotlin compiler reading the class
+	// file needs them to tell a nested class's name from a top-level one
+	// with $ in it, as in an annotation of a nested annotation class.
+	Nested func(name string) (InnerClassEntry, bool)
 	// Enclosing is set on a local or anonymous class declared in a
 	// method: the EnclosingMethod attribute's class, method name and
 	// descriptor.
@@ -362,6 +468,9 @@ type Class struct {
 	// Signature is the class's generic signature, its Signature
 	// attribute, if it has one.
 	Signature string
+	// Permitted are the classes of the PermittedSubclasses attribute, of
+	// a sealed class or interface, if it has one.
+	Permitted []string
 	fields    []*member
 	methods   []*member
 	anns      annotations
@@ -570,6 +679,7 @@ func (c *Class) memberAttrs(attrs []attr, m *member) []attr {
 
 // Bytes serializes the class.
 func (c *Class) Bytes() []byte {
+	defer func() { poolHint.Store(int32(len(c.utf8))) }()
 	this, super := c.Class(c.Name), c.Class(c.Super)
 	ifaces := make([]uint16, len(c.Interfaces))
 	for i, name := range c.Interfaces {
@@ -604,30 +714,9 @@ func (c *Class) Bytes() []byte {
 	if c.SourceFile != "" {
 		classAttrs = append(classAttrs, attr{c.Utf8("SourceFile"), u2(nil, c.Utf8(c.SourceFile))})
 	}
-	if len(c.InnerClasses) > 0 {
-		// A class is listed once, which the JVM requires: the code
-		// generator may add it from both the class and its outer class.
-		var entries []InnerClassEntry
-		seen := map[string]bool{}
-		for _, e := range c.InnerClasses {
-			if !seen[e.Inner] {
-				seen[e.Inner] = true
-				entries = append(entries, e)
-			}
-		}
-		b := u2(nil, uint16(len(entries)))
-		for _, e := range entries {
-			var outer, simple uint16
-			if e.Outer != "" {
-				outer = c.Class(e.Outer)
-			}
-			if e.Simple != "" {
-				simple = c.Utf8(e.Simple)
-			}
-			b = u2(u2(u2(u2(b, c.Class(e.Inner)), outer), simple), e.Access)
-		}
-		classAttrs = append(classAttrs, attr{c.Utf8("InnerClasses"), b})
-	}
+	// The InnerClasses attribute's place: it is encoded last, as it lists
+	// the nested classes the other attributes' constants name.
+	innerAt := len(classAttrs)
 	if c.Signature != "" {
 		classAttrs = append(classAttrs, attr{c.Utf8("Signature"), u2(nil, c.Utf8(c.Signature))})
 	}
@@ -639,6 +728,13 @@ func (c *Class) Bytes() []byte {
 		classAttrs = append(classAttrs, attr{c.Utf8("EnclosingMethod"), u2(u2(nil, c.Class(e.Class)), m)})
 	}
 	classAttrs = c.annotationAttrs(classAttrs, c.anns)
+	if len(c.Permitted) > 0 {
+		b := u2(nil, uint16(len(c.Permitted)))
+		for _, name := range c.Permitted {
+			b = u2(b, c.Class(name))
+		}
+		classAttrs = append(classAttrs, attr{c.Utf8("PermittedSubclasses"), b})
+	}
 	if len(c.bootstrap) > 0 {
 		// After the code, which adds bootstrap methods.
 		b := u2(nil, uint16(len(c.bootstrap)))
@@ -650,6 +746,10 @@ func (c *Class) Bytes() []byte {
 			}
 		}
 		classAttrs = append(classAttrs, attr{c.Utf8("BootstrapMethods"), b})
+	}
+
+	if b := c.innerClassesAttr(); b != nil {
+		classAttrs = slices.Insert(classAttrs, innerAt, attr{c.Utf8("InnerClasses"), b})
 	}
 
 	out := u4(nil, 0xCAFEBABE)
@@ -675,6 +775,110 @@ func (c *Class) Bytes() []byte {
 		out = appendAttrs(out, methodAttrs[i])
 	}
 	return appendAttrs(out, classAttrs)
+}
+
+// innerClassesAttr returns the InnerClasses attribute's contents, or nil
+// if it has no entries: InnerClasses, then the nested classes the
+// constants name that Nested knows, in the order of their names, which
+// puts a class after the classes it is nested in.
+func (c *Class) innerClassesAttr() []byte {
+	// A class is listed once, which the JVM requires: the code generator
+	// may add it from both the class and its outer class.
+	var entries []InnerClassEntry
+	seen := map[string]bool{}
+	for _, e := range c.InnerClasses {
+		if !seen[e.Inner] {
+			seen[e.Inner] = true
+			entries = append(entries, e)
+		}
+	}
+	if c.Nested != nil {
+		var named []InnerClassEntry
+		var add func(name string)
+		add = func(name string) {
+			if seen[name] || strings.IndexByte(name, '$') <= 0 {
+				return
+			}
+			seen[name] = true
+			e, ok := c.Nested(name)
+			if !ok {
+				return
+			}
+			named = append(named, e)
+			if e.Outer != "" {
+				add(e.Outer)
+			}
+		}
+		strs := make([]string, 0, len(c.utf8))
+		for s := range c.utf8 {
+			strs = append(strs, s)
+		}
+		slices.Sort(strs)
+		for _, s := range strs {
+			if of(c.classOf, c.utf8[s]) != 0 && !strings.HasPrefix(s, "[") {
+				add(s)
+			}
+			descriptorNames(s, add)
+		}
+		slices.SortFunc(named, func(a, b InnerClassEntry) int { return strings.Compare(a.Inner, b.Inner) })
+		entries = append(entries, named...)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	b := u2(nil, uint16(len(entries)))
+	for _, e := range entries {
+		var outer, simple uint16
+		if e.Outer != "" {
+			outer = c.Class(e.Outer)
+		}
+		if e.Simple != "" {
+			simple = c.Utf8(e.Simple)
+		}
+		b = u2(u2(u2(u2(b, c.Class(e.Inner)), outer), simple), e.Access)
+	}
+	return b
+}
+
+// descriptorNames calls add with the class names of s read as a
+// descriptor or a generic signature: Lp/A$B; and, in Lp/A<TT;>.B;, also
+// p/A$B. Another string gives names no class has.
+func descriptorNames(s string, add func(string)) {
+	var open []string // the classes whose type arguments s is in
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case 'L':
+			j := i + 1
+			for j < len(s) && s[j] != ';' && s[j] != '<' && s[j] != '.' {
+				j++
+			}
+			add(s[i+1 : j])
+			if j < len(s) && s[j] == '<' {
+				open = append(open, s[i+1:j])
+			}
+			i = j
+		case '>':
+			if len(open) == 0 {
+				continue
+			}
+			name := open[len(open)-1]
+			open = open[:len(open)-1]
+			for i+1 < len(s) && s[i+1] == '.' {
+				j := i + 2
+				for j < len(s) && s[j] != ';' && s[j] != '<' && s[j] != '.' {
+					j++
+				}
+				name += "$" + s[i+2:j]
+				add(name)
+				if j < len(s) && s[j] == '<' {
+					open = append(open, name)
+					i = j
+					break
+				}
+				i = j - 1
+			}
+		}
+	}
 }
 
 // codeAttr finishes a method's code and returns its Code attribute's

@@ -1,3 +1,4 @@
+// kotlinc: -Xmulti-platform
 expect fun withBody(): Int = 1 // ERROR 'expect' declaration cannot have a body
 expect val withInit: Int = 2 // ERROR 'expect' property cannot have an initializer
 expect fun noActual(): Int // ERROR the 'expect' declaration 'noActual' has no 'actual' declaration

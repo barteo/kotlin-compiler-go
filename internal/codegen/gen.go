@@ -44,10 +44,14 @@ type gen struct {
 	// declares, whose code, as kotlinc's plugins' IR, has no checks of
 	// platform-typed values.
 	plugin bool
-	loops  []loopLabels
-	tries  []*tryCtx       // the try blocks the code is in, innermost last
-	lam    *lambdaCtx      // set in a lambda's method
-	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
+	// javaArg is the argument being passed to a Java method, which
+	// kotlinc doesn't check for null where an annotation makes the
+	// parameter's type non-null.
+	javaArg syntax.Expr
+	loops   []loopLabels
+	tries   []*tryCtx       // the try blocks the code is in, innermost last
+	lam     *lambdaCtx      // set in a lambda's method
+	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -272,6 +276,42 @@ type Options struct {
 	// Cache is shared by the files of a compilation, which compute what
 	// it holds once; if nil, each file has its own.
 	Cache *Cache
+	// JVMTarget is the class files' major version: from Java 17's, a
+	// sealed class or interface lists its subclasses in its
+	// PermittedSubclasses attribute.
+	JVMTarget uint16
+	// Program are the program's named classes, by JVM name (see
+	// ProgramClasses), and ClassFile reads a class of the class path:
+	// the InnerClasses attributes list the nested classes of either that
+	// a class file names (see nestedEntry).
+	Program   map[string]*syntax.ClassDecl
+	ClassFile func(name string) (*cf.Info, error)
+}
+
+// ProgramClasses returns the named classes the files declare, nested
+// ones included, by JVM name.
+func ProgramClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
+	m := map[string]*syntax.ClassDecl{}
+	var walk func(cd *syntax.ClassDecl)
+	walk = func(cd *syntax.ClassDecl) {
+		if cd.Sym == nil {
+			return
+		}
+		m[cd.Sym.Name] = cd
+		for _, d := range cd.Members {
+			if nd, ok := d.(*syntax.ClassDecl); ok {
+				walk(nd)
+			}
+		}
+	}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if cd, ok := d.(*syntax.ClassDecl); ok {
+				walk(cd)
+			}
+		}
+	}
+	return m
 }
 
 // Cache holds what code generation computes once for a compilation and
@@ -339,6 +379,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	g.writeMetadata()
 	for i, o := range out {
 		if c := g.shared.classes[o.Name]; c != nil && o.Bytes == nil {
+			c.Nested = g.nestedEntry
 			out[i].Bytes = c.Bytes()
 		}
 	}
@@ -355,7 +396,7 @@ func (g *gen) privateAccessors() {
 	}
 	owner := func(p *types.VarSym) string {
 		if p.Kind == types.Global {
-			return p.Facade
+			return p.FieldClass()
 		}
 		return p.Owner.Name
 	}
@@ -432,7 +473,7 @@ func (g *gen) privateAccessors() {
 			acc &^= cf.AccFinal // an interface's methods can't be final
 		}
 		code := c.NewMethod(acc, m.accessor(), d)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
 		}
 		switch {
@@ -448,7 +489,7 @@ func (g *gen) privateAccessors() {
 		default:
 			code.Invoke(op, m.class, m.name, m.desc)
 		}
-		code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		code.Op(returnOpOf(cf.RetDesc(d)))
 		if err := code.Err(); err != nil {
 			panic(err)
 		}
@@ -473,20 +514,7 @@ func (g *gen) innerClasses() {
 			if inner == nil || outer == nil {
 				continue
 			}
-			access := inner.Access &^ (cf.AccSuper | cf.AccPublic)
-			if !nd.Sym.Inner {
-				access |= cf.AccStatic
-			}
-			switch {
-			case nd.EnumEntry:
-			case nd.Visibility == syntax.Private:
-				access |= cf.AccPrivate
-			case nd.Visibility == syntax.Protected:
-				access |= cf.AccProtected
-			default:
-				access |= cf.AccPublic
-			}
-			e := cf.InnerClassEntry{Inner: nd.Sym.Name, Outer: cd.Sym.Name, Simple: nd.Name, Access: access}
+			e := cf.InnerClassEntry{Inner: nd.Sym.Name, Outer: cd.Sym.Name, Simple: nd.Name, Access: nestedAccess(nd, inner.Access)}
 			outer.InnerClasses = append(outer.InnerClasses, e)
 			c := append(chain[:len(chain):len(chain)], e)
 			inner.InnerClasses = append(inner.InnerClasses, c...)
@@ -537,11 +565,61 @@ func (g *gen) innerClasses() {
 	}
 }
 
+// nestedAccess returns the access flags of the InnerClasses entry of nd,
+// a nested class, whose class file's are access.
+func nestedAccess(nd *syntax.ClassDecl, access uint16) uint16 {
+	access &^= cf.AccSuper | cf.AccPublic
+	if !nd.Sym.Inner {
+		access |= cf.AccStatic
+	}
+	switch {
+	case nd.EnumEntry:
+	case nd.Visibility == syntax.Private:
+		access |= cf.AccPrivate
+	case nd.Visibility == syntax.Protected:
+		access |= cf.AccProtected
+	default:
+		access |= cf.AccPublic
+	}
+	return access
+}
+
+// nestedEntry returns the InnerClasses entry of the class named name if
+// it is nested: a class of the file, by its own entry, another of the
+// program, from its declaration, or a class of the class path, from its
+// class file.
+func (g *gen) nestedEntry(name string) (cf.InnerClassEntry, bool) {
+	if c := g.shared.classes[name]; c != nil {
+		for _, e := range c.InnerClasses {
+			if e.Inner == name {
+				return e, true
+			}
+		}
+		return cf.InnerClassEntry{}, false
+	}
+	opts := g.shared.opts
+	if cd := opts.Program[name]; cd != nil {
+		outer := cd.Sym.Outer
+		if outer == nil || !strings.HasPrefix(name, outer.Name+"$") {
+			return cf.InnerClassEntry{}, false
+		}
+		return cf.InnerClassEntry{Inner: name, Outer: outer.Name, Simple: cd.Name, Access: nestedAccess(cd, classAccess(cd))}, true
+	}
+	if opts.ClassFile == nil {
+		return cf.InnerClassEntry{}, false
+	}
+	info, err := opts.ClassFile(name)
+	if err != nil || info.Inner == nil || info.Inner.Outer == "" || !strings.HasPrefix(name, info.Inner.Outer+"$") {
+		return cf.InnerClassEntry{}, false
+	}
+	return cf.InnerClassEntry{Inner: name, Outer: info.Inner.Outer, Simple: name[len(info.Inner.Outer)+1:], Access: info.Inner.Access}, true
+}
+
 // annotationClass generates an annotation class: an annotation interface
 // whose abstract methods are its parameters, with their defaults.
 func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 	cls := cd.Sym
-	c := cf.NewClass(cf.AccPublic|cf.AccInterface|cf.AccAbstract|cf.AccAnnotation, cls.Name, "java/lang/Object")
+	c := cf.NewClass(annotationAccess, cls.Name, "java/lang/Object")
 	c.Interfaces = []string{"java/lang/annotation/Annotation"}
 	c.SourceFile = filepath.Base(g.file.Path)
 	c.Signature = classSignature(cls, "java/lang/Object", c.Interfaces)
@@ -803,7 +881,9 @@ func (g *gen) facade() *cf.Class {
 				}
 			}
 			c.AddField(acc|fieldModifiers(p.Annotations), p.Name, d)
-			g.signField(c.LastField(), ft, p.Type, d, p.Mutable, p.Annotations, nil)
+			if p.DelegateOf == nil { // as kotlinc, a delegate's field has none
+				g.signField(c.LastField(), ft, p.Type, d, p.Mutable, p.Annotations, nil)
+			}
 			g.fieldAnnotations(c.LastField(), p.Annotations, sym.Type, placement{site: "field", dflt: onField})
 			if p.Init != nil {
 				inits = append(inits, p)
@@ -961,6 +1041,14 @@ func varargs(f *types.FunSym) bool {
 	return hasVararg(f.Params) && !f.Composable && !f.Suspend
 }
 
+// varargsFlag is ACC_VARARGS if f's method is a variable arity method.
+func varargsFlag(f *types.FunSym) uint16 {
+	if varargs(f) {
+		return cf.AccVarargs
+	}
+	return 0
+}
+
 func (g *gen) check() {
 	if err := g.code.Err(); err != nil {
 		panic(fmt.Errorf("%s.%s: %w", g.cls.Name, g.code.Name(), err))
@@ -1026,7 +1114,7 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 	}
 	g.code = g.cls.NewMethod(access, sym.JVM(), d)
 	m := g.cls.LastMethod()
-	if access&cf.AccSynthetic == 0 {
+	if access&cf.AccSynthetic == 0 || reifiedInline(fd) {
 		this := types.InvalidType
 		if g.implsThis {
 			this = g.owner.This()
@@ -1088,7 +1176,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 	g.cls.Throws(sym.Throws...)
 	if outer != nil {
 		g.code.NameLocal(g.code.AllocLocal("L"+g.cls.Name+";"), "this")
-		for i, pd := range descParams(d) {
+		for i, pd := range cf.DescParams(d) {
 			slot := g.code.AllocLocal(pd)
 			if !sym.Ext {
 				g.code.NameLocal(slot, sym.Params[i].Name)
@@ -1097,7 +1185,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 		}
 		g.code.Invoke(cf.INVOKESTATIC, outer.Name, sym.JVM(), d)
 		g.code.Line(fd.P.Line)
-		g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	g.annotateFun(m, fd, access&(cf.AccPrivate|cf.AccSynthetic) != 0 || g.owner != nil && g.owner.Anonymous)
@@ -1199,17 +1287,21 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	}
 }
 
-func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
+// The access flags of an annotation class's and a value class's class
+// files.
+const (
+	annotationAccess = cf.AccPublic | cf.AccInterface | cf.AccAbstract | cf.AccAnnotation
+	valueAccess      = cf.AccPublic | cf.AccFinal | cf.AccSuper
+)
+
+// classAccess returns the access flags of cd's class file.
+func classAccess(cd *syntax.ClassDecl) uint16 {
 	cls := cd.Sym
-	if cls.Annotation {
-		return g.annotationClass(cd)
-	}
-	if cls.Value {
-		return g.valueClass(cd)
-	}
-	super := "java/lang/Object"
-	if cls.Super != nil {
-		super = cls.Super.Name
+	switch {
+	case cls.Annotation:
+		return annotationAccess
+	case cls.Value:
+		return valueAccess
 	}
 	access := uint16(cf.AccPublic | cf.AccSuper)
 	switch {
@@ -1232,7 +1324,37 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	if cd.Synthetic {
 		access |= cf.AccSynthetic
 	}
-	c := cf.NewClass(access, cls.Name, super)
+	return access
+}
+
+// permitted returns the classes of a sealed class's PermittedSubclasses
+// attribute, from Java 17 on: its direct subclasses, by name, as kotlinc
+// orders them.
+func (g *gen) permitted(cls *types.ClassSym) []string {
+	if !cls.Sealed || g.shared.opts.JVMTarget < cf.Java17 {
+		return nil
+	}
+	var names []string
+	for _, s := range cls.Subclasses {
+		names = append(names, s.Name)
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}
+
+func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
+	cls := cd.Sym
+	if cls.Annotation {
+		return g.annotationClass(cd)
+	}
+	if cls.Value {
+		return g.valueClass(cd)
+	}
+	super := "java/lang/Object"
+	if cls.Super != nil {
+		super = cls.Super.Name
+	}
+	c := cf.NewClass(classAccess(cd), cls.Name, super)
 	// As with kotlinc, the Java interfaces of Kotlin's collection types
 	// come first, then their marker, then the other interfaces.
 	for _, i := range cls.Interfaces {
@@ -1254,9 +1376,16 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	}
 	c.Signature = classSignature(cls, super, c.Interfaces)
 	c.SourceFile = filepath.Base(g.file.Path)
+	c.Permitted = g.permitted(cls)
 	g.cls, g.owner = c, cls
 	for _, v := range cd.Captures {
 		c.AddField(cf.AccFinal|cf.AccSynthetic, captureField(cd, v), storageDesc(v))
+		// As kotlinc's, with the signature of a result of its type.
+		var w sigWriter
+		w.member(capturePart(v), storageDesc(v), inResult)
+		if s := w.String(); s != storageDesc(v) {
+			c.LastField().SetSignature(s)
+		}
 	}
 	for _, st := range cd.Supers {
 		if st.Delegate != nil && strings.HasPrefix(st.Field, "$$delegate_") {
@@ -1506,7 +1635,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		if cls.HasDefaultImpls() && !f.Abstract {
 			// An abstract method, and the body in DefaultImpls.
 			if fd.Visibility != syntax.Private {
-				c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
+				c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract|varargsFlag(f)|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
 				g.signFun(c.LastMethod(), f, fd, funDesc(f), types.InvalidType)
 				g.annotateFun(c.LastMethod(), fd, false)
 				c.Throws(f.Throws...)
@@ -1527,7 +1656,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			if fd.Visibility == syntax.Protected || f.Inherited == types.InheritProtected && !f.PublicOnJVM {
 				acc = cf.AccProtected
 			}
-			c.AddAbstractMethod(acc|cf.AccAbstract|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
+			c.AddAbstractMethod(acc|cf.AccAbstract|varargsFlag(f)|synthetic(&fd.Modifiers), f.JVM(), funDesc(f))
 			g.signFun(c.LastMethod(), f, fd, funDesc(f), types.InvalidType)
 			g.annotateFun(c.LastMethod(), fd, false)
 			c.Throws(f.Throws...)
@@ -1614,7 +1743,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 		}
 	}
 	g.code.AllocLocal(self)
-	from, to := descParams(d), descParams(td)
+	from, to := cf.DescParams(d), cf.DescParams(td)
 	slots := make([]int, len(from))
 	for i, pd := range from {
 		slots[i] = g.code.AllocLocal(pd)
@@ -1665,7 +1794,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	} else {
 		g.code.InvokeInterface(target.Owner.Name, target.JVM(), td)
 	}
-	ret, tret := d[strings.IndexByte(d, ')')+1:], td[strings.IndexByte(td, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(td)
 	switch {
 	case ret == "V" && (tret == "J" || tret == "D"):
 		g.code.Op(cf.POP2)
@@ -1743,7 +1872,7 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 	}
 	// An enum's name and ordinal, an inner class's outer instance or a
 	// local class's captures come first.
-	skip := len(descParams(ctorDesc(cd))) - len(cls.Ctor.Params)
+	skip := len(cf.DescParams(ctorDesc(cd))) - len(cls.Ctor.Params)
 	g.annotateCtor(c.LastMethod(), &cd.CtorMods, cls.Ctor.Params, nil, cd.CtorParams, skip, access&cf.AccPrivate != 0 || cls.Anonymous)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -1906,7 +2035,7 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	if access&cf.AccSynthetic == 0 {
 		g.signCtor(g.cls.LastMethod(), cls, f, sc.Params, d, sc.Annotations)
 	}
-	skip := len(descParams(d)) - len(f.Params)
+	skip := len(cf.DescParams(d)) - len(f.Params)
 	g.annotateCtor(g.cls.LastMethod(), &sc.Modifiers, f.Params, sc.Params, nil, skip, access&cf.AccPrivate != 0)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -2104,10 +2233,29 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 	if p.StaticField() {
 		acc |= cf.AccStatic
 	}
+	if pd, _ := p.Decl.(*syntax.PropDecl); pd != nil && pd.Plugin {
+		switch {
+		case strings.HasPrefix(p.Name, "typeSerial"):
+			// A generic class's $serializer keeps its type arguments'
+			// serializers, as kotlinc's plugin writes them.
+			c.AddField(cf.AccPrivate|cf.AccFinal|cf.AccSynthetic, p.Name, desc(p.Type))
+			c.LastField().SetSignature("Lkotlinx/serialization/KSerializer<*>;")
+			return
+		case p.Name == "$cachedDescriptor":
+			// Only the class's own code, its static initializer and
+			// synthetic constructor, uses it.
+			c.AddField(cf.AccPrivate|cf.AccStatic|cf.AccFinal, p.Name, desc(p.Type))
+			return
+		}
+	}
 	as, field, _ := classPropAnnotations(p)
 	ft := types.FieldType(p)
 	c.AddField(acc|fieldModifiers(as), p.Name, desc(ft))
-	g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
+	if pd, _ := p.Decl.(*syntax.PropDecl); pd == nil || pd.DelegateOf == nil || p.Owner != nil && p.Owner.CompanionOf != nil {
+		// As kotlinc, a delegate's field has a signature only if it is a
+		// companion object's.
+		g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
+	}
 	g.fieldAnnotations(c.LastField(), as, p.Type, field)
 }
 
@@ -2117,6 +2265,9 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 func (g *gen) constFields(c *cf.Class, cd *syntax.ClassDecl) {
 	for _, pd := range constDecls(cd) {
 		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal)
+		if pd.Visibility == syntax.Protected {
+			acc = cf.AccProtected | cf.AccStatic | cf.AccFinal
+		}
 		if v := constPool(c, pd.Sym); v != 0 {
 			if pd.Visibility == syntax.Private {
 				acc = cf.AccPrivate | cf.AccStatic | cf.AccFinal
@@ -2236,12 +2387,17 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		}
 	}
 	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
-	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
+	if copied && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda
-		// parameters into it.
+		// parameters into it. A suspend function's is the body of its
+		// name$$forInline method, whose suspension points are marked.
 		g.prefix = f.Name + "$lambda"
 		g.retType = types.JVMRet(f)
+		if f.Suspend {
+			g.suspendFun(fd, g.code.Name(), g.code.Desc(), k, &resumeCall{forInline: true})
+			defer g.endSuspend()
+		}
 		if fd.Body != nil {
 			g.block(fd.Body, types.UnitType, false)
 			if g.code.Reachable() {
@@ -2460,7 +2616,7 @@ func (g *gen) markerConstructor(f *types.FunSym) {
 	g.code = g.cls.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", d[:i]+"Lkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
 	g.code.AllocLocal("L" + f.Owner.Name + ";")
 	g.code.Local(cf.ALOAD, 0)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
 	g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
@@ -2863,11 +3019,11 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	i := strings.IndexByte(nameDesc, '(')
 	name, d := nameDesc[:i], nameDesc[i:]
 	target := methodDesc(params, result)
-	if ps := descParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
+	if ps := cf.DescParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
 		// A composable function's: the Composer and the ints are passed
 		// as they are.
 		target = types.ComposeDesc(target, len(ps)-len(params)-1)
-	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(descParams(d)) == len(params)+1 {
+	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(cf.DescParams(d)) == len(params)+1 {
 		// A suspend function's: the continuation and the result are
 		// passed as they are. A suspend function type's invoke takes
 		// the continuation as an Object.
@@ -2890,7 +3046,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	}
 	g.code = g.cls.NewMethod(access, name, d)
 	g.code.AllocLocal("L" + g.owner.Name + ";")
-	from, to := descParams(d), descParams(target)
+	from, to := cf.DescParams(d), cf.DescParams(target)
 	var slots []int
 	if spread {
 		// FunctionN's invoke, which takes the arguments in an array.
@@ -2920,7 +3076,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 		g.convertDesc(pd, to[i])
 	}
 	g.invokeVirtual(g.owner, targetName, target)
-	ret, tret := d[strings.IndexByte(d, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(target)
 	switch {
 	case tret == "V" && ret != "V":
 		g.unitValue() // Unit, as an Object
@@ -3005,77 +3161,23 @@ func (g *gen) convertDesc(from, to string) {
 	switch {
 	case from == to || to == "V":
 	case len(to) == 1: // a primitive, from its box or a supertype
-		box := descBox[to]
-		if from != "L"+box+";" {
+		t := types.Type{K: types.DescKind(to[0])}
+		if box := boxClass(t.K); from != "L"+box+";" {
 			g.code.Checkcast(box)
 		}
-		g.unbox(descType[to])
+		g.unbox(t)
 	case len(from) == 1:
-		g.box(descType[from])
+		g.box(types.Type{K: types.DescKind(from[0])})
 	case to != "Ljava/lang/Object;":
 		g.code.Checkcast(className(to)) // an array's class name is its descriptor
 	}
 }
 
-// descType and descBox are the primitive types by descriptor, and their
-// box classes.
-var (
-	descType = map[string]types.Type{
-		"I": types.IntType, "J": types.LongType, "D": types.DoubleType, "Z": types.BoolType,
-		"C": types.CharType, "F": types.FloatType, "B": types.ByteType, "S": types.ShortType,
-	}
-	descBox = func() map[string]string {
-		m := map[string]string{}
-		for d, t := range descType {
-			m[d] = types.Boxes[t.K]
-		}
-		return m
-	}()
-)
-
-func loadOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ILOAD
-	case "J":
-		return cf.LLOAD
-	case "F":
-		return cf.FLOAD
-	case "D":
-		return cf.DLOAD
-	}
-	return cf.ALOAD
-}
-
-func storeOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ISTORE
-	case "J":
-		return cf.LSTORE
-	case "F":
-		return cf.FSTORE
-	case "D":
-		return cf.DSTORE
-	}
-	return cf.ASTORE
-}
-
-func returnOpOf(d string) byte {
-	switch d {
-	case "V":
-		return cf.RETURN
-	case "I", "Z", "C", "B", "S":
-		return cf.IRETURN
-	case "J":
-		return cf.LRETURN
-	case "F":
-		return cf.FRETURN
-	case "D":
-		return cf.DRETURN
-	}
-	return cf.ARETURN
-}
+// loadOpOf, storeOpOf and returnOpOf return the instructions that load,
+// store and return a value of type descriptor d.
+func loadOpOf(d string) byte   { return cf.KindOf(d).Load }
+func storeOpOf(d string) byte  { return cf.KindOf(d).Store }
+func returnOpOf(d string) byte { return cf.KindOf(d).Return }
 
 // callMethod calls method f of the program, by its JVM name and
 // descriptor d, on a receiver of class cls below the arguments. As with
@@ -3365,12 +3467,12 @@ func (g *gen) backingField(p *types.VarSym, load bool) {
 		// uses, as kotlinc does.
 		if load {
 			g.shared.access[p] |= 1
-			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+			g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateGetter(p), "()"+d)
 			break
 		}
 		g.shared.access[p] |= 2
 		g.toField(p, ft)
-		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateSetter(p), "("+d+")V")
+		g.code.Invoke(cf.INVOKESTATIC, p.FieldClass(), privateSetter(p), "("+d+")V")
 		return
 	case p.Kind == types.Global && load:
 		g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)

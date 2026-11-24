@@ -53,7 +53,7 @@ fun variance(p: Producer<String>, b: Box<out Number>, c: Box<in Int>, s: Box<*>)
     val y: Any? = s.value
     val list = java.util.ArrayList<String>()
     println(list.size()) // ERROR expression 'size' of type Int cannot be invoked as a function
-    list.add(1) // ERROR inferred type is Int but String! was expected
+    list.add(1) // ERROR inferred type is Int but String was expected
     val m: java.util.HashMap<String, Int> = java.util.HashMap()
     val v: Int = m.get("a") // ERROR inferred type is Int? but Int was expected
 }
@@ -72,3 +72,17 @@ fun useOutOfBounds() = outOfBounds(1) // ERROR type argument is not within its b
 // out of their bounds.
 class SelfBounded<T : Comparable<T>>(val x: T)
 fun explicitOutOfBounds(c: Comparable<*>) = SelfBounded<Comparable<*>>(c) // ERROR type argument is not within its bounds
+
+// A nullable bound on the way doesn't reach a non-null parameter: W of
+// <Z : F, W : Z?> isn't an F, but W & Any is.
+class NullableBound<F> {
+    fun <E : F> take(x: E) = x
+
+    fun <Z : F, W : Z?> use(w: W) {
+        take<W>(w) // ERROR type argument is not within its bounds
+        if (w != null) take(w)
+    }
+}
+
+fun <T : Int.() -> String> extBound() {} // ERROR an extension function type or a function type with context parameters can't be an upper bound
+class CtxBound<T> where T : context(Int) () -> Unit // ERROR an extension function type or a function type with context parameters can't be an upper bound

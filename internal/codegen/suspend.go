@@ -156,11 +156,11 @@ func (g *gen) inlinedSuspend(x *syntax.Call) {
 		return
 	}
 	if p := sm.points[len(sm.points)-1]; p.call == x && p.inline && g.code.Reachable() {
-		if sm.cls == "" {
+		if sm.cls == "" && !sm.forInline {
 			g.suspended(p) // returns it
 			return
 		}
-		g.suspendFinish(p)
+		g.suspendFinish(p) // a copy for inliners keeps the body's markers
 	}
 }
 
@@ -387,7 +387,7 @@ func (g *gen) suspendImpl(fd *syntax.FunDecl, access uint16) bool {
 	}
 	c := g.code
 	g.line(fd.P)
-	for _, pd := range descParams(implDesc) {
+	for _, pd := range cf.DescParams(implDesc) {
 		c.Local(loadOpOf(pd), c.AllocLocal(pd))
 	}
 	invoke(c)
@@ -399,6 +399,7 @@ func (g *gen) suspendImpl(fd *syntax.FunDecl, access uint16) bool {
 		implAccess |= cf.AccPublic
 	}
 	g.code = g.cls.NewMethod(implAccess, name, implDesc)
+	g.signFun(g.cls.LastMethod(), sym, fd, implDesc, sym.Owner.This())
 	g.code.NameLocal(g.code.AllocLocal("L"+owner+";"), "$this")
 	g.resume = &resumeCall{this: true, thisParam: true, call: func(g *gen) { invoke(g.code) }}
 	g.functionBody(fd)
@@ -525,7 +526,7 @@ func (g *gen) continuationClass(sm *stateMachine) {
 		code.Local(cf.ALOAD, 0)
 		code.FieldInsn(cf.GETFIELD, sm.cls, "this$0", "L"+owner+";")
 	}
-	ps := descParams(sm.desc)
+	ps := cf.DescParams(sm.desc)
 	ps = ps[:len(ps)-1]
 	if sm.thisParam {
 		ps = ps[1:]
@@ -1103,35 +1104,17 @@ func (g *gen) fromObject(t types.Type) {
 		c.Checkcast(t.C.Name)
 		g.unboxValue(t)
 	case t.IsPrimitive():
-		switch t.K {
-		case types.Bool:
-			c.Checkcast("java/lang/Boolean")
-			c.Invoke(cf.INVOKEVIRTUAL, "java/lang/Boolean", "booleanValue", "()Z")
-		case types.Char:
-			c.Checkcast("java/lang/Character")
-			c.Invoke(cf.INVOKEVIRTUAL, "java/lang/Character", "charValue", "()C")
-		default:
-			d := desc(t)
-			c.Checkcast("java/lang/Number")
-			c.Invoke(cf.INVOKEVIRTUAL, "java/lang/Number", numberValue[d], "()"+d)
+		p, owner := types.PrimOf(t.K), "java/lang/Number"
+		if t.K == types.Bool || t.K == types.Char {
+			owner = p.Box
 		}
+		c.Checkcast(owner)
+		c.Invoke(cf.INVOKEVIRTUAL, owner, p.Unbox, "()"+p.Desc)
 	default:
 		if d := desc(t); d != objectDesc {
 			c.Checkcast(className(d))
 		}
 	}
-}
-
-// numberValue are the methods of Number that return its value as a
-// primitive, by the primitive's descriptor.
-var numberValue = map[string]string{
-	"I": "intValue", "J": "longValue", "F": "floatValue", "D": "doubleValue", "B": "byteValue", "S": "shortValue",
-}
-
-// boxing are the methods of kotlin.coroutines.jvm.internal.Boxing that box
-// a suspend function's primitive result, by its descriptor.
-var boxing = map[string]string{
-	"I": "boxInt", "J": "boxLong", "F": "boxFloat", "D": "boxDouble", "Z": "boxBoolean", "C": "boxChar", "B": "boxByte", "S": "boxShort",
 }
 
 // ret returns the value of type t on the stack from the method being
@@ -1159,8 +1142,9 @@ func (g *gen) ret(t types.Type) {
 	case types.Unboxed(t):
 		g.boxValue(t)
 	case t.IsPrimitive():
-		d := desc(t)
-		c.Invoke(cf.INVOKESTATIC, "kotlin/coroutines/jvm/internal/Boxing", boxing[d], "("+d+")L"+types.Boxes[t.K]+";")
+		// With kotlin.coroutines.jvm.internal.Boxing's boxInt and others.
+		p := types.PrimOf(t.K)
+		c.Invoke(cf.INVOKESTATIC, "kotlin/coroutines/jvm/internal/Boxing", "box"+t.K.Name(), "("+p.Desc+")L"+p.Box+";")
 	}
 	c.Op(cf.ARETURN)
 }

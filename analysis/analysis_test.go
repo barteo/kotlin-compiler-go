@@ -3,6 +3,8 @@ package analysis
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -317,8 +319,62 @@ func TestDiagnostics(t *testing.T) {
 	if len(d) != 1 || d[0].Path != "a.kt" || d[0].Line != 1 || d[0].Column != 11 || d[0].Code != "source_error" {
 		t.Errorf("diagnostics: %+v", d)
 	}
-	if data := r.Data(); len(data.Facts) != 0 || len(data.Symbols) != 0 {
-		t.Errorf("facts reported with diagnostics: %d", len(data.Facts))
+	// The error doesn't stop the declaration's facts; the unresolved
+	// reference has none.
+	if f := fact(t, r, at(t, s, "FUN", "fun f() = undefined", 0)); f.Symbol == 0 {
+		t.Errorf("f has no symbol: %+v", f)
+	}
+	if f, ok := r.Fact(ElementID{s.ID(), at(t, s, "REFERENCE_EXPRESSION", "undefined", 0).ID()}); ok && (f.Symbol != 0 || f.Type != nil) {
+		t.Errorf("unresolved reference has a fact: %+v", f)
+	}
+}
+
+// TestFactsWithSourceErrors checks that errors in the sources don't stop
+// the facts of what kc resolved: here a property read in an initializer
+// before it is declared, which kotlinc rejects.
+func TestFactsWithSourceErrors(t *testing.T) {
+	s := psi.Parse("a.kt", "class C {init {println(x)};val x=1}\n")
+	r, err := AnalyzeArena(context.Background(), withStdlib(t), []*psi.Snapshot{s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Diagnostics()) == 0 {
+		t.Fatal("no diagnostics")
+	}
+	prop := fact(t, r, at(t, s, "PROPERTY", "val x=1", 0))
+	if ref := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 0)); ref.Symbol == 0 || ref.Symbol != prop.Symbol {
+		t.Errorf("x refers to %d, the property is %d", ref.Symbol, prop.Symbol)
+	}
+	if c := fact(t, r, at(t, s, "CALL_EXPRESSION", "println(x)", 0)); c.Call == nil || c.Call.Name != "kotlin.io.println" {
+		t.Errorf("println call: %+v", c.Call)
+	}
+}
+
+// TestFactsWithErrorCorpus builds facts for every file of the error
+// corpus that only has source errors, which must not panic.
+func TestFactsWithErrorCorpus(t *testing.T) {
+	cfg := withStdlib(t)
+	files, err := filepath.Glob("../testdata/errors/*.kt")
+	if err != nil || len(files) == 0 {
+		t.Fatal("no error corpus", err)
+	}
+	withFacts := 0
+	for _, path := range files {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := psi.Parse(filepath.Base(path), string(src))
+		r, err := AnalyzeArena(context.Background(), cfg, []*psi.Snapshot{s})
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if len(r.Diagnostics()) > 0 && len(r.Data().Facts) > 0 {
+			withFacts++
+		}
+	}
+	if withFacts == 0 {
+		t.Error("no file with source errors reported facts")
 	}
 }
 

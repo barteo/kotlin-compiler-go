@@ -1,5 +1,6 @@
 package android.os;
 
+import android.annotation.Nullable;
 import android.util.Size;
 import android.util.SizeF;
 import android.util.SparseBooleanArray;
@@ -47,6 +48,7 @@ public final class Parcel {
     public void writeByte(byte v) { put("byte", v); }
     public byte readByte() { return (Byte) next(); }
     public void writeString(String v) { put("string", v); }
+    @Nullable
     public String readString() { return (String) next(); }
 
     public void writeStringList(List<String> v) {
@@ -64,12 +66,14 @@ public final class Parcel {
     }
 
     @SuppressWarnings("unchecked")
+    @Nullable
     public String[] createStringArray() {
         Object v = next();
         return v == null ? null : ((List<String>) v).toArray(new String[0]);
     }
 
     public void writeSerializable(Serializable v) { put("serializable", v); }
+    @Nullable
     public Serializable readSerializable() { return (Serializable) next(); }
     public void writeValue(Object v) { put("value", v); }
     public Object readValue(ClassLoader loader) { return next(); }
@@ -86,6 +90,7 @@ public final class Parcel {
     }
 
     @SuppressWarnings("unchecked")
+    @Nullable
     public <T extends Parcelable> T readParcelable(ClassLoader loader) {
         String name = (String) next();
         if (name == null) {
@@ -106,6 +111,7 @@ public final class Parcel {
 
     // The arrays of primitives, which, as Android's, write null too.
     public void writeIntArray(int[] v) { put("intArray", v == null ? null : Arrays.toString(v), v == null ? null : v.clone()); }
+    @Nullable
     public int[] createIntArray() { int[] v = (int[]) next(); return v == null ? null : v.clone(); }
     public void writeLongArray(long[] v) { put("longArray", v == null ? null : Arrays.toString(v), v == null ? null : v.clone()); }
     public long[] createLongArray() { long[] v = (long[]) next(); return v == null ? null : v.clone(); }
@@ -121,8 +127,10 @@ public final class Parcel {
     public char[] createCharArray() { char[] v = (char[]) next(); return v == null ? null : v.clone(); }
 
     public void writeBundle(Bundle v) { put("bundle", v == null ? null : v.copy()); }
+    @Nullable
     public Bundle readBundle(ClassLoader loader) { return (Bundle) next(); }
     public void writePersistableBundle(PersistableBundle v) { put("persistableBundle", v == null ? null : v.copy()); }
+    @Nullable
     public PersistableBundle readPersistableBundle(ClassLoader loader) { return (PersistableBundle) next(); }
 
     public void writeSize(Size v) { put("size", v); }
@@ -141,10 +149,12 @@ public final class Parcel {
         put("sparseBooleanArray", copy);
     }
 
+    @Nullable
     public SparseBooleanArray readSparseBooleanArray() { return (SparseBooleanArray) next(); }
 
     // Binders pass by reference.
     public void writeStrongBinder(IBinder v) { put("binder", v); }
+    @Nullable
     public IBinder readStrongBinder() { return (IBinder) next(); }
     public void writeBinderArray(IBinder[] v) { put("binderArray", v == null ? null : Arrays.toString(v), v == null ? null : v.clone()); }
     public IBinder[] createBinderArray() { IBinder[] v = (IBinder[]) next(); return v == null ? null : v.clone(); }

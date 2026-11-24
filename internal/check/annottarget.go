@@ -40,27 +40,46 @@ type annotSite struct {
 	kind    siteKind
 	targets types.Targets
 	name    string
+	// bound is set on the types of a type parameter's bounds, where, as
+	// kotlinc, annotations' targets are checked but not their repeats:
+	// where X : @A @A Comparable<X> is accepted.
+	bound bool
+	// outerThis is set on the supertypes of an inner class, whose
+	// annotations' arguments see the instance members of its outer
+	// class, their owner.
+	outerThis bool
+	// header is set on a constructor and its parameters, whose
+	// annotations' arguments, as kotlinc's, don't see the instance
+	// members of the class (but those of an inner class's outer class).
+	header bool
+}
+
+// inHeader returns site s of a constructor's header: the constructor or
+// one of its parameters.
+func inHeader(s annotSite) annotSite {
+	s.header = true
+	return s
 }
 
 var (
-	ctorSite      = annotSite{siteCtor, types.TargetConstructor, "constructor"}
-	paramSite     = annotSite{siteParam, types.TargetValueParameter, "value parameter"}
-	typealiasSite = annotSite{siteTypealias, types.TargetTypealias, "typealias"}
-	fileSite      = annotSite{siteFile, types.TargetFile, "file"}
-	enumEntrySite = annotSite{siteEnumEntry, types.TargetProperty | types.TargetField, "enum entry"}
-	localVarSite  = annotSite{siteLocal, types.TargetLocalVariable, "local variable"}
-	catchSite     = annotSite{siteLocal, types.TargetValueParameter | types.TargetLocalVariable, "value parameter"}
-	localFunSite  = annotSite{siteFun, types.TargetFunction, "local function"}
-	exprSite      = annotSite{siteExpr, types.TargetExpression, "expression"}
+	ctorSite      = annotSite{siteCtor, types.TargetConstructor, "constructor", false, false, true}
+	paramSite     = annotSite{siteParam, types.TargetValueParameter, "value parameter", false, false, false}
+	typealiasSite = annotSite{siteTypealias, types.TargetTypealias, "typealias", false, false, false}
+	fileSite      = annotSite{siteFile, types.TargetFile, "file", false, false, false}
+	enumEntrySite = annotSite{siteEnumEntry, types.TargetProperty | types.TargetField, "enum entry", false, false, false}
+	localVarSite  = annotSite{siteLocal, types.TargetLocalVariable, "local variable", false, false, false}
+	catchSite     = annotSite{siteLocal, types.TargetValueParameter | types.TargetLocalVariable, "value parameter", false, false, false}
+	localFunSite  = annotSite{siteFun, types.TargetFunction, "local function", false, false, false}
+	exprSite      = annotSite{siteExpr, types.TargetExpression, "expression", false, false, false}
 	// A lambda and an anonymous function are functions too, and an object
 	// expression a class.
-	lambdaSite     = annotSite{siteExpr, types.TargetFunction | types.TargetExpression, "expression"}
-	objectExprSite = annotSite{siteExpr, types.TargetClass | types.TargetExpression, "expression"}
-	initSite       = annotSite{siteInit, 0, "initializer"}
+	lambdaSite     = annotSite{siteExpr, types.TargetFunction | types.TargetExpression, "expression", false, false, false}
+	objectExprSite = annotSite{siteExpr, types.TargetClass | types.TargetExpression, "expression", false, false, false}
+	initSite       = annotSite{siteInit, 0, "initializer", false, false, false}
 )
 
 func classSite(d *syntax.ClassDecl) annotSite {
-	s := annotSite{siteClass, types.TargetClass, "class"}
+	s := annotSite{siteClass, types.TargetClass, "class", false, false, false}
 	switch {
 	case d.Annotation:
 		s.targets |= types.TargetAnnotationClass
@@ -79,9 +98,9 @@ func classSite(d *syntax.ClassDecl) annotSite {
 
 func funSite(owner *types.ClassSym) annotSite {
 	if owner == nil {
-		return annotSite{siteFun, types.TargetFunction, "top level function"}
+		return annotSite{siteFun, types.TargetFunction, "top level function", false, false, false}
 	}
-	return annotSite{siteFun, types.TargetFunction, "member function"}
+	return annotSite{siteFun, types.TargetFunction, "member function", false, false, false}
 }
 
 // propSite is the site of a property, whose annotations without a use-site
@@ -89,9 +108,9 @@ func funSite(owner *types.ClassSym) annotSite {
 // properties have fields.
 func propSite(owner *types.ClassSym) annotSite {
 	if owner == nil {
-		return annotSite{siteProp, types.TargetProperty | types.TargetField, "top level property"}
+		return annotSite{siteProp, types.TargetProperty | types.TargetField, "top level property", false, false, false}
 	}
-	return annotSite{siteProp, types.TargetProperty | types.TargetField, "member property"}
+	return annotSite{siteProp, types.TargetProperty | types.TargetField, "member property", false, false, false}
 }
 
 // ctorParamSite is the site of a parameter of class cls's primary
@@ -99,9 +118,9 @@ func propSite(owner *types.ClassSym) annotSite {
 // annotation class's properties have no fields.
 func ctorParamSite(cls *types.ClassSym, cp *syntax.CtorParam) annotSite {
 	if !cp.IsProp {
-		return paramSite
+		return inHeader(paramSite)
 	}
-	s := annotSite{siteCtorProp, types.TargetValueParameter | types.TargetProperty | types.TargetField, "value parameter"}
+	s := annotSite{siteCtorProp, types.TargetValueParameter | types.TargetProperty | types.TargetField, "value parameter", false, false, true}
 	if cls != nil && cls.Annotation {
 		s.targets &^= types.TargetField
 	}
@@ -121,6 +140,9 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 	if site.kind == siteUnchecked || !cls.TargetsKnown {
 		return
 	}
+	if site.kind == siteExpr && isJavaClass(cls) {
+		return // kotlinc doesn't check a Java annotation on an expression
+	}
 	switch {
 	case a.Accessor && site.kind == siteProp:
 		// @A get(): the getter's.
@@ -133,6 +155,15 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 		}
 	case a.Target == "":
 		if cls.Targets&site.targets == 0 {
+			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
+		}
+	case a.Target == "all":
+		// A property's are checked by allTargets, and the other
+		// declarations' by noAllTarget.
+		switch site.kind {
+		case siteType:
+			c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@all'", site.name)
+		case siteExpr:
 			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
 		}
 	default:
@@ -164,7 +195,7 @@ func (c *Checker) useSiteApplies(u string, site annotSite) bool {
 		return u != "file" && u != "set"
 	case siteFun:
 		switch u {
-		case "field", "delegate", "property", "get", "set":
+		case "field", "delegate", "property", "get", "set", "setparam":
 			return true
 		}
 	case siteParam:
@@ -202,13 +233,8 @@ type repeatKey struct {
 // another annotation among seen has the same class and target, and
 // records it.
 func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annotSite, seen map[repeatKey]bool) {
-	if site.kind == siteUnchecked || !cls.TargetsKnown || cls.Repeatable {
+	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown && !javaRepeatChecked(a, cls, site) || repeatable(cls) {
 		return
-	}
-	for _, m := range cls.Annotations {
-		if m.Name == "kotlin/annotation/Repeatable" || m.Name == "java/lang/annotation/Repeatable" {
-			return
-		}
 	}
 	if a.Target == "all" {
 		// @all: is on each of the property's elements it applies to.

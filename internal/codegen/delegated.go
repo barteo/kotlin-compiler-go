@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"strconv"
+	"strings"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -40,6 +41,7 @@ func (g *gen) kprops(refs []*syntax.PropRef) {
 		acc |= cf.AccPublic // an interface's fields are public
 	}
 	g.cls.AddField(acc, "$$delegatedProperties", kpropsDesc)
+	g.cls.LastField().SetSignature("[Lkotlin/reflect/KProperty<Ljava/lang/Object;>;") // as kotlinc's
 	c := g.code
 	c.Iconst(int32(len(refs)))
 	c.ANewArray("kotlin/reflect/KProperty")
@@ -176,11 +178,18 @@ func (g *gen) kfunArgs(c *cf.Code, x *syntax.Lambda, super string, load func()) 
 		c.Invoke(cf.INVOKESPECIAL, super, "<init>", "(Ljava/lang/Class;)V")
 		return
 	}
-	owner, sig, flags := g.kfunOf(f)
-	if f.Owner != nil && localOf(f) == nil {
-		owner = refOwner(x, f.Owner)
-	}
 	name := x.Ref.Name
+	var owner, sig string
+	var flags int32
+	prim := false
+	if f == nil {
+		owner, sig, prim = builtinRefOwner(x)
+	} else {
+		owner, sig, flags = g.kfunOf(f)
+		if f.Owner != nil && localOf(f) == nil {
+			owner = refOwner(x, f.Owner)
+		}
+	}
 	if x.KFun.Ctor != nil {
 		owner, name, sig, flags = x.KFun.Ctor.Name, "<init>", "<init>"+ctorJVMDesc(f), 0
 	}
@@ -197,11 +206,43 @@ func (g *gen) kfunArgs(c *cf.Code, x *syntax.Lambda, super string, load func()) 
 		load()
 		d = "(ILjava/lang/Object;" + d[2:]
 	}
-	c.LdcClass(owner)
+	if prim {
+		c.FieldInsn(cf.GETSTATIC, owner, "TYPE", "Ljava/lang/Class;") // int.class, as kotlinc's kotlin.Int
+	} else {
+		c.LdcClass(owner)
+	}
 	c.Sconst(name)
 	c.Sconst(sig)
 	c.Iconst(flags | x.KFunFlags)
 	c.Invoke(cf.INVOKESPECIAL, super, "<init>", d)
+}
+
+// builtinRefOwner returns the class and the signature that reference x
+// to a built-in member of its receiver, as Int::and, names: the
+// receiver's class, as kotlinc's kotlin.Int, and the member's name and
+// descriptor without the receiver, and(I)I. prim is set for a primitive
+// type's class, which is the box's TYPE.
+func builtinRefOwner(x *syntax.Lambda) (owner, sig string, prim bool) {
+	ps := x.ParamSyms()
+	var recv types.Type
+	if x.Ref.Bound != nil {
+		recv = x.Ref.Bound.Type
+	} else {
+		recv, ps = ps[0].Type, ps[1:]
+	}
+	recv = types.Erase(recv.NonNull())
+	if recv.IsPrimitive() {
+		owner, prim = boxClass(recv.K), true
+	} else {
+		owner = strings.TrimSuffix(strings.TrimPrefix(desc(recv), "L"), ";")
+	}
+	var sb strings.Builder
+	sb.WriteString(x.Ref.Name + "(")
+	for _, p := range ps {
+		sb.WriteString(desc(types.Erase(p.Type)))
+	}
+	sb.WriteString(")" + desc(types.Erase(x.Ret)))
+	return owner, sb.String(), prim
 }
 
 // kfunSuper returns the superclass of reference x's FunctionReference:

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -38,6 +39,9 @@ func (c *Checker) nestedClass(name string) *types.ClassSym {
 // classes by its simple name.
 func (c *Checker) nestedClassifier(name string) classifier {
 	for k := c.scopeClass(); k != nil; k = c.nextEnclosing(k) {
+		if k == c.headerBounds {
+			continue
+		}
 		var found classifier
 		// A class sees its superclasses' nested classes too, but not its
 		// interfaces': a Widget.Mode doesn't hide an imported Mode in the
@@ -88,10 +92,21 @@ func (c *Checker) dottedClass(parts []string) *types.ClassSym {
 			return nestedPath(cls, parts[i+1:])
 		}
 	}
+	if aliasQualifier(c.findClassifier(parts[0]), parts) {
+		return nil
+	}
 	if cls := c.findClass(parts[0]); cls != nil && !cls.External {
 		return nestedPath(cls, parts[1:])
 	}
 	return nil
+}
+
+// aliasQualifier reports whether parts, a dotted name whose first part
+// is k, names a class nested in one through a typealias, KT.Nested for
+// typealias KT = KTest, which kotlinc doesn't resolve: only the
+// companion's members are found through one.
+func aliasQualifier(k classifier, parts []string) bool {
+	return k.alias != nil && len(parts) > 1 && parts[1] != "Companion"
 }
 
 // userClassPath resolves the fully qualified name of one of the program's
@@ -272,6 +287,30 @@ func (c *Checker) objectMethods(name string, x *syntax.Call) *types.ClassSym {
 	return first
 }
 
+// objectExtension returns the innermost object in scope with an
+// extension function named name that may take x's arguments, or nil.
+// An object whose own methods may take them comes first.
+func (c *Checker) objectExtension(name string, x *syntax.Call) *types.ClassSym {
+	for _, obj := range c.scopeObjects() {
+		if c.anyMayTake(c.javaMethods(obj, name), x) {
+			return nil
+		}
+		var fs []*types.FunSym
+		for _, cl := range c.extCalleesFor(name, obj.This(), x) {
+			if c.mayTake(cl.f, x) {
+				fs = append(fs, cl.f)
+			}
+		}
+		// As for this's extensions, a top-level function of their
+		// package comes first: run { } is kotlin's run(block), not
+		// Companion.run { }.
+		if len(fs) > 0 && !c.sameScopeTopFun(name, x, fs) {
+			return obj
+		}
+	}
+	return nil
+}
+
 // enclosingClasses returns the class the code is in, or whose static
 // scope it is in, and the classes around it, the innermost first: past an
 // object expression or local class declared in a static scope, such as
@@ -318,6 +357,21 @@ func (c *Checker) enumEntryInScope(name string) *types.VarSym {
 // entries its members and its companion's can use unqualified.
 func (c *Checker) enumInScope() *types.ClassSym {
 	for _, k := range c.enclosingClasses() {
+		if k.Entries != nil && !k.External {
+			return k
+		}
+	}
+	return nil
+}
+
+// entriesEnum returns the enum class whose entries the code's entries is:
+// that of the innermost enum the code is in, unless it or a class in
+// between has a member entries.
+func (c *Checker) entriesEnum() *types.ClassSym {
+	for k := c.firstEnclosing(); k != nil; k = c.nextEnclosing(k) {
+		if c.hasCallable(k, "entries") {
+			return nil
+		}
 		if k.Entries != nil && !k.External {
 			return k
 		}
@@ -378,48 +432,188 @@ func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym 
 
 // visibleJavaField returns the static field of a class named name, or
 // nil if there is none the code sees: a package-private one is its
-// package's.
+// package's. Of two that the class inherits, it returns the first, and
+// staticField reports the ambiguity.
 func (c *Checker) visibleJavaField(cls *types.ClassSym, name string) *types.VarSym {
-	if f := javaField(cls, name); c.visibleField(f) {
-		return f
+	if fs := c.visibleStaticFields(cls, name); len(fs) > 0 {
+		return fs[0]
 	}
 	return nil
 }
 
-// inheritedStatic checks a name as a static field that the class the code
-// is in, or an outer one, inherits from a Java class: RESULT_OK in an
-// Activity's code.
+// visibleStaticFields returns the static fields named name in the static
+// scope of cls that the code sees.
+func (c *Checker) visibleStaticFields(cls *types.ClassSym, name string) []*types.VarSym {
+	var out []*types.VarSym
+	for _, f := range staticFields(cls, name) {
+		if c.visibleField(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// staticFields returns the distinct static fields named name in the
+// static scope of cls, as K2's JavaClassStaticUseSiteScope has it. A
+// Kotlin class has its own only: KotlinSub.JAVA_FIELD is unresolved. A
+// Java class has its own, or, if it declares none of the name, those of
+// its supertypes, through Kotlin classes, of which two distinct ones are
+// ambiguous: E.field, for a class E implementing two interfaces with a
+// field. One field reached along two paths is one.
+func staticFields(cls *types.ClassSym, name string) []*types.VarSym {
+	cls.Ensure()
+	if f := cls.Fields[name]; f != nil {
+		return []*types.VarSym{f}
+	}
+	if !isJavaClass(cls) {
+		return nil
+	}
+	var out []*types.VarSym
+	seen := map[*types.ClassSym]bool{}
+	var walk func(s *types.ClassSym)
+	walk = func(s *types.ClassSym) {
+		if seen[s] {
+			return
+		}
+		seen[s] = true
+		if s.Ensure(); isJavaClass(s) {
+			for _, f := range staticFields(s, name) {
+				if !slices.Contains(out, f) {
+					out = append(out, f)
+				}
+			}
+			return
+		}
+		// A Kotlin class has no statics of its supertypes, but a Java
+		// class below it sees those of the Java classes above it.
+		if s.Super != nil {
+			walk(s.Super)
+		}
+		for _, t := range s.Interfaces {
+			walk(t)
+		}
+	}
+	if cls.Super != nil {
+		walk(cls.Super)
+	}
+	for _, t := range cls.Interfaces {
+		walk(t)
+	}
+	return out
+}
+
+// isJavaClass reports whether cls is a Java class: one of the class path
+// that Kotlin didn't compile, or of the program's Java sources.
+func isJavaClass(cls *types.ClassSym) bool {
+	return cls.External && !cls.FromKotlin && cls.KotlinName == "" && cls.Java == nil
+}
+
+// inheritedStatic checks a name as a static field in the scope of the
+// class the code is in, or an outer one: RESULT_OK in an Activity's code.
+// As in K2, that scope is the static scope of the class and of its
+// superclasses, so a field of a Java interface the class implements
+// directly isn't in it, but one a Java superclass inherits is. The first
+// Java superclass's static scope has all those above it.
 func (c *Checker) inheritedStatic(x *syntax.Ident) (types.Type, bool) {
 	for k := c.cls; k != nil; k = k.Outer {
-		f := c.visibleJavaField(k, x.Name)
-		if f == nil {
-			continue
+		for s := k; s != nil; s = s.Super {
+			java := isJavaClass(s)
+			if fs := c.visibleStaticFields(s, x.Name); len(fs) > 0 {
+				id := &syntax.Ident{Name: s.DisplayName()}
+				id.P = x.P
+				m := &syntax.Member{X: id, Name: x.Name}
+				m.P = x.P
+				x.Member = m
+				t := c.staticField(m, s)
+				m.SetType(t)
+				return t, true
+			}
+			if java {
+				break
+			}
 		}
-		id := &syntax.Ident{Name: f.Owner.DisplayName()}
-		id.P = x.P
-		m := &syntax.Member{X: id, Name: x.Name}
-		m.P = x.P
-		x.Member = m
-		t := c.staticField(m, f.Owner)
-		m.SetType(t)
-		return t, true
 	}
 	return types.InvalidType, false
 }
 
 // staticInScope returns the class the code is in, or an outer one, with
 // static methods named name, or the Java superclass of one that has them:
-// Thread's currentThread() in a subclass's code.
+// Thread's currentThread() in a subclass's code. As in Kotlin, a class's
+// companion comes before its superclasses' statics: it returns nil if one
+// on the way has methods named name, which objectMethods finds.
 func (c *Checker) staticInScope(name string) *types.ClassSym {
+	companionHas := func(k *types.ClassSym) bool {
+		return !k.External && k.Companion != nil && len(c.javaMethods(k.Companion, name)) > 0
+	}
 	for k := c.cls; k != nil; k = k.Outer {
 		if !k.External && len(k.Statics[name]) > 0 {
 			return k
 		}
+		if companionHas(k) {
+			return nil
+		}
+		// The first Java superclass, through which a public static of a
+		// package-private class above it is accessible.
+		var java *types.ClassSym
 		for s := k.Super; s != nil; s = s.Super {
-			if s.Ensure(); s.External && s.KotlinName == "" && len(s.Statics[name]) > 0 {
+			if s.Ensure(); java == nil && isJavaClass(s) {
+				java = s
+			}
+			if s.External && s.KotlinName == "" && len(s.Statics[name]) > 0 {
+				if java != nil {
+					return java
+				}
 				return s
+			}
+			if companionHas(s) {
+				return nil
 			}
 		}
 	}
 	return nil
+}
+
+// ownStaticTakes reports whether this class's Java superclasses have a
+// static method name that may take call x.
+func (c *Checker) ownStaticTakes(name string, x *syntax.Call) bool {
+	for s := c.cls; s != nil; s = s.Super {
+		if s.Ensure(); s.External && s.KotlinName == "" && c.anyMayTake(s.Statics[name], x) {
+			return true
+		}
+	}
+	return false
+}
+
+// outerObjectFuns returns the functions named name, not hidden, of the
+// first object in scope but this class that has any.
+func (c *Checker) outerObjectFuns(name string) []*types.FunSym {
+	for _, obj := range c.scopeObjects() {
+		if obj == c.cls {
+			continue
+		}
+		var fs []*types.FunSym
+		for _, f := range c.accessible(obj, c.javaMethods(obj, name)) {
+			if !f.Hidden {
+				fs = append(fs, f)
+			}
+		}
+		if len(fs) > 0 {
+			return fs
+		}
+	}
+	return nil
+}
+
+// localGivesWay reports whether local functions fs, named name, give way
+// to the top-level functions of the name in call x: as in Kotlin, where
+// each level of scope is tried in turn, fun foobar(x: String) in a block
+// doesn't take foobar(MyEnum3.X), which the top level's foobar(x: MyEnum3)
+// does.
+func (c *Checker) localGivesWay(fs []*types.FunSym, name string, x *syntax.Call) bool {
+	tops := c.topFuns(name)
+	if len(tops) == 0 || !c.anyMayTake(tops, x) || hasLambda(x.Args) {
+		return false
+	}
+	ts := c.argTypes(x)
+	return !c.takeTypes(fs, x, ts) && c.takeTypes(tops, x, ts)
 }

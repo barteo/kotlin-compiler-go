@@ -25,11 +25,16 @@ fun withLogger(block: context(Logger) () -> Unit) {
     block(Logger("explicit"))
 }
 
-context(a: Logger)
-val initialized: String = "x" // ERROR initializer is not allowed here because this property has no backing field
+context(a: Logger) // ERROR property with context parameters cannot be initialized because it has no backing field
+val initialized: String = "x"
+
+context(a: Logger) // ERROR property with context parameters cannot be initialized because it has no backing field
+val noGetter: String // ERROR property must be initialized
 
 context(a: Logger)
-val noGetter: String // ERROR a property with context parameters must have accessors or be abstract
+var withAccessors: String = "x" // ERROR initializer is not allowed here because this property has no backing field
+    get() = a.name
+    set(value) {}
 
 val anonymous: context(Logger) () -> Unit = fun () {} // ERROR the anonymous function's context parameters don't match the expected function type
 
@@ -43,7 +48,7 @@ fun noContext() = Holder().p // ERROR no context argument for 'a: Logger' found
 context(a: Logger)
 val twin: String get() = a.name
 
-val twin: String get() = "plain"
+val twin: String get() = "plain" // ERROR conflicting declarations: twin
 
 val twin: Int get() = 1 // ERROR conflicting declarations: twin
 
@@ -65,7 +70,7 @@ class Square : Shape { // ERROR class 'Square' is not abstract and does not impl
 abstract class Fn : context(Logger) () -> Unit // ERROR extension function type or function type with context parameters is not allowed as supertype
 
 context(a: Logger, b: Holder)
-val ordered: String get() = ""
+val ordered: String get() = "" // ERROR conflicting declarations: ordered
 
 context(b: Holder, a: Logger)
 val ordered: String get() = "" // ERROR conflicting declarations: ordered

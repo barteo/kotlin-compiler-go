@@ -70,7 +70,7 @@ public class Classify {
     }
 
     static String category(String c) {
-        if (c.equals("io.github.barteo.kc.KcNative")) return "0 libkc (Go)";
+        if (c.equals("io.github.barteo.kc.KcNative") || c.equals("io.github.barteo.kc.KcBridge")) return "0 libkc (Go)";
         if (c.startsWith("io.github.barteo.kc.")) return "1 kc backend (JVM)";
         if (c.startsWith("ksp.") || c.startsWith("org.jetbrains.kotlin.") || c.startsWith("com.intellij.")) return "1 Analysis API / IntelliJ core";
         if (c.startsWith("com.google.devtools.ksp.")) return "2 KSP symbol layer";

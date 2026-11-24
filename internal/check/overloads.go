@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -31,6 +32,7 @@ type overload struct {
 	vararg  int // the index of the vararg parameter, or -1
 	suspend bool
 	ctor    bool
+	prop    bool // a property, which contextualShadowing compares too
 	// private is set on a private one, which doesn't conflict with those
 	// of other files.
 	private bool
@@ -73,8 +75,14 @@ func conflicts(checkers []*Checker) {
 				decls = c.namedDecls(decls, d)
 			}
 		}
+		ovs = javaCtorOverloads(ovs, name, reported)
 		overloadConflicts(ovs, reported)
 		redeclarations(decls, reported)
+		for _, c := range pkgs[name] {
+			ovs = c.propOverloads(ovs, c.file.Decls, nil)
+		}
+		contextualShadowing(ovs, false)
+		aliasedPropConflicts(ovs)
 	}
 	for _, c := range checkers {
 		for _, d := range c.classes {
@@ -94,16 +102,22 @@ func conflicts(checkers []*Checker) {
 				}
 			}
 			for _, e := range d.Entries {
-				decls = append(decls, namedDecl{c: c, name: e.Name, pos: e.P, decl: e, prop: true})
+				decls = append(decls, namedDecl{c: c, name: e.Name, pos: e.P, decl: e, prop: true, entry: true})
 				if e.Name == "name" || e.Name == "ordinal" {
 					// Enum's properties.
 					c.errorf(e.P, "redeclaration: %s", e.Name)
 					c.errorf(d.P, "redeclaration: %s", e.Name)
 				}
+				if e.Name == "entries" {
+					c.errorf(e.P, "conflicting declarations: the enum entry 'entries' and the property 'Enum.entries' (KT-48872)")
+				}
 			}
 			overloadConflicts(ovs, reported)
 			redeclarations(decls, reported)
 			c.inheritedConflicts(d, reported)
+			props := c.propOverloads(nil, d.Members, d)
+			contextualShadowing(append(ovs, props...), true)
+			aliasedPropConflicts(props)
 		}
 	}
 	classNames(checkers)
@@ -167,6 +181,39 @@ func (c *Checker) declOverloads(out []overload, d syntax.Decl, owner *syntax.Cla
 	return out
 }
 
+// javaCtorOverloads appends the constructors of the Java classes of
+// package pkg that its top-level functions ovs are named after: fun J()
+// conflicts with a Java class J's J(), which only the function is
+// reported for.
+func javaCtorOverloads(ovs []overload, pkg string, reported map[any]bool) []overload {
+	done := map[string]bool{}
+	for _, o := range ovs[:len(ovs):len(ovs)] {
+		if o.ctor || o.recv != nil || o.prop || done[o.name] {
+			continue
+		}
+		done[o.name] = true
+		name := o.name
+		if pkg != "" {
+			name = strings.ReplaceAll(pkg, ".", "/") + "/" + o.name
+		}
+		cls := o.c.u.ext.class(name)
+		if cls == nil || !isJavaClass(cls) || cls.Interface || cls.Abstract || cls.Annotation {
+			continue
+		}
+		cls.Ensure()
+		for _, f := range cls.Ctors {
+			if f.Private {
+				continue
+			}
+			j := funOverload(o.c, f, o.pos, f)
+			j.name, j.tparams, j.ctor, j.hidden = o.name, cls.TypeParams, true, f.Hidden
+			reported[f] = true // the Java class isn't the program's to report
+			ovs = append(ovs, j)
+		}
+	}
+	return ovs
+}
+
 // ctorScoped reports whether class d of the program has constructors
 // that calls by its name call: it isn't an object, an interface, an
 // annotation class, an enum entry's class or an inner class.
@@ -225,11 +272,67 @@ func stringArray(t types.Type) bool {
 // sameSignature reports whether overloads a and b take the same
 // receiver, context parameters and parameters, with the same type
 // parameters, which correspond by position: kotlinc doesn't tell them
-// apart by what they return.
+// apart by what they return, nor by suspend.
 func sameSignature(a, b *overload) bool {
-	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.ctx) != len(b.ctx) ||
-		len(a.params) != len(b.params) || a.vararg != b.vararg || a.suspend != b.suspend {
+	_, ok := signatureMatch(a, b, true)
+	return ok
+}
+
+// mutuallySpecific reports whether overloads a and b are each at least
+// as specific as the other, which K2 also takes for conflicting
+// overloads (FirDeclarationOverloadabilityHelper): a call that one takes
+// the other takes too, whatever their type parameters' bounds, as fun
+// <A> f(arg: A?) and fun <B> f(arg: B), or fun <T> f(x: Inv<T>) and fun
+// <T> f(x: Inv<out T>), if they have as many type parameters.
+func mutuallySpecific(a, b *overload) bool {
+	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || len(a.ctx) != len(b.ctx) || len(a.params) != len(b.params) || a.vararg != b.vararg || a.c != b.c && a.c.u != b.c.u {
 		return false
+	}
+	return a.c.overloadMoreSpecific(a, b) && a.c.overloadMoreSpecific(b, a)
+}
+
+// overloadMoreSpecific reports whether g takes what f takes: f's
+// receiver, context parameters and parameters, with f's type parameters
+// kept and g's inferred within their bounds.
+func (c *Checker) overloadMoreSpecific(f, g *overload) bool {
+	all := slices.Concat(f.ctx, f.params)
+	if f.recv != nil {
+		all = append(all, *f.recv)
+	}
+	all = append(all, slices.Concat(g.ctx, g.params)...)
+	if g.recv != nil {
+		all = append(all, *g.recv)
+	}
+	if slices.ContainsFunc(all, func(t types.Type) bool { return t.K == types.Invalid }) {
+		return false
+	}
+	sys := newSystem(c)
+	sub := sys.fresh(g.tparams, nil, syntax.Pos{})
+	for _, p := range g.tparams {
+		v := sub[p].T
+		for _, b := range v.Param().Bounds {
+			sys.sub(v, b)
+		}
+	}
+	for i := range f.ctx {
+		sys.sub(f.ctx[i], sub.ApplyIn(g.ctx[i]))
+	}
+	for i := range f.params {
+		sys.sub(f.params[i], sub.ApplyIn(g.params[i]))
+	}
+	if f.recv != nil {
+		sys.sub(*f.recv, sub.ApplyIn(*g.recv))
+	}
+	return sys.ok
+}
+
+// signatureMatch is sameSignature, but of context parameters only if
+// ctx, which also returns the substitution of b's type parameters by
+// a's.
+func signatureMatch(a, b *overload, ctx bool) (types.Subst, bool) {
+	if len(a.tparams) != len(b.tparams) || (a.recv == nil) != (b.recv == nil) || ctx && len(a.ctx) != len(b.ctx) ||
+		len(a.params) != len(b.params) || a.vararg != b.vararg {
+		return nil, false
 	}
 	s := types.Subst{}
 	for i, p := range b.tparams {
@@ -242,7 +345,7 @@ func sameSignature(a, b *overload) bool {
 		// The same bounds, in any order.
 		q := b.tparams[i]
 		if len(p.Bounds) != len(q.Bounds) {
-			return false
+			return nil, false
 		}
 		for _, x := range p.Bounds {
 			found := false
@@ -250,24 +353,37 @@ func sameSignature(a, b *overload) bool {
 				found = found || same(x, y)
 			}
 			if !found {
-				return false
+				return nil, false
 			}
 		}
 	}
 	if a.recv != nil && !same(*a.recv, *b.recv) {
-		return false
+		return nil, false
 	}
-	for i := range a.ctx {
-		if !same(a.ctx[i], b.ctx[i]) {
-			return false
+	// The same context parameters' types, in any order: a call passes
+	// them by type.
+	used := make([]bool, len(b.ctx))
+	for _, x := range a.ctx {
+		if !ctx {
+			break
+		}
+		found := false
+		for j, y := range b.ctx {
+			if !used[j] && same(x, y) {
+				used[j], found = true, true
+				break
+			}
+		}
+		if !found {
+			return nil, false
 		}
 	}
 	for i := range a.params {
 		if !same(a.params[i], b.params[i]) {
-			return false
+			return nil, false
 		}
 	}
-	return true
+	return s, true
 }
 
 // overloadConflicts reports the overloads of one scope that conflict.
@@ -286,13 +402,18 @@ func overloadConflicts(ovs []overload, reported map[any]bool) {
 			switch {
 			case a.ctor && b.ctor, // a class's, which resolveSecondaries reports
 				a.decl == b.decl,
-				a.c != b.c && (a.private || b.private || a.main && b.main),
+				a.c != b.c && (a.private && b.private || a.main && b.main),
 				(a.hidden || b.hidden) && !a.open && !b.open,
 				a.low != b.low,
-				!sameSignature(a, b):
+				!sameSignature(a, b) && !mutuallySpecific(a, b):
 				continue
 			}
 			for _, o := range []*overload{a, b} {
+				if a.c != b.c && a.private != b.private && !o.private {
+					// A private one of one file, and another file's: kotlinc
+					// reports the private one.
+					continue
+				}
 				if o.fun != nil {
 					o.c.u.conflicted[o.fun] = true
 				}
@@ -312,6 +433,7 @@ type namedDecl struct {
 	pos     syntax.Pos
 	decl    any
 	prop    bool // a property, or an enum entry; else a class or a typealias
+	entry   bool // an enum entry
 	private bool
 	hidden  bool
 }
@@ -346,8 +468,25 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 	}
 	for i := range decls {
 		a := &decls[i]
-		if !a.prop {
-			continue
+		if !a.prop || a.entry {
+			// Two classifiers of a name, or two enum entries: where they
+			// are declared, the second is reported, and kotlinc reports
+			// the first too.
+			for _, j := range byName[a.name] {
+				b := &decls[j]
+				if j == i || b.prop != a.prop || b.entry != a.entry || a.hidden || b.hidden || a.c != b.c && a.c.file.Package != b.c.file.Package {
+					continue
+				}
+				for _, o := range []*namedDecl{a, b} {
+					if !reported[o.decl] && !o.c.hasErrorAt(o.pos, "redeclaration") {
+						reported[o.decl] = true
+						o.c.errorf(o.pos, "redeclaration: %s", o.name)
+					}
+				}
+			}
+			if !a.prop {
+				continue
+			}
 		}
 		for _, j := range byName[a.name] {
 			b := &decls[j]
@@ -361,7 +500,87 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 				}
 			}
 		}
+		if !a.entry {
+			propRedeclarations(a, decls, byName[a.name], reported)
+		}
 	}
+}
+
+// propRedeclarations reports property a where it is declared if it
+// conflicts with another of decls (by index is): an enum's entry, or a
+// property of its file kc reported where that one is declared (see
+// declare and declareClass), or one of another file of the package, where
+// a private property conflicts with one that isn't and is reported alone.
+func propRedeclarations(a *namedDecl, decls []namedDecl, is []int, reported map[any]bool) {
+	for _, j := range is {
+		b := &decls[j]
+		if b == a || !b.prop || a.hidden || b.hidden {
+			continue
+		}
+		msg := "conflicting declarations"
+		switch {
+		case b.entry:
+			// An enum's entry and a property: both.
+			msg = "redeclaration"
+			if !reported[b.decl] && !b.c.hasErrorAt(b.pos, msg) {
+				reported[b.decl] = true
+				b.c.errorf(b.pos, "%s: %s", msg, b.name)
+			}
+		case a.c == b.c:
+			if !b.c.hasErrorAt(b.pos, "conflicting declarations") || !propsConflict(a.decl, b.decl) {
+				continue
+			}
+		case a.private && b.private, !a.private && b.private, !propsConflict(a.decl, b.decl):
+			continue
+		}
+		if !reported[a.decl] && !a.c.hasErrorAt(a.pos, "conflicting declarations") && !a.c.hasErrorAt(a.pos, "redeclaration") {
+			reported[a.decl] = true
+			a.c.errorf(a.pos, "%s: %s", msg, a.name)
+		}
+	}
+}
+
+// propsConflict reports whether properties (or constructor parameters)
+// a and b of a name conflict: their context parameters' types are the
+// same, in any order if neither is hidden (see altProp).
+func propsConflict(a, b any) bool {
+	ctx := func(d any) ([]string, string, bool) {
+		pd, ok := d.(*syntax.PropDecl)
+		if !ok {
+			return nil, "", false
+		}
+		var tps strings.Builder // the type parameters' bounds
+		for _, tp := range pd.TypeParams {
+			tps.WriteString("<")
+			for _, b := range tp.Bounds {
+				typeKey(&tps, b)
+				tps.WriteString(",")
+			}
+		}
+		ctx := contextTypes(pd)
+		for i, q := range pd.Contexts {
+			if q.Type.And != nil { // T & Any isn't T
+				var b strings.Builder
+				typeKey(&b, q.Type.And)
+				ctx[i] += "&" + b.String()
+			}
+		}
+		return ctx, tps.String(), pd.Hidden()
+	}
+	x, xt, xh := ctx(a)
+	y, yt, yh := ctx(b)
+	return xt == yt && (slices.Equal(x, y) || !xh && !yh && slices.Equal(sorted(x), sorted(y)))
+}
+
+// hasErrorAt reports whether the file has an error at p whose message
+// starts with prefix.
+func (c *Checker) hasErrorAt(p syntax.Pos, prefix string) bool {
+	for _, e := range c.errs {
+		if e.Pos == p && strings.HasPrefix(e.Msg, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // programClass is a class of the program, by its Kotlin name.
@@ -446,7 +665,7 @@ func localClassNames(checkers []*Checker) {
 		for sym := range c.localClasses {
 			d, ok := sym.Decl.(*syntax.ClassDecl)
 			if !ok || d.Sym != sym {
-				continue // a trial's
+				continue // an earlier check's
 			}
 			if classes == nil {
 				classes = programClasses(checkers)
@@ -487,9 +706,10 @@ func (c *Checker) inheritedConflicts(d *syntax.ClassDecl, reported map[any]bool)
 	if d.Sym.Super == nil && len(d.Sym.Interfaces) == 0 {
 		return
 	}
+	c.inheritedTypeParamConflicts(d)
 	for _, m := range d.Members {
 		fd, ok := m.(*syntax.FunDecl)
-		if !ok || fd.Sym == nil || fd.Override || fd.Expect || reported[fd] || fd.Sym.Hidden || fd.Hidden() {
+		if !ok || fd.Sym == nil || fd.Expect || reported[fd] || fd.Sym.Hidden || fd.Hidden() {
 			continue
 		}
 		a := funOverload(c, fd.Sym, fd.P, fd)
@@ -515,6 +735,61 @@ func (c *Checker) inheritedConflicts(d *syntax.ClassDecl, reported map[any]bool)
 			}
 			return true
 		})
+	}
+}
+
+// inheritedTypeParamConflicts reports class d if it inherits two
+// functions of a name that take the same parameters but as many type
+// parameters, which kotlinc reports as CONFLICTING_INHERITED_MEMBERS:
+// fun a(arg: Int) of A and fun <T> a(arg: Int) of B in interface C : A,
+// B. The class's own functions of the name take their place.
+func (c *Checker) inheritedTypeParamConflicts(d *syntax.ClassDecl) {
+	type inherited struct {
+		g *types.FunSym
+		o overload
+	}
+	byName := map[string][]inherited{}
+	var names []string
+	d.Sym.Supertypes(func(s *types.ClassSym) bool {
+		if s == d.Sym || s.External || len(s.TypeParams) > 0 {
+			return true
+		}
+		for name, gs := range s.Methods {
+			if len(d.Sym.Methods[name]) > 0 {
+				continue
+			}
+			for _, g := range gs {
+				if g.Private || g.Hidden || g.Static || g.Name == "<init>" {
+					continue
+				}
+				o := funOverload(c, g, d.P, g)
+				if mentionsParams(&o) {
+					continue
+				}
+				if byName[name] == nil {
+					names = append(names, name)
+				}
+				byName[name] = append(byName[name], inherited{g, o})
+			}
+		}
+		return true
+	})
+	slices.Sort(names) // the Methods maps' order isn't
+	for _, name := range names {
+		gs := byName[name]
+	pairs:
+		for i := range gs {
+			for j := i + 1; j < len(gs); j++ {
+				a, b := &gs[i], &gs[j]
+				if a.g.Owner == b.g.Owner || len(a.g.TypeParams) == len(b.g.TypeParams) || !sameTypes(&a.o, &b.o) {
+					continue
+				}
+				if !c.hasErrorAt(d.P, classKind(d.Sym)+" inherits conflicting members") {
+					c.errorf(d.P, "%s inherits conflicting members '%s': functions that take the same parameters but not as many type parameters", classKind(d.Sym), name)
+				}
+				break pairs
+			}
+		}
 	}
 }
 
@@ -555,4 +830,50 @@ func sameTypes(a, b *overload) bool {
 		}
 	}
 	return true
+}
+
+// aliasedPropConflicts reports the properties of one scope, ovs, that
+// kotlinc's frontend reports as redeclarations but kc's declarations let
+// be: those declared beside each other because their context
+// parameters' types differ as written (see altProp) but are the same
+// types, as through a typealias, context(c: A) val p and context(c:
+// AAlias) val p, or with type parameters of other names or bounds, and
+// extension properties, which are declared apart. They conflict as
+// functions do: by the same signature (sameSignature) or, as in K2,
+// each being as specific as the other (mutuallySpecific). Hidden ones
+// don't, whose accessors may clash only on the JVM.
+func aliasedPropConflicts(ovs []overload) {
+	for i := range ovs {
+		// A generic property's type parameters, which an extension's
+		// overload has already.
+		if o := &ovs[i]; o.recv == nil && len(o.tparams) == 0 {
+			if d, ok := o.decl.(*syntax.PropDecl); ok && d.Sym != nil && d.Sym.Getter != nil {
+				o.tparams = d.Sym.Getter.TypeParams
+			}
+		}
+	}
+	for i := range ovs {
+		a := &ovs[i]
+		ad, ok := a.decl.(*syntax.PropDecl)
+		if !ok || !a.prop || ad.Sym == nil || a.hidden || a.recv == nil && ad.Sym.Alt == nil {
+			continue
+		}
+		for j := range ovs {
+			b := &ovs[j]
+			bd, ok := b.decl.(*syntax.PropDecl)
+			if j == i || !ok || !b.prop || b.name != a.name || bd.Sym == nil || b.hidden || (a.recv == nil) != (b.recv == nil) ||
+				a.c != b.c && (a.private || b.private) ||
+				a.recv == nil && !slices.Contains(slices.Collect(altProps(ad.Sym)), bd.Sym) || !sameSignature(a, b) && !mutuallySpecific(a, b) {
+				continue
+			}
+			// The alt chain runs from the later property to the earlier,
+			// so report both of the pair here.
+			for _, o := range []*overload{a, b} {
+				if !o.c.hasErrorAt(o.pos, "conflicting declarations") {
+					o.c.errorf(o.pos, "conflicting declarations: %s", o.name)
+				}
+			}
+			break
+		}
+	}
 }

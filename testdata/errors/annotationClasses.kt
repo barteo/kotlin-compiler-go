@@ -12,6 +12,7 @@ open class Base
 annotation class A7 : Base() // ERROR annotation class cannot have supertypes
 open annotation class A8 // ERROR modifier 'open' is not applicable to 'annotation class'
 annotation fun f() {} // ERROR modifier 'annotation' is not applicable to 'top level function'
+enum annotation class EA { X } // ERROR modifier 'annotation' is not applicable to 'enum class'
 annotation class Ok(val x: Int, val e: E, val inner: A8, val xs: IntArray)
 enum class E { X }
 

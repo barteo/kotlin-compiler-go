@@ -1,6 +1,7 @@
 package check
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -25,6 +26,12 @@ type classTable struct {
 	// class path's classes of Java sources name. Checking sets it once
 	// the program's classes are declared.
 	sources atomic.Pointer[func(string) *types.ClassSym]
+	// shadow finds the program's classes by internal name, which take
+	// the place of the class path's of their names, as K2's symbol
+	// providers look in the program's sources first: the class path's
+	// signatures and supertypes that name such a class name the
+	// program's. Checking sets it on a table of its own (see private).
+	shadow atomic.Pointer[func(string) *types.ClassSym]
 
 	// parent is set on a check's table of its Java sources, whose class
 	// path is an overlay of parent's: see withSources. It has the
@@ -40,6 +47,11 @@ type classTable struct {
 type tableShared struct {
 	mu sync.Mutex
 	m  map[string]*types.ClassSym
+	// decoded holds the Kotlin metadata markValue decoded, by class name,
+	// until load takes it.
+	decoded sync.Map
+	// arities caches arity's results, by class path and class name.
+	arities sync.Map
 
 	// kotlin is set when the Kotlin standard library is on the class path:
 	// Kotlin declarations are then read from metadata (see kotlin.go).
@@ -83,6 +95,48 @@ func (t *classTable) withSources(cp *classpath.Path) *classTable {
 	return &classTable{tableShared: t.tableShared, cp: cp, parent: t, srcM: map[string]*types.ClassSym{}}
 }
 
+// private returns a new table of t's class path, with t's settings,
+// which shares nothing with t: a check whose program has classes of the
+// names of the class path's own reads the class path anew, so that
+// those classes take the place of the class path's in its signatures
+// (see shadow) without a library that checks share (see Libraries in
+// internal/driver, and analysis/ka) seeing them.
+func (t *classTable) private() *classTable {
+	root := t.root()
+	n := newClassTable(root.cp)
+	n.serialization, n.hidden, n.javaTypes = root.serialization, root.hidden, root.javaTypes
+	if t.parent != nil {
+		return n.withSources(t.cp)
+	}
+	return n
+}
+
+// shadowedBy reports whether a class of files has the name of a class
+// of t's class path that isn't one of the program's Java sources.
+func (t *classTable) shadowedBy(files []*syntax.File) bool {
+	root := t.root()
+	if root.cp == nil {
+		return false
+	}
+	for _, f := range files {
+		pkg := strings.ReplaceAll(f.Package, ".", "/")
+		if pkg != "" {
+			pkg += "/"
+		}
+		for _, d := range f.Decls {
+			cd, ok := d.(*syntax.ClassDecl)
+			if !ok {
+				continue
+			}
+			name := pkg + cd.Name
+			if root.cp.Has(name) && (t.cp == nil || !t.cp.IsSource(name)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // sourceClass returns the class of the Java sources with the given name.
 func (t *classTable) sourceClass(name string) *types.ClassSym {
 	t.srcMu.Lock()
@@ -99,10 +153,13 @@ func (t *classTable) sourceClass(name string) *types.ClassSym {
 // caches hold results that checking asks for again and again: supertypes
 // with their type arguments, and the methods of a class by name.
 type caches struct {
-	supers  sync.Map // superKey -> superResult
-	inters  sync.Map // interKey -> types.Type, see intersect
-	methods sync.Map // methodsKey -> []*types.FunSym
+	supers     sync.Map // superKey -> superResult
+	subclasses sync.Map // classPair -> bool, see isSubclass
+	inters     sync.Map // interKey -> types.Type, see intersect
+	methods    sync.Map // methodsKey -> []*types.FunSym
 }
+
+type classPair struct{ cls, target *types.ClassSym }
 
 // cache returns the caches for a result computed from ts: the library's
 // if they name only the class path's classes (or those every check
@@ -150,9 +207,15 @@ func newClassTable(cp *classpath.Path) *classTable {
 		t.funcs = types.KotlinFunctions
 		t.collections = map[string]*types.ClassSym{}
 		t.raw = map[string]*types.ClassSym{}
-		t.pkgs = map[string]*kpkg{}
 	}
 	return t
+}
+
+// javaSource reports whether cls is a class of the program's Java
+// sources: one of an overlay's (see withSources), or one the class path
+// has from a source file.
+func (t *classTable) javaSource(cls *types.ClassSym) bool {
+	return cls.Source || cls.External && t.cp != nil && t.cp.IsSource(cls.Name)
 }
 
 // class returns the class with the given internal name, or nil if it is
@@ -172,6 +235,34 @@ func (t *classTable) class(name string) *types.ClassSym {
 		}
 		return nil
 	}
+	// Most names looked up are of no class: Outer$name for a member, or
+	// pkg/Name for a simple name in each star and default import. The
+	// filter of the class path's names rules most of them out cheaply.
+	if t.cp != nil && t.shadow.Load() == nil && t.sources.Load() == nil && !(t.kotlin && maybeSynthetic(name)) && !t.cp.MayHave(classpath.Hash(name)) {
+		if verifyFilter {
+			t.verifyAbsent(name, t.rootClass(name))
+		}
+		return nil
+	}
+	return t.rootClass(name)
+}
+
+// rootClass is class of the root table, without the filter.
+func (t *classTable) rootClass(name string) *types.ClassSym {
+	// A class looked up before, as most are, is in the map, which holds
+	// only classes of the class path that aren't Kotlin's synthetic ones
+	// below: only a shadowing class comes before it.
+	t.mu.Lock()
+	c, ok := t.m[name]
+	t.mu.Unlock()
+	if ok {
+		if sh := t.shadow.Load(); sh != nil {
+			if s := (*sh)(name); s != nil {
+				return s
+			}
+		}
+		return c
+	}
 	if t.kotlin {
 		if id, ok := mutableOf[name]; ok {
 			return t.kclass(id)
@@ -189,23 +280,24 @@ func (t *classTable) class(name string) *types.ClassSym {
 			return t.funcs.SuspendClass(n) // kotlin.coroutines.SuspendFunction1, suspend (P1) -> R
 		}
 	}
+	if sh := t.shadow.Load(); sh != nil {
+		if c := (*sh)(name); c != nil {
+			return c
+		}
+	}
 	if t.cp == nil || !t.cp.Has(name) {
 		if src := t.sources.Load(); src != nil {
 			return (*src)(name)
 		}
 		return nil
 	}
-	t.mu.Lock()
-	c, ok := t.m[name]
-	t.mu.Unlock()
-	if ok {
-		return c
-	}
 	// Whether it is a value class is known before anyone sees it: a
 	// type's descriptor depends on it, as a field's of Compose's Color,
 	// whose members may never be loaded.
 	c = types.NewExternal(name, t.load)
-	t.markValue(c)
+	if !t.markValue(c) {
+		c = nil
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if old, ok := t.m[name]; ok {
@@ -216,6 +308,16 @@ func (t *classTable) class(name string) *types.ClassSym {
 }
 
 func (t *classTable) hasPackage(pkg string) bool { return t.cp != nil && t.cp.HasPackage(pkg) }
+
+// hasPackageTree reports whether a package, or a package inside it, has a
+// class on the class path, by its internal name.
+func (t *classTable) hasPackageTree(pkg string) bool {
+	if t.cp == nil {
+		return false
+	}
+	_, ok := t.cp.Classes(pkg)
+	return ok
+}
 
 // load fills in a class's supertypes and public members.
 func (t *classTable) load(cls *types.ClassSym) {
@@ -230,6 +332,19 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	cls.StabilityInferred = info.StabilityInferred
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
+	cls.OptInLevel, cls.SubclassOptIn = info.OptInLevel, info.SubclassOptIn
+	cls.JavaSealed = info.Sealed
+	if info.Sealed && len(info.Permitted) > 0 {
+		// A when over it needs no else if it covers these, as kotlinc
+		// sees it.
+		for _, n := range info.Permitted {
+			if sub := t.class(n); sub != nil {
+				cls.Subclasses = append(cls.Subclasses, sub)
+			}
+		}
+		cls.Sealed = len(cls.Subclasses) > 0
+	}
+	cls.RecordComponents = info.RecordComponents
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -251,8 +366,18 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.Repeatable = cls.Container != nil || slices.ContainsFunc(cls.Annotations, func(a *types.ClassSym) bool {
 			return a.Name == "kotlin/annotation/Repeatable"
 		})
-		known := !t.cp.IsSource(cls.Name)
+		known := true // a Java source's too, when its @Target is written
 		switch {
+		case info.KotlinTargets != nil && info.Kotlin == nil:
+			// A Java annotation class with a @kotlin.annotation.Target
+			// applies where it or its @java.lang.annotation.Target allows,
+			// as kotlinc has it: without the latter, to Java's
+			// declarations, which a property isn't.
+			java := javaDeclTargets
+			if info.JavaTargets != nil {
+				java = types.JavaTargets(info.JavaTargets)
+			}
+			cls.Targets = types.KotlinTargets(info.KotlinTargets) | java
 		case info.KotlinTargets != nil:
 			cls.Targets = types.KotlinTargets(info.KotlinTargets)
 		case info.Kotlin != nil:
@@ -263,6 +388,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			// kc doesn't check where it is written.
 			cls.Targets = types.JavaTargets(info.JavaTargets)
 			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
+		}
+		if cls.Name == "java/lang/Deprecated" {
+			// kotlinc reads it as kotlin.Deprecated, which applies to
+			// properties: without a field, as val x get() = 1.
+			cls.Targets |= types.TargetProperty
 		}
 		cls.TargetsKnown = known
 		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
@@ -275,7 +405,14 @@ func (t *classTable) load(cls *types.ClassSym) {
 		return classfile.ReadMethodAnnotations(b, name, desc)
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
-		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+		kc, err := (*kmeta.Class)(nil), error(nil)
+		if v, ok := t.decoded.LoadAndDelete(cls.Name); ok {
+			kc = v.(*kmeta.Class) // decoded by markValue
+		} else {
+			kc, err = kmeta.ReadClass(info.Kotlin)
+		}
+		if err == nil {
+			cls.FromKotlin = true
 			t.loadKotlin(cls, info, kc)
 			return
 		}
@@ -285,10 +422,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
-	// The package-private members of the module's Java classes, of the
-	// friend paths' (a unit test's main classes), and of package-private
-	// classes, are their package's code's.
-	samePkg := cls.PackagePrivate || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
+	cls.ProtectedNested = info.Inner != nil && info.Inner.Access&classfile.AccProtected != 0
+	if (cls.ProtectedNested || cls.Private && !cls.PackagePrivate) && cls.Outer == nil {
+		if i := strings.LastIndexByte(cls.Name, '$'); i > 0 {
+			cls.JavaOuter = t.class(cls.Name[:i])
+		}
+	}
+	// The package-private members of Java classes are their package's
+	// code's, which Kotlin code in another module may be, but not the
+	// JDK's.
+	samePkg := cls.PackagePrivate || !jdkPackage(cls.Name) || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -297,17 +440,24 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Interfaces = append(cls.Interfaces, i)
 		}
 	}
-	// An inner class sees its outer classes' type parameters, after its
-	// own, under Library.JavaTypes.
+	// A nested class that isn't static is an inner class, as a Kotlin
+	// one is: its constructors take the outer class's instance first,
+	// outer.Inner() passes it, and it sees its outer classes' type
+	// parameters, after its own.
 	var outer []*types.TypeParamSym
-	if t.javaTypes && info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+	if info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
 		info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
-		if o := t.class(info.Inner.Outer); o != nil {
-			outer = ensured(o).TypeParams
+		if o := t.class(info.Inner.Outer); o != nil && !ensured(o).Interface {
+			cls.Inner, cls.Outer = true, o
+			outer = o.TypeParams
 		}
 	}
 	if info.Sig != "" || len(outer) > 0 {
-		t.classSignature(cls, info.Sig, outer)
+		t.classSignature(cls, info.Sig, outer, info.BoundAnnotations)
+	}
+	pure := t.pureInterface(cls, info)
+	if pure != nil && t.kotlin {
+		addPureSuper(cls, pure)
 	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
@@ -348,22 +498,63 @@ func (t *classTable) load(cls *types.ClassSym) {
 				vok = vok && sok
 			}
 		}
-		ok := t.signature(f, desc)
+		ok := t.signature(f, desc, !source)
+		if ok && m.Name == "<init>" && cls.Inner && len(f.Params) > 0 && f.Params[0].Type.NonNull().C == cls.Outer {
+			// The outer instance, which javac's signature leaves out, as
+			// Kotlin does: outer.Inner(x) passes it.
+			f.Params = f.Params[1:]
+		}
 		if sig != "" {
-			ok = t.methodSignature(f, cls, sig, len(f.Params))
+			ok = t.methodSignature(f, cls, sig, len(f.Params), m.BoundAnnotations)
 		}
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
+		// javac leaves out synthetic parameters, which come first.
+		off := len(f.Params) - len(m.ParamAnnotations)
 		if t.javaTypes {
-			f.Ret = enhance(m.Annotations, f.Ret)
-			// javac leaves out synthetic parameters, which come first.
-			off := len(f.Params) - len(m.ParamAnnotations)
+			f.Ret = enhanceSignature(m.Annotations, f.Ret)
 			for i, as := range m.ParamAnnotations {
-				if off+i >= 0 {
-					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+				// A declaration annotation on a vararg is the array's,
+				// not its elements', which the parameter's type is.
+				// jSpecify's are type annotations: a vararg's are its
+				// elements'.
+				switch {
+				case off+i < 0:
+				case !(varargs && off+i == len(f.Params)-1):
+					pt := f.Params[off+i].Type
+					f.Params[off+i].Type = enhanceSignature(as, pt)
+					if pt.P && f.Params[off+i].Type.IsPrimitive() {
+						// A java.lang.Long that isn't null is a Long,
+						// which the method still takes boxed.
+						f.BoxedParams = append(f.BoxedParams, off+i)
+					}
+				default:
+					f.Params[off+i].Type = enhanceSignature(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
+						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
+					}), f.Params[off+i].Type)
 				}
 			}
+		} else if m.Access&classfile.AccAbstract != 0 {
+			// An abstract method's parameter of a type parameter's type
+			// that is annotated as not null is a T & Any: the lambda for
+			// a Java Predicate<T> with test(@NonNull T) takes an Item for
+			// a T that is Item?.
+			for i, as := range m.ParamAnnotations {
+				if off+i < 0 {
+					continue
+				}
+				if pt := f.Params[off+i].Type; pt.P && pt.IsParam() {
+					if pt = enhance(as, pt); !pt.N {
+						pt.D = true
+						f.Params[off+i].Type = pt
+					}
+				}
+			}
+		}
+		if ok {
+			enhanceJDK(cls.Name, f)
+			javaSuspend(f)
 		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
@@ -372,6 +563,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 		f.Unsupported = !ok || !vok
 		f.Abstract = m.Access&classfile.AccAbstract != 0
 		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
+		// @kotlin.Deprecated(level = HIDDEN) hides a Java method from calls.
+		f.Hidden = m.Hidden
+		hideJDK(cls.Name, f)
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -404,6 +598,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Methods[m.Name] = append(cls.Methods[m.Name], f)
 		}
 	}
+	if t.kotlin {
+		inheritPure(cls, pure)
+	}
+	mapCollectionMembers(cls)
+	purelyImplement(cls, pure)
+	kotlinParamNames(cls)
+	builtinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
 		// intValue() methods on the JVM. They are all abstract, though
@@ -418,9 +619,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		// And toChar(), which java.lang.Number doesn't have: kotlinc
 		// compiles its calls as toInt().toChar(), and an override is an
-		// ordinary method.
+		// ordinary method. It is deprecated, an error from Kotlin 2.3 on.
 		cls.Methods["toChar"] = append(cls.Methods["toChar"], &types.FunSym{Name: "toChar", Owner: cls, Ret: types.CharType,
-			Builtin: types.ToChar, Desc: "()C", Resolved: true})
+			Builtin: types.ToChar, Desc: "()C", Resolved: true, Deprecated: &numberToCharDeprecation})
 	}
 	for _, fd := range info.Fields {
 		pkgPrivate := samePkg && packagePrivate(fd.Access)
@@ -436,8 +637,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 				if cls.JavaFields == nil {
 					cls.JavaFields = map[string]*types.VarSym{}
 				}
-				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
-					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate}
+				if prev := cls.JavaFields[fd.Name]; prev != nil {
+					prev.Ambiguous = true
+					continue
+				}
+				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, javaFieldType(ft)), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
+					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate,
+					Deprecated: classFileDeprecation(fd.Deprecated)}
 			}
 			continue
 		}
@@ -458,7 +664,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 					if static {
 						kind = types.Static
 					}
-					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: kind,
+					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, javaFieldType(ft)), Kind: kind,
 						Owner: cls, Resolved: true, Final: true, JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0,
 						Constant: fieldConstant(fd)})
 				}
@@ -469,10 +675,14 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if fd.Sig != "" {
 			ft, ok = t.fieldSignature(fd.Sig, nil)
 		}
+		if prev := cls.Fields[fd.Name]; prev != nil && prev.Kind == types.Static && prev.Owner == cls {
+			prev.Ambiguous = true
+			continue
+		}
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
-				Protected: fd.Access&classfile.AccProtected != 0}
+				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant, ConstReads: fd.KotlinReads, Deprecated: classFileDeprecation(fd.Deprecated)}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -480,43 +690,65 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 }
 
+// javaFieldType returns the type of an instance field from its
+// descriptor or signature, ft: a platform type, but for a use of a type
+// parameter whose bound is annotated not-null (see javaParamType).
+func javaFieldType(ft types.Type) types.Type {
+	if ft.IsParam() && ft.Param().JavaNotNull && !ft.N {
+		return ft
+	}
+	return ft.Platform()
+}
+
 // fieldNullability returns the type ft of field fd as its annotations
-// make it, under Library.JavaTypes.
+// make it, under Library.JavaTypes. A java.lang.Long that isn't null
+// stays a platform type: the field holds the box, not a Long.
 func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
 	if !t.javaTypes {
 		return ft
 	}
-	return enhance(fd.Annotations, ft)
+	if e := enhance(fd.Annotations, ft); !e.IsPrimitive() {
+		return e
+	}
+	return ft
 }
 
 // Nullability annotations kotlinc reads on Java declarations, by
 // descriptor: true for those that make a type non-null, false for
-// nullable. JSR-305's javax.annotation ones only warn by default, and
-// leave platform types as they are.
+// nullable. JSR-305's javax.annotation ones and androidx's RecentlyNonNull
+// and RecentlyNullable only warn by default, and leave platform types as
+// they are.
 var javaNullability = func() map[string]bool {
 	m := map[string]bool{}
-	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull", "androidx/annotation/RecentlyNonNull",
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull",
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
-		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
+		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull",
+		"org/jspecify/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
-	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable",
 		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
 		"edu/umd/cs/findbugs/annotations/CheckForNull", "edu/umd/cs/findbugs/annotations/PossiblyNull",
-		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable"} {
+		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable",
+		"org/jspecify/annotations/Nullable"} {
 		m["L"+n+";"] = false
 	}
 	return m
 }()
 
 // enhance returns platform type t as the nullability annotations among
-// as make it: non-null or nullable, or t itself with neither or both.
+// as make it: non-null or nullable, or t itself with neither or both. A
+// Java collection that isn't null stays a platform type, which is the
+// only type that is both the mutable collection and the read-only one: a
+// Kotlin override may declare either.
 func enhance(as []string, t types.Type) types.Type {
-	if !t.P {
+	if !t.P && !(t.IsParam() && t.Param().JavaNotNull && !t.N) {
+		// Or a use of a type parameter whose bound is annotated not-null,
+		// which @Nullable makes nullable: @Nullable T.
 		return t
 	}
 	notNull, nullable := false, false
@@ -528,10 +760,29 @@ func enhance(as []string, t types.Type) types.Type {
 	switch {
 	case notNull == nullable:
 		return t
+	case notNull && javaCollection(t):
+		return t
 	case notNull:
 		return t.NonNull()
 	}
 	return t.Nullable()
+}
+
+// enhanceSignature is enhance for a method's parameter and result types,
+// of which a Java collection stays a platform type, nullable too: an
+// annotated List parameter takes a read-only list, and a result is a
+// read-only list where one is expected, as a mock's answer.
+func enhanceSignature(as []string, t types.Type) types.Type {
+	if javaCollection(t) {
+		return t
+	}
+	return enhance(as, t)
+}
+
+// javaCollection reports whether t is a Java collection type, which is a
+// Kotlin mutable collection and its read-only one.
+func javaCollection(t types.Type) bool {
+	return t.K == types.Class && t.C.ReadOnly != nil
 }
 
 // kotlinMapped are the Java classes that are Kotlin types, with Kotlin's
@@ -547,25 +798,8 @@ var kotlinMapped = func() map[string]bool {
 // fieldType maps a JVM field descriptor to a Kotlin type. Reference types
 // are platform types, as Kotlin sees Java declarations.
 func (t *classTable) fieldType(d string) (types.Type, bool) {
-	switch d {
-	case "I":
-		return types.IntType, true
-	case "J":
-		return types.LongType, true
-	case "D":
-		return types.DoubleType, true
-	case "Z":
-		return types.BoolType, true
-	case "C":
-		return types.CharType, true
-	case "F":
-		return types.FloatType, true
-	case "B":
-		return types.ByteType, true
-	case "S":
-		return types.ShortType, true
-	case "V":
-		return types.UnitType, true
+	if len(d) == 1 && types.DescKind(d[0]) != types.Invalid {
+		return types.Type{K: types.DescKind(d[0])}, true // a primitive, or V
 	}
 	if elem, ok := strings.CutPrefix(d, "["); ok {
 		et, ok := t.fieldType(elem)
@@ -584,10 +818,8 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 	case "java/lang/Object":
 		return types.AnyType.Platform(), true
 	}
-	for k, box := range boxes {
-		if name == box {
-			return types.Type{K: k}.Nullable().Platform(), true
-		}
+	if k := types.BoxKind(name); k != types.Invalid {
+		return types.Type{K: k}.Nullable().Platform(), true
 	}
 	if c := t.class(name); c != nil {
 		return types.ClassType(c).Platform(), true
@@ -595,25 +827,36 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 	return types.InvalidType, false
 }
 
+// classFileType is fieldType for a descriptor of a class file's member:
+// a class the class path doesn't have is still unsupported, but a type of
+// its own, which no other class's type is the same as (see
+// javaMissingClass). A Java source's is an error type, as to K2.
+func (t *classTable) classFileType(d string) (types.Type, bool) {
+	ft, ok := t.fieldType(d)
+	if name, isClass := strings.CutPrefix(d, "L"); !ok && isClass {
+		if c := t.javaMissingClass(strings.TrimSuffix(name, ";")); c != nil {
+			return types.ClassType(c).Platform(), false
+		}
+	}
+	return ft, ok
+}
+
 // signature fills in f's parameters and return type from a method
-// descriptor and reports whether kc supports all of them.
-func (t *classTable) signature(f *types.FunSym, d string) bool {
+// descriptor and reports whether kc supports all of them. Of a class
+// file's method, classFile, a missing class is a type (see
+// classFileType).
+func (t *classTable) signature(f *types.FunSym, d string, classFile bool) bool {
+	ft := t.fieldType
+	if classFile {
+		ft = t.classFileType
+	}
 	ok := true
-	i := 1
-	for d[i] != ')' {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j = i + strings.IndexByte(d[i:], ';')
-		}
-		pt, pok := t.fieldType(d[i : j+1])
+	for _, p := range classfile.DescParams(d) {
+		pt, pok := ft(p)
 		ok = ok && pok
 		f.Params = append(f.Params, &types.VarSym{Name: "p", Type: pt, Kind: types.Param})
-		i = j + 1
 	}
-	rt, rok := t.fieldType(d[i+1:])
+	rt, rok := ft(classfile.RetDesc(d))
 	f.Ret = rt
 	return ok && rok
 }
@@ -626,9 +869,6 @@ func javaParam(t types.Type) types.Type {
 	}
 	return types.GenericType(t.C, []types.Arg{{V: types.Out, T: t.A.Get(0).T}}).Platform()
 }
-
-// boxes are the box classes of the primitive types.
-var boxes = types.Boxes
 
 // Kotlin type names never refer to java.lang classes.
 var kotlinTypes = map[string]bool{
@@ -643,12 +883,24 @@ var kotlinTypes = map[string]bool{
 func (c *Checker) resolveImports() {
 	c.imports = map[string]*types.ClassSym{}
 	c.aliasImports = map[string]*types.AliasSym{}
+	c.conflictingImports = map[string]bool{}
 	c.funImports = map[string][]*types.FunSym{}
 	c.memberImports = map[string]memberImport{}
 	c.moreMemberImports = map[string][]memberImport{}
 	c.userFuns = map[string][]*types.FunSym{}
 	c.userVars = map[string]*types.VarSym{}
 	c.userExtProps = map[string][]*types.FunSym{}
+	c.renamed = map[string]bool{}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && imp.Alias != "" && imp.Alias != imp.Path[strings.LastIndexByte(imp.Path, '.')+1:] {
+			c.renamed[imp.Path] = true
+		}
+	}
+	for _, imp := range c.file.Imports {
+		if !imp.Star && (imp.Alias == "" || imp.Alias == imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]) {
+			delete(c.renamed, imp.Path) // imported under its own name too
+		}
+	}
 	ext := c.u.ext
 	// The file's package on the class path, as a library's Java classes
 	// in it, or its classes in the default package: searched before the
@@ -666,7 +918,12 @@ func (c *Checker) resolveImports() {
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
 			if starred[imp.Path] {
-				continue // imported twice: its members aren't overloads of themselves
+				// Imported twice: its members aren't overloads of
+				// themselves. An object's is an error each time.
+				if owner := c.importOwner(imp.Path); c.u.Pkgs[imp.Path] == nil && owner != nil && owner.Object && !owner.External && !ext.hasPackage(name) && !ext.isKotlinPackage(imp.Path) {
+					c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+				}
+				continue
 			}
 			starred[imp.Path] = true
 			user := c.u.Pkgs[imp.Path]
@@ -709,6 +966,7 @@ func (c *Checker) resolveImports() {
 				classifiers[alias] = append(classifiers[alias], imp.P)
 			}
 			if fs := user.Funs[simple]; len(fs) > 0 {
+				c.operatorRenamed(imp, simple, fs)
 				// Functions of one name imported from several packages
 				// are overloads: clikt's options.convert and
 				// arguments.convert.
@@ -751,31 +1009,40 @@ func (c *Checker) resolveImports() {
 			}
 		}
 		cls := ext.class(name)
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			cls = ext.pkgClass(pkg, simple)
 		}
 		fs := ext.pkgFuns(pkg, simple)
 		if cls != nil {
 			c.imports[alias] = cls
 			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
+			if c.libraryAliasPath(imp.Path, cls) {
+				if c.aliasClassImports == nil {
+					c.aliasClassImports = map[string]bool{}
+				}
+				c.aliasClassImports[alias] = true
+			}
 		}
 		var ta *types.AliasSym
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			if ta = ext.pkgAlias(pkg, simple); ta != nil {
 				c.aliasImports[alias] = ta
 			}
 		}
 		// Functions and extension properties of one name imported from
-		// several packages are overloads, as the program's own above.
+		// several packages are overloads, as the program's own above. As
+		// in K2, one function of two modules, by its package, name and
+		// signature, is one candidate.
+		c.operatorRenamed(imp, simple, fs)
 		for _, f := range fs {
-			if !slices.Contains(c.funImports[alias], f) {
+			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return sameDeclaration(f, g) }) {
 				c.funImports[alias] = append(c.funImports[alias], f)
 			}
 		}
 		// A library's top-level property, or extension properties.
 		var v *types.VarSym
 		var gs []*types.FunSym
-		if ext.kotlin && pkg != "" {
+		if ext.kotlin {
 			if v = ext.pkgVar(pkg, simple); v != nil {
 				c.userVars[alias] = v
 			}
@@ -794,16 +1061,33 @@ func (c *Checker) resolveImports() {
 		}
 		// A.b imports a member of a class or an object, or a nested class.
 		if owner := c.importOwner(pkg); owner != nil {
+			// As kotlinc, the classes the path goes through are
+			// checked, not a nested class it ends with.
+			c.checkImportVisible(owner, imp.P)
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else if a := owner.Aliases[simple]; a != nil {
 				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
 				classifiers[alias] = append(classifiers[alias], imp.P)
-			} else if mi := (memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}); c.memberImports[alias].owner != nil {
-				c.moreMemberImports[alias] = append(c.moreMemberImports[alias], mi)
 			} else {
-				c.memberImports[alias] = mi
+				if cd, _ := owner.Decl.(*syntax.ClassDecl); cd != nil && owner.Object {
+					// Its members aren't declared yet.
+					var fs []*types.FunSym
+					for _, m := range cd.Members {
+						if fd, ok := m.(*syntax.FunDecl); ok && fd.Name == simple {
+							fs = append(fs, &types.FunSym{Name: simple, Operator: fd.Operator})
+						}
+					}
+					c.operatorRenamed(imp, simple, fs)
+				} else if owner.Object {
+					c.operatorRenamed(imp, simple, ensured(owner).Methods[simple])
+				}
+				if mi := (memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}); c.memberImports[alias].owner != nil {
+					c.moreMemberImports[alias] = append(c.moreMemberImports[alias], mi)
+				} else {
+					c.memberImports[alias] = mi
+				}
 			}
 			continue
 		}
@@ -824,6 +1108,7 @@ func (c *Checker) resolveImports() {
 			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
 		}
 		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
+			c.conflictingImports[alias] = true
 			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
 		}
 	}
@@ -831,7 +1116,40 @@ func (c *Checker) resolveImports() {
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		c.importMembers(c.importOwner(imp.Path), imp)
+		owner := c.importOwner(imp.Path)
+		if owner != nil {
+			c.checkImportVisible(owner, imp.P)
+		}
+		c.importMembers(owner, imp)
+	}
+}
+
+// checkImportVisible reports an import through class cls of the program,
+// or a class it is nested in, that is private to another file or to a
+// class of another file: import p.Private.Nested, import p.C.Companion.f
+// of a private companion, import p.C.PrivateNested.*.
+func (c *Checker) checkImportVisible(cls *types.ClassSym, p syntax.Pos) {
+	if cls.External && !cls.FromKotlin && !c.file.SuppressInvisible {
+		// A Java class's: import p.Foo.Nested of a package-private p.Foo.
+		if cls.Ensure(); cls.Private && !cls.Missing && !(cls.PackagePrivate && c.samePackage(cls)) {
+			c.errorf(p, "cannot access '%s': it is not public", cls.DisplayName())
+		} else if o := c.invisibleJavaOuter(cls); o != nil {
+			c.errorf(p, "cannot access '%s': it is not public", o.DisplayName())
+		}
+		return
+	}
+	k := c.invisibleOuter(cls)
+	if k == nil || k.External {
+		return
+	}
+	top := k
+	for top.Outer != nil {
+		top = top.Outer
+	}
+	// As K2, an import sees the private classes of its own file, and
+	// those nested in them.
+	if v, _ := declVisibility(k.Decl); v == syntax.Private && top.File != c.file.Class() {
+		c.checkClassVisible(cls, p)
 	}
 }
 
@@ -873,6 +1191,25 @@ var optionalExpectations = map[string]bool{
 	"kotlin.native.RefinesInSwift":             true,
 	"kotlin.native.concurrent.SharedImmutable": true,
 	"kotlin.native.concurrent.ThreadLocal":     true,
+}
+
+// conventionName matches the names operators call functions by, of which
+// kotlinc's OPERATOR_RENAMED_ON_IMPORT warns.
+var conventionName = regexp.MustCompile(`^(plus|minus|times|div|rem|rangeTo|rangeUntil|unaryPlus|unaryMinus|not|inc|dec|(plus|minus|times|div|rem)Assign|get|set|invoke|contains|compareTo|equals|iterator|next|hasNext|getValue|setValue|provideDelegate|of|component\d+)$`)
+
+// operatorRenamed warns of import imp of the functions named simple among
+// fs under another name that an operator calls, if one of them is an
+// operator function: the name doesn't make it that name's operator.
+func (c *Checker) operatorRenamed(imp *syntax.Import, simple string, fs []*types.FunSym) {
+	if imp.Alias == "" || imp.Alias == simple || !conventionName.MatchString(imp.Alias) {
+		return
+	}
+	if slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+		d, _ := f.Decl.(*syntax.FunDecl) // its symbol isn't resolved yet
+		return f.Name == simple && (f.Operator || d != nil && d.Operator)
+	}) {
+		c.warnf(imp.P, "OPERATOR_RENAMED_ON_IMPORT", "renaming an operator function on import to '%s' doesn't make it that operator's function", imp.Alias)
+	}
 }
 
 // importOwner resolves the qualified name of a class in an import, a.b.C
@@ -922,7 +1259,7 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if isEnumEntry(cls, name) {
 		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
-	return c.u.ext.class(cls.Name + "$" + name)
+	return c.u.ext.nestedNamed(cls.Name, name)
 }
 
 // findClass resolves a simple class name in Kotlin's order: explicit
@@ -955,30 +1292,45 @@ func (c *Checker) findClassifier(name string) classifier {
 	if c.u.lookups != nil {
 		defer c.noteClassifier(name)
 	}
-	if k := c.nestedClassifier(name); k != (classifier{}) {
-		return k
+	nested := c.nestedClassifier(name)
+	if nested != (classifier{}) && !hiddenClass(nested.cls) {
+		return nested
 	}
-	if k, ok := c.classCache[name]; ok {
-		return k
+	k, ok := c.classCache[name]
+	if !ok {
+		k = c.findClassifier1(name)
+		c.classCache[name] = k
 	}
-	k := c.findClassifier1(name)
-	c.classCache[name] = k
+	if k == (classifier{}) {
+		// A nested class deprecated with level HIDDEN
+		// gives way to the classes outside, as K2's: found only if
+		// nothing else is, its use is an error.
+		return nested
+	}
 	return k
 }
 
+// hiddenClass reports whether cls is a class deprecated with level
+// HIDDEN.
+func hiddenClass(cls *types.ClassSym) bool {
+	if cls == nil {
+		return false
+	}
+	if !cls.External {
+		return classDeprecation(cls) == "HIDDEN" // the program's, as KT-14059's
+	}
+	cls.Ensure()
+	return cls.Deprecated != nil && cls.Deprecated.Level == "HIDDEN"
+}
+
 func (c *Checker) findClassifier1(name string) classifier {
-	if cls, ok := c.imports[name]; ok {
-		return classifier{cls: cls}
-	}
-	if a, ok := c.aliasImports[name]; ok {
-		return classifier{alias: a}
-	}
 	// Another file's private class or typealias is found only if nothing
 	// else is: pack1's private SomeClass doesn't hide pack2's by import
-	// pack1.*, import pack2.*.
+	// pack1.*, import pack2.*. Nor does a class deprecated with level
+	// HIDDEN, imported explicitly or not, as K2's: its use is an error.
 	var hidden classifier
 	visible := func(k classifier) bool {
-		if c.privateElsewhere(k) {
+		if c.privateElsewhere(k) || hiddenClass(k.cls) {
 			if hidden == (classifier{}) {
 				hidden = k
 			}
@@ -986,13 +1338,23 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 		return true
 	}
-	if cls, ok := c.pkg.Classes[name]; ok && visible(classifier{cls: cls}) {
+	if cls, ok := c.imports[name]; ok && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
-	if a, ok := c.pkg.Aliases[name]; ok && visible(classifier{alias: a}) {
+	if a, ok := c.aliasImports[name]; ok {
+		return classifier{alias: a}
+	}
+	own := !c.renamedAway(c.pkg.Name, name)
+	if cls, ok := c.pkg.Classes[name]; ok && own && visible(classifier{cls: cls}) {
+		return classifier{cls: cls}
+	}
+	if a, ok := c.pkg.Aliases[name]; ok && own && visible(classifier{alias: a}) {
 		return classifier{alias: a}
 	}
 	for _, p := range c.userStars {
+		if c.renamedAway(p.Name, name) {
+			continue
+		}
 		if cls, ok := p.Classes[name]; ok && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
@@ -1001,11 +1363,11 @@ func (c *Checker) findClassifier1(name string) classifier {
 		}
 	}
 	for _, owner := range c.starOwners {
-		if cls := c.nestedOf(owner, name); cls != nil {
+		if cls := c.nestedOf(owner, name); cls != nil && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
 	}
-	if cls := c.extClass(name); cls != nil {
+	if cls := c.extClass(name); cls != nil && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
 	if a := c.extAlias(name); a != nil {
@@ -1021,17 +1383,48 @@ func (c *Checker) extAlias(name string) *types.AliasSym {
 	if kotlinTypes[name] || !ext.kotlin {
 		return nil
 	}
-	for _, pkg := range c.stars {
-		if a := ext.pkgAlias(strings.ReplaceAll(pkg, "/", "."), name); a != nil {
+	for _, r := range c.starPkgs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
-	for _, pkg := range defaultPackages {
-		if a := ext.pkgAlias(pkg, name); a != nil {
+	for _, r := range ext.defaultRefs() {
+		if a := ext.pkgAliasIn(r, name); a != nil && !c.renamedAway(r.name, name) {
 			return a
 		}
 	}
 	return nil
+}
+
+// libraryAliasOf reports whether simple name name, which resolves to
+// class cls, is a library's typealias of it, as HashSet is
+// kotlin.collections' of java.util.HashSet: a class on the class path that
+// isn't imported, explicitly or by a star import, by its own name.
+func (c *Checker) libraryAliasOf(name string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	if cls == nil || !cls.External || !ext.kotlin || kotlinTypes[name] {
+		return false
+	}
+	if _, ok := c.imports[name]; ok {
+		return c.aliasClassImports[name]
+	}
+	for _, r := range slices.Concat(c.starPkgs(), ext.defaultRefs()) {
+		if k := ext.pkgClassIn(r, name); k != nil {
+			return k == cls && ext.pkgClassAlias(r, name) == cls
+		}
+	}
+	return false
+}
+
+// libraryAliasPath reports whether qualified name qname is a library's
+// typealias of class cls: kotlin.collections.HashSet of java.util.HashSet.
+func (c *Checker) libraryAliasPath(qname string, cls *types.ClassSym) bool {
+	ext := c.u.ext
+	i := strings.LastIndexByte(qname, '.')
+	if i < 0 || cls == nil || !cls.External || !ext.kotlin || ext.class(strings.ReplaceAll(qname, ".", "/")) != nil {
+		return false
+	}
+	return ext.pkgClassAlias(ext.pkgRef(qname[:i]), qname[i+1:]) == cls
 }
 
 // extClass resolves a simple name of a class on the class path.
@@ -1042,33 +1435,57 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 	ext := c.u.ext
 	// A built-in class, as kotlin.Array, comes before the star imports:
 	// import java.lang.reflect.* doesn't hide it.
-	if cls := types.ArrayByName(name); cls != nil {
+	if cls := types.ArrayByName(name); cls != nil && !c.renamedAway("kotlin", name) {
 		return cls
 	}
 	if builtinClasses[name] && ext.kotlin {
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+		// But after the file's own package's: a Java interface Function
+		// in it hides kotlin.Function.
+		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) && !c.renamedAway(own, name) {
+			if cls := ext.pkgClass(c.file.Package, name); cls != nil {
+				return cls
+			}
+		}
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
 	}
-	for _, pkg := range c.stars {
+	// A class deprecated with level HIDDEN gives way to another star
+	// import's, as K2's.
+	var hidden *types.ClassSym
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
+			continue
+		}
+		var cls *types.ClassSym
 		if ext.kotlin {
-			if cls := ext.pkgClass(strings.ReplaceAll(pkg, "/", "."), name); cls != nil {
-				return cls
+			cls = ext.pkgClassIn(r, name)
+		} else {
+			cls = ext.classIn(r.path, r.hash, name)
+		}
+		if cls != nil && hiddenClass(cls) {
+			if hidden == nil {
+				hidden = cls
 			}
-		} else if cls := ext.class(qualified(pkg, name)); cls != nil {
+		} else if cls != nil {
 			return cls
 		}
 	}
 	if ext.kotlin {
-		for _, pkg := range defaultPackages {
-			if cls := ext.pkgClass(pkg, name); cls != nil {
+		for _, r := range ext.defaultRefs() {
+			if cls := ext.pkgClassIn(r, name); cls != nil && !c.renamedAway(r.name, name) {
 				return cls
 			}
 		}
 	}
-	return ext.class("java/lang/" + name)
+	if !c.renamedAway("java.lang", name) {
+		if cls := ext.classIn("java/lang", javaLangHash, name); cls != nil {
+			return cls
+		}
+	}
+	return hidden
 }
 
 // kotlinFuns returns the Kotlin top-level functions a simple name can
@@ -1097,6 +1514,13 @@ func (c *Checker) kotlinFuns1(name string, ext bool) []*types.FunSym {
 // level of the imports that bring them, highest first: explicit imports,
 // star imports and the default imports.
 func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
+	return c.funLevels(name, ext, nil)
+}
+
+// funLevels is kotlinFunLevels. If fits isn't nil, the class path's
+// extensions are only those whose receiver type it takes, as
+// pkgFunsWhere has them.
+func (c *Checker) funLevels(name string, ext bool, fits func(types.Type) bool) [][]*types.FunSym {
 	keep := func(fs []*types.FunSym) []*types.FunSym {
 		var out []*types.FunSym
 		for _, f := range fs {
@@ -1111,17 +1535,26 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 	if !ext1.kotlin {
 		return levels
 	}
+	kind := nonExtFuns
+	if ext {
+		kind = extFuns
+	}
 	var stars, defaults []*types.FunSym
-	for _, pkg := range c.stars {
-		stars = append(stars, keep(ext1.pkgFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+	for _, r := range c.starPkgs() {
+		if c.renamedAway(r.name, name) {
+			continue
+		}
+		stars = append(stars, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
 		if c.file.SuppressInvisible {
 			// ktor's recoverStackTrace(e, cont) of kotlinx.coroutines.internal.*
 			// under @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE").
-			stars = append(stars, keep(ext1.pkgInternalFuns(strings.ReplaceAll(pkg, "/", "."), name))...)
+			stars = append(stars, ext1.pkgFunsWhereIn(r, name, true, kind, fits)...)
 		}
 	}
-	for _, pkg := range defaultPackages {
-		defaults = append(defaults, keep(ext1.pkgFuns(pkg, name))...)
+	for _, r := range ext1.defaultRefs() {
+		if !c.renamedAway(r.name, name) {
+			defaults = append(defaults, ext1.pkgFunsWhereIn(r, name, false, kind, fits)...)
+		}
 	}
 	return append(levels, stars, defaults)
 }
@@ -1132,6 +1565,36 @@ func (c *Checker) kotlinFunLevels(name string, ext bool) [][]*types.FunSym {
 // scopes that has an extension for the receiver hides the others.
 func (c *Checker) extCallees(name string, rt types.Type) []callee {
 	return c.extCalleesFor(name, rt, nil)
+}
+
+// extLevels returns kotlinFunLevels(name, true) without the class path's
+// extensions whose receiver can't take a receiver of type rt, which are
+// never converted. They are cached for the receiver types that recvFits
+// tells apart by their kind, class, whether a function type has its type
+// arguments and whether a value may be null: all but type parameters and
+// variables, whose bounds it looks at.
+func (c *Checker) extLevels(name string, rt types.Type) [][]*types.FunSym {
+	fits := func(r types.Type) bool { return c.recvFits(rt, r) }
+	rn := rt.NonNull()
+	if rn.K == types.TypeParam || rn.K == types.TypeVar {
+		return c.funLevels(name, true, fits)
+	}
+	k := levelKey{name, rn.K, rn.C, rn.A != nil, types.MayBeNull(rt) && !rt.P}
+	levels, ok := c.levelCache[k]
+	if !ok {
+		levels = c.funLevels(name, true, fits)
+		c.levelCache[k] = levels
+	}
+	return levels
+}
+
+// levelKey keys Checker.levelCache: see extLevels.
+type levelKey struct {
+	name     string
+	k        types.Kind
+	c        *types.ClassSym
+	args     bool
+	nullable bool
 }
 
 // calleeFuns returns the functions of cs.
@@ -1168,6 +1631,12 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 				}
 				return nil
 			}
+		}
+		if x != nil && x.Operator && slices.ContainsFunc(out, func(cl callee) bool { return cl.f.Operator }) {
+			// An operator call's candidates are operator functions:
+			// import foo.foo as invoke doesn't make foo one of 42()'s
+			// next to an operator Int.invoke.
+			out = slices.DeleteFunc(out, func(cl callee) bool { return !cl.f.Operator })
 		}
 		if x != nil && len(out) > 0 && !slices.ContainsFunc(out, func(cl callee) bool { return c.recvTakes(rt, cl.f.Recv) && c.mayTake(cl.f, x) }) {
 			if unfit == nil {
@@ -1264,9 +1733,9 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	}
 	var fs []*types.FunSym
 	for _, p := range c.userStars {
-		fs = append(fs, p.Funs[name]...)
+		fs = append(fs, c.funsOf(p, name)...)
 	}
-	if out := fits(c.pkg.Funs[name]); len(out) > 0 {
+	if out := fits(c.funsOf(c.pkg, name)); len(out) > 0 {
 		// They give way to the star-imported ones if only those take the
 		// arguments' types: kotlinx.coroutines.time's
 		// Flow<T>.debounce(Duration) to kotlinx.coroutines.flow's
@@ -1285,13 +1754,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 		return out
 	}
 	// The first level of imports with an extension for the receiver.
-	k := funKey{name, true}
-	levels, ok := c.levelCache[k]
-	if !ok {
-		levels = c.kotlinFunLevels(name, true)
-		c.levelCache[k] = levels
-	}
-	for _, fs := range levels {
+	for _, fs := range c.extLevels(name, rt) {
 		if out := fits(fs); len(out) > 0 {
 			return out
 		}
@@ -1329,14 +1792,15 @@ func (c *Checker) recvFits(rt, r types.Type) bool {
 		return true
 	case rt.K == types.Null:
 		return true // null fits a nullable receiver: null.f() for Id?.f()
+	case rt.K == types.Nothing:
+		return true // Nothing is a subtype of every type: todo() * "" for Int.times
 	}
 	rn := r.NonNull()
 	switch rn.K {
 	case types.Any:
 		return true
 	case types.Class:
-		_, ok := c.asSuper(rt, rn.C)
-		return ok
+		return c.isSubclass(rt, rn.C)
 	}
 	return rt.NonNull().K == rn.K
 }
@@ -1369,19 +1833,34 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	var best *types.FunSym
 	var bestSub types.Subst // a superclass's type parameters, for a member's
 	sub := func(g *types.FunSym) types.Subst { return nil }
+	// Another file's private one is taken only where no other fits, for
+	// the error.
+	bestSeen := false
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
-			ensureFun(g)
 			s := sub(g)
-			if c.recvFits(rt, s.Apply(g.Recv)) && (best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv))) {
-				best, bestSub = g, s
+			if g.Hidden {
+				continue // deprecated with level HIDDEN: unresolved
+			}
+			if !c.recvFits(rt, s.Apply(g.Recv)) {
+				continue // nor is its type inferred, which may be in progress
+			}
+			ensureFun(g)
+			seen := g.Owner != nil || !g.Private || c.canSee(syntax.Private, nil, g.Facade)
+			if best == nil || seen && !bestSeen || seen == bestSeen && c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
+				best, bestSub, bestSeen = g, s, seen
 			}
 		}
+	}
+	// A plugin's code reads one by its qualified name, as pluginQualified
+	// describes for functions.
+	if pkg, simple, ok := pluginQualified(c, x.Name); ok {
+		fits(c.u.ext.pkgExtProps(pkg, simple))
 	}
 	// Those declared in the class the code is in come first, then those of
 	// the objects in scope, and imported ones of objects.
 	var dispatch *types.ClassSym
-	if c.cls != nil {
+	if c.cls != nil && best == nil {
 		sub = func(g *types.FunSym) types.Subst { return c.memberSubst(c.cls.This(), g.Owner) }
 		if fits(memberExtProps(c.cls, x.Name)); best != nil {
 			c.captureThis()
@@ -1417,7 +1896,16 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	}
 	if best == nil {
 		dispatch = nil
-		fits(c.userExtProps[x.Name])
+		if fits(c.userExtProps[x.Name]); best != nil && len(best.TypeParams) == 0 {
+			// Two explicitly imported ones for one receiver type are
+			// ambiguous: import b.d, import c.d of A.d.
+			for _, g := range c.userExtProps[x.Name] {
+				if g != best && len(g.TypeParams) == 0 && c.recvFits(rt, g.Recv) && c.sameType(g.Recv, best.Recv) {
+					c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+					break
+				}
+			}
+		}
 	}
 	if best == nil {
 		fits(c.pkg.ExtProps[x.Name])
@@ -1428,12 +1916,11 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 		}
 	}
 	if best == nil && c.u.ext.kotlin {
-		pkgs := make([]string, 0, len(c.stars)+len(defaultPackages))
-		for _, s := range c.stars {
-			pkgs = append(pkgs, strings.ReplaceAll(s, "/", "."))
+		for _, r := range c.starPkgs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
-		for _, pkg := range append(pkgs, defaultPackages...) {
-			fits(c.u.ext.pkgExtProps(pkg, x.Name))
+		for _, r := range c.u.ext.defaultRefs() {
+			fits(c.u.ext.pkgExtPropsIn(r, x.Name))
 		}
 	}
 	if best == nil {
@@ -1460,6 +1947,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	if hasReified(best) {
 		c.reifiedProp(x, best, vars, sys)
 	}
+	c.notePlatformArgs(x, best.TypeParams, vars, sys)
 	return sys.final(vars.Apply(best.Ret)), true
 }
 
@@ -1478,7 +1966,7 @@ func (c *Checker) lookupClass(name string) *types.ClassSym {
 		if a := c.lookupAlias(name); a != nil {
 			return c.aliasClass(a) // a.b.Alias(x), Outer.Alias.member
 		}
-		if first := c.findClass(parts[0]); first != nil && first.External {
+		if first := c.findClass(parts[0]); first != nil && first.External && !aliasQualifier(c.findClassifier(parts[0]), parts) {
 			// A nested type of a Kotlin collection type: Map.Entry.
 			if first.KotlinName != "" {
 				if _, ok := collectionJVM[first.KotlinName+"."+strings.Join(parts[1:], ".")]; ok {
@@ -1513,8 +2001,41 @@ func (c *Checker) isVar(name string) bool {
 	if _, _, ok := c.scope.lookup(name); ok {
 		return true
 	}
+	if c.state.plugin && (c.u.isPackage(name) || c.u.ext.hasPackageTree(name)) {
+		// A plugin's code names classes by their qualified names, whose
+		// packages no property of the class hides, as kotlinc's plugins
+		// refer to them: lib.LibPoint in a class with a val lib.
+		return false
+	}
+	return c.nonLocalVar(name)
+}
+
+// nonLocalVar reports whether name names a property that isn't a local:
+// of the class the code is in, an object in scope, an implicit receiver,
+// or a top-level or imported one.
+func (c *Checker) nonLocalVar(name string) bool {
 	if c.cls != nil && c.userProp(c.cls, name) != nil {
 		return true
+	}
+	if (c.cls != nil || c.staticCls != nil) && c.objectHasProp(name) {
+		// A property of a companion or another object in scope, which
+		// comes before a package of its name: c.length for a companion's
+		// val c, next to a package c.
+		return true
+	}
+	// So does one of an implicit receiver: b.length in fun A.f() or
+	// with(a) { }, for an A's val b.
+	recvHas := func(v *types.VarSym) bool {
+		cls := c.classOf(c.scope.narrowed(v).Flex())
+		return cls != nil && c.hasProp(cls, name)
+	}
+	if c.this != nil && recvHas(c.this) {
+		return true
+	}
+	for i := range c.recvs {
+		if recvHas(c.recvs[i].sym) {
+			return true
+		}
 	}
 	return c.topVar(name) != nil || c.valueImport(name)
 }
@@ -1638,14 +2159,13 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 			path += "/" + parts[i]
 			names = append(names, parts[i])
 		}
-		if cls := c.dottedClass(names); cls != nil {
-			return cls
-		}
-		if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
-			return c.aliasClass(a) // a.b.Alias, Outer.Alias
-		}
-		if first := c.findClass(id.Name); first != nil && first.External {
-			// A nested class of a class on the class path: Thread.State.
+		if first := c.findClass(id.Name); first != nil && !(c.defaultImported(id.Name, first) && c.u.isPackage(id.Name)) {
+			// As in K2, a first name that is a classifier in scope names
+			// it, not a package: in a package with a class a, a.b is a's
+			// nested b or nothing, even next to a package a with a class
+			// b. Thread.State, Outer.Nested. A root package still beats a
+			// default import: Package.Outer in a package Package isn't
+			// java.lang.Package's.
 			cls := first
 			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
 				cls = c.nestedOf(cls, parts[i])
@@ -1653,8 +2173,21 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 			if cls != nil {
 				return cls
 			}
+			if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
+				return c.aliasClass(a) // Outer.Alias
+			}
+			return nil
+		}
+		if cls := c.dottedClass(names); cls != nil {
+			return cls
+		}
+		if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
+			return c.aliasClass(a) // a.b.Alias
 		}
 		if c.u.isPackage(strings.ReplaceAll(path, "/", ".")) {
+			return nil
+		}
+		if c.binaryNestedName(names) {
 			return nil
 		}
 		if cls := c.u.ext.class(path); cls != nil {
@@ -1675,6 +2208,83 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 	}
 	return nil
+}
+
+// defaultImported reports whether a simple name finds cls, a class on the
+// class path, by a default import only: java.lang.Package, kotlin.Pair.
+func (c *Checker) defaultImported(name string, cls *types.ClassSym) bool {
+	if !cls.External || cls.Outer != nil {
+		return false
+	}
+	if _, ok := c.imports[name]; ok {
+		return false
+	}
+	pkg, _, _ := strings.Cut(cls.Name, "$")
+	if i := strings.LastIndex(pkg, "/"); i >= 0 {
+		pkg = pkg[:i]
+	} else {
+		return false
+	}
+	if pkg == "java/lang" {
+		return true
+	}
+	for _, d := range defaultPackages {
+		if strings.ReplaceAll(d, ".", "/") == pkg {
+			return true
+		}
+	}
+	return false
+}
+
+// binaryNestedName reports whether a qualified name spells a nested class
+// of the class path by its binary name, with a '$' after its outer class's
+// name: test.`Outer$Nested`, which Kotlin doesn't resolve.
+func (c *Checker) binaryNestedName(names []string) bool {
+	for i := 1; i < len(names); i++ {
+		outer, _, ok := strings.Cut(names[i], "$")
+		if ok && outer != "" && c.u.ext.class(strings.Join(names[:i], "/")+"/"+outer) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// qualifierValue reports, as K2 does, a class without a companion object
+// or a package as the receiver of a safe call x?.y, which is a value:
+// Test?.FOO for a Java class Test, or foo?.s for a package foo.
+func (c *Checker) qualifierValue(x syntax.Expr) bool {
+	if cls := c.classRef(x); cls != nil {
+		if objectOf(cls) != nil {
+			return false
+		}
+		c.errorf(x.Pos(), "classifier '%s' does not have a companion object, so it cannot be used as an expression", cls.DisplayName())
+		return true
+	}
+	if name := c.qualifiedName(x); name != "" && c.u.isPackage(name) {
+		c.errorf(x.Pos(), "expression expected, but a package name found")
+		return true
+	}
+	return false
+}
+
+// noteQualifierSafe records safe call x whose receiver qualifierValue
+// reported, which K2 also warns of as UNNECESSARY_SAFE_CALL.
+func (c *Checker) noteQualifierSafe(x *syntax.Member) {
+	if c.qualifierSafe == nil {
+		c.qualifierSafe = map[*syntax.Member]bool{}
+	}
+	c.qualifierSafe[x] = true
+}
+
+// jdkPackage reports whether class name is in one of the JDK's packages,
+// in which Kotlin code can't be.
+func jdkPackage(name string) bool {
+	for _, p := range []string{"java/", "javax/", "jdk/", "sun/", "com/sun/"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // packagePrivate reports whether a Java member's access flags make it
@@ -1710,10 +2320,56 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	case cls.Private && !(cls.Internal && c.file.SuppressInvisible) && !(cls.PackagePrivate && c.samePackage(cls)):
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
+	case c.invisibleJavaOuter(cls) != nil:
+		c.errorf(p, "class %s is not public", c.invisibleJavaOuter(cls).DisplayName())
 	default:
+		c.checkModuleExport(cls, p)
 		return true
 	}
 	return false
+}
+
+// invisibleJavaOuter returns the Java class that Java class cls is nested
+// in, directly or not, that the code can't see, or nil: p.Foo.Nested is
+// as invisible as a package-private p.Foo outside p, though public.
+func (c *Checker) invisibleJavaOuter(cls *types.ClassSym) *types.ClassSym {
+	if cls.FromKotlin || c.u.ext == nil || c.file.SuppressInvisible {
+		return nil
+	}
+	for name := cls.Name; ; {
+		i := strings.LastIndexByte(name, '$')
+		if i <= strings.LastIndexByte(name, '/')+1 {
+			return nil
+		}
+		name = name[:i]
+		o := c.u.ext.class(name)
+		if o == nil {
+			return nil
+		}
+		if o.Ensure(); o.Missing || o.FromKotlin {
+			return nil
+		}
+		if o.Private && !(o.PackagePrivate && c.samePackage(o)) {
+			return o
+		}
+	}
+}
+
+// checkModuleExport reports a use of a JDK class whose module doesn't
+// export its package to all modules, as the program's unnamed module
+// needs: sun.awt.image's, of java.desktop. The class's type stays, as in
+// FIR.
+func (c *Checker) checkModuleExport(cls *types.ClassSym, p syntax.Pos) {
+	if c.u.ext == nil || c.u.ext.cp == nil || cls.Source {
+		return
+	}
+	if module, hidden := c.u.ext.cp.ModuleHidden(cls.Name); hidden {
+		pkg := ""
+		if i := strings.LastIndexByte(cls.Name, '/'); i >= 0 {
+			pkg = strings.ReplaceAll(cls.Name[:i], "/", ".")
+		}
+		c.errorf(p, "symbol is declared in module '%s' which does not export package '%s'", module, pkg)
+	}
 }
 
 // boundWith returns the first bound for which has holds of a type
@@ -1756,7 +2412,7 @@ func (c *Checker) jvmClass(t types.Type) *types.ClassSym {
 	case types.Class:
 		return t.C
 	}
-	if box, ok := boxes[t.K]; ok {
+	if box := types.PrimOf(t.K).Box; box != "" {
 		return c.u.ext.class(box)
 	}
 	return nil
@@ -1785,9 +2441,303 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 	for _, f := range ms {
 		c.inheritExtDefaults(f)
 	}
+	if !cls.External && len(ms) > 0 {
+		// A Java interface's getX() that a Kotlin property's accessor
+		// implements is the property's, which code reads by its name:
+		// a call getX() is unresolved, as in Kotlin.
+		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+			o := f.Owner
+			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
+		})
+	}
+	if len(ms) > 0 && (strings.HasPrefix(name, "get") || strings.HasPrefix(name, "is")) {
+		// A Java class's method that overrides a Kotlin property's getter
+		// is the property's too: x.getA() is unresolved, as in Kotlin, for
+		// a Java class extending a Kotlin class with a val a. Not one that
+		// overrides a Kotlin function as well, nor a setter's override,
+		// which kotlinc resolves.
+		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+			o := f.Owner
+			return !f.Static && o != nil && o.External && o.KotlinName == "" && !o.FromKotlin && isJavaClass(o) &&
+				kotlinAccessorImplements(o, o, f) && !overridesKotlinFun(o, f)
+		})
+	}
+	if len(ms) > 0 && slices.ContainsFunc(numberConversions, func(conv [2]string) bool { return conv[1] == name }) {
+		// A Java method of Number, or of a subclass, with the Java name of
+		// one of its conversions is that conversion to Kotlin: n.intValue()
+		// is unresolved, n.toInt() not. So is one it overrides, from an
+		// interface too.
+		if number := c.u.ext.class("java/lang/Number"); number != nil && cls.IsSubclassOf(number) {
+			ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+				o := f.Owner
+				return len(f.Params) == 0 && !f.Static && o != nil && o.External && !o.FromKotlin
+			})
+		}
+	}
+	ms = c.notHidden(cls, name, ms)
 	ms = c.intersectionDefaults(cls, ms)
+	ms = c.functionNOverrides(cls, ms)
+	ms = c.enhancedOverrides(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
+}
+
+// enhancedOverrides replaces each Java method of ms with a parameter of a
+// platform type that, in a Java method it overrides, an annotation makes
+// non-null, with a copy whose parameter is non-null: as in Kotlin, an
+// override inherits the nullability of its parameters, C's foo(F x) of
+// A's foo(@NotNull T x). So for a result of a platform type that a
+// Kotlin member it overrides gives as not null (see kotlinNonNullRet),
+// as K2 enhances it, with the read-only collection type of the members
+// it overrides (see readOnlyRet): List<String>, not MutableList<String>,
+// for a java.util.List.
+func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for i, f := range ms {
+		if f.Static || f.Owner == nil || f.Name == "<init>" {
+			continue
+		}
+		var fo *types.FunSym
+		if f.Ret.P && (isJavaClass(f.Owner) || f.Platform && f.Owner.Java != nil) && kotlinNonNullRet(f) {
+			cp := *f
+			cp.Ret.P, cp.Ret.N = false, false
+			if cp.Ret.K == types.Class && cp.Ret.C.ReadOnly != nil && readOnlyRet(f, cp.Ret.C.ReadOnly) {
+				cp.Ret.C = cp.Ret.C.ReadOnly
+			}
+			fo = &cp
+		}
+		if !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
+			if fo != nil {
+				if out == nil {
+					out = slices.Clone(ms)
+				}
+				out[i] = fo
+			}
+			continue
+		}
+		f.Owner.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || !isJavaClass(s) {
+				return true
+			}
+			for _, g := range s.Methods[f.Name] {
+				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) && !c.substOverrides(f, g) {
+					continue
+				}
+				for j, p := range f.Params {
+					if q := g.Params[j].Type; p.Type.P && !q.P && !types.MayBeNull(q) && q.K != types.Invalid {
+						if fo == nil {
+							cp := *f
+							cp.Params = slices.Clone(f.Params)
+							fo = &cp
+						}
+						if fo.Params[j] == p {
+							v := *p
+							v.Type = p.Type.NonNull()
+							fo.Params[j] = &v
+						}
+					}
+				}
+			}
+			return true
+		})
+		if fo == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		out[i] = fo
+	}
+	if out == nil {
+		return ms
+	}
+	return out
+}
+
+// kotlinNonNullRet reports whether Java method f overrides a Kotlin
+// member whose result can't be null: a Kotlin class's, a built-in
+// collection type's, or a built-in class's, as Any's toString(). K2
+// takes the nullability of a Java method's result from what it
+// overrides, so that StringBuilder().toString() and
+// ArrayList<Int>().iterator() aren't null.
+// f is a Java class's method, or the Java interface's member of a
+// built-in collection type that doesn't declare it, MutableList's
+// iterator() that MutableCollection does.
+func kotlinNonNullRet(f *types.FunSym) bool {
+	found := false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner {
+			return true
+		}
+		// The Java classes that are Kotlin built-in ones: Any's
+		// toString(): String, CharSequence's subSequence(): CharSequence.
+		switch s.Name {
+		case "java/lang/Object":
+			found = f.Name == "toString" && len(f.Params) == 0
+			return !found
+		case "java/lang/CharSequence":
+			if f.Name == "subSequence" && len(f.Params) == 2 {
+				found = true
+				return false
+			}
+		}
+		if isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if !g.Static && !g.Private && !g.Platform && len(g.Params) == len(f.Params) && len(g.TypeParams) == len(f.TypeParams) &&
+				g.Name == f.Name && jvmDesc(g) == jvmDesc(f) && definitelyNonNull(g.Ret) {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// readOnlyRet reports whether the Kotlin members that Java method f
+// overrides return read-only collection type ro, and none another type:
+// List for a Kotlin interface's List result, not for ArrayList's
+// iterator(), which overrides MutableCollection's.
+func readOnlyRet(f *types.FunSym, ro *types.ClassSym) bool {
+	found, other := false, false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if !g.Static && !g.Private && !g.Platform && len(g.Params) == len(f.Params) && jvmDesc(g) == jvmDesc(f) {
+				if g.Ret.K == types.Class && g.Ret.C == ro {
+					found = true
+				} else {
+					other = true
+				}
+			}
+		}
+		return true
+	})
+	return found && !other
+}
+
+// substOverrides reports whether Java method f overrides g, a method of
+// a generic supertype, through the type arguments f's class gives it: B's
+// bar(String x) of A's bar(T x), for a B that extends A<String>, whose
+// descriptors differ.
+func (c *Checker) substOverrides(f, g *types.FunSym) bool {
+	if len(g.TypeParams) != 0 || len(f.TypeParams) != 0 || g.Owner == nil || len(g.Owner.TypeParams) == 0 {
+		return false
+	}
+	gs := c.memberSubst(f.Owner.This(), g.Owner)
+	if gs == nil {
+		return false
+	}
+	for j, p := range f.Params {
+		dp, ok := types.ParamDesc(p.Type)
+		dq, qok := types.ParamDesc(gs.ApplyIn(g.Params[j].Type))
+		if !ok || !qok || dp != dq {
+			return false
+		}
+	}
+	return true
+}
+
+// functionNOverrides adds to ms, for each Java method whose parameter is
+// a kotlin.jvm.functions.FunctionN and which overrides a Kotlin function
+// whose parameter there is a function type of more than 22 parameters,
+// the JVM's FunctionN, a copy that takes the function type: as in
+// Kotlin, both a lambda and a FunctionN are arguments.
+func (c *Checker) functionNOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for _, f := range ms {
+		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, functionNParam) {
+			continue
+		}
+		var g *types.FunSym
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || isJavaClass(s) || !f.Owner.IsSubclassOf(s) {
+				return true
+			}
+			for _, h := range s.Methods[f.Name] {
+				if !h.Static && len(h.Params) == len(f.Params) && jvmDesc(h) == jvmDesc(f) {
+					g = h
+					return false
+				}
+			}
+			return true
+		})
+		if g == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		fo := *f
+		fo.Params = slices.Clone(f.Params)
+		for j, p := range f.Params {
+			if t := g.Params[j].Type; functionNParam(p) && t.IsFunc() && t.A.Len() > 22 {
+				q := *p
+				q.Type = g.Params[j].Type
+				fo.Params[j] = &q
+			}
+		}
+		out = append(out, &fo)
+	}
+	if out == nil {
+		return ms
+	}
+	return out
+}
+
+func functionNParam(p *types.VarSym) bool {
+	t := p.Type.NonNull()
+	return t.K == types.Class && t.C != nil && t.C.Name == "kotlin/jvm/functions/FunctionN"
+}
+
+// notHidden adds to ms the methods of cls's supertypes compiled by
+// Kotlin that a method of ms hides by its erasure without overriding
+// them: their parameter types differ once the supertypes' type arguments
+// are substituted. Only a class of one name from two modules has them,
+// C's foo(G1<Int>?) and B's foo(G1<out Any?>?), for a C that extends
+// another module's B. As in K2, a call is ambiguous.
+func (c *Checker) notHidden(cls *types.ClassSym, name string, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for _, f := range ms {
+		if f.Static || f.Owner == nil || !f.Owner.FromKotlin {
+			continue
+		}
+		key := paramKey(f)
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || !s.FromKotlin || !f.Owner.IsSubclassOf(s) {
+				return true
+			}
+			for _, g := range s.Methods[name] {
+				if g.Static || g.Private || paramKey(g) != key || slices.Contains(ms, g) || slices.Contains(out, g) {
+					continue
+				}
+				if c.notOverridden(f, g) {
+					out = append(out, g)
+				}
+			}
+			return true
+		})
+	}
+	if out == nil {
+		return ms
+	}
+	return append(slices.Clone(ms), out...)
+}
+
+// notOverridden reports whether f, a method of a subclass of g's class,
+// both compiled by Kotlin, doesn't override g, though it has g's
+// erasure: its parameter types differ from g's, seen through f's class.
+func (c *Checker) notOverridden(f, g *types.FunSym) bool {
+	if f.Owner == nil || g.Owner == nil || !f.Owner.FromKotlin || !g.Owner.FromKotlin {
+		return false
+	}
+	ensureFun(f)
+	ensureFun(g)
+	return !c.sameParams(f.Owner.This(), f, g)
 }
 
 // intersectionDefaults replaces each method of ms without default values
@@ -1868,7 +2818,14 @@ func (c *Checker) inheritExtDefaults(f *types.FunSym) {
 		}
 		for _, g := range c.overridden(f.Owner, f) {
 			c.inheritExtDefaults(g)
-			if g.Decl == nil && declaresDefaults(g) {
+			// A class-path function's, or one of the program's Kotlin
+			// functions: a Java class's override of one.
+			gd, src := g.Decl.(*syntax.FunDecl)
+			if src && !funDeclaresDefaults(gd) && g.DefaultsOf != nil {
+				g = g.DefaultsOf
+				gd, src = g.Decl.(*syntax.FunDecl)
+			}
+			if g.Decl == nil && declaresDefaults(g) || src && funDeclaresDefaults(gd) && len(g.Params) == len(f.Params) {
 				for i, p := range f.Params {
 					p.Default = g.Params[i].Default
 				}
@@ -1905,7 +2862,7 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
-			if seen[params] || javaRemoveAt(f) {
+			if seen[params] || javaRemoveAt(cls, f) || kotlinShaped(s, f) {
 				continue
 			}
 			// The program's overloads in one class are distinct even when
@@ -1913,7 +2870,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			// renamed by @JvmName, and so are a class file's whose JVM
 			// names aren't their own. A class file's others are distinct
 			// by descriptor, but for covariant return bridges.
-			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
+			// So are two of a Java class's that differ only by their
+			// result, which only broken code declares: a call is
+			// ambiguous, as in K2.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) && (f.Builtin != types.NotBuiltin || !isJavaClass(s)) {
 				seen[params] = true
 			} else {
 				own = append(own, params)
@@ -1938,13 +2898,56 @@ func cloneable(cls *types.ClassSym) bool {
 	return found
 }
 
-// javaRemoveAt reports whether f is a Java List's remove(int), which
-// Kotlin, which sees every Java List as a MutableList, calls removeAt:
-// remove(x) on a list of Ints removes the element x.
-func javaRemoveAt(f *types.FunSym) bool {
-	return f.Name == "remove" && f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" &&
-		len(f.Params) == 1 && f.Params[0].Type.Flex() == types.IntType && strings.HasPrefix(f.Desc, "(I)") &&
-		f.Owner.IsSubclassOf(listInterface(f.Owner))
+// javaRemoveAt reports whether f, a method of class cls or of one of its
+// superclasses, is a Java List's remove(int), which Kotlin, which sees
+// every Java List as a MutableList, calls removeAt: remove(x) on a list of
+// Ints removes the element x. So is a remove(int) that a Java List
+// inherits from a class that isn't one, Java's or Kotlin's: of
+// class A extends AImpl implements List<String>, AImpl's.
+func javaRemoveAt(cls *types.ClassSym, f *types.FunSym) bool {
+	if f.Name != "remove" || f.Owner == nil || f.Owner.KotlinName != "" || len(f.Params) != 1 || f.Params[0].Type.Flex() != types.IntType {
+		return false
+	}
+	if f.Owner.External && !strings.HasPrefix(f.Desc, "(I)") {
+		return false
+	}
+	list := listInterface(cls)
+	if list == nil {
+		return false
+	}
+	// A Kotlin class's remove(element: Int) of its own MutableList<Int>
+	// is the element's.
+	return f.Owner.External || !f.Owner.IsSubclassOf(list)
+}
+
+// kotlinShaped reports whether f, a method of Java class s, overrides a
+// member of a Kotlin supertype of s with context parameters or a receiver,
+// which its JVM method takes first: foo(String a, int b) of
+// context(a: String) fun foo(b: Int), getBar(String a) of
+// context(a: String) val bar. K2 sees the Kotlin member, which is called
+// with its context arguments and receiver, not the Java method.
+func kotlinShaped(s *types.ClassSym, f *types.FunSym) bool {
+	if f.Static || !isJavaClass(s) {
+		return false
+	}
+	fits := func(g *types.FunSym) bool {
+		return g != nil && (len(g.Contexts) > 0 || g.Ext) && g.JVM() == f.Name && jvmArity(g) == len(f.Params)
+	}
+	found := false
+	s.Supertypes(func(t *types.ClassSym) bool {
+		if t == s || isJavaClass(t) || t.KotlinName != "" {
+			return true
+		}
+		found = slices.ContainsFunc(t.Methods[f.Name], fits) || slices.ContainsFunc(t.ExtMethods[f.Name], fits)
+		for _, p := range t.Props {
+			found = found || len(p.Contexts) > 0 && types.GetterJVM(p) == f.Name && len(p.Contexts) == len(f.Params)
+		}
+		for _, gs := range t.ExtProps {
+			found = found || slices.ContainsFunc(gs, fits)
+		}
+		return !found
+	})
+	return found
 }
 
 // listInterface returns the java.util.List class among cls's supertypes,
@@ -1960,22 +2963,31 @@ func listInterface(cls *types.ClassSym) *types.ClassSym {
 	return l
 }
 
-// javaStatics collects the static methods named name of cls and its
-// superclasses.
+// javaStatics collects the static methods named name of cls and, for a
+// Java class, of its Java superclasses, through Kotlin classes. A Kotlin
+// class has its own only: KotlinSub.javaStatic() is unresolved.
 func javaStatics(cls *types.ClassSym, name string) []*types.FunSym {
 	var out []*types.FunSym
 	hidden := map[string]bool{} // the parameters of a subclass's
 	for s := cls; s != nil; s = s.Super {
 		s.Ensure()
+		if s != cls && (!isJavaClass(cls) || !isJavaClass(s)) {
+			continue
+		}
+		// A subclass's static method hides its superclass's of the same
+		// parameters: GoogleApiAvailability.getInstance(). Two of one
+		// class both stay, and a call is ambiguous.
+		var own []string
 		for _, f := range s.Statics[name] {
-			// A subclass's static method hides its superclass's of the
-			// same parameters: GoogleApiAvailability.getInstance().
 			params, _, _ := strings.Cut(f.Desc, ")")
 			if f.Desc != "" && hidden[params] {
 				continue
 			}
-			hidden[params] = true
+			own = append(own, params)
 			out = append(out, f)
+		}
+		for _, p := range own {
+			hidden[p] = true
 		}
 	}
 	return out
@@ -2028,13 +3040,25 @@ func (c *Checker) dedupe(cands []callee) []callee {
 		}
 		return false
 	}
+	// A Java method whose boxed parameter an annotation makes non-null
+	// takes the primitive, as Kotlin sees it: B.foo(@NotNull Integer)
+	// overrides A.foo(int), both foo(Int) (KT-9182).
+	boxed := func(cl callee) bool {
+		if cl.f.Desc == "" || cl.f.Owner == nil || !cl.f.Owner.External {
+			return false
+		}
+		d, ok := types.ParamsDesc(cl.f.Params)
+		return ok && !strings.HasPrefix(cl.f.Desc, d)
+	}
 	any := false
 	for _, cl := range cands {
-		any = any || generic(cl)
+		any = any || generic(cl) || boxed(cl)
 	}
 	if !any {
 		return cands // erased descriptors already tell them apart
 	}
+	generic0 := generic
+	generic = func(cl callee) bool { return generic0(cl) || boxed(cl) }
 	out := cands[:0:0]
 outer:
 	for _, cl := range cands {
@@ -2064,8 +3088,8 @@ outer:
 	return out
 }
 
-// companionInvokes reports whether an invoke operator of companion
-// object comp, a member or an extension, may take x's arguments.
+// companionInvokes reports whether an invoke operator of object comp, a
+// companion or another, a member or an extension, may take x's arguments.
 func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 	if c.anyMayTake(c.javaMethods(comp, "invoke"), x) {
 		return true
@@ -2078,11 +3102,86 @@ func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 	return false
 }
 
+// ctorBeatsFuns reports whether a constructor of cls that may take call x
+// is more specific than each of the functions fs that may, as in Kotlin,
+// where a class and functions of its name at one level of scope are
+// candidates together: Foo("1") for a class Foo(str: String) and a fun
+// Foo(string: String?) constructs a Foo.
+func (c *Checker) ctorBeatsFuns(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if cls == nil || !constructible(cls) || cls.Object || cls.Interface || cls.Entries != nil || cls.Array {
+		return false
+	}
+	var fit []*types.FunSym
+	for _, f := range fs {
+		if c.mayTake(f, x) {
+			fit = append(fit, f)
+		}
+	}
+	if len(fit) == 0 {
+		return false
+	}
+	ctors := cls.Ctors
+	if !cls.External {
+		ctors = c.visibleCtors(cls)
+	}
+	for _, k := range ctors {
+		if !c.mayTake(k, x) {
+			continue
+		}
+		if !slices.ContainsFunc(fit, func(g *types.FunSym) bool { return !c.paramsMoreSpecific(k, g) || c.paramsMoreSpecific(g, k) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// ctorsTake reports whether a constructor of cls may take call x.
+func (c *Checker) ctorsTake(cls *types.ClassSym, x *syntax.Call) bool {
+	if !constructible(cls) || cls.Object || cls.Interface || cls.Entries != nil || cls.Array {
+		return false
+	}
+	if cls.External {
+		return c.anyMayTake(cls.Ctors, x)
+	}
+	return c.anyMayTake(c.visibleCtors(cls), x)
+}
+
+// outerCompanion returns the companion object of the class cls is nested
+// in, if any.
+func outerCompanion(cls *types.ClassSym) *types.ClassSym {
+	if cls.Outer == nil {
+		return nil
+	}
+	return cls.Outer.Companion
+}
+
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	cls.Ensure()
+	c.platformConstruct(x, cls, p)
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
+	}
+	if cls.Object && c.companionInvokes(cls, x) {
+		// An object's invoke operator: E.f() for an object f with
+		// operator fun invoke() is E.f.invoke().
+		m := &syntax.Member{X: objectIdent(cls, p), Name: "invoke"}
+		m.P = p
+		x.Fun = m
+		return c.call(x, want, sink)
+	}
+	if comp := outerCompanion(cls); cls.Object && comp != nil && comp != cls {
+		// Or a function of its name in the companion of the class it is
+		// nested in: SourceLocation.NoLocation("") for an object
+		// NoLocation and a companion's fun NoLocation(description).
+		name := cls.DisplayName()
+		name = name[strings.LastIndexByte(name, '.')+1:]
+		if c.anyMayTake(c.accessible(comp, c.javaMethods(comp, name)), x) {
+			m := &syntax.Member{X: objectIdent(comp, p), Name: name}
+			m.P = p
+			x.Fun = m
+			return c.call(x, want, sink)
+		}
 	}
 	if cls.Object {
 		c.errorf(p, "expression '%s' of type '%s' cannot be invoked as a function", cls.DisplayName(), cls.DisplayName())
@@ -2091,6 +3190,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	}
 	if cls.Entries != nil && !cls.External {
 		c.errorf(p, "enum types cannot be instantiated")
+		c.args(x, nil)
+		return types.InvalidType
+	}
+	if cls.Annotation && x.FromRef {
+		c.errorf(p, "annotation class cannot be instantiated")
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -2103,6 +3207,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		if cls.Ensure(); cls.Retention != types.NoRetention {
 			return c.javaAnnotationDefault(x, cls, want, sink)
 		}
+	}
+	if _, explicit := x.Fun.(*syntax.Member); cls.Inner && x.Outer != nil && !explicit {
+		// An implicit outer instance, which an earlier check of the call
+		// found: this one records too that the lambdas around capture it.
+		c.value(x.Outer, noWant)
 	}
 	if cls.Inner && x.Outer == nil {
 		outer, ot := c.implicitOuter(cls.Outer, p)
@@ -2179,8 +3288,22 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			all = slices.Concat(all, cls.InternalCtors)
 		}
 		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		if len(own) > 0 && c.outerSubst[own[0]].Raw {
+			// Erased, on a raw outer (see innerConstruct), with the
+			// type arguments written for them.
+			own = nil
+			for _, a := range x.TypeArgs {
+				if a.Type != nil {
+					c.resolveType(a.Type)
+				}
+			}
+			x.TypeArgs = nil
+		}
+		// A protected constructor is also for code in the class's package,
+		// as in Java.
+		samePkg := c.javaPackage(cls)
 		for _, f := range all {
-			if !f.Protected {
+			if !f.Protected || samePkg {
 				ctors = append(ctors, f)
 				cands = append(cands, callee{f: f, tparams: append(own[:len(own):len(own)], f.TypeParams...), recv: c.outerSubst})
 			}
@@ -2272,12 +3395,32 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	if fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls) {
+	if (fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls)) && !c.javaClassNarrowed(fn.X) {
 		c.errorf(fn.P, "expression '%s' of type Int cannot be invoked as a function", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
+	if m := javaAnnotationElement(cls, fn.Name); m != nil {
+		// Kotlin sees a Java annotation's elements as properties.
+		c.errorf(fn.P, "expression '%s' of type %s cannot be invoked as a function", fn.Name, c.kclassOfJava(m.Ret))
+		c.args(x, nil)
+		return types.InvalidType
+	}
+	if hides := c.hidingExts(fn.Name, rt, x); len(hides) > 0 {
+		return c.resolve(x, hides, want, sink)
+	}
+	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
+	if slices.ContainsFunc(x.Names, func(n string) bool { return n != "" }) {
+		defer c.ambiguousNamedArgs(x, cls, rt)
+	}
+	if x.Operator {
+		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
+		if slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Operator }) && slices.ContainsFunc(c.extCalleesFor(fn.Name, rt, x), func(cl callee) bool { return cl.f.Operator && c.mayTake(cl.f, x) }) {
+			// A member without the operator modifier is inapplicable to
+			// the convention, so an operator extension wins over it.
+			ms = slices.DeleteFunc(ms, func(f *types.FunSym) bool { return !f.Operator })
+		}
+	}
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
 	}
@@ -2303,7 +3446,8 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		// xs.forEach { } is Iterable.forEach's, if the lambda fits.
 		var fit []callee
 		for _, cl := range c.extCallees(fn.Name, rt) {
-			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) {
+			// Not getOrDefault(key, value), which the member hides.
+			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) && !platformDependentExt(cl.f) {
 				fit = append(fit, cl)
 			}
 		}
@@ -2315,18 +3459,29 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	// Members that don't apply give way to extensions, as in Kotlin:
 	// Taggable's tag(type) to the extension tag<T>(), BigDecimal's
 	// plus(MathContext) to the operator BigDecimal.plus(BigDecimal).
-	if exts := c.extCalleesFor(fn.Name, rt, x); len(exts) > 0 {
+	exts := c.extCalleesFor(fn.Name, rt, x)
+	if slices.ContainsFunc(exts, func(cl callee) bool { return platformDependentExt(cl.f) }) {
+		// The member hides them, and the others don't take the arguments.
+		exts = slices.DeleteFunc(exts, func(cl callee) bool {
+			_, ok := mapArgs(cl.f, x)
+			return !ok || platformDependentExt(cl.f) && slices.ContainsFunc(ms, func(f *types.FunSym) bool { return len(f.Params) == len(cl.f.Params) })
+		})
+	}
+	if len(exts) > 0 {
 		fit := false
 		for _, f := range ms {
 			fit = fit || c.mayTake(f, x)
 		}
-		if !fit {
+		if !fit || c.refsMissAll(cands, x) && !c.refsMissAll(exts, x) {
 			return c.resolve(x, exts, want, sink)
 		}
-		if !x.Operator && hasLambda(x.Args) {
+		if !x.Operator && hasLambda(x.Args) || len(c.stubs) > 0 {
 			// The arguments' types, without the lambdas, decide: a
 			// LazyListScope's items(list) { } is the extension's, not
-			// the member items(count: Int) { }.
+			// the member items(count: Int) { }. So they do in a builder's
+			// lambda, where the member's call, inferred with the
+			// builder's variables, reports its errors only later:
+			// addAll(arrayOf(1)) in buildList { } is the extension's.
 			ts := c.argTypes(x)
 			gs := make([]*types.FunSym, len(exts))
 			for i, cl := range exts {
@@ -2347,6 +3502,13 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		}
 	}
 	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// platformDependentExt reports whether f is one of the standard library's
+// extensions marked @PlatformDependent, Map's getOrDefault(key, value) and
+// MutableMap's remove(key, value): on the JVM, the member hides them.
+func platformDependentExt(f *types.FunSym) bool {
+	return f.Ext && strings.HasPrefix(f.Facade, "kotlin/collections/") && len(f.Params) == 2 && (f.Name == "remove" || f.Name == "getOrDefault")
 }
 
 // mapGet returns the type t of a call x of a member of cls, or t? for
@@ -2456,8 +3618,30 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 		c.errorf(x.P, "unresolved reference: %s", x.Name)
 		return types.InvalidType
 	}
+	if fs := c.visibleStaticFields(cls, x.Name); len(fs) > 1 {
+		c.errorf(x.P, "overload resolution ambiguity: %s is a static field of both %s and %s", x.Name, fs[0].Owner.DisplayName(), fs[1].Owner.DisplayName())
+	}
+	if f.Ambiguous {
+		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+	}
 	x.Field = f
 	return f.Type
+}
+
+// inferSyntheticGetter infers the return type of the program's override
+// in cls of a Java getter, getName(), whose synthetic property is name:
+// as in kotlinc, a call name() that the class's property being inferred
+// gives way to tries that property's invoke first, so a getter that reads
+// the property runs into the recursion (KT-57166).
+func (c *Checker) inferSyntheticGetter(cls *types.ClassSym, name string) {
+	if r, _ := utf8.DecodeRuneInString(name); !unicode.IsLower(r) {
+		return
+	}
+	for _, f := range c.javaMethods(cls, types.GetterName(name)) {
+		if f.Owner == cls && !f.Resolved && f.Infer != nil && len(f.Params) == 0 && c.javaAccessorIn(cls, f) && !overridesKotlinFun(cls, f) {
+			ensureFun(f)
+		}
+	}
 }
 
 // javaProperty checks x.name on a Java object, which Kotlin maps to
@@ -2479,13 +3663,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		x.Getter, x.Setter = kp.Getter, kp.Setter
 		return c.memberSubst(rt, kp.Getter.Owner).Apply(kp.Getter.Ret), true
 	}
-	// Kotlin decapitalizes the name of getTypeName(): typeName. A
-	// capitalized name, as TypeName, names a class, not the getter.
-	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) {
+	// Nor is a name that can't start a Java identifier, as `1` of get1().
+	if r, _ := utf8.DecodeRuneInString(x.Name); !unicode.IsLetter(r) && r != '_' && r != '$' {
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
-	special := false
+	special, annotElem := false, false
 	switch {
 	case x.Name == "length" && c.isCharSequence(cls):
 		getterName, special = "length", true // Kotlin's CharSequence.length property
@@ -2495,45 +3678,70 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		getterName, special = x.Name, true // Kotlin's Enum.name and Enum.ordinal
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
+		annotElem = true
+	case recordComponent(cls, x.Name):
+		getterName, special = x.Name, true // a Java record's component: x()
 	}
 	setterName := types.SetterName(x.Name)
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
-	if (getterName == "getFirst" || getterName == "getLast") && c.isSubclassOf(cls, "java/util/List") && !c.isSubclassOf(cls, "java/util/Deque") {
-		// JDK 21's List.getFirst() and getLast(), deprecated in Kotlin's
-		// List, aren't properties: list.last is the program's or the
-		// standard library's.
+	if (getterName == "getFirst" || getterName == "getLast") && cls.KotlinName != "" {
+		// JDK 21's List.getFirst() and getLast(), hidden in Kotlin's
+		// List, aren't its properties: list.last is the program's or the
+		// standard library's. Those of a Java class's or the program's
+		// overrides of them are, deprecated (see
+		// deprecatedOverrideOfHidden).
 		return types.InvalidType, false
 	}
-	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
-		// Only Java methods are seen as properties, and the program's
-		// overrides of them.
-		// isX() is the getter of isX whatever its result, as Rx's
-		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
-			x.Getter = f
-		}
-	}
-	if x.Getter == nil && !special && getterName == x.Name {
-		// isX of getIsX(), whose setter is setIsX(), when there is no
-		// boolean isX().
-		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
-		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
-			if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
-				x.Getter, setterName = f, "set"+alt[3:]
+	getter := func(name string) *types.FunSym {
+		var g *types.FunSym
+		for _, f := range c.accessible(cls, c.javaMethods(cls, name)) {
+			// Only Java methods are seen as properties, and the program's
+			// overrides of them; not generic ones, nor an annotation's
+			// elements, but by their own names (see annotElem).
+			// isX() is the getter of isX whatever its result, as Rx's
+			// Maybe.isEmpty(), a Single<Boolean>.
+			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
+				!overridesKotlinFun(cls, f) && (special || f.Owner == nil || !isAnnotationClass(f.Owner)) {
+				g = f
 			}
 		}
+		return g
 	}
-	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
-		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
-			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
-				x.Getter, setterName = f, acronymAccessor("set", x.Name)
+	if special {
+		x.Getter = getter(getterName)
+	} else {
+		// K2's getters of a property, getUrl() and getURL() of url, of
+		// which two are ambiguous.
+		var found []*types.FunSym
+		for _, name := range javaGetterNames(x.Name) {
+			if g := getter(name); g != nil {
+				found = append(found, g)
+			}
+		}
+		if len(found) > 1 {
+			c.errorf(x.P, "overload resolution ambiguity: %s is the property of %s() and %s()", x.Name, found[0].Name, found[1].Name)
+			return types.InvalidType, true
+		}
+		if len(found) == 1 {
+			// The setter of getX() or isX() is setX().
+			x.Getter = found[0]
+			if g := x.Getter.Name; strings.HasPrefix(g, "get") {
+				setterName = "set" + g[3:]
+			} else {
+				setterName = "set" + g[2:]
 			}
 		}
 	}
 	if x.Getter == nil {
 		return types.InvalidType, false
+	}
+	if g := x.Getter; g.InProgress && !g.Resolved {
+		// The program's override whose return type is being inferred:
+		// override fun getFoo() = foo.
+		c.errorf(x.P, "type checking has run into a recursive problem; specify the return type of '%s'", g.Name)
+		return types.InvalidType, true
 	}
 	sub := c.memberSubst(rt, x.Getter.Owner)
 	// A setter may return a value, which an assignment drops: Android's
@@ -2553,17 +3761,56 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		return true
 	})
 	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
-		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported &&
-			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported && len(f.TypeParams) == 0 && c.pairedSetter(cls, f, getters) {
 			x.Setter = f
 		}
 	}
+	if annotElem && x.Getter.Name == x.Name {
+		return c.kclassOfJava(sub.Apply(x.Getter.Ret)), true // a Class element is a KClass
+	}
 	return sub.Apply(x.Getter.Ret), true
+}
+
+// javaDeclTargets are the targets kotlinc gives a Java annotation class
+// with a @kotlin.annotation.Target but no @java.lang.annotation.Target,
+// before adding the former's.
+const javaDeclTargets = types.TargetClass | types.TargetAnnotationClass | types.TargetField | types.TargetLocalVariable |
+	types.TargetValueParameter | types.TargetConstructor | types.TargetFunction | types.TargetGetter | types.TargetSetter |
+	types.TargetExpression
+
+// pairedSetter reports whether Java method f of cls is the setter of
+// one of getters: of its type, or overriding a supertype's method that
+// is, as JavaOverride.setFoo(@Nullable String) overrides
+// JavaBase.setFoo(String) for a @NotNull getFoo().
+func (c *Checker) pairedSetter(cls *types.ClassSym, f *types.FunSym, getters []*types.FunSym) bool {
+	paired := func(f *types.FunSym) bool {
+		return slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) })
+	}
+	if paired(f) {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s != cls {
+			for _, m := range c.javaMethods(s, f.Name) {
+				if len(m.Params) == 1 && len(m.TypeParams) == 0 && m.Desc != "" && m.Desc == f.Desc && paired(m) {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // sameJavaType reports whether setter's parameter is of getter's type,
 // in Java's terms when both are Java methods: their descriptors.
 func sameJavaType(setter, getter *types.FunSym) bool {
+	if p, r := setter.Params[0].Type, getter.Ret; !p.P && !r.P && p.N != r.N && !p.IsPrimitive() {
+		// @Nullable String setFoo's for a @NotNull getFoo(), which
+		// K2 doesn't pair (KT-56506).
+		return false
+	}
 	if setter.Desc != "" && getter.Desc != "" && setter.Decl == nil && getter.Decl == nil {
 		_, ret, _ := strings.Cut(getter.Desc, ")")
 		return strings.HasPrefix(setter.Desc, "("+ret+")")
@@ -2609,20 +3856,167 @@ func (c *Checker) javaAccessor(f *types.FunSym) bool {
 	return false
 }
 
-// acronymAccessor returns the name of the Java accessor, with prefix get
-// or set, of property p if p starts with an acronym, which Kotlin
-// decapitalizes as a whole: getFD() is fd, getURLConnection()
-// urlConnection. It returns "" for other names.
-func acronymAccessor(prefix, p string) string {
-	i := strings.IndexFunc(p, unicode.IsUpper)
-	if i < 0 {
-		i = len(p)
+// javaAccessorIn reports whether method f of class cls or a supertype
+// can be a Java property's getter or setter in cls (see javaAccessor):
+// also a Kotlin method that a Java supertype of cls declares too, as
+// Kotlin class AK's getX() is in Java class B extends AK implements AJ,
+// AJ declaring getX(), and in B's subclasses.
+func (c *Checker) javaAccessorIn(cls *types.ClassSym, f *types.FunSym) bool {
+	if c.javaAccessor(f) {
+		return true
 	}
-	if i < 2 {
-		return ""
+	if f.Static {
+		return false
 	}
-	return prefix + strings.ToUpper(p[:i]) + p[i:]
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.External && s.KotlinName == "" && s.Java == nil && s.KProps == nil && s.Name != "java/lang/Object" &&
+			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+		return !found
+	})
+	return found
 }
+
+// overridesKotlinFun reports whether method f overrides functions of
+// Kotlin classes only: as in K2 (KT-63067, KT-63076), a getter whose
+// overridden declarations all go back to Kotlin functions, a Java getX()
+// overriding a Kotlin fun getX() and a Kotlin override of that, is no
+// property's getter. One that goes back to a Java method, also through
+// a Kotlin override or beside a Kotlin function, is.
+//
+// The declarations are those of the classes of cls, the receiver's class,
+// which may implement a Java interface beside a Kotlin superclass's
+// function.
+func overridesKotlinFun(cls *types.ClassSym, f *types.FunSym) bool {
+	if f.Owner == nil || f.Static || cls == nil {
+		return false
+	}
+	declares := func(s *types.ClassSym) bool {
+		return slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+	}
+	var decls []*types.ClassSym
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if declares(s) {
+			decls = append(decls, s)
+		}
+		return true
+	})
+	kotlinRoot, javaRoot := false, false
+	for _, s := range decls {
+		root := !slices.ContainsFunc(decls, func(t *types.ClassSym) bool { return t != s && s.IsSubclassOf(t) })
+		if !root {
+			continue
+		}
+		if (!s.External || s.FromKotlin || s.KProps != nil) && s.Java == nil {
+			kotlinRoot = true
+		} else {
+			javaRoot = true
+		}
+	}
+	return kotlinRoot && !javaRoot
+}
+
+// javaGetterNames returns the names of the Java methods that are getters
+// of a property named p, as K2's possibleGetMethodNames: isX() of isX,
+// getUrl() or getURL() of url, whose name, decapitalized back, is p.
+// getURL() isn't uRL's, nor getКУ() кУ's: only ASCII letters change
+// case.
+func javaGetterNames(p string) []string {
+	var names []string
+	if startsWithIs(p) {
+		names = append(names, p)
+	}
+	c1 := capitalizeASCII(p)
+	names = append(names, "get"+c1)
+	if c2 := capitalizeFirstWordASCII(p); c2 != c1 {
+		names = append(names, "get"+c2)
+	}
+	return slices.DeleteFunc(names, func(n string) bool { return javaPropertyName(n) != p })
+}
+
+// javaPropertyName returns the name of the property whose getter is the
+// method named m, as K2's propertyNameByGetMethodName, or "": url of
+// getURL(), htmlFile of getHTMLFile(), isX of isX().
+func javaPropertyName(m string) string {
+	if strings.HasPrefix(m, "get") && len(m) > 3 && !isLowerASCII(m[3]) {
+		return decapitalizeSmartASCII(m[3:])
+	}
+	if startsWithIs(m) {
+		return m
+	}
+	return ""
+}
+
+// startsWithIs reports whether s is is followed by a character that
+// isn't an ASCII lower-case letter: isEmpty, as JvmAbi's.
+func startsWithIs(s string) bool {
+	return len(s) > 2 && strings.HasPrefix(s, "is") && !isLowerASCII(s[2])
+}
+
+func isLowerASCII(b byte) bool { return 'a' <= b && b <= 'z' }
+func isUpperASCII(b byte) bool { return 'A' <= b && b <= 'Z' }
+
+func capitalizeASCII(s string) string {
+	if s != "" && isLowerASCII(s[0]) {
+		return string(s[0]-'a'+'A') + s[1:]
+	}
+	return s
+}
+
+// capitalizeFirstWordASCII upper-cases the ASCII letters of the first
+// word of s, up to the first character after the first that isn't an
+// ASCII lower-case letter: URL of url, HTMLFile of htmlFile.
+func capitalizeFirstWordASCII(s string) string {
+	i := 1
+	for i < len(s) && isLowerASCII(s[i]) {
+		i++
+	}
+	return upperASCII(s[:i]) + s[i:]
+}
+
+// decapitalizeSmartASCII lower-cases the ASCII letters of the first word
+// of s, an acronym as a whole: url of URL, htmlFile of HTMLFile, as K2's
+// decapitalizeSmartForCompiler(asciiOnly = true).
+func decapitalizeSmartASCII(s string) string {
+	if s == "" || !isUpperASCII(s[0]) {
+		return s
+	}
+	if len(s) == 1 || !isUpperASCII(s[1]) {
+		return string(s[0]-'A'+'a') + s[1:]
+	}
+	i := 0
+	for i < len(s) && isUpperASCII(s[i]) {
+		i++
+	}
+	if i == len(s) {
+		return lowerASCII(s)
+	}
+	return lowerASCII(s[:i-1]) + s[i-1:]
+}
+
+func upperASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isLowerASCII(c) {
+			b[i] = c - 'a' + 'A'
+		}
+	}
+	return string(b)
+}
+
+func lowerASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if isUpperASCII(c) {
+			b[i] = c - 'A' + 'a'
+		}
+	}
+	return string(b)
+}
+
+// numberToCharDeprecation is that of kotlin.Number's toChar().
+var numberToCharDeprecation = types.Deprecation{Level: "ERROR", Message: "Direct conversion to Char is deprecated. Use toInt().toChar() or Char constructor instead.\n" +
+	"If you override toChar() function in your Number inheritor, it's recommended to gradually deprecate the overriding function and then remove it."}
 
 // numberConversions are kotlin.Number's functions and the methods of
 // java.lang.Number that they are.
@@ -2666,4 +4060,104 @@ func classFileDeprecation(d *classfile.Deprecation) *types.Deprecation {
 		return nil
 	}
 	return &types.Deprecation{Message: d.Message, Level: d.Level}
+}
+
+// equivalentFun reports whether f and g are one top-level function: the
+// same, or of the same package, name and signature, as one library's
+// functions in two modules on the class path.
+func equivalentFun(f, g *types.FunSym) bool {
+	if f == g {
+		return true
+	}
+	if f.Desc == "" || f.Desc != g.Desc || f.Name != g.Name || f.Facade == "" || g.Facade == "" || f.Ext != g.Ext {
+		return false
+	}
+	pkg := func(facade string) string {
+		i := strings.LastIndexByte(facade, '/')
+		return facade[:max(i, 0)]
+	}
+	return pkg(f.Facade) == pkg(g.Facade)
+}
+
+// javaCycle reports a supertype that is a class of the program's Java
+// sources in a cycle of its hierarchy, or that inherits from one:
+// interface A extends A, which javac rejects. kotlinc runs out of stack generating code for its subclasses.
+func (c *Checker) javaCycle(st *syntax.SuperType) {
+	if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !st.T.C.External || !c.u.ext.javaSource(st.T.C) {
+		return
+	}
+	// It, or a Java class it inherits from.
+	var cyclic *types.ClassSym
+	st.T.C.Supertypes(func(s *types.ClassSym) bool {
+		if s.External && c.u.ext.javaSource(s) && inherits(s, s, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
+			cyclic = s
+		}
+		return cyclic == nil
+	})
+	if cyclic != nil {
+		c.errorf(st.Type.P, "there's a cycle in the inheritance hierarchy of '%s'", cyclic.DisplayName())
+	}
+}
+
+// javaBoundCycle reports a type of a class of the program's Java sources
+// whose type parameters' bounds are a cycle, X extends Y, Y extends X,
+// which javac rejects. kotlinc can't write its erasure to metadata.
+func (c *Checker) javaBoundCycle(ref *syntax.TypeRef, t types.Type) {
+	if t.K != types.Class || t.C == nil || !t.C.External || len(t.C.TypeParams) == 0 || !c.u.ext.javaSource(t.C) {
+		return
+	}
+	for _, p := range t.C.TypeParams {
+		if types.ParamCycle(p) {
+			c.errorf(ref.P, "the upper bounds of the type parameters of '%s' are a cycle", t.C.DisplayName())
+			return
+		}
+	}
+}
+
+// javaHidden reports whether the functions over, which a function of cls
+// overrides, are all hidden by methods of Java classes cls inherits from
+// that override them with other parameter types, as Base's foo(Box box),
+// with a raw Box, does I<String>'s foo(Box<T>): the function overrides
+// nothing, as in K2.
+func javaHidden(cls *types.ClassSym, over []*types.FunSym) bool {
+	for _, g := range over {
+		hidden := false
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == cls || s == g.Owner || !isJavaClass(s) || !isJavaClass(g.Owner) || g.Owner.Name == charSequence || !s.IsSubclassOf(g.Owner) {
+				return true
+			}
+			for _, m := range s.Methods[g.Name] {
+				if !m.Static && !m.Private && len(m.Params) == len(g.Params) && !slices.Contains(over, m) && jvmDesc(m) == jvmDesc(g) {
+					hidden = true
+					return false
+				}
+			}
+			return true
+		})
+		if !hidden {
+			return false
+		}
+	}
+	return len(over) > 0
+}
+
+// javaAnnotationElement returns the element name of Java annotation class
+// cls, its abstract method without parameters, or nil.
+func javaAnnotationElement(cls *types.ClassSym, name string) *types.FunSym {
+	if cls.Ensure(); cls.Retention == types.NoRetention || !javaAnnotation(cls) {
+		return nil
+	}
+	for _, f := range cls.Methods[name] {
+		if f.Abstract && len(f.Params) == 0 && f.Owner == cls {
+			return f
+		}
+	}
+	return nil
+}
+
+// javaClassNarrowed tells whether x is a stable value smart cast by an is
+// check against a Java class written for a built-in type.
+func (c *Checker) javaClassNarrowed(x syntax.Expr) bool {
+	k, ok := c.narrowKeyOf(x)
+	return ok && c.scope.javaClassNarrowed(k.recv, k.sym)
 }

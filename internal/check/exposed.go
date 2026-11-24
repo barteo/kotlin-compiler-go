@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -38,10 +39,15 @@ const (
 	evPrivateInFile
 	evPrivateInClass
 	evLocal
+	// evPackagePrivate is a Java class's package visibility, Kotlin's
+	// PackagePrivate. It is as visible as internal: kotlinc reports
+	// neither an internal declaration that exposes a package-private
+	// class (in or outside its package) nor the reverse.
+	evPackagePrivate
 )
 
 var effNames = [...]string{"public", "protected", "protected (in different classes)", "internal", "internal & protected",
-	"internal & protected (in different classes)", "private-in-file", "private-in-class", "local"}
+	"internal & protected (in different classes)", "private-in-file", "private-in-class", "local", "public/*package*/"}
 
 // effVis is an effective visibility. cls is the class whose subclasses
 // see a protected one.
@@ -89,7 +95,7 @@ func (v effVis) relation(w effVis) permissiveness {
 		switch w.k {
 		case evPublic:
 			return permLess
-		case evInternal:
+		case evInternal, evPackagePrivate:
 			return permSame
 		case evProtected, evProtectedBound:
 			return permUnknown
@@ -107,7 +113,7 @@ func (v effVis) relation(w effVis) permissiveness {
 				return permMore
 			}
 			return permUnknown
-		case evInternal:
+		case evInternal, evPackagePrivate:
 			return permUnknown
 		}
 		return permMore
@@ -117,13 +123,13 @@ func (v effVis) relation(w effVis) permissiveness {
 			return permLess
 		case evProtectedBound:
 			return permSame
-		case evInternal, evInternalProtected:
+		case evInternal, evInternalProtected, evPackagePrivate:
 			return permUnknown
 		}
 		return permMore
 	case evInternalProtected:
 		switch w.k {
-		case evPublic, evInternal:
+		case evPublic, evInternal, evPackagePrivate:
 			return permLess
 		case evInternalProtected:
 			return containerRelation(v.cls, w.cls)
@@ -145,6 +151,16 @@ func (v effVis) relation(w effVis) permissiveness {
 			return permMore
 		}
 		return permLess
+	case evPackagePrivate:
+		switch w.k {
+		case evPublic:
+			return permLess
+		case evPrivateInClass, evPrivateInFile, evLocal, evInternalProtectedBound, evInternalProtected:
+			return permMore
+		case evPackagePrivate, evInternal:
+			return permSame
+		}
+		return permUnknown
 	}
 	return permUnknown
 }
@@ -154,7 +170,7 @@ func (v effVis) relation(w effVis) permissiveness {
 func (v effVis) lowerBound(w effVis) effVis {
 	lower := w.k == evPrivateInClass || w.k == evPrivateInFile || w.k == evLocal || w.k == evInternalProtectedBound
 	switch v.k {
-	case evInternal:
+	case evInternal, evPackagePrivate:
 		switch w.k {
 		case evPublic:
 			return v
@@ -170,7 +186,7 @@ func (v effVis) lowerBound(w effVis) effVis {
 			return v
 		case lower || w.k == evProtectedBound:
 			return w
-		case w.k == evInternal:
+		case w.k == evInternal || w.k == evPackagePrivate:
 			return effVis{evInternalProtected, v.cls}
 		case w.k == evInternalProtected:
 			if v.relation(w) == permMore {
@@ -302,8 +318,22 @@ func overridesInternal(p *types.VarSym, cls *types.ClassSym) bool {
 func classEffVis(cls *types.ClassSym) effVis {
 	switch {
 	case cls.External:
+		cls.Ensure()
 		if cls.Internal && !builtinCompanions[cls.Name] {
 			return effVis{k: evInternal}
+		}
+		if cls.PackagePrivate {
+			return effVis{k: evPackagePrivate}
+		}
+		outer := cmp.Or(cls.Outer, cls.JavaOuter)
+		switch {
+		case outer == nil || outer == cls:
+		case cls.ProtectedNested:
+			// A protected nested Java class: its outer class's
+			// subclasses see it.
+			return effVis{evProtected, outer}.lowerBound(classEffVis(outer))
+		case cls.Private:
+			return effVis{k: evPrivateInClass} // a private nested Java class
 		}
 		return effVis{k: evPublic}
 	case cls.Local || cls.Anonymous:

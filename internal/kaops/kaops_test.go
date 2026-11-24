@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
@@ -99,6 +100,16 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
 	}
 
+	open := func() uint64 {
+		resp, err := kcabi.Call(OpKaHandles, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire.NewReader(resp).Uint()
+	}
+	if n := open(); n != 3 {
+		t.Errorf("%d handles open, want the session's and two models'", n)
+	}
 	for _, h := range []int64{model, again, session} {
 		w = wire.Writer{}
 		w.Int(h)
@@ -106,8 +117,8 @@ func TestOpenUpdateClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if handles.Len() != 0 {
-		t.Errorf("%d handles left", handles.Len())
+	if n := open(); n != 0 {
+		t.Errorf("%d handles left", n)
 	}
 	w = wire.Writer{}
 	w.Int(session)
@@ -374,4 +385,57 @@ func readAnnotations(r *wire.Reader) []ka.Annotation {
 		out = append(out, *readAnnotation(r))
 	}
 	return out
+}
+
+// TestIdleMemory checks that the free memory is returned once the last
+// open session is closed and none is opened within idleDelay, and that
+// OpKaTrim leaves no library open.
+func TestIdleMemory(t *testing.T) {
+	freed := make(chan struct{}, 8)
+	defer func(d time.Duration, f func()) { idleDelay, freeMemory = d, f }(idleDelay, freeMemory)
+	idleDelay, freeMemory = 50*time.Millisecond, func() { freed <- struct{}{} }
+	open := func() int64 {
+		var w wire.Writer
+		w.String("")
+		w.Bool(true) // no JDK
+		w.String("m")
+		w.Uint(1)
+		w.Uint(0) // no class path
+		w.Uint(0) // no friend paths
+		resp, err := kcabi.Call(OpKaOpen, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire.NewReader(resp).Int()
+	}
+	closeHandle := func(h int64) {
+		var w wire.Writer
+		w.Int(h)
+		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b := open(), open()
+	closeHandle(a)
+	select {
+	case <-freed:
+		t.Fatal("memory freed while a session is open")
+	case <-time.After(4 * idleDelay):
+	}
+	closeHandle(b)
+	c := open() // within idleDelay: nothing is freed
+	select {
+	case <-freed:
+		t.Fatal("memory freed while a session is open")
+	case <-time.After(4 * idleDelay):
+	}
+	closeHandle(c)
+	select {
+	case <-freed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("memory not freed after the last session closed")
+	}
+	if _, err := kcabi.Call(OpKaTrim, nil); err != nil {
+		t.Fatal(err)
+	}
 }

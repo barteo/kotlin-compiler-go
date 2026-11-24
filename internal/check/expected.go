@@ -11,8 +11,9 @@ import (
 // call alone can't infer it.
 //
 // K2 completes a call that is the operand of as with the cast's type as
-// its expected type, if the call's return type is one of its own type
-// parameters: foo() as String infers foo's T as String. kc checks the
+// its expected type, if the call's return type is its one type
+// parameter, which its parameters don't have (see castExpectable): foo()
+// as String infers foo's T as String. kc checks the
 // operand without an expected type first, and only if that leaves a
 // variable it can't infer checks it again expecting the cast's type, so
 // code that infers on its own is checked as before.
@@ -21,7 +22,7 @@ import (
 func (c *Checker) castOperand(x *syntax.As) types.Type {
 	n := len(c.errs)
 	t := c.value(x.X, noWant)
-	if !c.cannotInferSince(n) || !retryableCall(x.X) {
+	if !c.cannotInferSince(n) || !retryableCall(x.X) || !castExpectable(x.X.(*syntax.Call).Sym) {
 		return t
 	}
 	m := len(c.errs)
@@ -35,6 +36,35 @@ func (c *Checker) castOperand(x *syntax.As) types.Type {
 	}
 	c.errs = c.errs[:n]
 	return c.value(x.X, want)
+}
+
+// castExpectable reports whether a call of f takes a cast's type as its
+// expected type, as K2's isFunctionForExpectTypeFromCastFeature: f has
+// one type parameter, which is its return type and isn't in its
+// parameters' or receiver's types. id(foo()) as String doesn't infer
+// id's V, which its parameter has, nor foo's T.
+func castExpectable(f *types.FunSym) bool {
+	if f == nil || len(f.TypeParams) != 1 || !f.Ret.IsParam() || f.Ret.Param() != f.TypeParams[0] {
+		return false
+	}
+	tp := f.TypeParams[0]
+	mentions := func(t types.Type) bool {
+		return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == tp })
+	}
+	if mentions(f.Recv) {
+		return false
+	}
+	for _, p := range f.Params {
+		if mentions(p.Type) {
+			return false
+		}
+	}
+	for _, p := range f.Contexts {
+		if mentions(p.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 // cannotInferSince reports whether one of the errors reported since the
@@ -134,4 +164,26 @@ func (c *Checker) branchTrial(s *system, t, target types.Type) *system {
 		queue = append(queue, c.directSupers(st)...)
 	}
 	return nil
+}
+
+// elvisRightFirst returns the type of y, the right side of an elvis whose
+// left call can't infer its variables on its own, which K2's elvis(x: K?,
+// y: K) fixes K from: a jump is Nothing, null Nothing?, and a simple
+// expression is checked on trial. ok is false if y has no proper type of
+// its own.
+func (c *Checker) elvisRightFirst(y syntax.Expr) (types.Type, bool) {
+	switch y.(type) {
+	case *syntax.Jump:
+		return types.NothingType, true
+	case *syntax.NullLit:
+		return types.NothingType.Nullable(), true
+	}
+	if !simpleExpr(y) {
+		return types.InvalidType, false
+	}
+	m := len(c.errs)
+	t := c.value(y, noWant)
+	ok := len(c.errs) == m && t.K != types.Invalid && !t.HasVars()
+	c.errs = c.errs[:m]
+	return t, ok
 }

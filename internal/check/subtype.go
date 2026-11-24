@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -10,6 +12,9 @@ import (
 // flexible: String! is both String and String?, and a Java List is both a
 // MutableList and a List.
 func (c *Checker) subtype(t, u types.Type) bool {
+	if c.pclaSub != nil {
+		t, u = c.pclaSub.Apply(t), c.pclaSub.Apply(u)
+	}
 	if c.subtype1(t, u) {
 		return true
 	}
@@ -21,9 +26,13 @@ func (c *Checker) subtype(t, u types.Type) bool {
 
 // readOnlyView returns a platform mutable collection type as the read-only
 // type: Kotlin sees java.util.List as (Mutable)List, which also takes
-// read-only lists.
+// read-only lists. Not one with a contravariant argument, List<? super T>,
+// which only a mutable collection can be: MutableList<in T>.
 func readOnlyView(u types.Type) (types.Type, bool) {
 	if !u.P || u.K != types.Class || u.C.ReadOnly == nil {
+		return u, false
+	}
+	if u.A != nil && slices.ContainsFunc(u.A.List, func(a types.Arg) bool { return a.V == types.In }) {
 		return u, false
 	}
 	u.C = u.C.ReadOnly
@@ -37,12 +46,16 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	switch {
 	case t == u, t.K == types.Invalid, u.K == types.Invalid, t.K == types.Nothing:
 		return true
+	case t.K == types.Null && t.P:
+		return true // Nothing!, as its lower bound Nothing (see withFlags)
 	case t.K == types.Null:
 		return types.AcceptsNull(u)
 	case t.K == types.Unit && u.K == types.Any:
 		return true // kotlin.Unit, an object
 	case t.K == types.Unit && u.K == types.Class && u.C.Name == "kotlin/Unit":
 		return true // Unit as a Unit?
+	case u.K == types.Unit && t.K == types.Class && t.C.Name == "kotlin/Unit" && (!t.N || t.P):
+		return true // a Unit! from Java, as Function1<Integer, Unit>'s
 	case t.K == types.Unit, u.K == types.Unit && !t.IsParam(), t.K == types.Range, u.K == types.Range, u.K == types.Nothing, u.K == types.Null:
 		return false
 	}
@@ -78,12 +91,17 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		}
 	}
 	if u.IsParam() {
-		return c.reachesParam(t, u.Param())
+		return c.reachesParam(t, u.Param(), u.N || t.D) // E & Any isn't null, whatever bounds E
 	}
 	t, u = t.NonNull(), u.NonNull()
 	if t.IsParam() {
 		if len(t.Param().Bounds) == 0 {
 			return u.K == types.Any
+		}
+		if t.IsIntersection() && u.K == types.Class && c.hasStub(u) && c.forkOverStubs(t, u) {
+			// Instances of a builder's variables' class that differ: its
+			// run's fork chooses one (see system.stubFork), none here.
+			return true
 		}
 		for _, b := range t.Param().Bounds {
 			if c.subtype(b.NonNull(), u) {
@@ -96,6 +114,13 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	case types.Any:
 		return true
 	case types.Class:
+		if t.K == types.Class && t.C == u.C.ArityOf && len(t.C.TypeParams) == 0 {
+			// A class without type parameters, as one of another
+			// module's of its name with some: K2 compares the arguments
+			// of the class it finds, none, and not those of the
+			// supertypes of a subclass.
+			return true
+		}
 		if u.A == nil {
 			// A non-generic class: no arguments to compare.
 			var tc *types.ClassSym
@@ -117,16 +142,17 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 }
 
 // reachesParam reports whether t is the type parameter p, or a parameter
-// bounded (directly or not) by p, as U is in <T, U : T>.
-func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym) bool {
-	if !t.IsParam() {
+// bounded (directly or not) by p, as U is in <T, U : T>. Unless nullOK, a
+// nullable bound doesn't reach p: W of <Z : F, W : Z?> isn't an F.
+func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym, nullOK bool) bool {
+	if !t.IsParam() || t.N && !nullOK {
 		return false
 	}
 	if t.Param() == p {
 		return true
 	}
 	for _, b := range t.Param().Bounds {
-		if c.reachesParam(b, p) {
+		if c.reachesParam(b, p, nullOK) {
 			return true
 		}
 	}
@@ -136,6 +162,11 @@ func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym) bool {
 // argsFit compares the type arguments of sup, which has u's class, with
 // u's, by each argument's variance.
 func (c *Checker) argsFit(sup, u types.Type) bool {
+	if sup.A == nil && u.A != nil && isRaw(sup) && sup.C == u.C {
+		// A raw Java type, as its lower bound: a raw List is a
+		// MutableList<Any?>, not a List<Any>.
+		sup = rawLower(sup)
+	}
 	if u.A == nil || sup.A == nil || sup.A.Len() != u.A.Len() {
 		return true // non-generic, or a raw Java type
 	}
@@ -171,8 +202,28 @@ func starArgBound(sup types.Type, i int) types.Type {
 		// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
 		// Interpreter<*, T, I> is an Intermediary<I>.
 		return classSubst(sup).Apply(tp.Bounds[0])
+	case sup.A.List[i].V == types.Star && selfBound(sup.C, tp):
+		// A recursive bound reads as itself with a star for the
+		// parameter, as K2 approximates the captured star: T of Out3<*>,
+		// for Out3<out T : Out3<T>>, is an Out3<*>.
+		return types.Subst{tp: {V: types.Star}}.Apply(tp.Bounds[0])
 	}
 	return types.AnyType.Nullable()
+}
+
+// selfBound reports whether the only bound of tp, a type parameter of cls,
+// is cls's class type of tp and no other parameter: T : Out3<T>.
+func selfBound(cls *types.ClassSym, tp *types.TypeParamSym) bool {
+	b := tp.Bounds[0]
+	if b.K != types.Class || b.C != cls || b.N || b.A.Len() != len(cls.TypeParams) {
+		return false
+	}
+	for j, a := range b.A.List {
+		if a.V != types.Inv || a.T.K != types.TypeParam || a.T.Param() != tp || cls.TypeParams[j] != tp {
+			return false
+		}
+	}
+	return true
 }
 
 // argFits reports whether type argument ta fits ua, of a type parameter
@@ -228,6 +279,11 @@ func (c *Checker) asSuper(t types.Type, target *types.ClassSym) (types.Type, boo
 	return st, ok
 }
 
+// platformArgs reports whether a type argument of t is of a platform type.
+func platformArgs(t types.Type) bool {
+	return t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.T.P })
+}
+
 func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (types.Type, bool) {
 	if depth > 50 {
 		return types.InvalidType, false
@@ -242,10 +298,24 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 			// callsInPlace(block) takes a Function<R>.
 			return types.GenericType(target, []types.Arg{{T: t.A.List[t.A.Len()-1].T}}), true
 		}
+		// A Java supertype's arguments are of platform types, which the
+		// program's own, through another supertype, are more precise
+		// than: class E : B(), A<String?>, for a Java B implementing
+		// A<String>, is an A<String?>.
+		var first types.Type
+		found := false
 		for _, s := range c.directSupers(t) {
 			if r, ok := c.asSuper1(s, target, depth+1); ok {
-				return r, true
+				if !platformArgs(r) {
+					return r, true
+				}
+				if !found {
+					first, found = r, true
+				}
 			}
+		}
+		if found {
+			return first, true
 		}
 	case types.TypeParam, types.TypeVar:
 		for _, b := range t.Param().Bounds {
@@ -255,10 +325,89 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 		}
 	case types.Int, types.Long, types.Double, types.Bool, types.Char, types.Float, types.Byte, types.Short, types.String:
 		if jc := c.jvmClass(t); jc != nil {
-			return c.asSuper1(types.ClassType(jc), target, depth+1)
+			r, ok := c.asSuper1(types.ClassType(jc), target, depth+1)
+			if ok && r.K == types.Class && (r.C.Name == "kotlin/Comparable" || r.C.Name == "java/lang/Comparable") && r.A.Len() == 1 {
+				// Kotlin declares Int : Comparable<Int>, whose argument,
+				// unlike java.lang.Integer's Comparable<Integer>, isn't
+				// a platform type: Int? isn't within the bound
+				// Comparable<in U!>! of a Java method's U.
+				if a := r.A.List[0]; a.T.P && a.T.NonNull() == t {
+					r = types.GenericType(r.C, []types.Arg{{V: a.V, T: t}})
+				}
+			}
+			return r, ok
 		}
 	}
 	return types.InvalidType, false
+}
+
+// isSubclass reports whether t is a subtype of class target judging only
+// by classes: whether asSuper(t, target) succeeds, without building the
+// substituted supertype. recvFits asks it for each candidate extension
+// of a call, which made asSuper's substitutions a fifth of checking.
+func (c *Checker) isSubclass(t types.Type, target *types.ClassSym) bool {
+	return c.isSubclass1(t.NonNull(), target, 0)
+}
+
+func (c *Checker) isSubclass1(t types.Type, target *types.ClassSym, depth int) bool {
+	if depth > 50 {
+		return false
+	}
+	switch t.K {
+	case types.Class:
+		if t.C == target {
+			return true
+		}
+		if t.C.Func && t.A != nil && target.Name == "kotlin/Function" && !t.C.Suspend && !t.C.Composable {
+			return true // as asSuper1
+		}
+		return c.classIsSubclass(t.C, target, depth)
+	case types.TypeParam, types.TypeVar:
+		for _, b := range t.Param().Bounds {
+			if c.isSubclass1(b.NonNull(), target, depth+1) {
+				return true
+			}
+		}
+	case types.Int, types.Long, types.Double, types.Bool, types.Char, types.Float, types.Byte, types.Short, types.String:
+		if jc := c.jvmClass(t); jc != nil {
+			return c.isSubclass1(types.ClassType(jc), target, depth+1)
+		}
+	}
+	return false
+}
+
+// classIsSubclass is isSubclass1 for class cls, whatever its type
+// arguments, which asSuper1's walk up its supertypes doesn't depend on.
+// The answer is cached per pair of classes, where asSuper caches its
+// results.
+func (c *Checker) classIsSubclass(cls, target *types.ClassSym, depth int) bool {
+	k := classPair{cls, target}
+	cache := c.u.cache(types.ClassType(cls), types.ClassType(target))
+	if r, ok := cache.subclasses.Load(k); ok {
+		return r.(bool)
+	}
+	cls.Ensure()
+	ok := false
+	if cls.Supers != nil {
+		for _, s := range cls.Supers {
+			if ok = c.isSubclass1(s, target, depth+1); ok {
+				break
+			}
+		}
+	} else {
+		// directSupers' raw supertypes, which have no type arguments.
+		if cls.Super != nil {
+			ok = c.isSubclass1(rawType(cls.Super), target, depth+1)
+		}
+		for _, i := range cls.Interfaces {
+			if ok {
+				break
+			}
+			ok = c.isSubclass1(rawType(i), target, depth+1)
+		}
+	}
+	cache.subclasses.Store(k, ok)
+	return ok
 }
 
 // directSupers returns the direct supertypes of a Java class type, with
@@ -290,21 +439,34 @@ func (c *Checker) directSupers(t types.Type) []types.Type {
 }
 
 // rawType returns a class used without type arguments, as Java code may
-// do: star projections for each of its type parameters.
+// do: a raw type, whose members are erased (see classSubst).
 func rawType(cls *types.ClassSym) types.Type {
 	cls.Ensure()
-	if len(cls.TypeParams) == 0 {
-		return types.ClassType(cls)
+	return types.ClassType(cls)
+}
+
+// erasure returns what type parameter p of a raw type is, as Kotlin
+// erases it: its first bound, itself erased, as a platform type. A raw
+// List's E is Any!, and a T : Comparable<T> a raw Comparable!.
+func erasure(p *types.TypeParamSym) types.Type {
+	b := p.Bound()
+	for seen := map[*types.TypeParamSym]bool{p: true}; b.IsParam() && !seen[b.Param()]; {
+		seen[b.Param()] = true
+		b = b.Param().Bound()
 	}
-	args := make([]types.Arg, len(cls.TypeParams))
-	for i := range args {
-		args[i] = types.Arg{V: types.Star}
+	if b.IsParam() {
+		b = types.AnyType
 	}
-	return types.GenericType(cls, args)
+	if b.K == types.Class && !b.C.Array {
+		b.A = nil
+	}
+	return b.Platform()
 }
 
 // classSubst maps the type parameters of t's class to t's arguments. A raw
-// type maps them to star projections.
+// type maps them to their erasures, and the types that mention them to
+// raw types (see types.Arg.Raw): a raw A's foo(T, List<T>) takes an Any!
+// and a raw List.
 func classSubst(t types.Type) types.Subst {
 	ps := t.C.TypeParams
 	if len(ps) == 0 {
@@ -318,7 +480,12 @@ func classSubst(t types.Type) types.Subst {
 				// A projection the parameter's own variance makes
 				// redundant, as out T of a Holder<out T>, is no capture.
 				s[p] = types.Arg{T: a.T}
+			} else if a.V == types.Star && p.Var == types.Out && !p.Bound().HasParams() {
+				// So is a star for an out T: Out<*> is Out<out Any?>.
+				s[p] = types.Arg{T: p.Bound()}
 			}
+		} else if t.A == nil {
+			s[p] = types.Arg{T: erasure(p), Raw: true}
 		} else {
 			s[p] = types.Arg{V: types.Star}
 		}
@@ -392,6 +559,13 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 		}
 		return a, true
 	}
+	if a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && a.N == b.N && a.P == b.P && c.sameType(a, b) {
+		// Of instances whose arguments differ only in their flexibility,
+		// as K2's common supertype, the first: MutableList<J> of
+		// MutableList<J> and MutableList<J!>, but MutableList<J!> of
+		// MutableList<J!> and MutableList<J>.
+		return a, true
+	}
 	if t, ok := c.stubJoin(a, b); ok {
 		return t, true
 	}
@@ -436,7 +610,8 @@ func joinNull(t, a, b types.Type) types.Type {
 // joinBranch joins the type of a branch of an if, when or try, bt, with
 // the result of the branches before it. Where they are different value
 // types, as Int and String, and the expected type is one of them, the
-// branch is reported, as kotlinc checks each branch against it.
+// mismatch is reported at p, the start of the if, when or try, where
+// kotlinc reports the whole expression's type not fitting it.
 func (c *Checker) joinBranch(result, bt, want types.Type, p syntax.Pos) (types.Type, bool) {
 	if want.K != types.Invalid && !want.HasVars() && isBuiltin(result) && isBuiltin(bt) && result.NonNull() != bt.NonNull() &&
 		!c.subtype(types.AnyType, want.NonNull()) {
@@ -469,6 +644,57 @@ func isBuiltin(t types.Type) bool {
 // that b also has, or Any. Marker interfaces such as Serializable, and
 // Java interfaces, are only used if nothing else is shared.
 func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
+	if b.IsIntersection() && !a.IsIntersection() {
+		a, b = b, a
+	}
+	if a.IsIntersection() {
+		// An intersection's supertypes are its components': Base & Base2
+		// and a Three, of Base and Base3, give Base & Base3 for Base2 :
+		// Base3.
+		var rs []types.Type
+		for _, comp := range a.Param().Bounds {
+			r := c.commonSuper(comp.NonNull(), b, depth)
+			if r.K == types.Any || slices.ContainsFunc(rs, func(o types.Type) bool { return c.subtype(o, r) }) {
+				continue
+			}
+			rs = slices.DeleteFunc(rs, func(o types.Type) bool { return c.subtype(r, o) })
+			rs = append(rs, r)
+		}
+		// A component that b is a subtype of, common to both, first: A<T>
+		// of B & A<T> and C & A<T>.
+		slices.SortStableFunc(rs, func(x, y types.Type) int {
+			ex := slices.Contains(a.Param().Bounds, x) && c.subtype(b, x)
+			ey := slices.Contains(a.Param().Bounds, y) && c.subtype(b, y)
+			switch {
+			case ex && !ey:
+				return -1
+			case ey && !ex:
+				return 1
+			}
+			return 0
+		})
+		switch {
+		case len(rs) == 0:
+			return types.AnyType
+		case len(rs) == 1 || slices.ContainsFunc(rs, func(t types.Type) bool {
+			// Generic class types may mention type parameters: Box<T> &
+			// Box<out Super> join Box<T> & Box<SubA> and Box<T> &
+			// Box<SubB>.
+			return !intersectable(t) && (t.K != types.Class || t.HasVars())
+		}):
+			return rs[0]
+		}
+		return c.intersect(rs)
+	}
+	// A type parameter's supertypes are its bounds, which may be type
+	// parameters too: APP_SERVICE : SERVICE and MODULE_SERVICE : SERVICE
+	// give SERVICE.
+	for p, seen := a, 0; p.IsParam() && seen < 8; seen++ {
+		if b.IsParam() && c.subtype(b, p.NonNull()) {
+			return p.NonNull()
+		}
+		p = p.Param().Bound()
+	}
 	if a.IsParam() {
 		a = a.Param().Bound().NonNull()
 	}
@@ -482,8 +708,17 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		if !ok {
 			continue
 		}
+		if isBuiltin(a) {
+			// A built-in's supertype as subtyping sees it, Comparable<String>
+			// and not java.lang.String's Comparable<String!>: the join with
+			// a Java class's Comparable<Date!> is Comparable<String & Date>,
+			// which a String is, not Comparable<(String & Date)?>.
+			if sa, ok := c.asSuper(a, s.C); ok {
+				s = sa
+			}
+		}
 		r := c.joinArgs(s, sb, depth)
-		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == ""
+		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0
 		if !markerInterfaces[s.C.Name] && !javaIface {
 			shared = append(shared, r)
 			continue
@@ -508,7 +743,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 func (c *Checker) minimalSupers(shared []types.Type) types.Type {
 	var min []types.Type
 	for _, s := range shared {
-		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" {
+		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0 {
 			continue // a Java class's supertypes keep the first
 		}
 		below := false
@@ -561,8 +796,11 @@ func (c *Checker) joinArgs(a, b types.Type, depth int) types.Type {
 				args[i] = x
 			case x.V == types.Inv && y.V == types.Inv && c.subtype(y.T, x.T):
 				args[i] = y
-			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T):
+			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T) && !(depth > 0 && c.emptyIntersection(x.T, y.T)):
 				// Or their intersection: In<A> and In<B> give In<A & B>.
+				// Nested, an empty one is a star, which keeps the type
+				// intersectable: Comparable<*> of String and Int in X<out
+				// Comparable<*>> & I<out Comparable<*>>.
 				args[i] = types.Arg{T: c.intersect([]types.Type{x.T, y.T})}
 			default:
 				args[i] = types.Arg{V: types.Star}
@@ -670,6 +908,30 @@ func (c *Checker) emptyIntersection(t, u types.Type) bool {
 	return false
 }
 
+// mayBeEmptyIntersection reports whether t & u may be empty, as K2's
+// FINAL_CLASS_AND_INTERFACE: a final class and an interface it doesn't
+// implement.
+func (c *Checker) mayBeEmptyIntersection(t, u types.Type) bool {
+	ts, us := c.boundClasses(t, nil, 0), c.boundClasses(u, nil, 0)
+	for _, a := range ts {
+		a.Ensure()
+		for _, b := range us {
+			b.Ensure()
+			if a.Interface == b.Interface || !a.Interface && !a.Final || !b.Interface && !b.Final {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(a), b); ok {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(b), a); ok {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // boundClasses appends the classes t is: its own, or those of a type
 // parameter's bounds. Any is none.
 func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) []*types.ClassSym {
@@ -689,4 +951,16 @@ func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) [
 		}
 	}
 	return out
+}
+
+// forkOverStubs reports whether components of intersection t are
+// different instances of class type u's class.
+func (c *Checker) forkOverStubs(t, u types.Type) bool {
+	var sups []types.Type
+	for _, comp := range t.Param().Bounds {
+		if sup, ok := c.asSuper(comp.NonNull(), u.C); ok && !slices.Contains(sups, sup) {
+			sups = append(sups, sup)
+		}
+	}
+	return len(sups) > 1
 }

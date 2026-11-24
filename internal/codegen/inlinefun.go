@@ -159,6 +159,25 @@ func (g *gen) inlineSource(x *syntax.Call, d *syntax.FunDecl) {
 	})
 }
 
+// storeSelf stores the receiver of a copy of an inline member of class
+// owner, on the stack, in a new local, which it returns: a value class's is
+// its underlying value, as in its -impl methods.
+func (g *gen) storeSelf(owner *types.ClassSym) int {
+	t := selfType(owner)
+	self := g.code.AllocLocal(desc(t))
+	g.code.Local(storeOp(t), self)
+	return self
+}
+
+// selfType returns the type of this in the code of class owner's
+// members: a value class's underlying value, as its -impl methods take it.
+func selfType(owner *types.ClassSym) types.Type {
+	if owner.Value {
+		return owner.Underlying.Type
+	}
+	return owner.This()
+}
+
 // inlineBody copies d's body, for call x whose context arguments and
 // receiver, if d is an extension, are on the stack. It leaves the
 // result, of d's result type.
@@ -177,16 +196,14 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	self := -1
 	switch {
 	case f.Ext && f.Owner != nil:
-		self = c.AllocLocal("L" + f.Owner.Name + ";")
-		c.Local(cf.ASTORE, self)
+		self = g.storeSelf(f.Owner)
 		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
 		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
 	case f.Ext:
 		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
 		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
 	case f.Owner != nil:
-		self = c.AllocLocal("L" + f.Owner.Name + ";")
-		c.Local(cf.ASTORE, self)
+		self = g.storeSelf(f.Owner)
 	}
 	for i := len(f.Contexts) - 1; i >= 0; i-- {
 		p := f.Contexts[i]

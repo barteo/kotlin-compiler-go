@@ -1,6 +1,8 @@
 package codegen
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -44,18 +46,26 @@ var renamedProps = map[string]bool{"size": true, "keys": true, "values": true, "
 var renamedOrder = []string{"values", "size", "keys", "entries"}
 
 // typeSafe are the members of Kotlin's collection types that Java declares
-// with Object parameters, by Kotlin type and name: the indices of those
-// parameters, and what the bridge returns for an argument of another
-// type.
-var typeSafe = map[string]map[string]safeBridge{
-	"kotlin/collections/Collection": {"contains": {[]int{0}, falseResult}},
-	"kotlin/collections/List":       {"indexOf": {[]int{0}, minusOne}, "lastIndexOf": {[]int{0}, minusOne}},
-	"kotlin/collections/Map": {
-		"containsKey": {[]int{0}, falseResult}, "containsValue": {[]int{0}, falseResult},
-		"get": {[]int{0}, nullResult}, "getOrDefault": {[]int{0}, defaultArg},
+// with Object parameters, by Kotlin type: the indices of those parameters,
+// and what the bridge returns for an argument of another type. They are
+// in the order Kotlin declares them, which kotlinc writes the bridges in.
+var typeSafe = map[string][]namedSafeBridge{
+	"kotlin/collections/Collection": {{"contains", safeBridge{[]int{0}, falseResult}}},
+	"kotlin/collections/List": {
+		{"indexOf", safeBridge{[]int{0}, minusOne}}, {"lastIndexOf", safeBridge{[]int{0}, minusOne}},
 	},
-	"kotlin/collections/MutableCollection": {"remove": {[]int{0}, falseResult}},
-	"kotlin/collections/MutableMap":        {"remove": {[]int{0}, nullResult}},
+	"kotlin/collections/Map": {
+		{"containsKey", safeBridge{[]int{0}, falseResult}}, {"containsValue", safeBridge{[]int{0}, falseResult}},
+		{"get", safeBridge{[]int{0}, nullResult}}, {"getOrDefault", safeBridge{[]int{0}, defaultArg}},
+	},
+	"kotlin/collections/MutableCollection": {{"remove", safeBridge{[]int{0}, falseResult}}},
+	"kotlin/collections/MutableMap":        {{"remove", safeBridge{[]int{0}, nullResult}}},
+}
+
+// namedSafeBridge is a type-safe bridge of a member by its name.
+type namedSafeBridge struct {
+	name string
+	safeBridge
 }
 
 // safeBridge describes a type-safe bridge: the parameters it checks and
@@ -417,7 +427,8 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 			continue
 		}
 		s := argSubst(st)
-		for name, sb := range safe {
+		for _, nb := range safe {
+			name, sb := nb.name, nb.safeBridge
 			if name == "getOrDefault" && !bySuper[st.C] {
 				continue // a default method of Java's Map: only a superclass implements it
 			}
@@ -468,7 +479,7 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 				descs := []string{java}
 				if r := view[strings.IndexByte(view, ')'):]; r != java[strings.IndexByte(java, ')'):] {
 					// The class's types, but Object for the checked ones.
-					vps := descParams(view)
+					vps := cf.DescParams(view)
 					for _, pi := range sb.params {
 						vps[pi] = "Ljava/lang/Object;"
 					}
@@ -510,8 +521,9 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 				s[p] = st.A.Get(i)
 			}
 		}
-		for _, fs := range m.Methods {
-			for _, f := range fs {
+		// By name: the class file doesn't depend on the map's order.
+		for _, name := range slices.Sorted(maps.Keys(m.Methods)) {
+			for _, f := range m.Methods[name] {
 				if f.Static || f.Platform && !mutating[f.Name] || f.Owner != m {
 					continue
 				}
@@ -688,7 +700,7 @@ func (g *gen) markSynthetic(m collMethod) {
 func (g *gen) collMethodStart(access uint16, name, d string) ([]int, []string) {
 	g.code = g.cls.NewMethod(access, name, d)
 	g.code.AllocLocal("L" + g.owner.Name + ";")
-	ps := descParams(d)
+	ps := cf.DescParams(d)
 	slots := make([]int, len(ps))
 	for i, pd := range ps {
 		slots[i] = g.code.AllocLocal(pd)
@@ -707,14 +719,14 @@ func (g *gen) collBridge(m collMethod, access uint16) {
 			g.cls.LastMethod().SetSignature(s)
 		}
 	}
-	tps := descParams(target)
+	tps := cf.DescParams(target)
 	g.code.Local(cf.ALOAD, 0)
 	for i, pd := range ps {
 		g.code.Local(loadOpOf(pd), slots[i])
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeVirtual(g.owner, m.target[:strings.IndexByte(m.target, '(')], target)
-	ret, tret := m.desc[strings.IndexByte(m.desc, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(m.desc), cf.RetDesc(target)
 	g.convertDesc(tret, ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
@@ -725,14 +737,14 @@ func (g *gen) collBridge(m collMethod, access uint16) {
 func (g *gen) collSpecialized(cls *types.ClassSym, m collMethod) {
 	slots, ps := g.collMethodStart(cf.AccPublic, m.name, m.desc)
 	target := m.target[strings.IndexByte(m.target, '('):]
-	tps := descParams(target)
+	tps := cf.DescParams(target)
 	g.code.Local(cf.ALOAD, 0)
 	for i, pd := range ps {
 		g.code.Local(loadOpOf(pd), slots[i])
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeSpecial(cls.Super, m.target[:strings.IndexByte(m.target, '(')], target)
-	ret, tret := m.desc[strings.IndexByte(m.desc, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(m.desc), cf.RetDesc(target)
 	g.convertDesc(tret, ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
@@ -744,13 +756,13 @@ func (g *gen) collSpecialized(cls *types.ClassSym, m collMethod) {
 func (g *gen) collSafeBridge(m collMethod) {
 	slots, ps := g.collMethodStart(cf.AccPublic|cf.AccFinal|cf.AccBridge, m.name, m.desc)
 	target := m.target[strings.IndexByte(m.target, '('):]
-	tps := descParams(target)
-	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	tps := cf.DescParams(target)
+	ret := cf.RetDesc(m.desc)
 	for i, pi := range m.safe.params {
 		t := tps[pi]
 		box := t
 		if len(t) == 1 {
-			box = "L" + descBox[t] + ";"
+			box = "L" + boxClass(types.DescKind(t[0])) + ";"
 		}
 		if box == "Ljava/lang/Object;" {
 			continue
@@ -784,7 +796,7 @@ func (g *gen) collSafeBridge(m collMethod) {
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeVirtual(g.owner, m.name, target)
-	g.convertDesc(target[strings.IndexByte(target, ')')+1:], ret)
+	g.convertDesc(cf.RetDesc(target), ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
 }
@@ -803,7 +815,7 @@ func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarS
 		if m.kind != collGuard || m.name+m.desc != nd {
 			continue
 		}
-		ps := descParams(m.desc)
+		ps := cf.DescParams(m.desc)
 		var out []*types.VarSym
 		for _, p := range params {
 			guard := false
@@ -830,7 +842,7 @@ func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarS
 // safeResult returns what type-safe bridge m returns for an argument of
 // another type; ps are its parameters' descriptors.
 func (g *gen) safeResult(m collMethod, ps []string) {
-	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	ret := cf.RetDesc(m.desc)
 	switch m.safe.result {
 	case falseResult:
 		g.code.Iconst(0)
@@ -842,7 +854,7 @@ func (g *gen) safeResult(m collMethod, ps []string) {
 		last := len(ps) - 1
 		slot := 1
 		for _, pd := range ps[:last] {
-			slot += descSize(pd)
+			slot += cf.KindOf(pd).Size
 		}
 		g.code.Local(loadOpOf(ps[last]), slot)
 		g.convertDesc(ps[last], ret)

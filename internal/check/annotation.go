@@ -182,7 +182,9 @@ func annotationType(t types.Type, arrays bool) bool {
 		cls := t.C
 		switch {
 		case cls.Array:
-			return arrays && annotationType(types.ArrayElem(t), false) && !isUnsigned(types.ArrayElem(t))
+			// Array<Int> is not IntArray, which an annotation takes.
+			e := types.ArrayElem(t)
+			return arrays && annotationType(e, false) && !isUnsigned(e) && !(cls == types.ArrayClass && e.IsPrimitive())
 		case types.IsUnsignedArray(cls):
 			return arrays
 		case isUnsigned(t):

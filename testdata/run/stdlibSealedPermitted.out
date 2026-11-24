@@ -1,0 +1,9 @@
+Expr: sealed=true [Expr$Bin, Expr$Num, Expr$Zero, Gen, Lit]
+Expr$Bin: sealed=true [Expr$Bin$Add, Neg]
+Shape: sealed=true [Circle, Corner, Dir, Painter, Sq]
+Corner: sealed=true [Brush, Point]
+Empty: sealed=false null
+Plain: sealed=false null
+Lit: sealed=false null
+4
+[false, false, false, true, false, true]

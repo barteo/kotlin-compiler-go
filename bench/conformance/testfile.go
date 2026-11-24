@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -13,7 +14,10 @@ import (
 type test struct {
 	path       string // relative to the suite's directory
 	directives map[string][]string
-	modules    []*module
+	// global are the directives before the first module's // MODULE:
+	// line, which apply to all modules.
+	global  map[string][]string
+	modules []*module
 }
 
 type module struct {
@@ -22,6 +26,9 @@ type module struct {
 	friends   []string
 	dependsOn []string
 	files     []*srcFile
+	// directives are those after its // MODULE: line, which apply to it
+	// alone.
+	directives map[string][]string
 }
 
 type srcFile struct {
@@ -46,7 +53,7 @@ func readTest(abs, rel string) (*test, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := &test{path: rel, directives: map[string][]string{}}
+	t := &test{path: rel, directives: map[string][]string{}, global: map[string][]string{}}
 	var mod *module
 	var file *srcFile
 	var sb strings.Builder
@@ -57,9 +64,11 @@ func readTest(abs, rel string) (*test, error) {
 		}
 		sb.Reset()
 	}
+	named := false // whether the module's files have a // FILE: name
 	newModule := func(name string) {
 		flush()
-		mod = &module{name: name}
+		named = false
+		mod = &module{name: name, directives: map[string][]string{}}
 		t.modules = append(t.modules, mod)
 		file = &srcFile{name: defaultName}
 		mod.files = append(mod.files, file)
@@ -90,12 +99,27 @@ func readTest(abs, rel string) (*test, error) {
 			if mod == nil {
 				newModule("main")
 			}
+			if len(mod.files) == 1 && file.name == defaultName && !named && !onlyComments(sb.String()) {
+				// As in the test infrastructure, the code before a
+				// module's first // FILE: is that file's start: the
+				// import java.util.*; of a Java file's AbstractList.
+				file.name = m[2]
+				named = true
+				sb.WriteString("\n")
+				continue
+			}
+			named = true
 			flush()
 			file = &srcFile{name: m[2], line: i + 2}
 			mod.files = append(mod.files, file)
 			continue
 		case m != nil:
 			t.directives[m[1]] = append(t.directives[m[1]], m[2])
+			if mod != nil && t.has("MODULE") {
+				mod.directives[m[1]] = append(mod.directives[m[1]], m[2])
+			} else {
+				t.global[m[1]] = append(t.global[m[1]], m[2])
+			}
 		}
 		if mod == nil {
 			newModule("main")
@@ -181,8 +205,8 @@ func (t *test) files() []*srcFile {
 }
 
 // commonSkip returns why the harnesses don't run a test, or "": it is for
-// another platform, needs kotlinc's options or Java sources, or has
-// modules that aren't plain dependencies.
+// another platform, needs kotlinc's options or sources other than Kotlin
+// and Java, or has multiplatform modules (dependsOn).
 func commonSkip(t *test) string {
 	if vs := t.values("TARGET_BACKEND"); len(vs) > 0 && !t.anyOf("TARGET_BACKEND", "JVM", "JVM_IR") {
 		return "TARGET_BACKEND: " + strings.Join(vs, ", ")
@@ -194,7 +218,7 @@ func commonSkip(t *test) string {
 		return "TARGET_PLATFORM: " + strings.Join(vs, ", ")
 	}
 	for _, f := range t.values("LANGUAGE") {
-		if !defaultFeatures[f] {
+		if !defaultFeatures[f] && !kotlin24Features[f] {
 			return "LANGUAGE"
 		}
 	}
@@ -203,27 +227,27 @@ func commonSkip(t *test) string {
 			return d
 		}
 	}
-	if t.anyOf("JVM_DEFAULT_MODE", "enable") {
-		return "JVM_DEFAULT_MODE: enable"
-	}
 	if t.anyOf("LAMBDAS", "CLASS") {
 		return "LAMBDAS: CLASS" // -Xlambdas=class, which kc doesn't have
 	}
 	for _, f := range t.files() {
-		if !strings.HasSuffix(f.name, ".kt") {
-			if strings.HasSuffix(f.name, ".java") {
-				return "Java sources"
-			}
+		if !strings.HasSuffix(f.name, ".kt") && !isJava(f) {
 			return "other sources (" + filepath.Ext(f.name) + ")"
 		}
 	}
 	for _, m := range t.modules {
-		if len(m.friends) > 0 || len(m.dependsOn) > 0 {
-			return "modules with friends or dependsOn"
+		if len(m.dependsOn) > 0 {
+			return "modules with dependsOn"
 		}
 	}
 	return ""
 }
+
+// isJava reports whether f is a Java source file.
+func isJava(f *srcFile) bool { return strings.HasSuffix(f.name, ".java") }
+
+// hasJava reports whether t has Java sources.
+func hasJava(t *test) bool { return slices.ContainsFunc(t.files(), isJava) }
 
 // defaultFeatures are the LANGUAGE directive's values that change nothing:
 // features as they are by default in the Kotlin kc compiles, as in
@@ -231,13 +255,10 @@ func commonSkip(t *test) string {
 // among them.
 var defaultFeatures = map[string]bool{
 	"+AllowAccessToProtectedFieldFromSuperCompanion":       true,
-	"+AllowReifiedTypeInCatchClause":                       true,
 	"+AllowReturnInExpressionBodyWithExplicitType":         true,
 	"+AvoidWrongOptimizationOfTypeOperatorsOnValueClasses": true,
 	"+BreakContinueInInlineLambdas":                        true,
-	"+ContextParameters":                                   true,
 	"+DataFlowBasedExhaustiveness":                         true,
-	"+ExplicitBackingFields":                               true,
 	"-ForbidParenthesizedLhsInAssignments":                 true,
 	"+JvmNullOutSpilledCoroutineLocals":                    true,
 	"+MultiDollarInterpolation":                            true,
@@ -248,7 +269,49 @@ var defaultFeatures = map[string]bool{
 	"+ProperIeee754Comparisons":                            true,
 	"+RefinedVarargConversionRulesForCallableReferences":   true,
 	"+ResolveTopLevelLambdasAsSyntheticCallArgument":       true,
-	"+WhenGuards":                                          true,
+	"+WhenGuards": true,
+}
+
+// kotlin24Features are the LANGUAGE directive's values that turn on the
+// features new in Kotlin 2.4 (sinceVersion KOTLIN_2_4 in kotlinc's
+// LanguageVersionSettings.kt), which are on by default and so change
+// nothing either.
+var kotlin24Features = map[string]bool{
+	"+AllowReifiedTypeInCatchClause":                                true,
+	"+AnnotationAllUseSiteTarget":                                   true,
+	"+AnnotationsInMetadata":                                        true,
+	"+ApproximateLocalTypesInPublicDeclarations":                    true,
+	"+CacheLocalVariableScopes":                                     true,
+	"+ChangedIntersectionWithRecursiveCapturedType":                 true,
+	"+CheckOptInOnPureEnumEntries":                                  true,
+	"+CheckPackageInfoNullnessAnnotations":                          true,
+	"+ContextParameters":                                            true,
+	"+DisableMaxTypeDepthFromInitialConstraints":                    true,
+	"+DiscriminateNothingAsNullabilityConstraintInInference":        true,
+	"+DontCreateSyntheticPropertiesWithoutBaseJavaGetter":           true,
+	"+ExplicitBackingFields":                                        true,
+	"+ForbidClassLiteralWithPotentiallyNullableReifiedLhs":          true,
+	"+ForbidExposingLessVisibleTypesInInline":                       true,
+	"+ForbidGetSetValueWithTooManyParameters":                       true,
+	"+ForbidImplicitTypeAnnotationWithMissingDependency":            true,
+	"+ForbidInitializationBeforeDeclarationInAnonymous":             true,
+	"+ForbidOverriddenDefaultParametersInInline":                    true,
+	"+ForbidPrivateToThisUnboundCallableReferences":                 true,
+	"+ForbidRootIdePackageInCli":                                    true,
+	"+ForbidTypeAliasWithMissingDependencyType":                     true,
+	"+ImprovedExhaustivenessCheckForSubjectVariable24":              true,
+	"+ImprovedResolutionInSecondaryConstructors":                    true,
+	"+IrIntraModuleInlinerBeforeKlibSerialization":                  true,
+	"+JsAllowExportingSuspendFunctions":                             true,
+	"+LexicographicVariableReadinessCalculation":                    true,
+	"+LocalVariableTargetedAnnotationOnDestructuring":               true,
+	"+OverloadResolutionSpecificityForEnhancedJvmPrimitiveWrappers": true,
+	"+ProhibitExtendingAnnotationClasses":                           true,
+	"+ProperExhaustivenessCheckForJavaOpenSealedClass":              true,
+	"+ProperlyCheckUpperBoundsViolationsWhenCreatingFreshVariables": true,
+	"+PropertyParamAnnotationDefaultTargetMode":                     true,
+	"+ResolveEqualsRhsInDependentContextWithCompletion":             true,
+	"+TurnTypeCheckWarningsIntoErrors":                              true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {

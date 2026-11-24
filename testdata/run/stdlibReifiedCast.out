@@ -1,0 +1,8 @@
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success(null)
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.collections.Map<kotlin.String, kotlin.Int>)
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success([a, null])
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success([a, null])
+ClassCastException

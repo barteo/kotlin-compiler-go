@@ -398,10 +398,10 @@ bridges/fakeOverrideWithSeveralSuperDeclarations.kt	pass
 bridges/fakeOverrideWithSynthesizedImplementation.kt	pass		
 bridges/genericProperty.kt	pass		
 bridges/innerClassTypeParameters.kt	pass		
-bridges/internalMethodFakeOverrideInFriendModule.kt	skip	modules with friends or dependsOn	
-bridges/internalMethodOverrideInFriendModule.kt	skip	modules with friends or dependsOn	
+bridges/internalMethodFakeOverrideInFriendModule.kt	pass		
+bridges/internalMethodOverrideInFriendModule.kt	pass		
 bridges/internalMethodOverrideInOtherModule.kt	pass		
-bridges/internalMethodOverrideMultipleInheritance.kt	skip	modules with friends or dependsOn	
+bridges/internalMethodOverrideMultipleInheritance.kt	pass		
 bridges/internalMethodOverridePublishedApi.kt	pass		
 bridges/jsName.kt	skip	TARGET_BACKEND: JS_IR	
 bridges/jsNative.kt	skip	TARGET_BACKEND: JS_IR	
@@ -1232,7 +1232,7 @@ compileKotlinAgainstKotlin/inlineClasses/inlineClassFakeOverrideMangling.kt	pass
 compileKotlinAgainstKotlin/inlineClasses/inlineClassFromBinaryDependencies.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineFunctionCall.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineProperty.kt	pass		
-compileKotlinAgainstKotlin/inlineClasses/internalWithInlineClass.kt	skip	modules with friends or dependsOn	
+compileKotlinAgainstKotlin/inlineClasses/internalWithInlineClass.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/oldMangling/useOldMangling.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructor.kt	pass		
@@ -1242,21 +1242,21 @@ compileKotlinAgainstKotlin/inlineClasses/privateTopLevelValInDifferentModule.kt	
 compileKotlinAgainstKotlin/inlineClasses/suspendFunWithDefaultMangling.kt	pass		
 compileKotlinAgainstKotlin/innerClassConstructor.kt	pass		
 compileKotlinAgainstKotlin/interfaceDelegationAndBridgesProcessing.kt	pass		
-compileKotlinAgainstKotlin/internalSetterOverridden.kt	skip	modules with friends or dependsOn	
-compileKotlinAgainstKotlin/internalWithDefaultArgs.kt	skip	modules with friends or dependsOn	
-compileKotlinAgainstKotlin/internalWithOtherModuleName.kt	skip	modules with friends or dependsOn	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superCall.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superCallFromInterface.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superCallFromInterface2.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccess.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccessFromInterface.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccessFromInterface2.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/interop/enableAgainstNoCompatibility.kt	skip	JVM_DEFAULT_MODE: enable	
+compileKotlinAgainstKotlin/internalSetterOverridden.kt	pass		
+compileKotlinAgainstKotlin/internalWithDefaultArgs.kt	pass		
+compileKotlinAgainstKotlin/internalWithOtherModuleName.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superCall.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superCallFromInterface.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superCallFromInterface2.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccess.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccessFromInterface.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/enable/superPropAccessFromInterface2.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/interop/enableAgainstNoCompatibility.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/interop/likeMemberClash.kt	pass		
-compileKotlinAgainstKotlin/jvm8/defaults/interop/likeSpecialization.kt	skip	JVM_DEFAULT_MODE: enable	
+compileKotlinAgainstKotlin/jvm8/defaults/interop/likeSpecialization.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/interop/newAndOldSchemes2.kt	pass		
-compileKotlinAgainstKotlin/jvm8/defaults/interop/newAndOldSchemes2Compatibility.kt	skip	JVM_DEFAULT_MODE: enable	
-compileKotlinAgainstKotlin/jvm8/defaults/interop/noCompatibilityAgainstEnable.kt	skip	JVM_DEFAULT_MODE: enable	
+compileKotlinAgainstKotlin/jvm8/defaults/interop/newAndOldSchemes2Compatibility.kt	pass		
+compileKotlinAgainstKotlin/jvm8/defaults/interop/noCompatibilityAgainstEnable.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/superCall.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/superCallFromInterface.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/superPropAccess.kt	pass		
@@ -2411,8 +2411,8 @@ delegatedProperty/noTypeVariablesLeft.kt	pass
 delegatedProperty/observable.kt	pass		
 delegatedProperty/optimizedDelegatedProperties/definedInSources.kt	pass		
 delegatedProperty/optimizedDelegatedProperties/definedInSourcesWithNonNullParameter.kt	pass		
-delegatedProperty/optimizedDelegatedProperties/inSeparateModule.kt	skip	modules with friends or dependsOn	
-delegatedProperty/optimizedDelegatedProperties/inSeparateModuleWithNonNullParameter.kt	skip	modules with friends or dependsOn	
+delegatedProperty/optimizedDelegatedProperties/inSeparateModule.kt	pass		
+delegatedProperty/optimizedDelegatedProperties/inSeparateModuleWithNonNullParameter.kt	pass		
 delegatedProperty/optimizedDelegatedProperties/kt40815.kt	pass		
 delegatedProperty/optimizedDelegatedProperties/kt40815_2.kt	pass		
 delegatedProperty/optimizedDelegatedProperties/kt40815_3.kt	pass		
@@ -2824,7 +2824,7 @@ extensionFunctions/kt3298.kt	pass
 extensionFunctions/kt3646.kt	pass		
 extensionFunctions/kt3969.kt	pass		
 extensionFunctions/kt4228.kt	pass		
-extensionFunctions/kt475.kt	pass		
+extensionFunctions/kt475.kt	skip	needs a JDK before 21	
 extensionFunctions/kt5467.kt	pass		
 extensionFunctions/kt606.kt	pass		
 extensionFunctions/kt865.kt	pass		
@@ -2873,7 +2873,7 @@ fakeOverride/diamondFunction.kt	pass
 fakeOverride/fakeOverrideOfPrivateSetter.kt	pass		
 fakeOverride/fakeOverrideWithMissingClassInSignature.kt	pass		
 fakeOverride/function.kt	pass		
-fakeOverride/internalFromFriendModule.kt	skip	modules with friends or dependsOn	
+fakeOverride/internalFromFriendModule.kt	pass		
 fakeOverride/intersectionInLocal.kt	pass		
 fakeOverride/intersectionOverrideBetweenValAndVar.kt	pass		
 fakeOverride/kt40180.kt	skip	Java sources	
@@ -3529,7 +3529,7 @@ inline/crossinlineLambdaAllocation.kt	skip	IGNORE_BACKEND: JVM_IR
 inline/defaultArgs.kt	pass		
 inline/defaultArgsLateinitLowering.kt	pass		
 inline/defaultArgsLowering.kt	skip	LANGUAGE	
-inline/defaultArgsLoweringWithIntraModuleInliner.kt	skip	LANGUAGE	
+inline/defaultArgsLoweringWithIntraModuleInliner.kt	pass		
 inline/defaultArgsMultipleModules.kt	pass		
 inline/dontInlineFunctionCall.kt	pass		
 inline/expressionBodyWithLambdaCall.kt	pass		
@@ -4715,10 +4715,10 @@ jsAstOptimizations/tempVarDeclOnAssignment.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_
 jsCode/lambdaNoInline.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 jsCode/regex.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 jsName/peculiarIdentifiers.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
-jvm8/defaults/enable/kt55083_indyLambdaForFunInterface.kt	skip	JVM_DEFAULT_MODE: enable	
+jvm8/defaults/enable/kt55083_indyLambdaForFunInterface.kt	pass		
 kclass/kClassEnumArgument.kt	pass		
 kclass/kclass1.kt	pass		
-klib/kt33411.kt	skip	modules with friends or dependsOn	
+klib/kt33411.kt	pass		
 ktype/ktype1_basics1.kt	pass		
 ktype/ktype1_inner.kt	pass		
 ktype/nonReified_class.kt	pass		
@@ -4857,7 +4857,7 @@ lower/forLoopsLowering/vars.kt	pass
 lower/forLoopsLowering/withIndex.kt	skip	LANGUAGE	
 lower/forLoopsLowering/withIndexUInt.kt	skip	LANGUAGE	
 lower/localDelegatedProperty.kt	pass		
-mangling/internal.kt	skip	modules with friends or dependsOn	
+mangling/internal.kt	pass		
 mangling/internalOverride.kt	pass		
 mangling/internalOverrideSuperCall.kt	pass		
 mangling/multipleConstructors.kt	pass		
@@ -5628,7 +5628,7 @@ propertyCallableReference/valModule.kt	pass
 propertyCallableReference/varClass.kt	pass		
 propertyCallableReference/varExtension.kt	pass		
 propertyCallableReference/varModule.kt	pass		
-publishedApi/inlineFromFriendModule.kt	skip	modules with friends or dependsOn	
+publishedApi/inlineFromFriendModule.kt	pass		
 publishedApi/simple.kt	pass		
 publishedApi/topLevel.kt	pass		
 ranges/capturedLoopVar.kt	pass		
@@ -6947,20 +6947,20 @@ syntheticAccessors/accessorForProtected.kt	pass
 syntheticAccessors/accessorForProtectedInvokeVirtual.kt	pass		
 syntheticAccessors/accessorForProtectedPropertyReference.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/extensionFunction.kt	pass		
-syntheticAccessors/functionsWithDefaultValues/extensionFunctionCrossModuleCase.kt	skip	modules with friends or dependsOn	
-syntheticAccessors/functionsWithDefaultValues/extensionFunctionCrossModuleTransitiveCase.kt	skip	modules with friends or dependsOn	
+syntheticAccessors/functionsWithDefaultValues/extensionFunctionCrossModuleCase.kt	pass		
+syntheticAccessors/functionsWithDefaultValues/extensionFunctionCrossModuleTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/extensionFunctionTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/memberFunction.kt	pass		
-syntheticAccessors/functionsWithDefaultValues/memberFunctionCrossModuleCase.kt	skip	modules with friends or dependsOn	
-syntheticAccessors/functionsWithDefaultValues/memberFunctionCrossModuleTransitiveCase.kt	skip	modules with friends or dependsOn	
+syntheticAccessors/functionsWithDefaultValues/memberFunctionCrossModuleCase.kt	pass		
+syntheticAccessors/functionsWithDefaultValues/memberFunctionCrossModuleTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/memberFunctionTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/severalDefaultValues.kt	pass		
-syntheticAccessors/functionsWithDefaultValues/severalDefaultValuesCrossModuleCase.kt	skip	modules with friends or dependsOn	
-syntheticAccessors/functionsWithDefaultValues/severalDefaultValuesCrossModuleTransitiveCase.kt	skip	modules with friends or dependsOn	
+syntheticAccessors/functionsWithDefaultValues/severalDefaultValuesCrossModuleCase.kt	pass		
+syntheticAccessors/functionsWithDefaultValues/severalDefaultValuesCrossModuleTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/severalDefaultValuesTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/topLevelFunction.kt	pass		
-syntheticAccessors/functionsWithDefaultValues/topLevelFunctionCrossModuleCase.kt	skip	modules with friends or dependsOn	
-syntheticAccessors/functionsWithDefaultValues/topLevelFunctionCrossModuleTransitiveCase.kt	skip	modules with friends or dependsOn	
+syntheticAccessors/functionsWithDefaultValues/topLevelFunctionCrossModuleCase.kt	pass		
+syntheticAccessors/functionsWithDefaultValues/topLevelFunctionCrossModuleTransitiveCase.kt	pass		
 syntheticAccessors/functionsWithDefaultValues/topLevelFunctionTransitiveCase.kt	pass		
 syntheticAccessors/inline.kt	pass		
 syntheticAccessors/inlineInOtherClass.kt	pass		

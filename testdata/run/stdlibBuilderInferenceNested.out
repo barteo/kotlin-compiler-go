@@ -1,0 +1,10 @@
+Box[a]
+check true
+[s]
+unit
+nested
+Box[Out(o)]
+outer raised x
+inner raised 1.0
+object first
+Box[first]

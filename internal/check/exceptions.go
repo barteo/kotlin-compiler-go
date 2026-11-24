@@ -92,7 +92,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	}
 	block := func(b *syntax.Block) types.Type {
 		if pending != nil {
-			return c.branch(b, want, valueUsed, pending)
+			return c.ifBranch(b, want, valueUsed, true, pending)
 		}
 		return c.block(b, want, valueUsed)
 	}
@@ -104,6 +104,16 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	for _, cb := range x.Catches {
 		c.localAnnotations(cb.Annotations, catchSite)
 		t := c.resolveType(cb.Type)
+		if t.IsParam() && t.Param() != nil && !t.Param().Reified {
+			// The JVM's exception table names a class, which only an
+			// inlined copy knows.
+			c.errorf(cb.Type.P, "non-reified type parameters cannot be used by catch parameters")
+			t = types.InvalidType
+		}
+		if t.K == types.Nothing && !t.N {
+			c.errorf(cb.Type.P, "throwable type mismatch: actual type is 'Nothing'")
+			t = types.InvalidType
+		}
 		if t.K != types.Invalid && !c.throwable(t) {
 			c.errorf(cb.Type.P, "the type of a catch parameter must be a subtype of Throwable")
 			t = types.InvalidType
@@ -115,13 +125,16 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.push()
 		c.reset(bodyVars)
 		c.scope.narrows = append(c.scope.narrows, inBody...)
-		c.scope.declare(cb.Sym)
+		if cb.Name != "_" || cb.Quoted {
+			// An unnamed catch parameter, _, declares no name.
+			c.scope.declare(cb.Sym)
+		}
 		ends = append(ends, c.watchExit(nil))
 		bt := block(cb.Body)
 		c.pop()
 		allJump = allJump && bt.K == types.Nothing
 		if valueUsed {
-			j, ok := c.joinBranch(result, bt, want, cb.Body.P)
+			j, ok := c.joinBranch(result, bt, want, x.P)
 			if !ok {
 				c.errorf(cb.Body.P, "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
 				if x.Finally != nil {
@@ -142,15 +155,18 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.reset(handlerVars)
 		c.scope.narrows = append(c.scope.narrows, inFinally...)
 		finallyEnd = c.watchExit(nil)
+		// The finally block's own breaks and continues are kept apart
+		// from those of the try and its catch blocks.
+		saved := c.takeLoopExits(exits)
 		ft := c.block(x.Finally, noWant, false)
 		c.pop()
 		if ft.K == types.Nothing {
 			// A break or continue in the try or its catch blocks runs the
 			// finally block, which jumps instead: it doesn't leave the
 			// loop.
-			c.restoreLoopExits(exits)
 			return types.NothingType
 		}
+		c.addLoopExits(saved)
 	}
 	if !valueUsed {
 		if allJump {
@@ -175,6 +191,38 @@ func (c *Checker) loopExits() []loopExit {
 		exits[i] = loopExit{l.hasBreak, l.hasContinue, len(l.flow.breaks), len(l.flow.continues)}
 	}
 	return exits
+}
+
+// takeLoopExits returns the breaks and continues the loops have got
+// since exits, and restores them to exits.
+func (c *Checker) takeLoopExits(exits []loopExit) []loopJumps {
+	taken := make([]loopJumps, len(exits))
+	for i, e := range exits {
+		l := c.loops[i]
+		taken[i] = loopJumps{
+			hasBreak: l.hasBreak, hasContinue: l.hasContinue,
+			breaks: slices.Clone(l.flow.breaks[e.breaks:]), continues: slices.Clone(l.flow.continues[e.continues:]),
+		}
+	}
+	c.restoreLoopExits(exits)
+	return taken
+}
+
+// addLoopExits adds the breaks and continues takeLoopExits took back to
+// the loops.
+func (c *Checker) addLoopExits(taken []loopJumps) {
+	for i, t := range taken {
+		l := c.loops[i]
+		l.hasBreak, l.hasContinue = l.hasBreak || t.hasBreak, l.hasContinue || t.hasContinue
+		l.flow.breaks = append(l.flow.breaks, t.breaks...)
+		l.flow.continues = append(l.flow.continues, t.continues...)
+	}
+}
+
+// loopJumps are breaks and continues of a loop that takeLoopExits took.
+type loopJumps struct {
+	hasBreak, hasContinue bool
+	breaks, continues     []flowState
 }
 
 // restoreLoopExits forgets the breaks and continues of the loops that
@@ -206,7 +254,8 @@ func (c *Checker) throw(x *syntax.Jump) {
 		c.errs = c.errs[:n]
 		t = c.value(x.X, types.ClassType(th))
 	}
-	if t.K != types.Invalid && t.K != types.Nothing && !c.throwable(t.NonNull()) {
+	if t.K != types.Invalid && t.K != types.Nothing && (!c.throwable(t.NonNull()) || types.MayBeNull(t) && !t.P) {
+		// A platform value may be thrown, but not a nullable one.
 		c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Throwable was expected", t)
 	}
 }

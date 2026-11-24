@@ -60,4 +60,5 @@ fun main() {
     val found = util.Finder.find(listOf(1, 2, 3, 4), java.util.function.Predicate { it > 2 })
     val none = util.Finder.find(listOf(1, 2), java.util.function.Predicate { it + 1 > 5 }, 9)
     println("$found $none")
+    interop.interopDemo()
 }

@@ -3,7 +3,7 @@
 # preceding modules: ktor-io, ktor-utils, then ktor-http.
 #
 #   bench/ktor-time.sh
-#   COOLDOWN=10 RUNS=5 WARM_RUNS=20 bench/ktor-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/ktor-time.sh
 #
 # Needs the tools used by bench/run.sh, bench/survey.sh's Ktor clone,
 # and network access to Maven Central on the first run for dependencies.
@@ -69,7 +69,7 @@ for kind in ['kc', 'kotlinc', 'warm']:
         opts = ['-module-name', module, '-jvm-default=enable', '-cp', classpath, '-d', str(dest)]
         if kind == 'kc':
             dirs = [str(src / module / s / 'src') for s in sets]
-            commands[kind].append([str(work / 'kc'), '-j', '"$1"', '-serialization', *opts, *dirs])
+            commands[kind].append([str(work / 'kc'), '-j', '"$1"', '-serialization', '-Xmulti-platform', *opts, *dirs])
             files += [Path(p) for p in all_sources]
         else:
             refines = [f'{sets[i]}:{sets[i-1]}' for i in range(1, len(sets))]

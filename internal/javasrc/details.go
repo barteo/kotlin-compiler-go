@@ -96,12 +96,45 @@ func (r *resolver) nullability(as []*Annotation) []string {
 		if !nullabilityNames[a.Name[strings.LastIndexByte(a.Name, '.')+1:]] {
 			continue
 		}
+		if n := r.starNullability(a.Name); n != "" {
+			out = append(out, n)
+			continue
+		}
 		for _, c := range r.annotations([]*Annotation{a}) {
 			out = append(out, c.Type)
 		}
 	}
 	return out
 }
+
+// starNullability returns the descriptor of the nullability annotation
+// that simple name names through a star import of its package, as with
+// import org.jetbrains.annotations.*, when no class it could name is
+// known: kotlinc has those annotations whether the class path does or
+// not. It returns "" otherwise.
+func (r *resolver) starNullability(name string) string {
+	if strings.Contains(name, ".") {
+		return ""
+	}
+	if n, _ := r.classType(&Type{Segs: []Seg{{Name: name}}}); n != "" && r.s.known(n) {
+		return ""
+	}
+	for _, imp := range r.c.file.Imports {
+		if imp.Star && !imp.Static && nullabilityPackages[imp.Name] {
+			return "L" + strings.ReplaceAll(imp.Name, ".", "/") + "/" + name + ";"
+		}
+	}
+	return ""
+}
+
+// nullabilityPackages are the packages of the nullability annotations
+// that kotlinc reads.
+var nullabilityPackages = map[string]bool{"org.jetbrains.annotations": true, "androidx.annotation": true,
+	"android.support.annotation": true, "android.annotation": true, "com.android.annotations": true,
+	"org.eclipse.jdt.annotation": true, "org.checkerframework.checker.nullness.qual": true,
+	"org.checkerframework.checker.nullness.compatqual": true, "edu.umd.cs.findbugs.annotations": true,
+	"lombok": true, "io.reactivex.annotations": true, "io.reactivex.rxjava3.annotations": true,
+	"javax.annotation": true, "org.jspecify.annotations": true}
 
 // methodAnnotations returns the descriptors of a method's annotations as
 // its class file's member lists them: all of them, as annotationNames
@@ -115,4 +148,97 @@ func (r *resolver) methodAnnotations(as []*Annotation) []string {
 		}
 	}
 	return out
+}
+
+// deprecation returns the deprecation that annotations as give a
+// declaration, as a class file's would: @kotlin.Deprecated's level,
+// WARNING unless HIDDEN or ERROR is among its arguments, or else
+// @java.lang.Deprecated's, or with doc a doc comment's @deprecated tag,
+// "Deprecated in Java"; nil without either.
+func (r *resolver) deprecation(as []*Annotation, doc bool) *classfile.Deprecation {
+	java := doc
+	for _, a := range as {
+		if !strings.HasSuffix(a.Name, "Deprecated") {
+			continue
+		}
+		for _, c := range r.annotations([]*Annotation{a}) {
+			switch c.Type {
+			case "Lkotlin/Deprecated;":
+				d := &classfile.Deprecation{Level: "WARNING"}
+				for _, arg := range a.Args {
+					if arg == "HIDDEN" || arg == "ERROR" {
+						d.Level = arg
+					}
+				}
+				return d
+			case "Ljava/lang/Deprecated;":
+				java = true
+			}
+		}
+	}
+	if java {
+		return &classfile.Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
+	}
+	return nil
+}
+
+// jspecifyNonNull is the descriptor of jSpecify's @NonNull, which
+// markNonNull gives the types of a @NullMarked class's members.
+const jspecifyNonNull = "Lorg/jspecify/annotations/NonNull;"
+
+// jspecify reports whether annotation a, as r resolves it, is jSpecify's
+// annotation of the simple name: written qualified, or imported by name
+// or with its package.
+func (r *resolver) jspecify(a *Annotation, simple string) bool {
+	const pkg = "org.jspecify.annotations"
+	if a.Name == pkg+"."+simple {
+		return true
+	}
+	if a.Name != simple {
+		return false
+	}
+	for _, imp := range r.c.file.Imports {
+		if !imp.Static && (imp.Star && imp.Name == pkg || !imp.Star && imp.Name == pkg+"."+simple) {
+			return true
+		}
+	}
+	return false
+}
+
+// nullMarked reports whether the code of method annotations as, or nil
+// for a field, is in jSpecify's null-marked scope: the nearest of the
+// method and its enclosing classes annotated @NullMarked or
+// @NullUnmarked is @NullMarked.
+func (r *resolver) nullMarked(as []*Annotation) bool {
+	scopes := [][]*Annotation{as}
+	for k := r.c; k != nil; k = k.Outer {
+		scopes = append(scopes, k.Annotations)
+	}
+	for _, s := range scopes {
+		for _, a := range s {
+			switch {
+			case r.jspecify(a, "NullUnmarked"):
+				return false
+			case r.jspecify(a, "NullMarked"):
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// markNonNull returns nullability annotations as of a declaration of type
+// t with jSpecify's @NonNull added in a null-marked scope (see
+// nullMarked), when they have none: there, a reference type that is not a
+// type variable is non-null.
+func (r *resolver) markNonNull(marked bool, t *Type, as []string) []string {
+	if !marked || t == nil || t.Prim != "" && t.Dims == 0 || len(as) > 0 {
+		return as
+	}
+	if t.Dims == 0 && len(t.Segs) == 1 {
+		if _, tp := r.lookup(t.Segs[0].Name); tp != nil {
+			return as
+		}
+	}
+	return []string{jspecifyNonNull}
 }

@@ -151,8 +151,12 @@ func (l *library) class(id string) *Decl {
 	}
 	cls := l.lib.Class(id)
 	if cls == nil {
-		if jid, ok := javaPrimitiveClasses[id]; ok {
-			cls = l.lib.Class(jid)
+		// A Kotlin class that kc treats as a type has its Java class's
+		// supertypes.
+		if k := types.IDKind(id); k == types.String {
+			cls = l.lib.Class("java/lang/String")
+		} else if box := types.PrimOf(k).Box; box != "" {
+			cls = l.lib.Class(box)
 		}
 	}
 	if cls != nil && cls.Decl != nil {
@@ -264,20 +268,6 @@ func isFunctionClass(id string) bool {
 		}
 	}
 	return true
-}
-
-// javaPrimitiveClasses maps the Kotlin classes that kc treats as types,
-// not classes, to the Java classes whose supertypes they have.
-var javaPrimitiveClasses = map[string]string{
-	"kotlin/String":  "java/lang/String",
-	"kotlin/Int":     "java/lang/Integer",
-	"kotlin/Long":    "java/lang/Long",
-	"kotlin/Short":   "java/lang/Short",
-	"kotlin/Byte":    "java/lang/Byte",
-	"kotlin/Char":    "java/lang/Character",
-	"kotlin/Boolean": "java/lang/Boolean",
-	"kotlin/Float":   "java/lang/Float",
-	"kotlin/Double":  "java/lang/Double",
 }
 
 // builtinVariance returns the declared variance of type parameter i of n
@@ -1432,10 +1422,48 @@ func (l *library) annotations(as []classfile.Annotation, kotlin bool) []Annotati
 				continue
 			}
 			emptyArraysLast(a)
+			for _, arg := range a.Args {
+				kotlinLiterals(arg.Value)
+			}
 		}
 		out = append(out, *a)
 	}
 	return out
+}
+
+// kotlinLiterals rewrites the class literals in v, an argument of an
+// annotation on a Kotlin declaration, as FIR's loader of Kotlin class
+// files has them: a collection is its read-only Kotlin class, and neither
+// the type nor an array's element is a platform type. classLiteral gives
+// them as the Java loader does, which reads Java declarations'
+// annotations and every annotation parameter's default.
+func kotlinLiterals(v *Value) {
+	if v == nil {
+		return
+	}
+	switch v.Kind {
+	case ValueClass:
+		for t := v.Type; t != nil && t.Kind == TypeClass; {
+			t.Flexible = false
+			if strings.HasPrefix(t.ClassID, "kotlin/collections/Mutable") {
+				t.ClassID = strings.ReplaceAll(t.ClassID, "Mutable", "")
+			}
+			if len(t.Args) != 1 {
+				break
+			}
+			t = t.Args[0].Type
+		}
+	case ValueArray:
+		for _, e := range v.Elems {
+			kotlinLiterals(e)
+		}
+	case ValueAnnotation:
+		if v.Annotation != nil {
+			for _, arg := range v.Annotation.Args {
+				kotlinLiterals(arg.Value)
+			}
+		}
+	}
 }
 
 // emptyArraysLast moves the empty array arguments of annotation a, of a
@@ -1665,7 +1693,7 @@ func (l *library) value(v *classfile.ElementValue, hint string, depth int) *Valu
 	case 'e':
 		return &Value{Kind: ValueEnum, ClassID: descClassID(v.Enum[0]), Entry: v.Enum[1]}
 	case 'c':
-		return &Value{Kind: ValueClass, Type: descType(v.Class)}
+		return classLiteral(v.Class)
 	case '@':
 		if v.Ann == nil {
 			return &Value{Kind: ValueUnsupported}
@@ -1681,66 +1709,58 @@ func (l *library) value(v *classfile.ElementValue, hint string, depth int) *Valu
 	return &Value{Kind: ValueUnsupported}
 }
 
-// primitiveDescs are the Kotlin classes of the JVM's primitive types, and
-// the arrays of them.
-var primitiveDescs = map[byte][2]string{
-	'Z': {"kotlin/Boolean", "kotlin/BooleanArray"},
-	'C': {"kotlin/Char", "kotlin/CharArray"},
-	'B': {"kotlin/Byte", "kotlin/ByteArray"},
-	'S': {"kotlin/Short", "kotlin/ShortArray"},
-	'I': {"kotlin/Int", "kotlin/IntArray"},
-	'J': {"kotlin/Long", "kotlin/LongArray"},
-	'F': {"kotlin/Float", "kotlin/FloatArray"},
-	'D': {"kotlin/Double", "kotlin/DoubleArray"},
-}
-
 // javaKotlin are the Kotlin classes of Java classes a class literal in a
-// class file may name.
+// class file may name, but the boxes of primitives: a collection is its
+// mutable Kotlin class, as FIR reads a Java type's lower bound.
+// java/lang/Void is itself: only the descriptor V is kotlin/Unit.
 var javaKotlin = map[string]string{
 	"java/lang/String":       "kotlin/String",
-	"java/lang/Integer":      "kotlin/Int",
-	"java/lang/Long":         "kotlin/Long",
-	"java/lang/Short":        "kotlin/Short",
-	"java/lang/Byte":         "kotlin/Byte",
-	"java/lang/Character":    "kotlin/Char",
-	"java/lang/Boolean":      "kotlin/Boolean",
-	"java/lang/Float":        "kotlin/Float",
-	"java/lang/Double":       "kotlin/Double",
-	"java/lang/Void":         "kotlin/Unit",
-	"java/util/List":         "kotlin/collections/List",
-	"java/util/Set":          "kotlin/collections/Set",
-	"java/util/Map":          "kotlin/collections/Map",
-	"java/util/Collection":   "kotlin/collections/Collection",
-	"java/lang/Iterable":     "kotlin/collections/Iterable",
-	"java/util/Iterator":     "kotlin/collections/Iterator",
-	"java/util/Map$Entry":    "kotlin/collections/Map.Entry",
-	"java/util/ListIterator": "kotlin/collections/ListIterator",
+	"java/util/List":         "kotlin/collections/MutableList",
+	"java/util/Set":          "kotlin/collections/MutableSet",
+	"java/util/Map":          "kotlin/collections/MutableMap",
+	"java/util/Collection":   "kotlin/collections/MutableCollection",
+	"java/lang/Iterable":     "kotlin/collections/MutableIterable",
+	"java/util/Iterator":     "kotlin/collections/MutableIterator",
+	"java/util/Map$Entry":    "kotlin/collections/MutableMap.MutableEntry",
+	"java/util/ListIterator": "kotlin/collections/MutableListIterator",
+}
+
+// classLiteral returns the model of a class file's class literal with
+// descriptor desc, as FIR's Java loader has it: the Java type, a platform
+// type, whose lower bound is the literal's type (a raw type, for a generic
+// class).
+func classLiteral(desc string) *Value {
+	t := descType(desc)
+	t.Flexible = t.Kind == TypeClass
+	return &Value{Kind: ValueClass, Type: t}
 }
 
 // descType returns the type a class literal's descriptor names, as
 // Kotlin sees it: Ljava/lang/String; is kotlin/String, [I kotlin/IntArray.
 func descType(desc string) *Type {
 	switch {
-	case desc == "V":
-		return &Type{Kind: TypeClass, ClassID: "kotlin/Unit"}
 	case len(desc) == 1:
-		if p, ok := primitiveDescs[desc[0]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[0]}
+		if k := types.DescKind(desc[0]); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()} // a primitive, or V
 		}
 	case len(desc) == 2 && desc[0] == '[':
-		if p, ok := primitiveDescs[desc[1]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[1]}
+		if k := types.DescKind(desc[1]); types.IsPrimitiveKind(k) {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID() + "Array"}
 		}
 	case strings.HasPrefix(desc, "["):
 		elem := descType(desc[1:])
 		if elem.Kind != TypeClass {
 			return elem
 		}
+		elem.Flexible = true
 		return &Type{Kind: TypeClass, ClassID: "kotlin/Array", Args: []TypeArg{{Type: elem}}}
 	case strings.HasPrefix(desc, "L") && strings.HasSuffix(desc, ";"):
 		name := desc[1 : len(desc)-1]
 		if k, ok := javaKotlin[name]; ok {
 			return &Type{Kind: TypeClass, ClassID: k}
+		}
+		if k := types.BoxKind(name); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()}
 		}
 		return &Type{Kind: TypeClass, ClassID: descClassID(desc)}
 	}

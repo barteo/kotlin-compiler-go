@@ -75,6 +75,10 @@ inline fun <T> ForEach(items: List<T>, item: @Composable (T) -> Unit) {
 @Composable
 inline fun <R> Measure(block: @Composable () -> R): R = block()
 
+// A lambda that calls the one passed for its crossinline parameter.
+inline fun deferred(crossinline content: @Composable (String) -> Unit): @Composable (String) -> Unit =
+    { content("deferred $it") }
+
 // A library composable with default values, which a program's calls
 // leave out.
 @Composable

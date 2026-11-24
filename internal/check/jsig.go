@@ -17,6 +17,13 @@ type sigParser struct {
 	i     int
 	scope []*types.TypeParamSym // method type parameters, then the class's
 	ok    bool                  // false if a type kc doesn't support was seen
+	// foreign, if set, is the class of the program's Java sources whose
+	// signature this is, which may name a type variable of an enclosing
+	// class where it isn't in scope, as a static nested interface's
+	// method does T of its outer class's (javac rejects it, kotlinc keeps
+	// T): such names are parameters that nothing substitutes.
+	foreign  *types.ClassSym
+	foreigns map[string]*types.TypeParamSym
 }
 
 // declaredVariance overrides the variance of Java type parameters that
@@ -74,8 +81,10 @@ func sourceOwner(owner any) bool {
 }
 
 // typeParams parses <T:bound;U::bound;> and returns the parameters. The
-// parameters are in scope in their own bounds.
-func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
+// parameters are in scope in their own bounds. annots are the descriptors
+// of the type annotations on their bounds, by parameter
+// (classfile.Info.BoundAnnotations).
+func (p *sigParser) typeParams(owner any, annots [][]string) []*types.TypeParamSym {
 	if p.peek() != '<' {
 		return nil
 	}
@@ -95,22 +104,59 @@ func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
 	}
 	p.i = start
 	p.scope = append(ps[:len(ps):len(ps)], p.scope...)
-	for _, tp := range ps {
+	for i, tp := range ps {
 		p.ident(":")
+		n := 0 // bounds, Object too
 		for p.ok && p.peek() == ':' {
 			p.i++
 			if !p.isTypeStart() {
 				continue
 			}
+			n++
 			b := p.refType()
 			if b.K == types.Any || b.K == types.Invalid {
 				continue // Object, which is no bound in Kotlin
 			}
 			tp.Bounds = append(tp.Bounds, b)
 		}
+		if n == 1 && i < len(annots) && p.t.javaTypes && notNullBound(annots[i], tp) {
+			// T extends @NotNull Object is T : Any. Of several bounds, K2
+			// doesn't treat a not-null one alike for every argument.
+			tp.JavaNotNull = true
+			if len(tp.Bounds) == 0 {
+				tp.Bounds = []types.Type{types.AnyType}
+			} else {
+				tp.Bounds[0] = tp.Bounds[0].NonNull()
+			}
+		}
 	}
 	p.expect('>')
 	return ps
+}
+
+// notNullBound reports whether annotations as, of the only bound of Java
+// type parameter tp, make it non-null: a not-null one and no nullable
+// one, on a bound that is a class type, not a type parameter.
+func notNullBound(as []string, tp *types.TypeParamSym) bool {
+	if len(tp.Bounds) > 0 && tp.Bounds[0].K != types.Class {
+		return false
+	}
+	notNull, nullable := false, false
+	for _, a := range as {
+		if nn, ok := javaNullability[a]; ok {
+			notNull, nullable = notNull || nn, nullable || !nn
+		}
+	}
+	return notNull && !nullable
+}
+
+// javaParamType returns the type of a use of Java type parameter tp in a
+// signature: a platform type, unless its bound is annotated not-null.
+func javaParamType(tp *types.TypeParamSym) types.Type {
+	if tp.JavaNotNull {
+		return types.ParamType(tp)
+	}
+	return types.ParamType(tp).Platform()
 }
 
 // isTypeStart reports whether a bound follows a ':' in type parameters.
@@ -161,25 +207,8 @@ func (p *sigParser) skipRef() {
 func (p *sigParser) javaType() types.Type {
 	c := p.peek()
 	p.i++
-	switch c {
-	case 'I':
-		return types.IntType
-	case 'J':
-		return types.LongType
-	case 'D':
-		return types.DoubleType
-	case 'Z':
-		return types.BoolType
-	case 'V':
-		return types.UnitType
-	case 'C':
-		return types.CharType
-	case 'F':
-		return types.FloatType
-	case 'B':
-		return types.ByteType
-	case 'S':
-		return types.ShortType
+	if k := types.DescKind(c); k != types.Invalid {
+		return types.Type{K: k} // a primitive, or V
 	}
 	p.i--
 	return p.refType()
@@ -194,8 +223,19 @@ func (p *sigParser) refType() types.Type {
 		p.expect(';')
 		for _, tp := range p.scope {
 			if tp.Name == name {
-				return types.ParamType(tp).Platform()
+				return javaParamType(tp)
 			}
+		}
+		if p.foreign != nil {
+			tp := p.foreigns[name]
+			if tp == nil {
+				tp = &types.TypeParamSym{Name: name, Owner: p.foreign}
+				if p.foreigns == nil {
+					p.foreigns = map[string]*types.TypeParamSym{}
+				}
+				p.foreigns[name] = tp
+			}
+			return types.ParamType(tp).Platform()
 		}
 		p.ok = false // a type variable of an enclosing class
 		return types.InvalidType
@@ -268,24 +308,35 @@ func (t *classTable) classType(name string, args []types.Arg) types.Type {
 	case "java/lang/Object":
 		return types.AnyType.Platform()
 	}
-	for k, box := range boxes {
-		if name == box {
-			return types.Type{K: k}.Nullable().Platform()
-		}
+	if k := types.BoxKind(name); k != types.Invalid {
+		return types.Type{K: k}.Nullable().Platform()
 	}
 	c := t.class(name)
 	if c == nil {
 		return types.InvalidType
 	}
+	if covariantMapped[name] {
+		// Iterable<? super T> is a (Mutable)Iterable<in T>, which
+		// conflicts with its out T: a star projection.
+		for i, a := range args {
+			if a.V == types.In {
+				args[i] = types.Arg{V: types.Star}
+			}
+		}
+	}
 	return types.GenericType(c, args).Platform()
 }
+
+// covariantMapped are the Java classes Kotlin maps to classes whose type
+// parameter is out in both their read-only and mutable forms.
+var covariantMapped = map[string]bool{"java/lang/Iterable": true, "java/util/Iterator": true}
 
 // classSignature reads a class's type parameters and generic supertypes.
 // An inner class's outer type parameters, outer, are in scope and are its
 // last ones.
-func (t *classTable) classSignature(cls *types.ClassSym, sig string, outer []*types.TypeParamSym) {
+func (t *classTable) classSignature(cls *types.ClassSym, sig string, outer []*types.TypeParamSym, bounds [][]string) {
 	p := &sigParser{t: t, s: sig, ok: true, scope: outer}
-	ps := p.typeParams(cls)
+	ps := p.typeParams(cls, bounds)
 	var supers []types.Type
 	for p.ok && p.i < len(p.s) {
 		st := p.refType()
@@ -312,12 +363,15 @@ func (t *classTable) classSignature(cls *types.ClassSym, sig string, outer []*ty
 // methodSignature fills in a method's type parameters, parameter types
 // and return type from its signature, and reports whether kc supports
 // them. nparams is the number of parameters in the descriptor.
-func (t *classTable) methodSignature(f *types.FunSym, cls *types.ClassSym, sig string, nparams int) bool {
+func (t *classTable) methodSignature(f *types.FunSym, cls *types.ClassSym, sig string, nparams int, bounds [][]string) bool {
 	p := &sigParser{t: t, s: sig, ok: true, scope: cls.TypeParams}
 	if f.Static {
 		p.scope = nil
 	}
-	f.TypeParams = p.typeParams(f)
+	if cls.Source || t.cp != nil && t.cp.IsSource(cls.Name) {
+		p.foreign = cls
+	}
+	f.TypeParams = p.typeParams(f, bounds)
 	p.expect('(')
 	var params []*types.VarSym
 	for p.ok && p.peek() != ')' {

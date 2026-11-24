@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -117,6 +119,30 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 	}
 }
 
+// superCtorCands returns the constructors of cls's superclass that its
+// secondary constructors can call, as superCands does, with the
+// superclass's type arguments given, the supertype's: super(x, 1) for
+// B<T1, T2> passes x to a Y of B<X, Y> as a T2, which isn't inferred.
+// They are still the call's own type parameters, as written ones are:
+// (X, String) is more specific than (X, Y).
+func superCtorCands(cls *types.ClassSym) []callee {
+	cands := superCands(cls)
+	sc := cls.Super
+	for _, t := range cls.Supers {
+		if t.K != types.Class || t.C != sc || t.A.Len() != len(sc.TypeParams) || len(sc.TypeParams) == 0 {
+			continue
+		}
+		recv := types.Subst{}
+		for i, tp := range sc.TypeParams {
+			recv[tp] = t.A.Get(i)
+		}
+		for i := range cands {
+			cands[i].given = recv
+		}
+	}
+	return cands
+}
+
 // superCands returns the constructors of cls's superclass that its
 // constructors can call.
 func superCands(cls *types.ClassSym) []callee {
@@ -124,12 +150,6 @@ func superCands(cls *types.ClassSym) []callee {
 	var cands []callee
 	if sc == nil {
 		return nil // java.lang.Object, without a JDK
-	}
-	if !sc.External {
-		for _, f := range userCtors(sc) {
-			cands = append(cands, callee{f: f, tparams: sc.TypeParams})
-		}
-		return cands
 	}
 	tps, recv := sc.TypeParams, types.Subst(nil)
 	if own := len(sc.TypeParams) - sc.OuterParams; sc.OuterParams > 0 {
@@ -145,6 +165,12 @@ func superCands(cls *types.ClassSym) []callee {
 			}
 		}
 	}
+	if !sc.External {
+		for _, f := range userCtors(sc) {
+			cands = append(cands, callee{f: f, tparams: tps, recv: recv})
+		}
+		return cands
+	}
 	for _, f := range sc.Ctors {
 		cands = append(cands, callee{f: f, tparams: append(tps[:len(tps):len(tps)], f.TypeParams...), recv: recv})
 	}
@@ -156,6 +182,7 @@ func superCands(cls *types.ClassSym) []callee {
 func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 	cls := d.Sym
 	secs := d.Secondaries()
+	resolved := map[*syntax.SecondaryCtor]bool{} // this(...) calls resolved without errors
 	for _, sc := range secs {
 		if sc.Sym == nil || sc.Serial != nil {
 			continue // reported by resolveSecondaries, or the serialization plugin's
@@ -169,6 +196,7 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			return s
 		}
 		x := sc.Delegation
+		var argNarrows []narrow // the delegation call's smart casts, which the body has
 		if d.Enum && x != nil && !sc.ToThis {
 			c.errorf(x.P, "call to super is not allowed in enum constructor")
 		}
@@ -210,14 +238,28 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			var cands []callee
 			if sc.ToThis {
 				x.Ctor = cls
+				// The class's type parameters are its own in this(...),
+				// not inferred. The constructor itself is a candidate too,
+				// this() in constructor() being a cycle, but not for a call
+				// with a lambda if its parameters' types mention them, as
+				// kc would take the lambda for one: constructor(x: T2) and
+				// this({ x }).
+				lambda := slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok })
+				var own types.Subst
+				if len(cls.TypeParams) > 0 {
+					own = types.Subst{}
+					for _, tp := range cls.TypeParams {
+						own[tp] = types.Arg{T: types.ParamType(tp)}
+					}
+				}
 				for _, f := range userCtors(cls) {
-					if f != sc.Sym {
-						cands = append(cands, callee{f: f})
+					if f != sc.Sym || !lambda || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.HasParams() }) {
+						cands = append(cands, callee{f: f, given: own})
 					}
 				}
 			} else {
 				x.Ctor = cls.Super
-				cands = superCands(cls)
+				cands = superCtorCands(cls)
 			}
 			if implicit && !hasNoArgCtor(cands) {
 				c.errorf(sc.P, "explicit 'this' or 'super' call is required: there is no constructor in the superclass that can be called without arguments")
@@ -240,7 +282,12 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			if sup, ok := c.asSuper(cls.This(), cls.Super); ok && !sc.ToThis {
 				want = sup
 			}
+			n := len(c.errs)
 			c.resolve(x, cands, want, nil)
+			if sc.ToThis && len(c.errs) == n {
+				resolved[sc] = true
+			}
+			argNarrows = delegationNarrows(c.scope)
 			if !sc.ToThis && cls.Super.Local {
 				c.localConstructed(cls.Super) // the class passes its superclass's captures
 			}
@@ -249,20 +296,20 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 		if sc.Body != nil {
 			c.state = state{scope: params(), cls: cls, this: newThis(cls), fn: sc.Sym, retType: types.UnitType, retAllowed: true,
 				tparams: cls.TypeParams, init: true}
+			c.scope.narrows = argNarrows
 			c.inAnon(cls)
 			c.block(sc.Body, noWant, false)
 		}
 	}
-	// A constructor can't call itself through this(...), directly or not.
+	// A constructor can't call itself through this(...), directly or not,
+	// nor call one that does: kotlinc reports every constructor whose
+	// chain of this(...) calls ends in a cycle.
 	for _, sc := range secs {
 		seen := map[*syntax.SecondaryCtor]bool{}
-		for t := sc; t != nil && t.ToThis && t.Delegation != nil && t.Delegation.Sym != nil; {
-			if seen[t] {
-				break
-			}
+		for t := sc; t != nil && t.ToThis && resolved[t] && t.Delegation != nil && t.Delegation.Sym != nil; {
 			seen[t] = true
 			next, _ := t.Delegation.Sym.Decl.(*syntax.SecondaryCtor)
-			if next == sc {
+			if seen[next] {
 				c.errorf(sc.P, "there's a cycle in the delegation calls chain")
 				break
 			}

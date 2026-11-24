@@ -34,6 +34,23 @@ func (c *Checker) safeUnit(x syntax.Expr, t types.Type) types.Type {
 	return t
 }
 
+// returnValue checks x, the value a function returns, expecting want: a
+// safe call of a Unit function, x?.f(), is a Unit? there, which kotlinc
+// doesn't coerce to a Unit return type: fun f(): Unit = c?.close().
+func (c *Checker) returnValue(x syntax.Expr, want types.Type) types.Type {
+	t := c.value(x, want)
+	if want.K == types.Unit && !want.N {
+		t = c.safeUnit(x, t)
+	}
+	return t
+}
+
+// safeUnitCall reports whether x, of type t, is a safe call of a Unit
+// function, whose value is a Unit?.
+func safeUnitCall(x syntax.Expr, t types.Type) bool {
+	return safeCallOf(x) && t.K == types.Class && t.N && t.C.Name == "kotlin/Unit"
+}
+
 // rangeExpr checks an expression in a position where ranges are allowed.
 func (c *Checker) rangeExpr(x syntax.Expr) types.Type {
 	c.allowRange = true
@@ -76,10 +93,12 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			return types.ClassType(x.Object) // an object, already resolved
 		}
 		if x.Name == "entries" && c.u.ext.kotlin {
-			// As in Kotlin, an enum's entries in its own code come before
-			// the scopes around it, as an outer object's entries, but
-			// not its own members, nor a local or a parameter.
-			if cls := c.firstEnclosing(); cls != nil && cls.Entries != nil && !cls.External && !c.hasCallable(cls, x.Name) {
+			// As in Kotlin, an enum's entries in its own code, and its
+			// nested classes', come before the scopes around it, as an
+			// outer object's entries or a top-level entries, but not the
+			// members of the classes in between, nor a local or a
+			// parameter.
+			if cls := c.entriesEnum(); cls != nil {
 				if sym, _, _, ok := c.lookupVar(x.Name); !ok || sym.Kind != types.Local && sym.Kind != types.Param {
 					m := &syntax.Member{X: &syntax.Ident{Name: cls.Name}, Name: x.Name}
 					m.P = x.P
@@ -93,11 +112,27 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if len(c.recvs) > 0 {
 			if v, _, local := c.scope.lookup(x.Name); !local || propParam(v) != nil {
 				if t, ok := c.recvMember(x); ok {
-					return t
+					if p := x.Member.Prop; p == nil || !lowPriorityVar(p) || !c.lowPriorityLoses(x.Name) {
+						return t
+					}
+					x.Member = nil
+				}
+			}
+		}
+		if c.cls == nil && c.staticCls != nil {
+			// In a delegation call's arguments, the class's static scope
+			// comes before its companion: C is the nested object C, not
+			// the companion's val C.
+			if _, _, local := c.scope.lookup(x.Name); !local {
+				if cls := c.findClass(x.Name); cls != nil && cls.Outer == c.staticCls && cls.Object && cls != c.staticCls.Companion {
+					return objectValue(x, cls)
 				}
 			}
 		}
 		sym, t, cast, ok := c.lookupVar(x.Name)
+		if ok {
+			c.recursiveVarRef(sym, x.P)
+		}
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
 			// top-level properties: a property of this, an extension
@@ -105,9 +140,27 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if t, ok := c.receiverProp(x); ok {
 				return t
 			}
+			// So do the static fields the class inherits from Java
+			// classes, before imported ones.
+			if t, ok := c.inheritedStatic(x); ok {
+				return t
+			}
+		}
+		if ok && lowPriorityVar(sym) {
+			// An object of the name comes before a property annotated
+			// @LowPriorityInOverloadResolution.
+			if obj := c.objectNamed(x.Name); obj != nil {
+				return objectValue(x, obj)
+			}
+		}
+		if ok && (sym.Ambiguous || c.starVarAmbiguous(x.Name, sym)) {
+			c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
+			if v, imported := c.userVars[x.Name]; imported && v == sym {
+				c.importAmbiguity(x)
+			}
 		}
 		if ok && sym.Kind == types.Prop && !cast {
 			// A property of this, once a smart cast has changed this's
@@ -139,7 +192,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				x.Member = m
 				return t
 			}
-			if x.Name == "Unit" {
+			if x.Name == "Unit" || c.unitAlias(x.Name) {
 				x.Unit = true
 				return types.UnitType
 			}
@@ -150,7 +203,10 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if cls != nil {
 				// An object named as a function is the object: a value.
 				if obj := objectOf(cls); obj != nil {
-					c.checkClassVisible(cls, x.P)
+					c.checkClassVisible(obj, x.P) // the class, or its private companion
+					if !c.usable(obj, x.P) {
+						return types.InvalidType // a library's internal companion
+					}
 					return objectValue(x, obj)
 				}
 				if obj := c.starObject(x.Name, cls); obj != nil {
@@ -237,6 +293,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.Unary:
 		return c.unary(x, want)
 	case *syntax.Binary:
+		if x.Op != syntax.ELVIS && x.Op != syntax.AND && x.Op != syntax.OR {
+			// An elvis's and a condition's operands have the expected
+			// type of their own.
+			saved := c.operator
+			c.operator = x
+			defer func() { c.operator = saved }()
+		}
 		return c.binary(x, want, allowRange)
 	case *syntax.Member:
 		return c.member(x)
@@ -250,7 +313,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			name := strings.TrimPrefix(w.C.Name, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
-		return c.call(x, want, sink)
+		t := c.call(x, want, sink)
+		c.arrayNothingExpr(x, t)
+		return t
 	case *syntax.Index:
 		return c.index(x, "get", x.Args, want)
 	case *syntax.NotNull:
@@ -266,12 +331,14 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			n := len(sink.vars)
 			c.sink = sink
 			t := c.value(x.X, xw)
+			c.noteMaybeNull(x, t)
 			if len(sink.vars) > n {
 				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).NonNull()) })
 			}
 			return t.NonNull()
 		}
 		t := c.declaredIfNull(x.X, c.value(x.X, xw))
+		c.noteMaybeNull(x, t)
 		if t.K == types.Invalid {
 			return t
 		}
@@ -284,7 +351,20 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		return t.NonNull()
 	case *syntax.Spread:
 		// An argument for a vararg parameter: resolve checks where it goes.
-		t := c.value(x.X, want)
+		var t types.Type
+		if _, call := x.X.(*syntax.Call); call && sink != nil {
+			// A generic call's variables are the outer call's, as
+			// unspread: T of Arrays.asList(*x.toArray(y)) for a
+			// List<String>.
+			n := len(sink.vars)
+			c.sink = sink
+			t = c.value(x.X, want)
+			if len(sink.vars) > n {
+				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).Flex()) })
+			}
+		} else {
+			t = c.value(x.X, want)
+		}
 		switch {
 		case t.K == types.Invalid:
 		case !t.NonNull().IsArray() && !(t.K == types.Class && types.IsUnsignedArray(t.C)):
@@ -339,7 +419,11 @@ func (c *Checker) receiverProp(x *syntax.Ident) (types.Type, bool) {
 	if !c.objectHasProp(x.Name) {
 		return types.InvalidType, false
 	}
-	return c.objectMember(x)
+	t, ok := c.objectMember(x)
+	if ok && x.Member != nil && x.Member.Prop != nil {
+		c.companionProtectedProp(x.Member.Prop, x.P)
+	}
+	return t, ok
 }
 
 func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool) {
@@ -496,15 +580,20 @@ func (c *Checker) unaryExt(x *syntax.Unary, t types.Type) bool {
 func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 	switch x.Op {
 	case syntax.MINUS, syntax.PLUS:
-		if lit, ok := x.X.(*syntax.IntLit); ok && x.Op == syntax.MINUS {
-			// A negative literal, which may be a Byte or Short: -128.
+		if lit, ok := x.X.(*syntax.IntLit); ok {
+			// A negative literal, which may be a Byte or Short: -128. So
+			// may +1.
 			if w := want.NonNull(); w == types.ByteType || w == types.ShortType {
-				t := intLit(lit, -lit.Val, want)
+				v := lit.Val
+				if x.Op == syntax.MINUS {
+					v = -v
+				}
+				t := intLit(lit, v, want)
 				lit.SetType(t)
 				return t
 			}
 		}
-		t := c.value(x.X, want).Flex()
+		t := c.fixedStub(c.value(x.X, want)).Flex()
 		x.X, t = builtinBound(x.X, t)
 		if !builtinOperand(t) || c.unaryExt(x, t) {
 			return c.unaryOp(x, t, want)
@@ -518,7 +607,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 		}
 		return t
 	case syntax.NOT:
-		if t := c.value(x.X, types.BoolType); !builtinOperand(t) || c.unaryExt(x, t.Flex()) {
+		if t := c.fixedStub(c.value(x.X, types.BoolType)); !builtinOperand(t) || c.unaryExt(x, t.Flex()) {
 			return c.unaryOp(x, t.Flex(), want)
 		}
 		c.wantBool(x.X)
@@ -742,8 +831,16 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		} else {
 			c.scope.narrows = whenFalse
 		}
+		base := len(c.scope.narrows)
 		yt := c.value(x.Y, types.BoolType)
+		added := slices.Clone(c.scope.narrows[min(base, len(c.scope.narrows)):])
 		c.pop()
+		// The right side may not run: what it assigns, as an in-place
+		// lambda's r = null in q || r.also { r = null }!!, ends the
+		// smart casts that don't hold of its values too.
+		n := len(c.scope.narrows)
+		c.scope.narrows = append(c.scope.narrows, added...)
+		c.mayNotRun(n, nil)
 		c.wantBool(x.Y)
 		if yt.K == types.Nothing {
 			// a && throw E(), a || return: the code after it sees a false,
@@ -762,10 +859,29 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		xw := noWant
 		if want.K != types.Invalid && want.K != types.Unit {
 			xw = want.Nullable()
+		} else if u := c.u.ext.class("kotlin/Unit"); (want.K == types.Unit || c.unitElvisWant(x)) && u != nil {
+			xw = types.ClassType(u).Nullable()
 		}
 		c.sink = c.takeBranchSink()
-		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
+		sink, n := c.sink, len(c.errs)
+		if call, ok := x.X.(*syntax.Call); ok && x == c.elvisFull && xw.K == types.Invalid && sink == nil && hasLambda(call.Args) {
+			if yt, ok := c.elvisRightType(x.Y); ok {
+				c.elvisCall, c.elvisWant = call, starsBounded(yt).Nullable()
+			}
+		}
+		xt := c.safeUnit(x.X, c.value(x.X, xw)) // x?.f() ?: y for a Unit f
+		c.elvisCall = nil
+		if xw.K == types.Invalid && sink == nil && c.cannotInferSince(n) && retryableCall(x.X) {
+			// Nothing gives the left call's variables, but K2's K is fixed
+			// from the right side first, and the call's result is below it:
+			// V of fun <V : A> test(): V? is Nothing in test() ?: error("").
+			if yt, ok := c.elvisRightFirst(x.Y); ok {
+				c.errs = c.errs[:n]
+				xt = c.safeUnit(x.X, c.value(x.X, starsBounded(yt).Nullable()))
+			}
+		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
+		c.noteMaybeNull(x, xt)
 		var yt types.Type
 		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {
 			// An integer literal is of the left side's type: l ?: 0 is
@@ -791,7 +907,13 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 					yw = sup
 				}
 			}
+			// The left's type is a hint, not a type expected of the
+			// right side: a lambda's nullable result there makes the
+			// elvis nullable, as in a ?: b.let { it.firstOrNull() }.
+			saved := c.operator
+			c.operator = x
 			yt = c.elvisRight(x.Y, yw, xt, true) // see expected.go
+			c.operator = saved
 		} else {
 			yt = c.elvisRight(x.Y, want, xt, false)
 		}
@@ -810,13 +932,18 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		}
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
-			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)
-			c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
+			c.scope.narrows = append(c.scope.narrows, c.elvisNonNull(x.X)...)
 		}
 		if yt.P {
 			// a ?: javaCall() is of a platform type, as the Java value:
 			// null if both are, and unchecked where a T? is expected.
 			t = t.Platform()
+		}
+		if isRaw(t) && javaClass(t.C) {
+			// As K2's, whose elvis is a call, the raw type is lost: a
+			// raw Generic's ?: return is a Generic<Any!>, whose generic
+			// methods aren't erased.
+			t = rawLower(t)
 		}
 		return t
 
@@ -976,8 +1103,16 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// as equals' argument: ::top == Int::intExt.
 			yWant = noWant
 		}
+		if signedIntLit(x.Y) && !c.plugin {
+			// An integer literal compared is an Int, as on the left: x ==
+			// 3 for a Long x is an error, as 3 == x is. A plugin's code
+			// compares a property with its default value, a literal of
+			// the property's type.
+			yWant = noWant
+		}
 		yt := c.value(x.Y, yWant)
 		x.OpType = c.castEquality(x, xt, yt)
+		c.noteIdentTypes(x, xt, yt)
 		return types.BoolType
 	}
 
@@ -987,7 +1122,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// expected: val n: Long = 8 * 1024.
 		opWant = types.LongType
 	}
-	xt := c.value(x.X, opWant).Flex()
+	// A builder's element is its type, which may be a built-in one:
+	// get(0) + "y" in buildList { add("x") } (see fixedStub).
+	xt := c.fixedStub(c.value(x.X, opWant)).Flex()
 	x.X, xt = builtinBound(x.X, xt)
 	if !builtinOperand(xt) {
 		switch x.Op {
@@ -1014,7 +1151,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// pos) subtracts an Int from a Long.
 		yWant = noWant
 	}
-	yt := c.value(x.Y, yWant).Flex()
+	yt := c.fixedStub(c.value(x.Y, yWant)).Flex() // 1 + get(0), as get(0) + 1
 	x.Y, yt = builtinBound(x.Y, yt)
 	if xt.K == types.Invalid || yt.K == types.Invalid {
 		return types.InvalidType
@@ -1162,8 +1299,17 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		return types.InvalidType
 	}
 	if xt.IsParam() || yt.IsParam() || xt.K == types.Class && yt.K == types.Class && xt.C == yt.C {
-		// A type parameter can stand for any type, and instances of one
-		// class with different type arguments may still be equal.
+		// A type parameter can stand for any type its bounds allow, and
+		// instances of one class with different type arguments may still
+		// be equal.
+		if c.paramEqualityInapplicable(op, xt, yt) {
+			name := "=="
+			if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
+				name = "==="
+			}
+			c.errorf(p, "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+			return types.InvalidType
+		}
 		return types.AnyType.Nullable()
 	}
 	if xt.NonNull() != yt.NonNull() {
@@ -1171,6 +1317,9 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		// compared with equals().
 		x, y := xt.NonNull(), yt.NonNull()
 		if c.subtype(x, y) && !y.IsPrimitive() || c.subtype(y, x) && !x.IsPrimitive() || c.mayBeSame(x, y) {
+			return types.AnyType.Nullable()
+		}
+		if !c.equalityInapplicable(op, xt, yt) {
 			return types.AnyType.Nullable()
 		}
 		name := "=="
@@ -1186,6 +1335,178 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 	return xt.Nullable()
 }
 
+// equalityInapplicable reports whether K2 rejects comparing values of
+// unrelated types xt and yt with op, as FirEqualityCompatibilityChecker
+// does. == is only checked where a primitive type, String, an enum or a
+// value class is involved, === where one of them isn't nullable; either
+// only if one class is final or both are classes, not interfaces. Where
+// both types can have subtypes, as K1 had it, K2 only warns: A == B for
+// an interface A and a class B is allowed, and so is a === b for an open
+// class and an abstract one, and a == b for two nullable enums.
+func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	return c.equalityCompat(op, xt, yt) == eqError
+}
+
+// The results of equalityCompat.
+const (
+	eqOK = iota
+	eqWarning
+	eqError
+)
+
+// equalityCompat is equalityInapplicable with K2's warning:
+// EQUALITY_NOT_APPLICABLE_WARNING where it is inapplicable but K1 let
+// both types have subtypes.
+func (c *Checker) equalityCompat(op syntax.Kind, xt, yt types.Type) int {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	if op == syntax.EQ || op == syntax.NE {
+		if (c.enumType(x) || c.enumType(y)) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+			// K1 let a nullable enum be compared with any nullable type,
+			// as both may be null: K2 only warns (see
+			// enumComparisonWarning).
+			return eqOK
+		}
+		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
+			return eqOK
+		}
+	} else if !types.IsPrimitiveKind(x.K) && !types.IsPrimitiveKind(y.K) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+		// A primitive has no identity, nullable or not: a === b for an
+		// Int? and a String? is an error.
+		return eqOK
+	}
+	final := func(t types.Type) bool {
+		switch t.K {
+		case types.Class:
+			t.C.Ensure()
+			return !t.C.Interface && t.C.Final
+		case types.Any:
+			return false
+		}
+		return t.K != types.TypeParam
+	}
+	class := func(t types.Type) bool {
+		if t.K == types.Class {
+			return !t.C.Interface
+		}
+		return t.K != types.TypeParam
+	}
+	if !final(x) && !final(y) && !(class(x) && class(y)) {
+		return eqOK
+	}
+	if canHaveSubtypesK1(x) && canHaveSubtypesK1(y) && c.missedByK1Enums(xt, yt) {
+		return eqWarning
+	}
+	return eqError
+}
+
+// paramEqualityInapplicable reports whether K2 rejects comparing a value
+// of type parameter type with a value of a type that isn't one, as it
+// compares the intersection of the parameter's bounds: comparing with a
+// type that one bound rules out, such as an Int with a P : Buffered, is
+// an error. An unbounded parameter, or two parameters, can be compared,
+// and an enum with a parameter only draws a warning.
+func (c *Checker) paramEqualityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	pt, ot := xt, yt
+	if pt.K != types.TypeParam {
+		pt, ot = yt, xt
+	}
+	if pt.K != types.TypeParam || ot.IsParam() || ot.Flex().NonNull().K == types.TypeParam {
+		return false
+	}
+	if c.enumType(ot.Flex().NonNull()) {
+		// K1 only checked enums against enums: K2 warns (see
+		// enumComparisonWarning).
+		return false
+	}
+	for _, b := range pt.Param().Bounds {
+		if b.IsParam() || b.K == types.Invalid {
+			continue
+		}
+		if types.MayBeNull(pt) {
+			b = b.Nullable()
+		}
+		x, y := b.Flex().NonNull(), ot.Flex().NonNull()
+		if x == y || c.subtype(x, y) && !y.IsPrimitive() || c.subtype(y, x) && !x.IsPrimitive() || c.mayBeSame(x, y) {
+			continue
+		}
+		if c.equalityInapplicable(op, b, ot) {
+			return true
+		}
+	}
+	return false
+}
+
+// builtinForEquality reports whether t is a primitive type, String or an
+// enum, whose comparisons K2 checks.
+func (c *Checker) builtinForEquality(t types.Type) bool {
+	if types.IsPrimitiveKind(t.K) || t.K == types.String {
+		return true
+	}
+	return c.enumType(t)
+}
+
+// enumType reports whether t is of an enum class.
+func (c *Checker) enumType(t types.Type) bool {
+	if t.K != types.Class {
+		return false
+	}
+	t.C.Ensure()
+	return t.C.Super != nil && t.C.Super.Name == "java/lang/Enum"
+}
+
+// missedByK1Enums reports whether K1's check of enum comparisons let xt and
+// yt be compared (isIncompatibleEnums), which K2 then only warns about.
+func (c *Checker) missedByK1Enums(xt, yt types.Type) bool {
+	switch {
+	case !c.enumType(xt.Flex().NonNull()) && !c.enumType(yt.Flex().NonNull()):
+		return true
+	case types.MayBeNull(xt) && types.MayBeNull(yt):
+		return true
+	case xt.K == types.Nothing || yt.K == types.Nothing:
+		return true
+	}
+	return false
+}
+
+// canHaveSubtypesK1 reports whether a non-null type t can have subtypes,
+// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final or
+// is an enum can,
+// and so can a final generic one with a star, an in projection or an out
+// argument that can.
+func canHaveSubtypesK1(t types.Type) bool {
+	switch t.K {
+	case types.Any, types.TypeParam:
+		return true
+	case types.Class:
+	default:
+		return false
+	}
+	t.C.Ensure()
+	if t.C.Interface || !t.C.Final || t.C.Super != nil && t.C.Super.Name == "java/lang/Enum" {
+		// K1's isFinalClass is false of an enum class, whose entries
+		// may be its subclasses.
+		return true
+	}
+	if t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		v := a.V
+		if v == types.Inv && i < len(t.C.TypeParams) {
+			v = t.C.TypeParams[i].Var
+		}
+		switch v {
+		case types.Star, types.In:
+			return true
+		case types.Out:
+			if types.MayBeNull(a.T) || canHaveSubtypesK1(a.T) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // castEquality is equality for the operands of x, of types xt and yt,
 // where an operand smart-cast to another class is compared as Kotlin
 // does: two numbers, as numbers of the wider type, -0.0 == 0 for x is
@@ -1194,6 +1515,11 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	dx, cx := declaredOf(x.X)
 	dy, cy := declaredOf(x.Y)
+	if (x.Op == syntax.EQ || x.Op == syntax.NE) && c.mayBeNullEnums(originalType(x.X, xt), originalType(x.Y, yt)) {
+		// Two nullable enums, as declared, even if smart cast not to be
+		// null: kotlinc only warns (see enumComparisonWarning).
+		return types.AnyType.Nullable()
+	}
 	if !cx && !cy || xt.K == types.Invalid || yt.K == types.Invalid {
 		return c.equality(x.P, x.Op, xt, yt)
 	}
@@ -1206,6 +1532,10 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	n := len(c.errs)
 	if xn, yn := xt.Flex().NonNull(), yt.Flex().NonNull(); xn.IsNumeric() && yn.IsNumeric() && xn != yn {
 		if t := c.equality(x.P, syntax.EQ, dx, dy); t.K != types.Invalid {
+			if x.Op == syntax.EQ || x.Op == syntax.NE {
+				// Inapplicable to the smart-cast types: kotlinc warns.
+				c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
+			}
 			t = types.Wider(xn, yn)
 			if types.MayBeNull(xt) || types.MayBeNull(yt) {
 				t = t.Nullable()
@@ -1220,7 +1550,14 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	m := len(c.errs)
 	if t := c.equality(x.P, x.Op, dx, dy); t.K != types.Invalid {
 		// Compared as the declared types: the operands are read as those.
+		// As kotlinc, a comparison inapplicable only to the smart-cast
+		// types is EQUALITY_NOT_APPLICABLE_WARNING, but of enums or of
+		// values without identity.
+		general := m == n+1 && strings.HasPrefix(c.errs[n].Msg, "operator '") && c.generalEquality(x.Op, xt, yt)
 		c.errs = c.errs[:n]
+		if general {
+			c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
+		}
 		for _, e := range []syntax.Expr{x.X, x.Y} {
 			if id, ok := e.(*syntax.Ident); ok && id.Cast {
 				id.Cast = false
@@ -1231,6 +1568,36 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 	}
 	c.errs = c.errs[:m]
 	return types.InvalidType
+}
+
+// generalEquality reports whether kotlinc's diagnostic of comparing
+// values of types xt and yt with op, if it is inapplicable, is
+// EQUALITY_NOT_APPLICABLE: not of enums, nor an identity comparison of a
+// value without identity.
+func (c *Checker) generalEquality(op syntax.Kind, xt, yt types.Type) bool {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	if c.enumType(x) || c.enumType(y) {
+		return false
+	}
+	if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
+		return !x.IsPrimitive() && !y.IsPrimitive() && !types.IsValue(x) && !types.IsValue(y)
+	}
+	return true
+}
+
+// originalType returns the type of x, of type t, before smart casts: a
+// variable's declared type.
+func originalType(x syntax.Expr, t types.Type) types.Type {
+	if id, ok := x.(*syntax.Ident); ok && id.Sym != nil && id.Sym.Kind != types.Static && id.Sym.Type.K != types.Invalid {
+		return id.Sym.Type
+	}
+	return t
+}
+
+// mayBeNullEnums reports whether values of types xt and yt are both of
+// enums, or null.
+func (c *Checker) mayBeNullEnums(xt, yt types.Type) bool {
+	return types.MayBeNull(xt) && types.MayBeNull(yt) && c.enumType(xt.Flex().NonNull()) && c.enumType(yt.Flex().NonNull())
 }
 
 // declaredOf returns the declared type of x if x is a variable that a
@@ -1305,6 +1672,9 @@ func (c *Checker) declaredIfNull(x syntax.Expr, t types.Type) types.Type {
 	declared := id.Sym.Type
 	switch {
 	case t.K == types.Null:
+		// A platform value known to be null is a Nothing?, whose members
+		// need a safe call: my.foo() after my == null.
+		declared = declared.Nullable()
 	case t.IsParam() && len(t.Param().Bounds) == 0 && !declared.IsParam() && declared.K != types.Any:
 		if !types.MayBeNull(t) {
 			declared = declared.NonNull()
@@ -1359,6 +1729,79 @@ func (c *Checker) hasNamed(t types.Type, name string) bool {
 	return found
 }
 
+// lowPriorityVar reports whether property v of the program is annotated
+// @LowPriorityInOverloadResolution, which a property or object of the
+// same name in another scope wins over.
+func lowPriorityVar(v *types.VarSym) bool {
+	d, ok := v.Decl.(*syntax.PropDecl)
+	return ok && lowPriorityMods(&d.Modifiers)
+}
+
+// lowPriorityLoses reports whether a low-priority member property name
+// gives way to a top-level property that isn't low-priority, or to an
+// object: in fun Foo.test(), bar is a top-level bar, not Foo's
+// @LowPriorityInOverloadResolution one.
+func (c *Checker) lowPriorityLoses(name string) bool {
+	if c.objectNamed(name) != nil {
+		return true
+	}
+	n := len(c.errs)
+	sym, _, _, ok := c.lookupVar(name)
+	c.errs = c.errs[:n]
+	return ok && sym.Kind == types.Global && !lowPriorityVar(sym)
+}
+
+// objectNamed returns the object that name refers to as a value, if any.
+func (c *Checker) objectNamed(name string) *types.ClassSym {
+	if _, _, local := c.scope.lookup(name); local {
+		return nil
+	}
+	cls := c.findClass(name)
+	if cls == nil {
+		return nil
+	}
+	if obj := objectOf(cls); obj != nil {
+		return obj
+	}
+	return c.starObject(name, cls)
+}
+
+// suspendRecv returns the suspend function type that receiver fn.X, a
+// callable reference of type t, is converted to for a call of fn.Name:
+// one that names no member or extension of t but an extension of the
+// suspend type.
+func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool) {
+	l, ok := fn.X.(*syntax.Lambda)
+	if !ok || l.Ref == nil || t.N || t.K != types.Class || t.A == nil || c.extCallees(fn.Name, t) != nil || c.hasNamed(t, fn.Name) {
+		return types.InvalidType, false
+	}
+	n, suspend, ok := kfunctionArity(t.C)
+	if !ok || suspend {
+		return types.InvalidType, false
+	}
+	ft, ok := c.asSuper(t, c.u.ext.funcs.Class(n))
+	if !ok || ft.E || ft.X != 0 {
+		return types.InvalidType, false
+	}
+	ps := make([]types.Type, n)
+	for i := range ps {
+		ps[i] = ft.A.List[i].T
+	}
+	st := c.u.ext.funcs.SuspendType(ps, ft.A.List[n].T)
+	return st, len(c.extCallees(fn.Name, st)) > 0
+}
+
+// builtinNamed reports whether builtin type t, as Int or String, has a
+// member or extension name.
+func (c *Checker) builtinNamed(t types.Type, name string) bool {
+	for n := range 4 {
+		if builtinFun(t, name, n) {
+			return true
+		}
+	}
+	return c.hasNamed(t, name)
+}
+
 // narrowing returns the smart casts implied by cond being true or false.
 func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	leaf := false
@@ -1396,7 +1839,17 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				kn := k
 				kn.t = types.NullType
 				null = []narrow{kn}
-				k.t = k.t.NonNull()
+				base := k.t
+				if id, isID := unchecked(nullSide(x)).(*syntax.Ident); isID {
+					if v := c.narrowSym(id); v != nil {
+						base = v.Type
+					}
+				}
+				if t, ok := nonNullOf(k.t, base); ok {
+					k.t = t
+				} else {
+					k.t = k.t.NonNull()
+				}
 				n = append([]narrow{k}, c.impliedBy(k)...)
 			}
 			// a?.b != null, and a?.b == c where c isn't null, mean that a
@@ -1404,9 +1857,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 			switch {
 			case ynull:
-				n = append(n, c.safeReceivers(x.X)...)
+				n = append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...)
 			case xnull:
-				n = append(n, c.safeReceivers(x.Y)...)
+				n = append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...)
 			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
 			case equalsNonNull(x.X.Type()):
@@ -1419,7 +1872,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			// a === b, where b is of a class type, means that a is one too:
 			// ktor's prev === this.
 			if same := c.identNarrows(x); len(same) > 0 {
-				if x.Op == syntax.EQ_EQ_EQ {
+				if x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.EQ {
 					whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], same...)
 				} else {
 					whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], same...)
@@ -1432,21 +1885,36 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		case syntax.AND:
 			// The right side ran if a && b is true: its x!! smart-cast x.
 			// The right side's smart casts build on the left's: x is Int?
-			// && x != null makes x an Int.
+			// && x != null makes x an Int. As in K2, the right side of
+			// false && b, which never runs, smart-casts nothing.
+			if lit, ok := x.X.(*syntax.BoolLit); ok && !lit.Val {
+				return nil, nil
+			}
 			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = t1
 			t2, f2 := c.narrowing(x.Y)
 			c.pop()
+			if neverCompletes(x.Y) {
+				// a != null && throw E() is never true: as in K2, code
+				// that can't be reached learns nothing.
+				return nil, c.eitherNarrows(f1, t1, f2)
+			}
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
 		case syntax.OR:
+			if isTrue(x.X) {
+				return nil, nil // as false && b
+			}
 			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = f1
 			t2, f2 := c.narrowing(x.Y)
 			c.pop()
+			if neverCompletes(x.Y) {
+				return c.eitherNarrows(t1, f1, t2), nil // never false
+			}
 			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
 	case *syntax.Unary:
@@ -1461,11 +1929,25 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			return f, t
 		}
 		// A contract's returns(true) implies (p != null), and false.
-		return c.contractNarrows(x, 1), c.contractNarrows(x, 0)
+		// A Boolean returned is not null either: returnsNotNull()'s.
+		nn := c.contractNarrows(x, 2)
+		return append(c.contractNarrows(x, 1), nn...), append(c.contractNarrows(x, 0), nn...)
+	case *syntax.NotNull:
+		if call, ok := x.X.(*syntax.Call); ok {
+			// if (f(v)!!): what f's Boolean? result says, as f(v)'s.
+			return c.narrowing(call)
+		}
 	case *syntax.Ident:
 		if x.Member == nil && x.Sym != nil {
 			if n, ok := c.conds[x.Sym]; ok {
-				return n[0], n[1]
+				return c.stableConds(n[0]), c.stableConds(n[1])
+			}
+			// A local that holds the value of a Boolean val (see alias),
+			// as b of val a = x != null; var b = a, says what it says.
+			for _, p := range c.sameAs[flowKey{sym: x.Sym}] {
+				if n, ok := c.conds[p.sym]; ok && p.recv == nil && (!isVar(x.Sym) || c.varStable(x.Sym, types.Type{})) {
+					return c.stableConds(n[0]), c.stableConds(n[1])
+				}
 			}
 		}
 	case *syntax.Is:
@@ -1492,15 +1974,32 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		// isn't.
 		var not []narrow
 		var others *coverage
+		base := k.t
+		if v := c.narrowSym(x.X); v != nil {
+			base = v.Type
+		}
+		if t, ok := notIsNarrowed(k.t, base, x.Target); ok {
+			kn := k
+			kn.t = t
+			not = []narrow{kn}
+			if t.K != types.Null && t.K != types.Nothing {
+				not = append(not, c.impliedBy(kn)...)
+			}
+		}
 		if x.Target.K == types.Class && !types.MayBeNull(x.Target) {
 			not = c.excluding(nil, k, &coverage{classes: []*types.ClassSym{x.Target.C}})
-			if k.t.NonNull().K == types.Class {
+			// Not of a check that makes an intersection, A & B for
+			// an A checked to be a B: as in K2, a when over it must
+			// cover A's or B's sealed subclasses, whichever of the two
+			// it covers, without the ones of A's that aren't B's.
+			if st := k.t.NonNull(); st.K == types.Class && x.Target.C.IsSubclassOf(st.C) {
 				others = &coverage{}
-				otherSubclasses(k.t.NonNull().C, x.Target.C, others)
+				otherSubclasses(st.C, x.Target.C, others)
 			}
 		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
+		k.javaClass = x.Ref != nil && strings.HasPrefix(x.Ref.Name, "java.") && x.Target.K == types.Class && builtinJava[x.Target.C.Name]
 		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
 		if others != nil && !others.empty() {
 			n = c.excluding(n, key, others)
@@ -1513,6 +2012,57 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	return nil, nil
 }
 
+// notIsNarrowed returns the type of a value of type cur, declared as
+// base, where it isn't a target, as K2's data flow has it: x is Any is
+// x != null, so it is null; and a null is a T?, x is Any? among those,
+// so what isn't one isn't null. ok is false where that tells nothing.
+func notIsNarrowed(cur, base, target types.Type) (t types.Type, ok bool) {
+	if !types.MayBeNull(cur) || cur.K == types.Invalid || target.P || target.K == types.Null || target.K == types.Invalid {
+		return cur, false
+	}
+	switch {
+	case target.K == types.Any && !target.N:
+		if cur.K == types.Null {
+			return cur, false
+		}
+		return types.NullType, true
+	case target.N:
+		return nonNullOf(cur, base)
+	}
+	return cur, false
+}
+
+// neverCompletes reports whether x, a checked expression, is of type
+// Nothing: it always jumps.
+func neverCompletes(x syntax.Expr) bool {
+	t := x.Type()
+	return t.K == types.Nothing && !t.N
+}
+
+// nullSide returns the side of x, a comparison with null, that isn't
+// the null literal.
+func nullSide(x *syntax.Binary) syntax.Expr {
+	if isNull(x.Y) {
+		return x.X
+	}
+	return x.Y
+}
+
+// nonNullOf returns the type of a value of type cur, declared as base,
+// where it isn't null. Of one known to be null, which K2 types as an
+// intersection with Nothing whose members are base's, kc, without such
+// intersections, takes base's non-null type, so that its members stay
+// resolved; ok is false if there is none.
+func nonNullOf(cur, base types.Type) (types.Type, bool) {
+	if cur.K != types.Null {
+		return cur.NonNull(), true
+	}
+	if base.K == types.Invalid || base.K == types.Null || base.K == types.Nothing || !types.MayBeNull(base) {
+		return cur, false
+	}
+	return base.NonNull(), true
+}
+
 // identNarrows returns the smart casts that a === b or a !== b implies
 // for either side, when the other is of a class type that it isn't known
 // to be. A side of a generic type keeps it when the other's is generic
@@ -1520,21 +2070,87 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 // arguments, as bar(s) for s: Slice<X> === SL0: Slice<A>, where kc's
 // would replace them.
 func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
-	if x.Op != syntax.EQ_EQ_EQ && x.Op != syntax.NOT_EQ_EQ {
+	switch x.Op {
+	case syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+	case syntax.EQ, syntax.NE:
+		// As K2, a == b does too where a's equals is safe for smart casts
+		// (see safeEquals): ts[0] == a, for a String ts[0], makes a a
+		// String.
+		if !c.safeEquals(x.X.Type()) {
+			return nil
+		}
+	default:
 		return nil
 	}
 	var out []narrow
 	for _, side := range [][2]syntax.Expr{{x.X, x.Y}, {x.Y, x.X}} {
 		ot := side[1].Type()
-		if ot.K != types.Class || types.MayBeNull(ot) {
+		if ot.K != types.Class && ot.K != types.String && ot.K != types.TypeParam || types.MayBeNull(ot) {
 			continue
 		}
-		if k, ok := c.narrowKeyOf(side[0]); ok && !c.subtype(k.t, ot) && (ot.A == nil || k.t.K != types.Class || k.t.A == nil) {
-			k.t = c.isNarrowed(k.t, ot)
-			out = append(out, k)
+		k, ok := c.narrowKeyOf(side[0])
+		if !ok || c.subtype(k.t, ot) {
+			continue
 		}
+		if c.funcSubNarrow(k.t, ot) {
+			k.t = ot
+			out = append(out, k)
+			continue
+		}
+		if ot.A != nil && k.t.K == types.Class && k.t.A != nil {
+			// Both generic: the value is both, Box<T> & Box<A>, as K2's
+			// smart cast is an intersection with the declared type. The
+			// declared type first, which inference, without K2's forks
+			// over the components, takes: bar(s) for an expected X?.
+			if ot.K != types.Class || ot.C.Func || k.t.C.Func || types.MayBeNull(k.t) {
+				continue
+			}
+			k.t = c.intersect([]types.Type{k.t, ot})
+			out = append(out, k)
+			continue
+		}
+		k.t = c.narrowedTo(k.t, ot, false)
+		out = append(out, k)
 	}
 	return out
+}
+
+// safeEquals reports whether a value of type t is equal only to values of
+// its type, as K2's EqualsOverrideContract.SAFE_FOR_SMART_CAST has it: a
+// String, or a final class that, with its superclasses, doesn't declare
+// equals, an enum among them, but not a data class, whose equals kotlinc
+// only trusts for exhaustiveness, nor a Float or a Double. A type
+// parameter or an intersection is if one of its types is.
+func (c *Checker) safeEquals(t types.Type) bool {
+	t = t.Flex().NonNull()
+	switch {
+	case t.K == types.String:
+		return true
+	case t.IsIntersection():
+		return slices.ContainsFunc(t.Param().Bounds, c.safeEquals)
+	case t.IsParam():
+		return slices.ContainsFunc(t.Param().Bounds, c.safeEquals)
+	case t.K != types.Class || t.C == nil:
+		return false
+	}
+	cls := t.C
+	cls.Ensure()
+	if !cls.Final || cls.Abstract || cls.Interface || cls.Sealed || cls.Data || cls.Array {
+		return false
+	}
+	for k := cls; k != nil; k = k.Super {
+		k.Ensure()
+		switch k.Name {
+		case "java/lang/Object", "java/lang/Enum", "kotlin/Any", "kotlin/Enum":
+			continue
+		}
+		for _, f := range k.Methods["equals"] {
+			if len(f.Params) == 1 && !f.Static {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // contractNarrows returns the smart casts that the contract of a call's
@@ -1576,7 +2192,10 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			continue
 		}
 		if e.Holds {
-			whenTrue, _ := c.narrowing(arg) // check(x is T)
+			whenTrue, whenFalse := c.narrowing(arg) // check(x is T)
+			if e.Negated {
+				whenTrue = whenFalse // implies (!p)
+			}
 			out = append(out, whenTrue...)
 			continue
 		}
@@ -1599,6 +2218,7 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			}
 			is = sub.Apply(is)
 		}
+		is = c.contractArgs(f, e.Param, k.t, is)
 		own := func(t types.Type) bool {
 			return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
 		}
@@ -1631,6 +2251,8 @@ func (c *Checker) asserted(x syntax.Expr) []narrow {
 				k.t = k.t.NonNull()
 				out = append(out, k)
 			}
+			// a?.b!!: a isn't null either.
+			out = append(out, c.safeReceivers(x.X)...)
 		case *syntax.Member:
 			if !x.Safe {
 				walk(x.X)
@@ -1694,7 +2316,31 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 // equalNonNull returns the smart casts implied by x being equal to a
 // value that isn't null: neither x nor the receivers of its safe calls
 // are null.
+// elvisNonNull returns the smart casts of x not being null, the left side
+// of an elvis whose right side jumps: those of a as well for an a ?: n or
+// n ?: a whose n is always null, as in a ?: b?.let { return it } ?: return.
+func (c *Checker) elvisNonNull(x syntax.Expr) []narrow {
+	out := append(c.equalNonNull(x), c.notNullCast(x)...)
+	if e, ok := x.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+		switch {
+		case isNull(e.Y):
+			out = append(out, c.elvisNonNull(e.X)...)
+		case isNull(e.X):
+			out = append(out, c.elvisNonNull(e.Y)...)
+		}
+	}
+	return out
+}
+
 func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
+	if as, ok := x.(*syntax.As); ok && as.Safe {
+		// (a as? T) isn't null: a is a T, as after (a as? T)?.f() != null.
+		if k, ok := c.castNarrow(as); ok {
+			k.t = k.t.NonNull()
+			return append([]narrow{k}, c.impliedBy(k)...)
+		}
+		return nil
+	}
 	n := c.safeReceivers(x)
 	k, ok := c.narrowKeyOf(x)
 	if m, safe := x.(*syntax.Member); safe && m.Safe {
@@ -1705,6 +2351,14 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 		n = append(append(n, k), c.impliedBy(k)...)
 	}
 	return n
+}
+
+// safeCastNonNull returns what a as? T not being null tells: a is a T.
+func (c *Checker) safeCastNonNull(x syntax.Expr) []narrow {
+	if as, ok := x.(*syntax.As); ok && as.Safe {
+		return c.equalNonNull(as)
+	}
+	return nil
 }
 
 // notOf returns the smart casts of ns but those of vars and their
@@ -1803,6 +2457,18 @@ func intLitExpr(x syntax.Expr) bool {
 	return false
 }
 
+// signedIntLit reports whether x is an integer literal, with a sign or
+// not, which only an expected type makes another type than Int or Long.
+func signedIntLit(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.IntLit:
+		return !x.Unsigned
+	case *syntax.Unary:
+		return (x.Op == syntax.MINUS || x.Op == syntax.PLUS) && signedIntLit(x.X)
+	}
+	return false
+}
+
 // callReceiver checks the receiver of a member call, expecting want. A
 // nullable receiver can be called without ?. if extensions for nullable
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
@@ -1810,11 +2476,45 @@ func intLitExpr(x syntax.Expr) bool {
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
 	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
+	if id, ok := fn.X.(*syntax.Ident); ok && id.Sym != nil && len(c.stubs) > 0 && c.stub(vt.Flex()) == nil {
+		// A variable declared with a builder's variable for its type and
+		// smart-cast by an assignment is a PTV & TargetType: a member
+		// call on it fixes the variable, as one on the variable does.
+		c.fixedStub(id.Sym.Type)
+	}
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
+	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
+		return types.InvalidType, nil, false
+	}
 	t = c.castView(fn.X, t, fn.Name)
+	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
+		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
+		// A String & T, of a smart cast of a T, has String's built-in
+		// members and extensions, as the String did: o.trim() is a
+		// String, not CharSequence.trim()'s CharSequence. Not a name
+		// T's bounds have too: o.compareTo(p) for T : Comparable<T>.
+		st := types.StringType
+		if types.MayBeNull(t) {
+			st = st.Nullable()
+		}
+		fn.X, t = checked(fn.X, st), st
+	}
+	if t.IsIntersection() && finalBuiltin(t.Param().Bounds[0].NonNull()) && !c.builtinNamed(t.Param().Bounds[0].NonNull(), fn.Name) {
+		// An Int & A of a smart cast has A's members too: x.foo() after
+		// x is A and x is Int.
+		for _, b := range t.Param().Bounds[1:] {
+			if b.K == types.Class && c.hasNamed(b, fn.Name) {
+				if types.MayBeNull(t) {
+					b = b.Nullable()
+				}
+				fn.X, t = checked(fn.X, b), b
+				break
+			}
+		}
+	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
 		// of a nullable receiver takes: i.foo() for a String?.foo()
@@ -1823,6 +2523,13 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 			fn.X = checked(fn.X, vt)
 			return vt, cands, true
 		}
+	}
+	if st, ok := c.suspendRecv(fn, t); ok {
+		// A reference receiver is suspend converted for a suspend
+		// function type's extension: (::f).ext() for
+		// fun (suspend () -> Unit).ext().
+		fn.X = c.suspendConverted(fn.X, st)
+		return st, nil, true
 	}
 	if c.extCallees(fn.Name, t) == nil {
 		fn.X, t = builtinBound(fn.X, t)
@@ -1848,15 +2555,34 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// X::class.java is the Java class, without a KClass.
 		t := c.classLit(cl, true)
 		cl.SetType(t)
+		if t.K == types.Class && t.A != nil && len(t.A.List) == 1 {
+			// T of the extension property KClass<T>.java.
+			if a := t.A.List[0].T; a.K == types.Class && boxedPlatform[a.C.Name] {
+				if c.platformArgs == nil {
+					c.platformArgs = map[any]string{}
+				}
+				c.platformArgs[x] = platformMapped[a.C.Name]
+			}
+		}
 		return t
 	}
 	if x.Object != nil {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
+	if x.Safe && c.qualifierValue(x.X) {
+		c.noteQualifierSafe(x)
+		return types.InvalidType
+	}
+	if id, ok := x.X.(*syntax.Ident); ok && c.starQualifierAmbiguity(id) {
+		return types.InvalidType
+	}
 	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
-			c.checkClassVisible(cls, x.P)
+			c.checkClassVisible(obj, x.P)
+			if !c.usable(obj, x.P) {
+				return types.InvalidType // a library's internal object
+			}
 			return objectValue(x, obj) // a.b.Obj, Outer.Companion, kotlin.random.Random
 		}
 	}
@@ -1869,6 +2595,11 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(v)
 		x.Prop = v
+		x.T = v.Type
+		if k, ok := c.narrowKeyOf(x); ok && k.t.K != types.Invalid && k.t != v.Type {
+			x.Cast = needsCast(v.Type, k.t) // a smart cast of a.b.x
+			return k.t
+		}
 		return v.Type
 	}
 	if v := c.libraryPackageVar(x); v != nil {
@@ -1892,10 +2623,13 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 	}
 	if s, ok := x.X.(*syntax.Super); ok {
+		c.superSafeCall(x)
 		return c.superMember(x, s)
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "isInitialized" && !x.Safe {
 		return c.isInitialized(x, l.Ref)
+	} else if x.Name == "isInitialized" {
+		defer c.lateinitIntrinsic(x)
 	}
 	if l, ok := x.X.(*syntax.Lambda); ok && l.Ref != nil && x.Name == "name" && !x.Safe {
 		// A reference's name is a constant, as with kotlinc: ktor's
@@ -1917,6 +2651,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if xt.K == types.Invalid {
 		return xt
 	}
+	if c.unfixedReceiver(x.X, xt, x.Name, x.P) {
+		return types.InvalidType
+	}
 	xt = c.castView(x.X, xt, x.Name)
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {
@@ -1927,7 +2664,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
 		return types.InvalidType
 	}
-	rt := c.boundWith(xt.NonNull(), func(cls *types.ClassSym) bool { return c.hasProp(cls, x.Name) })
+	rt := c.propBound(x, xt.NonNull())
 	var t types.Type
 	cls := c.classOf(rt)
 	found := true
@@ -1949,7 +2686,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// unless it is a property of the name with context parameters.
 		x.Prop = cls.Underlying
 		t = c.memberSubst(rt, cls).Apply(cls.Underlying.Type)
-	case cls != nil && !cls.External:
+	case cls != nil && (!cls.External || c.kotlinSuperProp(cls, x.Name)):
 		x.Prop = c.memberProp(cls, x.Name)
 		if d := c.declaredClass(x.X, cls); x.Prop == nil && d != nil && !d.External {
 			// A private property of a smart-cast variable's declared
@@ -1958,11 +2695,24 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 				x.Prop = p
 			}
 		}
+		if p := x.Prop; p != nil && protectedMember(p) {
+			if d := c.declaredClass(x.X, cls); d != nil && p.Owner != d && !c.strictProtectedVia(p.Owner, cls) {
+				// As in K2, the protected override of a smart-cast
+				// variable's class that the code sees only as an override
+				// of what it sees gives way to the declared type's
+				// member: other.a of other: A smart-cast to B, in A's
+				// code, is A's a, not B's override.
+				if q := c.memberProp(d, x.Name); q != nil && cls.IsSubclassOf(q.Owner) {
+					x.Prop = q
+				}
+			}
+		}
 		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
+			c.protectedGetter(x)
 			break
 		}
-		if p := x.Prop; !c.propVisible(p) {
+		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
 			// An extension of the name is read instead, as with calls.
 			x.Prop = nil
 			if t, found = c.extProp(x, rt); found {
@@ -1972,9 +2722,15 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			x.Prop, found = p, true
 		} else if ensureVar(p); p.PrivateToThis {
 			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
+		} else {
+			c.shadowedField(cls, p, x.P)
+			c.companionProtectedProp(p, x.P) // A.x of a companion's x
 		}
 		ensureVar(x.Prop)
+		c.recursiveVarRef(x.Prop, x.P)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
+		t = c.intersectionProp(xt.NonNull(), rt, x.Prop, t)
+		t = c.starBoundsProp(rt, x.Prop, t)
 		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
@@ -1986,9 +2742,16 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberField(x, rt, t)
 	case cls != nil && c.visibleField(instanceField(cls, x.Name)):
 		x.Prop = instanceField(cls, x.Name)
+		if x.Prop.Protected && !c.protectedVia(x.Prop.Owner, x.X) {
+			c.invisibleProp(x.P, x.Prop)
+		}
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+		c.protectedGetter(x)
+	}
+	if x.Prop != nil && x.Prop.Ambiguous {
+		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 	}
 	if found && x.Prop == nil && x.Getter != nil && !x.Safe {
 		// A smart cast of a.b, for a friend path's stable property.
@@ -2012,6 +2775,61 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = t.Nullable()
 	}
 	return t
+}
+
+// intersectionProp returns the type of property p, of type t seen
+// through rt, read on a receiver of intersection type xt: the
+// intersection of its types seen through each component of rt's class,
+// as K2's intersection scope has it. value of a C<out T> & C<out V> is a
+// T & V.
+func (c *Checker) intersectionProp(xt, rt types.Type, p *types.VarSym, t types.Type) types.Type {
+	if !xt.IsIntersection() || rt.K != types.Class || p.Owner == nil {
+		return t
+	}
+	ts := []types.Type{t}
+	for _, o := range xt.Param().Bounds {
+		if o = o.NonNull(); o == rt || o.K != types.Class || o.C != rt.C {
+			continue
+		}
+		u := c.memberSubst(o, p.Owner).Apply(p.Type)
+		if u.K == types.Invalid || u.HasVars() {
+			return t
+		}
+		ts = append(ts, u)
+	}
+	if len(ts) == 1 || t.HasVars() {
+		return t
+	}
+	// The components as they are, T & V of two type parameters that may
+	// be null, not (T & Any & V & Any)?: of equal ones the first stays.
+	var comps []types.Type
+	for i, u := range ts {
+		if !slices.ContainsFunc(ts[:i], func(o types.Type) bool { return c.subtype(o, u) }) &&
+			!slices.ContainsFunc(ts[i+1:], func(o types.Type) bool { return c.subtype(o, u) && !c.subtype(u, o) }) {
+			comps = append(comps, u)
+		}
+	}
+	if len(comps) == 1 {
+		return comps[0]
+	}
+	if slices.ContainsFunc(comps, func(u types.Type) bool { return u.N || u.D || u.P || u.IsIntersection() }) {
+		if r := c.intersect(comps); r.K != types.Invalid {
+			return r
+		}
+		return t
+	}
+	return c.internIntersection(comps)
+}
+
+// kotlinSuperProp reports whether Java class cls inherits property name
+// of a Kotlin class of the program: the property of JavaClass().some for
+// a JavaClass extends Derived, Derived declaring or inheriting val some.
+func (c *Checker) kotlinSuperProp(cls *types.ClassSym, name string) bool {
+	if cls.KotlinName != "" || cls.Java != nil || cls.Value {
+		return false
+	}
+	p := c.memberProp(cls, name)
+	return p != nil && p.Owner != nil && !p.Owner.External
 }
 
 // effectless reports whether evaluating x has no effects to keep when
@@ -2053,17 +2871,61 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	type mark struct{ cons, joined, extra int }
+	var marks []mark
+	amb := c.ambiguities
+	for _, r := range c.pclaRuns {
+		marks = append(marks, mark{len(r.cons), len(r.joined), len(r.extra)})
+	}
+	t := c.call1(x, want, sink)
+	if c.ambiguities > amb {
+		// An ambiguous call in a builder's lambda gives the builder's
+		// variables nothing, as in kotlinc: what its candidates
+		// recorded is dropped, what the calls before it did stays.
+		for i, r := range c.pclaRuns[:len(marks)] {
+			m := marks[i]
+			if len(r.cons) < m.cons || len(r.joined) < m.joined || len(r.extra) < m.extra {
+				continue
+			}
+			for _, v := range r.extra[m.extra:] {
+				delete(c.stubs, v)
+			}
+			r.cons, r.joined, r.extra = r.cons[:m.cons], r.joined[:m.joined], r.extra[:m.extra]
+		}
+	}
+	if len(c.pclaRuns) > 0 {
+		t = c.pclaFailedCall(x, t)
+	}
+	if len(c.uninferred) > 0 {
+		c.uninferredArg(x)
+	}
+	return t
+}
+
+func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
 	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
 		// its chain.
 		return c.invoke(x, want, sink)
 	}
+	if t, ok := c.safeChainInvoke(x, want, sink); ok {
+		return t
+	}
 	switch fn := x.Fun.(type) {
 	case *syntax.Ident:
 		name := fn.Name
+		if show := c.hideUnfitLocals(name, x); show != nil {
+			defer show()
+		}
 		// A variable that can't be invoked doesn't hide functions, as in
 		// fun tag(tag: Any?) = tag(Any::class, tag).
 		_, t, isVar := c.scope.lookup(name)
+		if _, depth := c.scope.find(name); isVar && c.invokable(t) && c.innerMemberTakes(name, x, depth) && c.recvCall(x, fn) {
+			// A member of an implicit receiver nearer than the variable
+			// comes first, as each level of scope in Kotlin: foo() in
+			// with(A()) { } is A's foo, not an outer foo: A.() -> Int.
+			return c.call(x, want, sink)
+		}
 		if isVar && c.invokable(t) {
 			fits := c.localInvokeFits(t, x)
 			if !fits && len(c.recvs) > 0 && c.recvCall(x, fn) {
@@ -2080,7 +2942,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// Or to a method of this class: a constructor parameter
 			// log, with an invoke operator, and fun log() in an init block.
 		}
-		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) {
+		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) && !c.localGivesWay(fs, name, x) {
 			// Local functions that can't take the arguments give way to
 			// top-level ones that can, as each level in Kotlin.
 			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })
@@ -2122,9 +2984,20 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// the package or one of the class path's, or an extension of
 			// this does.
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
+			if !slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Hidden }) {
+				// Hidden ones, @Deprecated(level = HIDDEN), give way to
+				// the functions of the scopes outside.
+				ms = nil
+			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
-					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
+					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) &&
+				// Members that don't take the arguments' types give way to
+				// a property of the name whose value does: sut(state) next
+				// to fun sut(a: A), for a state whose type is inferred. Its
+				// type is inferred only then, as K2 infers it only if no
+				// member is applicable: in declaration order otherwise.
+				!(c.userProp(c.cls, name) != nil && !c.takeTypes(ms, x, c.argTypes(x)) && c.propInvokeFits(name, x)) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
@@ -2137,16 +3010,28 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					x.Fun = m
 					return c.call(x, want, sink)
 				}
+				// Members that don't take the arguments' types give way to
+				// top-level functions that do, the next level of scope:
+				// take(s.ext) for an A, next to a member take(arg: B) and a
+				// top-level take(arg: Any). The arguments are checked ahead
+				// only where there are such functions.
+				if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 && c.anyMayTake(fs, x) {
+					if ts := c.argTypes(x); !c.takeTypes(ms, x, ts) && c.takeTypes(fs, x, ts) {
+						return c.resolve(x, methodCallees(fs, nil), want, sink)
+					}
+				}
 				c.captureThis()
 				return c.resolve(x, c.memberCallees(ms, c.cls.This()), want, sink)
 			}
-			if p := c.userProp(c.cls, name); p != nil && !(p.InProgress && c.uninvokable(p, name)) {
+			if p := c.userProp(c.cls, name); p != nil && !(inferring(p) && (c.namesCallee(name) || c.thisExtension(name, x))) {
 				// One being inferred gives way to a function of its name:
 				// val navOptions = navOptions { }.
 				ensureVar(p)
 				if c.invokable(p.Type) {
 					return c.invoke(x, want, sink)
 				}
+			} else if p != nil {
+				c.inferSyntheticGetter(c.cls, name)
 			}
 			if c.thisExtension(name, x) {
 				// An extension function called on this: apply { } is
@@ -2172,7 +3057,24 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.staticCall(x, m, cls, want, sink)
 			}
 			if obj := c.objectMethods(name, x); obj != nil && (c.objectTaking(name, x) != nil || !c.importTakes(name, x)) {
+				if cls := c.findClass(name); cls != nil && cls.Outer == obj && c.ctorsTake(cls, x) {
+					// Or a class nested in it, whose constructors come
+					// first, as the classes in scope do before the
+					// functions of an implicit receiver in Kotlin: Bar("4")
+					// in Owner, for a companion's class Bar(String?) and
+					// fun Bar(String).
+					return c.construct(x, cls, fn.P, want, sink)
+				}
 				// A method of an object in scope: f() is Companion.f().
+				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
+				m.P = fn.P
+				x.Fun = m
+				return c.call(x, want, sink)
+			}
+			if obj := c.objectExtension(name, x); obj != nil {
+				// An extension of an object in scope, the companion of a
+				// superclass too: foo() is A.Companion.foo(), for a
+				// fun A.Companion.foo().
 				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
 				m.P = fn.P
 				x.Fun = m
@@ -2210,6 +3112,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.resolve(x, methodCallees(fs, nil), want, sink)
 		}
 		if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 {
+			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
+				return c.construct(x, cls, fn.P, want, sink)
+			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
 			// tried in turn: okio's minOf(Long, Int) to the standard
@@ -2245,7 +3150,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// then ONE(42) is A.ONE.invoke(42).
 			return c.invoke(x, want, sink)
 		}
-		if name == "String" && len(x.Args) == 0 {
+		if name == "String" && len(x.Args) == 0 || len(x.Args) == 0 && c.aliasOfString(name) {
 			x.Builtin = types.NewString // String(): a new empty string
 			return types.StringType
 		}
@@ -2263,9 +3168,19 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if name == "kc$coerce" && c.state.plugin {
 			return c.coerceCall(x)
 		}
+		alias := c.findClassifier(name).alias
 		cls := c.findClass(name)
+		if k := c.packageClassifierPastBounds(name, x); k != (classifier{}) {
+			alias, cls = k.alias, k.cls
+			if alias != nil {
+				cls = c.aliasClass(alias)
+			}
+		}
 		if alt := c.packageClassTaking(name, cls, x); alt != nil {
 			cls = alt
+		}
+		if name == "Array" && cls != nil && cls != types.ArrayClass && !cls.External && !c.ctorsTake(cls, x) {
+			cls = types.ArrayClass // kotlin.Array(n) { }, past a class Array of the program's
 		}
 		var fs []*types.FunSym
 		if cls == nil || !constructible(cls) {
@@ -2279,7 +3194,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				fs = gs
 			}
 		}
-		if a := c.findClassifier(name).alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
+		if (cls != nil || alias != nil) && len(fs) == 0 && c.ambiguousCtor(name) {
+			// import a.A.B, import a.D.B: B() is unresolved, as K2's.
+			c.errorf(fn.P, "unresolved reference: %s", name)
+			c.args(x, nil)
+			return types.InvalidType
+		}
+		if a := alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
 			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
 		}
@@ -2290,6 +3211,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.invokeValue(x, types.ClassType(cls), want, sink)
 		}
 		if cls != nil && len(fs) == 0 {
+			if alias == nil && c.libraryAliasOf(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true
+			}
 			return c.construct(x, cls, fn.P, want, sink)
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls == nil && len(fs) == 0 && len(a.TypeParams) == 0 {
@@ -2353,6 +3280,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		return types.InvalidType
 
 	case *syntax.Member:
+		if fn.Safe && c.qualifierValue(fn.X) {
+			c.noteQualifierSafe(fn)
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		pkg := c.packageRef(fn.X)
 		if pkg != nil {
 			// A top-level function by its qualified name: a.b.f(). A class
@@ -2372,12 +3304,28 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			x.Fun = id
 			return c.call(x, want, sink)
 		}
+		if a := c.qualifiedAlias(fn); a != nil && len(x.Args) == 0 && c.stringAlias(a) {
+			id := &syntax.Ident{Name: "String"} // Class.S(), S a typealias of String
+			id.P = fn.P
+			x.Fun, x.Builtin = id, types.NewString
+			if c.aliasCtors == nil {
+				c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
+			}
+			c.aliasCtors[x] = a // for its deprecation
+			return types.StringType
+		}
 		if cls := c.classRef(fn); cls != nil {
 			if name := c.qualifiedName(fn); name != "" {
 				if a := c.lookupAlias(name); a != nil {
 					c.recordAlias(x, a)
 					return c.aliasConstruct(x, a, cls, fn.P, want, sink) // a.b.Alias(1)
 				}
+			}
+			if name := c.qualifiedName(fn); name != "" && c.libraryAliasPath(name, cls) {
+				if c.libAliasCtors == nil {
+					c.libAliasCtors = map[*syntax.Call]bool{}
+				}
+				c.libAliasCtors[x] = true // kotlin.collections.HashSet(c)
 			}
 			return c.construct(x, cls, fn.P, want, sink) // java.util.Random(1)
 		}
@@ -2390,6 +3338,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.staticCall(x, fn, cls, want, sink)
 		}
 		if s, ok := fn.X.(*syntax.Super); ok {
+			c.superSafeCall(fn)
 			return c.superCall(x, fn, s, want, sink)
 		}
 		if _, ok := c.extFuncVar(fn.Name); ok && fn.Safe && !c.memberExtFirst(fn, x) {
@@ -2413,7 +3362,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 			return c.call(x, want, sink)
 		}
-		if _, ok := c.extFuncVar(fn.Name); (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
+		_, ok := c.extFuncVar(fn.Name)
+		if p := c.orderDependent; p != nil && p.Owner != nil {
+			c.warnf(fn.P, "IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT",
+				"the resolution result depends on the declaration order. This can lead to false-positive errors in the IDE. Specify the type of '%s' defined in '%s' explicitly", p.Name, p.Owner.DisplayName())
+		}
+		if (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
@@ -2436,9 +3390,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// returned: requireNotNull(x).let { x.f() }.
 			n = append(n, c.returnNarrows(r)...)
 		}
-		if len(n) > 0 {
+		if len(n) > 0 || fn.Safe {
 			// The arguments are evaluated only if the receiver isn't
-			// null: x?.let { f(x) }.
+			// null: x?.let { f(x) }, whose smart casts don't outlive
+			// it: a?.f(y!!).
 			c.push()
 			c.scope.narrows = n
 			defer func() {
@@ -2510,6 +3465,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
+				if alias != nil && !c.aliasOuterFits(alias, n, rt) {
+					// x.GIntI() for typealias GIntI = Generic<Int>.Inner
+					// needs an x that is a Generic<Int>.
+					c.errorf(fn.P, "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
+					c.args(x, nil)
+					return types.InvalidType
+				}
 				if alias != nil && hasUnderscore(x.TypeArgs) {
 					// outer.Alias<_>(): the class's, which the call infers.
 					if !c.aliasUnderscores(x, alias, n, fn.P) {
@@ -2534,6 +3496,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// An extension property of function type, called: x.f(y).
 			fn.X = checked(fn.X, rt)
 			fn.T = c.member(fn)
+			if g := fn.Getter; g != nil && g.Ext {
+				// Its receivers, implicit, as a read of it takes them.
+				c.dslMember(fn, fn, true, g.Owner, fn.Name, func() bool { return fn.Getter == g })
+			}
 			return c.invokeValue(x, fn.T, want, sink)
 		}
 		switch {
@@ -2541,13 +3507,16 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			t = c.resolve(x, nullExts, want, sink)
 		case cls != nil && !cls.External:
 			ms := c.javaMethods(cls, fn.Name)
-			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((!c.propVisible(p) || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
+			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((!c.propVisible(p) || p.InProgress || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
 				// A property of function type, called: obj.f(x).
 				if fn.Safe {
 					return c.safeInvoke(x, fn, want, sink)
 				}
 				ensureVar(p)
 				fn.Prop = p
+				if !c.propVisible(p) {
+					c.invisibleProp(fn.P, p)
+				}
 				fn.T = c.memberSubst(rt, p.Owner).Apply(p.Type)
 				return c.invokeValue(x, fn.T, want, sink)
 			}
@@ -2573,9 +3542,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if x.Operator && !x.Sym.Operator {
 				c.errorf(x.P, "'operator' modifier is required on '%s'", fn.Name)
+			} else if x.Operator && renamedOperator(x.Sym, fn.Name) {
+				c.errorf(x.P, "'operator' modifier is required on '%s': operator '%s' is imported as '%s'", fn.Name, x.Sym.Name, fn.Name)
 			}
 			if isArrayFactory(x.Builtin) {
-				c.reified(x, t)
+				c.reified(x, t, sink)
 			}
 		}
 		if fn.Safe {
@@ -2623,7 +3594,7 @@ func (c *Checker) extPropInvoked(fn *syntax.Member, rt types.Type, cls *types.Cl
 // such a property isn't a candidate, so val Border = 1.dp doesn't hide
 // the constructor Border(width, color).
 func (c *Checker) uninvokable(v *types.VarSym, name string) bool {
-	other := c.findClass(name) != nil || len(c.topFuns(name)) > 0 || len(c.kotlinFuns(name, false)) > 0
+	other := c.namesCallee(name)
 	if v.InProgress {
 		// Its own initializer calls the class or function: val Shapes =
 		// Shapes(...).
@@ -2634,8 +3605,12 @@ func (c *Checker) uninvokable(v *types.VarSym, name string) bool {
 }
 
 // ctorsTakeOnly reports whether a class's constructors may take call x and
-// none of functions fs, of the same name, may.
+// none of functions fs, of the same name, may, or one is more specific
+// than those that may (see ctorBeatsFuns).
 func (c *Checker) ctorsTakeOnly(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if c.ctorBeatsFuns(cls, fs, x) {
+		return true // or are more specific: bar.Foo("2") for Foo(String) and Foo(String?)
+	}
 	if cls == nil || !constructible(cls) || c.anyMayTake(fs, x) {
 		return false
 	}
@@ -2744,6 +3719,77 @@ func (c *Checker) packageClassTaking(name string, cls *types.ClassSym, x *syntax
 	return alt
 }
 
+// packageClassifierPastBounds returns the class or typealias named name of
+// the code's package when name is an explicitly imported typealias whose
+// expansion, with call x's type arguments, gives its class a type argument
+// out of its bounds. As in Kotlin 2.4
+// (ProperlyCheckUpperBoundsViolationsWhenCreatingFreshVariables), that
+// constructor isn't a candidate, and the call goes to the next level of
+// scope: Alias<Any>() is b.Alias's with import a.Alias, typealias Alias<T>
+// = Base<List<T>> for class Base<K : List<CharSequence>>, in package b
+// with typealias Alias<K> = Box<K>.
+func (c *Checker) packageClassifierPastBounds(name string, x *syntax.Call) classifier {
+	a, ok := c.aliasImports[name]
+	if !ok || len(x.TypeArgs) == 0 || len(x.TypeArgs) != len(a.TypeParams) || hasUnderscore(x.TypeArgs) || c.findClassifier(name).alias != a {
+		return classifier{}
+	}
+	if c.renamedAway(c.pkg.Name, name) {
+		return classifier{}
+	}
+	var alt classifier
+	if cls, ok := c.pkg.Classes[name]; ok {
+		alt = classifier{cls: cls}
+	} else if al, ok := c.pkg.Aliases[name]; ok && al != a {
+		alt = classifier{alias: al}
+	}
+	if alt == (classifier{}) || c.privateElsewhere(alt) || !c.expansionOutOfBounds(a, x.TypeArgs) {
+		return classifier{}
+	}
+	return alt
+}
+
+// expansionOutOfBounds reports whether the expansion of typealias a with
+// the type arguments args gives its class a type argument that isn't a
+// subtype of the bound of the class's type parameter. It reports no
+// errors.
+func (c *Checker) expansionOutOfBounds(a *types.AliasSym, args []*syntax.TypeArg) bool {
+	c.resolveAlias(a)
+	if a.Type.K != types.Class {
+		return false
+	}
+	n := len(c.errs)
+	defer func() { c.errs = c.errs[:n] }()
+	targs := make([]types.Arg, len(args))
+	for i, r := range args {
+		targs[i] = types.Arg{V: r.Variance}
+		if r.Variance == types.Star {
+			continue
+		}
+		if r.Type == nil {
+			return false
+		}
+		if targs[i].T = c.resolveType(r.Type); targs[i].T.K == types.Invalid {
+			return false
+		}
+	}
+	t := a.Expand(targs)
+	if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+		return false
+	}
+	s := classSubst(t)
+	for i, arg := range t.A.List {
+		if arg.V == types.Star || arg.T.K == types.Invalid || arg.T.Has(func(u types.Type) bool { return u.K == types.TypeVar }) {
+			continue
+		}
+		for _, b := range t.C.TypeParams[i].Bounds {
+			if !c.subtype(arg.T, s.Apply(b)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // memberImportTakes reports whether a member of an object that the file
 // imports by name, as import p.Utils.group, may take call x's arguments.
 func (c *Checker) memberImportTakes(name string, x *syntax.Call) bool {
@@ -2782,7 +3828,17 @@ func (c *Checker) ctorTakes(name string, x *syntax.Call) bool {
 func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 	ft = ft.Flex()
 	if !ft.IsFunc() {
+		if x.Infix && ft.K != types.Invalid {
+			// b f 3 calls a property f's invoke only if it is infix;
+			// otherwise an infix extension f of b is called.
+			return c.infixInvoke(ft, x)
+		}
 		return ft.K == types.Invalid || c.hasFun(ft, "invoke", x)
+	}
+	if x.Infix {
+		// A function type's invoke isn't infix: b f 3 is an infix
+		// extension f's call.
+		return false
 	}
 	for _, n := range x.Names {
 		if n != "" {
@@ -2814,6 +3870,25 @@ func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 		}
 	}
 	return true
+}
+
+// infixInvoke reports whether a value of type ft, which isn't a function
+// type, has an infix invoke operator that may take call x.
+func (c *Checker) infixInvoke(ft types.Type, x *syntax.Call) bool {
+	if cls := c.classOf(ft); cls != nil && !types.MayBeNull(ft) {
+		cls.Ensure()
+		for _, f := range c.accessible(cls, c.javaMethods(cls, "invoke")) {
+			if f.Infix && c.mayTake(f, x) {
+				return true
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor("invoke", ft, x) {
+		if cl.f.Infix && c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // implicitOf reports whether an implicit receiver in scope, or this, may
@@ -2878,6 +3953,10 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	if name == "set" {
 		call.PassLast() // the value
 	}
+	if c.indexCalls == nil {
+		c.indexCalls = map[*syntax.Call]bool{}
+	}
+	c.indexCalls[call] = true
 	x.Call = call
 	t := c.expr(call, want)
 	if f := call.Sym; f != nil && !f.Operator {
@@ -2898,8 +3977,13 @@ func safeChain(x syntax.Expr) bool {
 	case *syntax.Member:
 		return x.Safe && !x.Paren
 	case *syntax.Call:
-		m, ok := x.Fun.(*syntax.Member)
-		return ok && !x.Invoke && m.Safe && !x.Paren
+		switch fn := x.Fun.(type) {
+		case *syntax.Member:
+			return !x.Invoke && fn.Safe && !x.Paren
+		case *syntax.Call, *syntax.Index:
+			return !x.Paren && safeChain(fn) // a?.f()(v), see safeChainInvoke
+		}
+		return false
 	case *syntax.Index:
 		return !x.Paren && safeChain(x.X)
 	}
@@ -2972,8 +4056,12 @@ func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bo
 }
 
 func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type, sink *system) types.Type {
-	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe {
+	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe && !(x.Infix && c.infixExtOnly(fn.Name, rt)) {
+		infix := x.Infix
 		if t, ok := c.memberRange(x, fn, rt, want); ok {
+			if infix {
+				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+			}
 			return t
 		}
 	}
@@ -2987,6 +4075,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		}
 		if _, res, ok := types.OperatorFunType(fn.Name, rt, at); ok {
 			x.Builtin = types.OperatorFun
+			c.builtinInfix(x, fn)
 			return res
 		}
 		if at.K == types.Invalid {
@@ -3064,6 +4153,9 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 	if s != nil && stdlibExt(rt, fn.Name) && c.extShadows(fn.Name, rt, x) {
 		s = nil // as ktor's Char.isLowerCase, of a star import
 	}
+	if s != nil && x.Infix && s.b != types.Bitwise && c.infixExtOnly(fn.Name, rt) {
+		s = nil // an infix extension, which the member that isn't infix leaves the call to
+	}
 	if s == nil {
 		object := c.u.ext.class("java/lang/Object")
 		arity := 0
@@ -3074,6 +4166,12 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			// Any's member, which wins over extensions: s.equals(1) is
 			// not String?.equals(String?).
 			return c.resolve(x, c.memberCallees(c.javaMethods(object, fn.Name), types.AnyType), want, sink)
+		}
+		if str := c.u.ext.class("java/lang/String"); str != nil && rt == types.StringType && fn.Name == "subSequence" && x.Names == nil && len(x.Args) == 2 {
+			// String's member subSequence(startIndex, endIndex), which
+			// wins over the standard library's deprecated extension
+			// String.subSequence(start, end).
+			return c.resolve(x, c.memberCallees(c.javaMethods(str, fn.Name), types.StringType), want, sink)
 		}
 		if cands := c.extCalleesFor(fn.Name, rt, x); len(cands) > 0 {
 			return c.resolve(x, cands, want, sink)
@@ -3111,7 +4209,17 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		c.assignable(at, s.params[i], a.Pos())
 	}
 	x.Builtin = s.b
+	c.builtinInfix(x, fn)
 	return s.ret
+}
+
+// builtinInfix reports an infix call x of a built-in member that isn't
+// infix: 1 plus 1, "a" get 0. Only the bitwise functions of Int, Long
+// and Boolean (and, or, xor, shl, shr, ushr) are infix.
+func (c *Checker) builtinInfix(x *syntax.Call, fn *syntax.Member) {
+	if x.Infix && x.Builtin != types.Bitwise {
+		c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+	}
 }
 
 // conversion returns the builtin of a number's or Char's conversion
@@ -3150,11 +4258,23 @@ func deprecatedConversion(from types.Type, b types.Builtin) string {
 	return ""
 }
 
+// bareEmpty reports whether b is an empty branch without braces.
+func bareEmpty(b *syntax.Block) bool {
+	return len(b.Stmts) == 0 && b.End == (syntax.Pos{})
+}
+
 func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	c.value(x.Cond, types.BoolType)
 	c.wantBool(x.Cond)
 	whenTrue, whenFalse := c.narrowing(x.Cond)
+	if valueUsed && !c.tailIfs[x] && x.Else != nil && (bareEmpty(x.Then) || bareEmpty(x.Else)) {
+		// if (c) else x, or if (c) x else;, as kotlinc's
+		// INVALID_IF_AS_EXPRESSION: an empty branch without braces is no
+		// value, where {} is Unit.
+		c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
+	}
 
 	// The vars the branches assign have the join of their types at the
 	// ends of the branches after the if. So have the values the condition
@@ -3174,7 +4294,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.push()
 	c.scope.narrows = whenTrue
 	exits = append(exits, c.watchExit(vars))
-	thenT := c.branch(x.Then, want, valueUsed, &pending)
+	thenT := c.ifBranch(x.Then, want, valueUsed, sink == nil, &pending)
 	c.pop()
 	if x.Else == nil {
 		exits = append(exits, c.startExit(vars, whenFalse))
@@ -3190,24 +4310,18 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.push()
 	c.scope.narrows = whenFalse
 	exits = append(exits, c.watchExit(vars))
-	elseWant := want
-	if l := blockLambda(x.Else); l != nil && valueUsed && want.K == types.Invalid && thenT.Flex().IsFunc() && !thenT.HasVars() && (len(l.Params) > 0 || !noInputs(thenT.Flex())) {
-		// A lambda's parameters are the other branch's function type's:
-		// if (c) consumer else { node -> put(node) }. One without them
-		// has its own type, which the branches' type is above:
-		// if (c) { { 1 } } else { { 1f } }.
-		elseWant = thenT
-	}
-	elseT := c.branch(x.Else, elseWant, valueUsed, &pending)
+	elseT := c.ifBranch(x.Else, lambdaBranchWant(x.Else, thenT, want, valueUsed), valueUsed, sink == nil, &pending)
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
+		c.noteBranchJoin(x, c.statementJoin(x.Then, x.Else))
+		thenT, elseT = inferredJump(thenT, x.Then), inferredJump(elseT, x.Else)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
 			return types.NothingType
 		}
 		return types.UnitType
 	}
-	t, ok := c.joinBranches(thenT, elseT, want, x.Else.P)
+	t, ok := c.joinBranches(thenT, elseT, want, x.P)
 	if !ok {
 		c.errorf(x.P, "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
 		return types.InvalidType
@@ -3215,7 +4329,11 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	if sink != nil {
 		return c.sinkBranches(sink, pending, t)
 	}
-	return c.completeBranches(pending, t, want, true)
+	t = c.completeBranches(pending, t, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, t)
+	}
+	return t
 }
 
 // joinBranches joins the type of a branch of an if or when, bt, with the
@@ -3263,6 +4381,13 @@ type pendingBranch struct {
 	t    types.Type
 	body *syntax.Block
 	lit  syntax.Expr // an integer literal's value, as 0 in if (c) 1L else 0
+	// lambda is set for a branch that is only a lambda without its
+	// parameters' types, which, as K2's postponed argument, takes them
+	// from the others' function type: when { a -> {{ x -> }} b -> f }.
+	lambda bool
+	// sunk is set for a lambda branch postponed with the call the if or
+	// when is an argument of.
+	sunk bool
 	// open is set when the call needs the other branches' types: it has
 	// no lambdas, or they don't give their parameter types. See openLast.
 	open bool
@@ -3272,6 +4397,11 @@ type pendingBranch struct {
 	// scope is the branch's block's, with its locals and smart casts,
 	// which its lambdas see.
 	scope *scope
+	// free is the builder's run the call's variables are related to, if
+	// nothing constrained that run's variables yet when the branch was
+	// checked (see freeStubRun).
+	free   *stubRun
+	freeAt int // the number of free's constraints then
 }
 
 // branch checks a branch of an if or when. Without a known expected
@@ -3282,12 +4412,47 @@ type pendingBranch struct {
 // if (c) build { yield(x) } else build {}, also unused. It is then seen as
 // Nothing, which the join ignores, until completeBranches.
 func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pending *[]pendingBranch) types.Type {
+	return c.ifBranch(b, want, valueUsed, false, pending)
+}
+
+// ifBranch checks a branch of an if, a when or a try, as branch. With
+// together, which the branches' own inference (not a call's they are an
+// argument of) sets, a used branch's call whose variables only their
+// upper bounds would fix is left incomplete too: K2's synthetic call
+// fixes the result's variable first, from the other branches' types, and
+// then the call's below it, as T of <T : Marker> get(key) in
+// if (c) get(key, T::class.java) else get(key) is the other branch's T,
+// not Marker.
+func (c *Checker) ifBranch(b *syntax.Block, want types.Type, valueUsed, together bool, pending *[]pendingBranch) types.Type {
+	if c.lambdaSink && valueUsed && want.K == types.Invalid && len(b.Stmts) == 1 {
+		// A lambda of an if or a when that is a call's argument is, as
+		// K2's synthetic call's, postponed with the call's: { -> } of
+		// Foo(if (b) { -> } else null) for an expected Foo<suspend ()
+		// -> Unit> is a suspend lambda (see sinkBranches).
+		if es, ok := b.Stmts[0].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && len(l.Params) == 0 && !l.Anon && l.Ref == nil && !l.SuspendMod {
+				*pending = append(*pending, pendingBranch{body: b, lambda: true, sunk: true, scope: c.scope})
+				return types.NothingType
+			}
+		}
+	}
+	if n := len(b.Stmts); n > 0 && want.Flex().E {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && !l.Anon {
+				c.markRecvParam(l)
+			}
+		}
+	}
 	if want.K != types.Invalid && want.K != types.Any && !want.HasVars() || len(b.Stmts) == 0 {
 		return c.block(b, want, valueUsed)
 	}
 	es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
 	if !ok {
 		return c.block(b, want, valueUsed)
+	}
+	if l, ok := es.X.(*syntax.Lambda); ok && valueUsed && len(b.Stmts) == 1 && l.Arrow && len(l.Params) > 0 && untypedParams(l) && want.K == types.Invalid {
+		*pending = append(*pending, pendingBranch{body: b, lambda: true, scope: c.scope})
+		return types.NothingType
 	}
 	if valueUsed && literalArith(es.X) {
 		// An integer literal takes the type of the other branches if it
@@ -3316,7 +4481,7 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 	if len(inner.vars) == 0 && len(inner.fixups) == 0 {
 		return bt
 	}
-	if len(inner.lambdas) == 0 && inner.selfInferable(t) {
+	if len(inner.lambdas) == 0 && inner.selfInferable(t) && !(together && valueUsed && !want.HasVars() && inner.upperOnly(t)) {
 		inner.finish()
 		if !valueUsed {
 			return bt
@@ -3325,11 +4490,28 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 		b.T = t
 		return t
 	}
-	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed})
+	free, freeAt := c.freeStubRun(inner), 0
+	if free != nil {
+		freeAt = len(free.cons)
+	}
+	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed, free: free, freeAt: freeAt})
 	if !valueUsed {
 		return bt
 	}
 	return types.NothingType
+}
+
+// branchLambda checks pending branch p, a lambda (see pendingBranch),
+// with the others' type, result, if it is a function type, or want.
+func (c *Checker) branchLambda(p pendingBranch, result, want types.Type) types.Type {
+	target := result
+	if !target.Flex().IsFunc() || target.HasVars() {
+		target = want
+	}
+	saved := c.scope
+	c.scope = p.scope
+	defer func() { c.scope = saved }()
+	return c.block(p.body, target, true)
 }
 
 // completeBranches completes the pending branches with the type of the
@@ -3339,6 +4521,13 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 	c.openLast(pending)
 	done := types.NothingType // the completed pending branches' type
 	for _, p := range pending {
+		if p.lambda {
+			bt := c.branchLambda(p, result, want)
+			if j, ok := c.join(result, bt); ok {
+				result = j
+			}
+			continue
+		}
 		if p.lit != nil {
 			bt := p.t
 			switch r := result.Flex().NonNull(); r {
@@ -3357,12 +4546,19 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			// unusedJoin.
 			target = done
 		}
-		if target.K == types.Nothing || target.K == types.Invalid || target.HasVars() {
+		if target.K == types.Nothing || target.K == types.Null || target.K == types.Invalid || target.HasVars() {
+			// Nothing, or null's Nothing?, which the branches join with.
 			target = want
 		}
+		forced := false
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
+			} else {
+				// Not the Unit that a lambda's unused last statement is
+				// coerced to: put("a", listOf(1)) at the end of buildMap's
+				// lambda doesn't make V? a Unit.
+				forced = p.free != nil && !(p.unused && target.K == types.Unit)
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
@@ -3374,6 +4570,14 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		c.runLambdas(p.sys, false)
 		c.scope = saved
 		p.sys.finish()
+		if forced && slices.Contains(p.free.joined, p.sys) {
+			// K2 infers the call with the builder's variables, which
+			// nothing bounded when the branch was checked: the join of
+			// the branches is its upper bound whatever the lambda does
+			// after, as add(42) after removeLast() in an if's branches
+			// is a mismatch for its Boolean.
+			p.free.force(p.freeAt, p.t, target)
+		}
 		bt := p.sys.final(p.t)
 		if !p.unused {
 			p.body.T = bt
@@ -3383,6 +4587,53 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		}
 		if j, ok := c.join(done, bt); ok {
 			done = j
+		}
+	}
+	return result
+}
+
+// noteBranchJoin records t, the join of the types of the branches of
+// the if or when x, which no expected type gave a type, for the warnings
+// about it (see inferredInvisibleBranches).
+func (c *Checker) noteBranchJoin(x syntax.Expr, t types.Type) {
+	if t.K == types.Invalid {
+		return
+	}
+	if c.branchJoins == nil {
+		c.branchJoins = map[syntax.Expr]types.Type{}
+	}
+	c.branchJoins[x] = t
+}
+
+// statementJoin returns the join of the values of bodies, the branches of
+// an if or when whose value isn't used, or InvalidType unless each that
+// doesn't jump ends with an expression of a type that isn't Unit.
+func (c *Checker) statementJoin(bodies ...*syntax.Block) types.Type {
+	result := types.NothingType
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return types.InvalidType
+		}
+		if b.T.K == types.Nothing {
+			continue
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return types.InvalidType
+		}
+		bt := es.X.Type()
+		switch {
+		case bt.K == types.Invalid || bt.K == types.Unit || bt.HasVars():
+			return types.InvalidType
+		case bt.K == types.Nothing:
+		case result.K == types.Nothing:
+			result = bt
+		default:
+			j, ok := c.join(result, bt)
+			if !ok {
+				return types.InvalidType
+			}
+			result = j
 		}
 	}
 	return result
@@ -3447,7 +4698,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 				continue
 			}
 			c.scope = pl.scope
-			c.stubInference(p.sys, pl.l, params, ft)
+			c.stubInference(p.sys, pl.l, params, ft, false)
 			p.open = p.open || !slices.ContainsFunc(params, p.sys.known)
 		}
 	}
@@ -3464,6 +4715,8 @@ func (c *Checker) openLast(pending []pendingBranch) {
 }
 
 func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	var pending []pendingBranch
 	softFail := false
 	// As after an if, the vars the branches assign have the join of their
@@ -3501,15 +4754,23 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			st = c.value(x.Subject, noWant)
 			x.SubjSym = &types.VarSym{Name: "<subject>", Type: st, Kind: types.Local}
 			subj, hasSubj = c.narrowKeyOf(x.Subject)
+			if !hasSubj {
+				// Not a stable value, but the subject's own value, which the
+				// conditions test, is: not null after null -> in
+				// when (getDateOrNull()) { null -> 0; in a..b -> 1 }.
+				subj, hasSubj = narrow{sym: x.SubjSym, t: st}, true
+			}
 		}
 	}
 	hasElse := false
 	var cov coverage
 	result := types.NothingType
 	allJump := true
-	unused := types.NothingType // the join of the branches, whose value isn't used: see unusedJoin
-	var later []narrow          // what the failed conditions of the branches so far imply
-	nullFirst := true           // no branch so far matches null
+	unused := types.NothingType     // the join of the branches, whose value isn't used: see unusedJoin
+	var later []narrow              // what the failed conditions of the branches so far imply
+	nullFirst := true               // no branch so far matches null
+	funcBranch := types.InvalidType // see lambdaBranchWant
+	var bts []types.Type            // the branches' types
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
@@ -3528,6 +4789,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			cov = coverage{}
 		}
 		laterLen := len(later)
+		nonNull := 0
 		for j := range br.Conds {
 			cond := &br.Conds[j]
 			switch {
@@ -3541,12 +4803,31 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.Is && cond.Target.K == types.Class {
 					cov.classes = append(cov.classes, cond.Target.C)
 				}
+				switch {
+				case cond.Is && cond.Target.K != types.Invalid:
+					cov.types = append(cov.types, cond.Target)
+				case cond.NotIs && cond.Target.K == types.Class && !cond.Target.N:
+					cov.not = append(cov.not, cond.Target.C)
+				}
+				if hasSubj && cond.Is {
+					// What the subject is in the branches after one it
+					// isn't: null after is Any.
+					if t, ok := notIsNarrowed(subjType(), st, cond.Target); ok {
+						n := narrow{recv: subj.recv, sym: subj.sym, t: t}
+						later = append(later, n)
+						if t.K != types.Null && t.K != types.Nothing {
+							later = append(later, c.impliedBy(n)...)
+						}
+					}
+				}
 				if hasSubj && single && cond.Target.K != types.Invalid {
 					n := narrow{recv: subj.recv, sym: subj.sym, t: c.isNarrowed(subjType(), cond.Target)}
 					if cond.Is {
-						whenTrue = append(whenTrue, n)
+						// And what it implies, as an if does: x.data of
+						// val y = x.data, when (y) { is String -> }.
+						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
 					} else {
-						later = append(later, n)
+						later = append(append(later, n), c.impliedBy(n)...)
 					}
 				}
 			case cond.In || cond.NotIn:
@@ -3554,6 +4835,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					c.errorf(cond.X.Pos(), "'in' conditions need a 'when' subject")
 					c.value(cond.X, noWant)
 					break
+				}
+				// The subject as the branches before smart cast it: not
+				// null after null ->, in when (d) { null -> 0; in r -> 1 }.
+				st := st
+				if nt := subjType(); hasSubj && nt.K != types.Invalid {
+					st = nt
 				}
 				r, ok := cond.X.(*syntax.Binary)
 				var rt types.Type
@@ -3582,8 +4869,16 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					c.errorf(cond.X.Pos(), "'in' is only supported with ranges written in place, without 'step'")
 					rt = c.rangeExpr(cond.X)
 				}
-				if !(isIntOrLong(st) && isIntOrLong(rt.RangeElem())) {
-					c.wantType(x.Subject, st, rt.RangeElem())
+				if e := rt.RangeElem(); st.IsIntersection() && slices.Contains(st.Param().Bounds, e) {
+					// A T smart cast to Char, a Char & T, as a Char.
+					st = e
+				}
+				if w := rt.RangeElem(); !(isIntOrLong(st) && isIntOrLong(w)) {
+					// At the condition, in 1..10, which takes the subject
+					// as its argument.
+					if t := st.Flex(); t != w && t.K != types.Invalid && w.K != types.Invalid {
+						c.errorf(cond.P, "type mismatch: inferred type is %s but %s was expected", t, w)
+					}
 				}
 			case x.Subject != nil:
 				ct := c.value(cond.X, st)
@@ -3603,7 +4898,19 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					}
 				}
 				if cond.OpType.K == types.Invalid {
+					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
+					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid {
+						// A smart-cast subject, compared with a value its
+						// declared type may be equal to: as kotlinc, only
+						// a warning (see whenEnumWarnings).
+						m := len(c.errs)
+						if t := c.equality(cond.X.Pos(), syntax.EQ, dt, ct); t.K != types.Invalid {
+							c.errs, cond.OpType = c.errs[:n], t
+						} else {
+							c.errs = c.errs[:m]
+						}
+					}
 				}
 				cov.add(cond.X)
 				if single && x.SubjVar == "" {
@@ -3613,9 +4920,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && equalsNonNull(ct) {
-					// Equal to a value that isn't null: neither the
-					// subject nor the receivers of its safe calls are.
+				if equalsNonNull(ct) {
+					nonNull++
+				}
+				if nonNull == len(br.Conds) {
+					// Equal to a value that isn't null, or to one of
+					// several: neither the subject nor the receivers of
+					// its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
@@ -3623,6 +4934,16 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					whenTrue = append(whenTrue, c.safeReceivers(x.Subject)...)
 				}
 				if _, ok := cond.X.(*syntax.NullLit); ok {
+					if hasSubj && st.K != types.Null && !definitelyNonNull(st) {
+						// The branches before left it null alone, or
+						// ruled null out.
+						if nt := subjType(); nt.K == types.Null || definitelyNonNull(nt) {
+							if c.nullConds == nil {
+								c.nullConds = map[*syntax.WhenCond]bool{}
+							}
+							c.nullConds[cond] = nt.K == types.Null
+						}
+					}
 					// Later branches see a non-null subject, and this one
 					// a null one, of type Nothing?.
 					if hasSubj && types.MayBeNull(subjType()) {
@@ -3650,6 +4971,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			n := narrow{recv: subj.recv, sym: subj.sym, t: subjType(), onlyNot: true}
 			if t, ok := c.joinIs(br.Conds); ok && !c.subtype(subjType(), t) && c.subtype(t, subjType()) {
 				n.t, n.onlyNot = c.isNarrowed(subjType(), t), false
+			} else if t, ok := c.joinIsNarrowed(subjType(), br.Conds); ok {
+				n.t, n.onlyNot = t, false
 			}
 			if others := c.sealedOthers(subjType(), br.Conds); others != nil {
 				n.not = &coverage{null: true, classes: others}
@@ -3661,8 +4984,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		if br.Guard != nil {
 			cov = saved
 			later = later[:laterLen]
-			if x.Subject == nil {
+			switch {
+			case x.Subject == nil:
 				c.errorf(br.Guard.Pos(), "guard conditions are only allowed in 'when' with a subject")
+			case len(br.Conds) > 1:
+				c.errorf(br.Guard.Pos(), "a guard condition is not allowed after several conditions separated by commas")
 			}
 			c.push()
 			c.scope.narrows = append(c.scope.narrows, whenTrue...)
@@ -3675,16 +5001,22 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.push()
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
-		bt := c.branch(br.Body, want, valueUsed, &pending)
+		npending := len(pending)
+		bt := c.ifBranch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, sink == nil, &pending)
+		funcBranch = firstFuncBranch(funcBranch, bt)
+		bts = append(bts, bt)
 		c.pop()
 		c.pop()
-		if bt.K != types.Nothing {
+		// A branch whose check is pending, as 2 of null -> 2, has type
+		// Nothing until then, but doesn't jump.
+		jumped := bt.K == types.Nothing && len(pending) == npending
+		if !jumped {
 			allJump = false
 		}
 		if x.Subject != nil && nullFirst && !br.Else {
 			if _, null := br.Conds[0].X.(*syntax.NullLit); single && null && br.Guard == nil {
 				nullFirst = false
-				if bt.K == types.Nothing {
+				if jumped {
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						afterNull = append(append(afterNull, n), c.impliedBy(n)...)
@@ -3707,7 +5039,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				}
 				continue
 			}
-			t, ok := c.joinBranches(result, bt, want, br.Body.P)
+			t, ok := c.joinBranches(result, bt, want, x.P)
 			if !ok {
 				c.errorf(br.Body.P, "type mismatch: 'when' branches have incompatible types %s and %s", result, bt)
 				return types.InvalidType
@@ -3718,7 +5050,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if hasSubj && x.SubjVar == "" {
 		// Nor values the subject is known not to be: E.A after
 		// if (e == E.A) return.
-		if not := c.scope.excluded(subj.recv, subj.sym); not != nil {
+		base := subj.sym
+		if subj.recv != nil {
+			base = subj.recv
+		}
+		if not := c.scope.excluded(subj.recv, subj.sym); not != nil && (base == nil || c.varUntouched(base)) {
 			cov.merge(not)
 		}
 	}
@@ -3738,6 +5074,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if c.u.rec != nil {
 		c.u.rec.When(x, covered, valueUsed)
 	}
+	if c.coveredWhens == nil {
+		c.coveredWhens = map[*syntax.When]bool{}
+	}
+	c.coveredWhens[x] = covered
+	c.noteRedundantElse(x, st, &cov, hasElse, covered)
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
@@ -3758,12 +5099,33 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	}
 	if !valueUsed {
 		c.completeBranches(pending, unused, noWant, false)
+		bodies := make([]*syntax.Block, len(x.Branches))
+		for i, br := range x.Branches {
+			bodies[i] = br.Body
+		}
+		c.noteBranchJoin(x, c.statementJoin(bodies...))
+		if !allJump {
+			allJump = true
+			for i, br := range x.Branches {
+				allJump = allJump && inferredJump(bts[i], br.Body).K == types.Nothing
+			}
+		}
 		if allJump {
 			return types.NothingType
 		}
 		return types.UnitType
 	}
-	return c.completeBranches(pending, result, want, true)
+	if len(x.Branches) == 0 {
+		return types.UnitType // when (n) {} of an n: Nothing, as kotlinc types it
+	}
+	if sink != nil {
+		return c.sinkBranches(sink, pending, result)
+	}
+	result = c.completeBranches(pending, result, want, true)
+	if want.K == types.Invalid {
+		c.noteBranchJoin(x, result)
+	}
+	return result
 }
 
 // joinIs returns the common supertype of the types of a when branch's
@@ -3857,10 +5219,11 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case c.fn == nil:
 			c.errorf(x.P, "'return' is not allowed here")
 		case !c.leave(c.base, x):
+		case !c.retAllowed && c.exprBodyReturn(x):
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
-			c.assignable(c.value(x.X, c.retType), c.retType, x.X.Pos())
+			c.assignable(c.returnValue(x.X, c.retType), c.retType, syntax.StartPos(x.X))
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
 			c.errorf(x.P, "this function must return a value of type %s", c.retType)
 		}
@@ -3935,4 +5298,39 @@ func (c *Checker) ctorsFit(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Ca
 		return c.takeTypes(cls.Ctors, x, ts) || !c.takeTypes(fs, x, ts)
 	}
 	return true
+}
+
+// sinkLambdas sets lambdaSink to on, and returns the function that
+// restores it. branchArg is consumed.
+func (c *Checker) sinkLambdas(on bool) func() {
+	saved := c.lambdaSink
+	c.lambdaSink, c.branchArg = on, false
+	return func() { c.lambdaSink = saved }
+}
+
+// starsBounded returns t, a value's type, with its star arguments of
+// out parameters replaced by out projections of their bounds: K2
+// captures the stars, so that E of Out<E> <: Out<*> is below the
+// capture, which kc approximates by its bound.
+func starsBounded(t types.Type) types.Type {
+	n := t.NonNull()
+	if n.K != types.Class || n.A == nil {
+		return t
+	}
+	args := slices.Clone(n.A.List)
+	changed := false
+	for i, a := range args {
+		if a.V == types.Star && i < len(n.C.TypeParams) && n.C.TypeParams[i].Var == types.Out {
+			args[i] = types.Arg{V: types.Out, T: starArgBound(n, i)}
+			changed = true
+		}
+	}
+	if !changed {
+		return t
+	}
+	n.A = types.MakeArgs(args)
+	if t.N {
+		n = n.Nullable()
+	}
+	return n
 }

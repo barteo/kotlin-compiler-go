@@ -40,7 +40,11 @@ const (
 type Modifiers struct {
 	Flags       uint16 // classfile access flags: public, static, final and so on
 	Default     bool   // an interface's default method
+	Sealed      bool   // a sealed class or interface, not a non-sealed one
 	Annotations []*Annotation
+	// DocDeprecated is set when a doc comment's @deprecated tag
+	// deprecates the declaration.
+	DocDeprecated bool
 }
 
 // Annotation is an annotation, with its arguments' tokens only as names:
@@ -48,6 +52,8 @@ type Modifiers struct {
 type Annotation struct {
 	Name string   // as written: Retention or java.lang.annotation.Retention
 	Args []string // the identifiers among its arguments
+	// Strings are the string literals among its arguments, decoded.
+	Strings []string
 }
 
 // Class is a class, interface, enum, record or annotation type.
@@ -58,10 +64,13 @@ type Class struct {
 	TypeParams []*TypeParam
 	Extends    []*Type // a class's superclass, or an interface's superinterfaces
 	Implements []*Type
+	Permits    []*Type  // a sealed class's permitted subclasses
 	Components []*Param // a record's
 	Fields     []*Field
 	Methods    []*Method
 	Constants  []string // an enum's
+	// ConstantMods are the annotations of Constants, by index.
+	ConstantMods []Modifiers
 	// ConstantBodies is set on an enum whose constants have class bodies,
 	// which subclass it.
 	ConstantBodies bool
@@ -82,6 +91,10 @@ type Type struct {
 	Prim string
 	Segs []Seg
 	Dims int
+	// Annotations are the type annotations of the type's class or
+	// primitive, before it or its last segment: @NotNull Object or
+	// java.lang.@NotNull Object, not those of its array dimensions.
+	Annotations []*Annotation
 }
 
 // Seg is a segment of a class type's name: Map or Entry<K, V> of
@@ -241,7 +254,9 @@ func (p *parser) compilationUnit() {
 	if p.isWord("package") {
 		p.next()
 		p.file.Package = p.qualified()
-		p.semi()
+		// As Kotlin's Java parser, a missing ; after the package
+		// declaration is no error: kotlinc's EnumEntryVsStaticAmbiguity4.
+		p.accept(";")
 		mods = p.modifiers()
 	}
 	for p.isWord("import") {
@@ -287,6 +302,7 @@ var modifierFlags = map[string]uint16{
 // follows has.
 func (p *parser) modifiers() Modifiers {
 	var m Modifiers
+	m.DocDeprecated = p.tok().docDeprecated
 	for {
 		t := p.tok()
 		switch {
@@ -300,6 +316,7 @@ func (p *parser) modifiers() Modifiers {
 			p.next()
 			m.Default = true
 		case t.kind == tIdent && (t.text == "sealed" || t.text == "non") && p.sealedModifier():
+			m.Sealed = m.Sealed || t.text == "sealed"
 		default:
 			return m
 		}
@@ -330,8 +347,11 @@ func (p *parser) annotation() *Annotation {
 		start := p.pos
 		p.skipBalanced()
 		for _, t := range p.toks[start:p.pos] {
-			if t.kind == tIdent {
+			switch t.kind {
+			case tIdent:
 				a.Args = append(a.Args, t.text)
+			case tString:
+				a.Strings = append(a.Strings, t.text)
 			}
 		}
 	}
@@ -410,7 +430,7 @@ func (p *parser) typeDecl(mods Modifiers, outer *Class) *Class {
 			continue
 		case p.isWord("permits"):
 			p.next()
-			p.typeList()
+			c.Permits = p.typeList()
 			continue
 		}
 		break
@@ -459,14 +479,15 @@ var primitives = map[string]bool{
 
 // typ parses a type, with its array dimensions but not a varargs ....
 func (p *parser) typ() *Type {
-	p.modifiers() // type annotations
-	t := &Type{}
+	t := &Type{Annotations: p.modifiers().Annotations}
 	if name := p.tok().text; p.tok().kind == tIdent && primitives[name] {
 		p.next()
 		t.Prim = name
 	} else {
-		for {
-			p.modifiers()
+		for i := 0; ; i++ {
+			if as := p.modifiers().Annotations; i > 0 && len(as) > 0 {
+				t.Annotations = as // java.lang.@NotNull Object
+			}
 			seg := Seg{Name: p.ident()}
 			if p.is("<") {
 				seg.Args = p.typeArgs()
@@ -530,14 +551,18 @@ func (p *parser) typeArgs() []*TypeArg {
 
 // classBody parses { members }, with an enum's constants first.
 func (p *parser) classBody(c *Class) {
+	if p.tok().kind == tEOF {
+		return // public interface I, at the end of the file: kotlinc's Java parser reads an empty body
+	}
 	p.expect("{")
 	if c.Kind == KindEnum {
 		for {
-			p.modifiers()
+			mods := p.modifiers()
 			if p.tok().kind != tIdent {
 				break
 			}
 			c.Constants = append(c.Constants, p.ident())
+			c.ConstantMods = append(c.ConstantMods, mods)
 			if p.is("(") {
 				p.skipBalanced()
 			}
@@ -622,6 +647,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	tps := p.typeParams()
+	if tps != nil {
+		// <T> @NotNull T: a return type's annotations, as the method's.
+		mods.Annotations = append(mods.Annotations, p.modifiers().Annotations...)
+	}
 	// A constructor, or a record's compact canonical constructor. A
 	// method without a return type is a misnamed constructor, as
 	// IntelliJ's Java PSI reads it.

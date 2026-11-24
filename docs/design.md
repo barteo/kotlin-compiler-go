@@ -117,9 +117,21 @@ that is an argument of another joins the outer system, as in K2, and so
 do the branches of an `if` or `when` used as a value. A lambda argument
 is checked after the other arguments, once the variables in its parameter
 types are fixed, and its body constrains the result. Builder inference
-(`buildList { add("x") }`) checks a lambda twice: first with variables
-open, recording the subtyping on them, then once they are fixed
-(`stubInference`).
+(`buildList { add("x") }`) checks a lambda once, with the builder's
+variables open (`stubInference`), following K2's partially constrained
+lambda analysis (`internal/check/pcla.go`): the calls in the lambda that
+mention the variables are postponed and join the builder's constraint
+system, shared with the builders around and in it, and a variable is
+fixed on demand where a member of a value of its type is needed. When
+the variables are inferred the check is kept (`pclaCommit`): a writer
+(`pclawrite.go`) substitutes the inferred types into the lambda's tree
+and the symbols declared in it, the postponed calls are completed and
+their fixups run again, and what the check decided from a type with a
+variable is decided again (`pclaDefer`). A nested builder whose
+variables depend on those of one around it leaves its lambda to that
+one's completion. There is no second check: a lambda that the commit
+can't finish is an internal error. `KC_PCLA_DEBUG=1` logs the checks
+and `KC_PCLA_STATS=file` lists how each ended.
 
 **Smart casts.** Stable values (`val`s, `this`, final `val` properties
 with fields, and local `var`s no closure assigns) are narrowed by `is`
@@ -146,14 +158,19 @@ instructions; otherwise the checker builds Kotlin's call (`a.plus(b)`) as
 a `Call` marked `Operator`. Compound assignments and `++` are rewritten
 into statements that evaluate receivers and indexes once.
 
-**Multiplatform and contracts.** Code compiles for the JVM only: actual
-declarations are ordinary ones, and expect declarations are only checked
-against them (`expect.go`). `contract { }` calls are dropped
+**Multiplatform and contracts.** Code compiles for the JVM only: with
+`-Xmulti-platform`, as with `kotlinc` (without it, the `expect` and
+`actual` modifiers are errors), actual declarations are ordinary ones, and
+expect declarations are only checked against them (`expect.go`). `contract { }` calls are dropped
 (`contracts.go`).
 
 ## Class files
 
-Class files are version 52 (Java 8). The assembler
+Class files are version 52 (Java 8), and those of a higher
+`-jvm-target` say a higher version: the driver raises it as it
+writes them (`classfile.SetMajor`), as nothing in them needs it but, from
+Java 17 on, a sealed class's `PermittedSubclasses` attribute, which
+codegen writes for the target (`Options.JVMTarget`). The assembler
 (`internal/classfile/code.go`) computes `StackMapTable` frames in the
 same pass that emits code:
 
@@ -254,7 +271,15 @@ Copying a body (`codegen/inline.go`):
   An object using the type parameters (`filterIsInstance`'s
   `{ it is R }`) is a template class (`inline.Template`) that each copy
   copies, renamed in its constant pool, with the markers made `nop`s so
-  offsets and frames stay valid.
+  offsets and frames stay valid. In the method of an inline function
+  whose own reified type parameter is the type argument, the copy keeps
+  its markers, renamed to that parameter, and the method creates it after
+  `Intrinsics.needClassReification()`, as `kotlinc`'s does: other modules'
+  copies of the method, by `kc` or `kotlinc`, copy the class in turn.
+  As `kotlinc`'s reifier, a check against a nullable type argument
+  (`is String?`) is true for null, and a cast to a non-null one
+  (`as String`) throws for null: in a template, both are written in the
+  bytes of the marker and the operation.
 
 An inlined lambda's body is generated at each invoke, with no capture
 boundary; `return@label` jumps to its end, and a plain `return`, `break`
@@ -323,7 +348,11 @@ With `-compose`, `-serialization`, `-parcelize` and `-metro`, `kc` compiles as `
   with those capturing nothing in `ComposableSingletons`.
 - **kotlinx.serialization** (`check/serialization.go`, `codegen/serial.go`):
   the `$serializer` object, `serializer()`, `write$Self` and the
-  deserialization constructor.
+  deserialization constructor. A generic class's `$serializer` is a class
+  whose constructor takes its type arguments' serializers, which
+  `serializer(...)` and `write$Self` take too, and the class keeps a
+  static `$cachedDescriptor` for the deserialization constructor's
+  missing-field exception.
 - **Parcelize** (`check/parcelize.go`): `describeContents`,
   `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
   each property as kotlinc's serializer for its type does: a generic

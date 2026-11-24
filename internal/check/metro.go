@@ -172,6 +172,8 @@ var metroOptions = map[string]string{
 	"interop-include-hilt-annotations":                "false",
 	"interop-include-guice-annotations":               "false",
 	"enable-circuit-codegen":                          "false",
+	"enable-derived-bindings":                         "false",
+	"companion-mode":                                  "COMPANION_OBJECT",
 }
 
 // metroSupported are the options of metroOptions that kc reads; it
@@ -307,6 +309,11 @@ func parseMetroOptions(opts map[string]string) (metroConfig, error) {
 			if v != "" && !metroOptionalBehaviors[v] {
 				err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
 			}
+		case key == "companion-mode":
+			// Metro reads companion-object and COMPANION_OBJECT alike.
+			if mode := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(v), "-", "_")); mode != def && mode != "" {
+				err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
+			}
 		case known && !metroSupported[key] && v != def && v != "":
 			err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
 		case strings.HasPrefix(key, "custom-") && v != "":
@@ -326,6 +333,7 @@ func parseMetroOptions(opts map[string]string) (metroConfig, error) {
 // declarations.
 func (c *Checker) allAnnotations() {
 	c.annotations(c.file.Annotations, nil, fileSite)
+	c.annotations(c.file.Dangling, nil, annotSite{kind: siteUnchecked})
 	for _, d := range c.file.Decls {
 		c.declAnnotations(d, nil)
 	}
@@ -499,16 +507,14 @@ func allCalls(file *syntax.File, f func(*syntax.Call)) {
 }
 
 // metroGraphCall returns the Kotlin expression that replaces a call of
-// createGraph (factory false) or createGraphFactory with type argument
-// cls, or "" if cls isn't a graph or a graph's factory.
-func metroGraphCall(cls *types.ClassSym, factory bool) string {
-	if !factory {
-		return fqName(cls) + ".Companion.invoke()"
-	}
-	g := cls.Outer
-	if g == nil {
-		return ""
-	}
+// createGraph with type argument cls.
+func metroGraphCall(cls *types.ClassSym) string {
+	return fqName(cls) + ".Companion.invoke()"
+}
+
+// metroFactoryCall returns the Kotlin expression that replaces a call of
+// createGraphFactory of a factory of graph g.
+func metroFactoryCall(g *types.ClassSym) string {
 	return "kotlin.run { " + fqName(g) + ".Companion }"
 }
 

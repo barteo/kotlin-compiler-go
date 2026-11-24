@@ -222,7 +222,10 @@ func (g *gen) exprStmt(x syntax.Expr) {
 	} else {
 		g.expr(x)
 	}
-	g.uncastErased()
+	if _, ok := g.uncastErased(); ok {
+		g.code.Op(cf.POP)
+		return
+	}
 	g.pop(x.Type())
 }
 
@@ -725,23 +728,15 @@ func stableLocal(x syntax.Expr) *types.VarSym {
 
 // arithOp returns the instruction of an arithmetic operator on values of
 // type t, which is Int, Long, Float or Double.
-func arithOp(t types.Type, op syntax.Kind) byte {
-	base := map[syntax.Kind][4]byte{
-		syntax.PLUS:    {cf.IADD, cf.LADD, cf.FADD, cf.DADD},
-		syntax.MINUS:   {cf.ISUB, cf.LSUB, cf.FSUB, cf.DSUB},
-		syntax.STAR:    {cf.IMUL, cf.LMUL, cf.FMUL, cf.DMUL},
-		syntax.SLASH:   {cf.IDIV, cf.LDIV, cf.FDIV, cf.DDIV},
-		syntax.PERCENT: {cf.IREM, cf.LREM, cf.FREM, cf.DREM},
-	}[op]
-	switch t.K {
-	case types.Long:
-		return base[1]
-	case types.Float:
-		return base[2]
-	case types.Double:
-		return base[3]
-	}
-	return base[0]
+func arithOp(t types.Type, op syntax.Kind) byte { return arithOps[op][stackKind(t)] }
+
+// arithOps are the arithmetic instructions, by operator and stackKind.
+var arithOps = [...][4]byte{
+	syntax.PLUS:    {cf.IADD, cf.LADD, cf.FADD, cf.DADD},
+	syntax.MINUS:   {cf.ISUB, cf.LSUB, cf.FSUB, cf.DSUB},
+	syntax.STAR:    {cf.IMUL, cf.LMUL, cf.FMUL, cf.DMUL},
+	syntax.SLASH:   {cf.IDIV, cf.LDIV, cf.FDIV, cf.DDIV},
+	syntax.PERCENT: {cf.IREM, cf.LREM, cf.FREM, cf.DREM},
 }
 
 func compoundOp(k syntax.Kind) syntax.Kind {
@@ -880,12 +875,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			lv := lvalue{t: t, prepare: prepare, recv: size(f.Recv), reread: true,
 				load: func() {
-					g.invokeFun(nil, f, nil)
+					g.invokeFun(accessorCall(x, f), f, nil)
 					g.coerce(types.JVMRet(f), t)
 				},
 				store: func() {
 					g.coerce(t, s.Params[0].Type)
-					g.invokeFun(nil, s, nil)
+					g.invokeFun(accessorCall(x, s), s, nil)
 				}}
 			if gd := syntax.SourceInline(f); gd != nil {
 				// Accessors with reified type parameters: copies of their
@@ -893,7 +888,28 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				// the setter's argument, from a local.
 				get := &syntax.Call{Fun: x, Sym: f, Reified: x.Reified}
 				get.P, get.T = x.P, t
+				push := func() {}
+				if f.Owner != nil {
+					// A member's: the copies take the extension receiver
+					// under the dispatch receiver, which prepare keeps in
+					// locals, for both.
+					var recv, disp int
+					dt := selfType(f.Owner)
+					lv.prepare, lv.recv = func() {
+						prepare()
+						recv = g.code.AllocLocal(desc(f.Recv))
+						g.code.Local(storeOp(f.Recv), recv)
+						g.dispatch(x, f.Owner)
+						disp = g.code.AllocLocal(desc(dt))
+						g.code.Local(storeOp(dt), disp)
+					}, 0
+					push = func() {
+						g.code.Local(loadOp(f.Recv), recv)
+						g.code.Local(loadOp(dt), disp)
+					}
+				}
 				lv.load = func() {
+					push()
 					g.inlineBody(get, gd)
 					g.coerce(f.Ret, t)
 				}
@@ -907,9 +923,11 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					arg.P, arg.T = x.P, pt
 					set := &syntax.Call{Fun: x, Sym: s, Args: []syntax.Expr{arg}, Reified: x.Reified}
 					set.P, set.T = x.P, types.UnitType
+					push()
 					g.inlineBody(set, syntax.SourceInline(s))
 					g.pop(s.Ret)
 				}
+				return lv
 			}
 			if f.Owner != nil {
 				lv.prepare, lv.recv = func() {
@@ -925,11 +943,19 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					lv.wide = f.Recv
 				}
 				lv.load = func() {
-					g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
+					if b := inlineBody(f, nil); b != nil {
+						g.inline(b, accessorCall(x, f)) // inline-only, of the class path
+					} else {
+						g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
+					}
 					g.coerce(types.JVMRet(f), t)
 				}
 				lv.store = func() {
 					g.coerce(t, s.Params[0].Type)
+					if b := inlineBody(s, nil); b != nil {
+						g.inline(b, accessorCall(x, s))
+						return
+					}
 					g.callMethod(s, s.Owner, s.JVM(), funDesc(s))
 				}
 			}
@@ -999,7 +1025,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			return g.globalLvalue(p)
 		}
 		this := isThis(x.X)
-		return g.propLvalue(x.Prop, x.T, func() { g.expr(x.X) }, recvClass(x.X.Type()), this)
+		recv, cls := func() { g.expr(x.X) }, recvClass(x.X.Type())
+		if p := x.Prop; x.X.Type().NonNull().IsParam() && p.Owner != nil && cls != nil && !cls.IsSubclassOf(p.Owner) {
+			// A property of another bound than the first, as getMember's.
+			recv, cls = func() { g.expr(x.X); g.code.Checkcast(p.Owner.Name) }, p.Owner
+		}
+		return g.propLvalue(x.Prop, x.T, recv, cls, this)
 	}
 	panic("bad assignment target")
 }
@@ -1028,16 +1059,18 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 				g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 			}}
 	}
-	set := types.SetterJVM(p)
+	set, owner := types.SetterJVM(p), p.Facade
 	if p.Private || p.SetterPrivate {
+		// The private accessor is in the class of the field: a multi-file
+		// class's part.
 		g.shared.access[p] |= 2
-		set = privateSetter(p)
+		set, owner = privateSetter(p), p.FieldClass()
 	}
 	return lvalue{t: p.Type, prepare: func() {}, reread: true,
 		load: func() { g.global(p) },
 		store: func() {
 			g.toField(p, ft)
-			g.code.Invoke(cf.INVOKESTATIC, p.Facade, set, "("+d+")V")
+			g.code.Invoke(cf.INVOKESTATIC, owner, set, "("+d+")V")
 		}}
 }
 
@@ -1167,7 +1200,8 @@ func (g *gen) incDecValue(u *syntax.Unary) {
 		g.dupBelow(lv, lv.t)
 	}
 	g.coerce(lv.t, t)
-	g.addOne(u, t)
+	g.addOne(t, compoundOp(u.Op))
+	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
 	g.coerce(t, lv.t)
 	if u.Prefix && !reread {
 		g.dupBelow(lv, lv.t)
@@ -1200,8 +1234,9 @@ func (g *gen) dupBelow(lv lvalue, t types.Type) {
 	}
 }
 
-// addOne adds or subtracts 1 from the value of type t on top of the stack.
-func (g *gen) addOne(u *syntax.Unary, t types.Type) {
+// addOne adds or subtracts 1, as op is PLUS or MINUS, from the value of
+// type t on top of the stack.
+func (g *gen) addOne(t types.Type, op syntax.Kind) {
 	switch t.K {
 	case types.Long:
 		g.code.Lconst(1)
@@ -1212,8 +1247,7 @@ func (g *gen) addOne(u *syntax.Unary, t types.Type) {
 	default:
 		g.code.Iconst(1)
 	}
-	g.code.Op(arithOp(t, compoundOp(u.Op)))
-	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
+	g.code.Op(arithOp(t, op))
 }
 
 func (g *gen) incDec(u *syntax.Unary) {
@@ -1236,17 +1270,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 	lv.load()
 	t := lv.t.Flex().NonNull()
 	g.coerce(lv.t, t)
-	switch t.K {
-	case types.Long:
-		g.code.Lconst(1)
-	case types.Float:
-		g.code.Fconst(1)
-	case types.Double:
-		g.code.Dconst(1)
-	default:
-		g.code.Iconst(1)
-	}
-	g.code.Op(arithOp(t, compoundOp(u.Op)))
+	g.addOne(t, compoundOp(u.Op))
 	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
 	g.coerce(t, lv.t)
 	lv.store()

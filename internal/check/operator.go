@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,18 +63,67 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case !ok:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
+	case d.Name == "mod" || d.Name == "modAssign":
+		// % calls rem, and %= remAssign: mod is an operator no longer.
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
 	case owner == nil && d.Recv == nil:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member or an extension function")
 	case n >= 0 && len(d.Params) != n && !((d.Name == "inc" || d.Name == "dec") && defaultsOnly(d.Params)):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
 	case n < 0 && n != -0x7fff && len(d.Params) < -n:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
-	case !d.Sym.Resolved:
-	case d.Name == "compareTo" && d.Sym.Ret.Flex() != types.IntType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")
-	case d.Name == "contains" && d.Sym.Ret.Flex() != types.BoolType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
+	case d.Suspend && (d.Name == "equals" || d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate"):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must not be suspend")
+	case n >= 0 && d.Name != "inc" && d.Name != "dec" && slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Vararg || p.Default != nil }):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: should not have varargs or parameters with default values")
+	case d.Name == "equals" && d.Recv != nil:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member function")
+	case d.Name == "equals" && d.Params[0].Sym != nil && d.Params[0].Sym.Type != types.AnyType.Nullable():
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
+	case (d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate") && !c.takesKProperty(d.Params[1]):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
+	case d.Sym.Resolved:
+		c.operatorReturn(d, owner)
 	}
+}
+
+// operatorReturn checks the return type of operator function d, a member
+// of owner or not, once it is known.
+func (c *Checker) operatorReturn(d *syntax.FunDecl, owner *types.ClassSym) {
+	ret := d.Sym.Ret.Flex()
+	if ret.K == types.Invalid {
+		return
+	}
+	switch {
+	case d.Name == "compareTo" && ret != types.IntType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")
+	case (d.Name == "contains" || d.Name == "hasNext") && ret != types.BoolType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
+	case strings.HasSuffix(d.Name, "Assign") && ret != types.UnitType:
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Unit")
+	case d.Name == "inc" || d.Name == "dec":
+		// The result is assigned to the receiver.
+		recv := d.Sym.Recv
+		if d.Recv == nil {
+			if owner == nil {
+				return
+			}
+			recv = owner.This()
+		}
+		if recv.K != types.Invalid && !c.subtype(d.Sym.Ret, recv) {
+			c.errorf(d.P, "'operator' modifier is inapplicable on this function: receiver must be a supertype of the return type")
+		}
+	}
+}
+
+// takesKProperty reports whether parameter p, a delegate operator's
+// second, can take a KProperty<*>.
+func (c *Checker) takesKProperty(p *syntax.Param) bool {
+	cls := c.u.ext.class("kotlin/reflect/KProperty")
+	if cls == nil || p.Sym == nil || p.Sym.Type.K == types.Invalid {
+		return true
+	}
+	return c.subtype(types.GenericType(cls, []types.Arg{{V: types.Star}}), p.Sym.Type)
 }
 
 // defaultsOnly reports whether every parameter has a default value: as
@@ -213,6 +263,13 @@ func (c *Checker) containsOp(x *syntax.Binary) types.Type {
 	if t.K != types.Invalid && t.Flex() != types.BoolType {
 		c.errorf(x.P, "'contains' must return Boolean, not %s", t)
 	}
+	if f := call.Sym; f != nil && f.Name == "contains" && len(f.Params) == 1 && types.MayBeNull(f.Params[0].Type) && f.Params[0].Type.Flex().NonNull() == types.AnyType {
+		// ConcurrentHashMap's contains(Object), which Kotlin calls for in
+		// as for its other operators, is containsValue, not containsKey.
+		if cls := c.classOf(yt.Flex().NonNull()); cls != nil && c.isSubclassOf(cls, "java/util/concurrent/ConcurrentHashMap") {
+			c.errorf(x.P, "method 'contains' from ConcurrentHashMap may have unexpected semantics: it calls 'containsValue' instead of 'containsKey'; use the explicit call or cast the value to kotlin.collections.Map")
+		}
+	}
 	return types.BoolType
 }
 
@@ -230,15 +287,11 @@ func (c *Checker) unaryOp(x *syntax.Unary, xt types.Type, want types.Type) types
 func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (types.Type, bool) {
 	// Built-in types take invoke extensions too: "a"(12) for a
 	// String.invoke(i: Int).
-	if ft.K == types.Class && ft.C.Func || ft.K == types.Nothing || !c.hasFun(ft, "invoke", x) {
+	if ft.K == types.Class && ft.C.Func || !c.hasFun(ft, "invoke", x) {
 		return types.InvalidType, false
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}
 	m.P = x.Fun.Pos()
-	// A trial's check, as a builder lambda's with its variables unfixed,
-	// checks the call afresh: x's type is the trial's.
-	fun, op := x.Fun, x.Operator
-	c.onUndo(func() { x.Fun, x.Operator = fun, op })
 	x.Fun, x.Operator = m, true
 	return c.call(x, want, sink), true
 }
@@ -275,7 +328,25 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		return nil, nil, false
 	}
 	ts := make([]types.Type, len(ix.Args))
+	if slices.ContainsFunc(ix.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok }) {
+		// A lambda or a reference takes its type from get's parameter,
+		// as A[::f] += 1 for an operator get(IFoo) does a fun
+		// interface's: x.get(i) is checked first, and the index keeps the
+		// type it gave the lambda.
+		probe := &syntax.Index{X: checked(ix.X, xt), Args: slices.Clone(ix.Args)}
+		probe.P = ix.P
+		c.value(probe, noWant)
+		for i, a := range ix.Args {
+			if l, ok := a.(*syntax.Lambda); ok {
+				ts[i] = l.T
+				ix.Args[i] = checked(a, ts[i])
+			}
+		}
+	}
 	for i, a := range ix.Args {
+		if _, done := a.(*syntax.Checked); done {
+			continue
+		}
 		ts[i] = c.value(a, noWant)
 		ix.Args[i] = checked(a, ts[i])
 	}
@@ -301,9 +372,26 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	read := elem()
 	et := c.value(read, noWant)
 	if et.K == types.Invalid {
+		c.unresolvedArg(arg)
+		return stmts, elem, true
+	}
+	if r := c.stub(et.Flex()); r != nil {
+		// As kotlinc's BUILDER_INFERENCE_STUB_RECEIVER, an element of a
+		// builder's type doesn't fix it here, as it does in get(0) + "K":
+		// this[0] += "K" in buildList { add("O") } is an error.
+		c.errorf(ix.P, "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", et.Flex().Param().Name)
 		return stmts, elem, true
 	}
 	if assignOp != "" && !builtinOperand(et) && c.hasFun(et.NonNull(), assignOp, &syntax.Call{Args: []syntax.Expr{arg}}) {
+		// As in Kotlin, x.set(i, x.get(i).plus(v)) may apply too: then
+		// the two are ambiguous, and v isn't checked.
+		opName := strings.TrimSuffix(assignOp, "Assign")
+		probe := &syntax.Call{Args: []syntax.Expr{arg}}
+		if c.hasFun(et.NonNull(), opName, probe) && c.setFits(xt, len(idx), et, opName, probe) {
+			c.errorf(p, "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
+			c.unresolvedArg(arg)
+			return stmts, elem, true
+		}
 		call, t := c.opCall(p, checked(read, et), assignOp, []syntax.Expr{arg}, noWant)
 		c.wantUnit(p, assignOp, t)
 		return append(stmts, &syntax.ExprStmt{X: call}), elem, true
@@ -311,6 +399,148 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	set := &syntax.Assign{P: p, Op: syntax.ASSIGN, Target: elem(), Value: value(checked(read, et))}
 	c.assign(set)
 	return append(stmts, set), elem, true
+}
+
+// opFits reports whether a receiver of type t has an operator function
+// name that may take call x and whose result may be assigned to want:
+// whether x op= v may also be x = x.op(v), as Kotlin resolves it. It
+// decides from the declarations, without checking x's arguments (a
+// lambda's body would be checked once per form, which is exponential
+// in nested x[i] += { }), and where they can't tell, it is true. So a
+// var list: ArrayList<Int>'s list - 2, a List<Int>, doesn't fit.
+func (c *Checker) opFits(t types.Type, name string, x *syntax.Call, want types.Type) bool {
+	t = t.Flex()
+	if !types.MayBeNull(t) {
+		if builtinFun(t, name, len(x.Args)) {
+			return true
+		}
+		if cls := c.classOf(t); cls != nil {
+			cls.Ensure()
+			if cls.Missing {
+				return true
+			}
+			for _, cl := range c.memberCallees(c.accessible(cls, c.javaMethods(cls, name)), t) {
+				if c.mayTake(cl.f, x) && c.retFits(substRet(cl.recv, cl.f.Ret), want, cl.tparams) {
+					return true
+				}
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor(name, t, x) {
+		if cl.f.Operator && c.recvTakes(t, cl.f.Recv) && c.mayTake(cl.f, x) && c.retFits(substRet(c.extRecvSubst(t, cl), cl.f.Ret), want, cl.tparams) {
+			return true
+		}
+	}
+	return false
+}
+
+// substRet applies s, which may be nil, to a declared type.
+func substRet(s types.Subst, t types.Type) types.Type {
+	if len(s) == 0 {
+		return t
+	}
+	return s.Apply(t)
+}
+
+// extRecvSubst returns the type arguments of extension cl's own type
+// parameters that its receiver's type gives for a receiver of type rt:
+// T of Collection<T>.plus(T): List<T> is Int for a List<Int>.
+func (c *Checker) extRecvSubst(rt types.Type, cl callee) types.Subst {
+	if len(cl.tparams) == 0 {
+		return nil
+	}
+	own := func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cl.tparams, u.Param()) }
+	r := cl.f.Recv.NonNull()
+	if own(r) {
+		return types.Subst{r.Param(): {T: rt.Flex().NonNull()}}
+	}
+	if r.K != types.Class {
+		return nil
+	}
+	sup, ok := c.asSuper(rt.Flex().NonNull(), r.C)
+	if !ok {
+		return nil
+	}
+	actual := classSubst(sup)
+	s := types.Subst{}
+	for p, a := range classSubst(r) {
+		if b, ok := actual[p]; ok && own(a.T) {
+			s[a.T.Param()] = b
+		}
+	}
+	return s
+}
+
+// retFits reports whether a function's result type ret, which may
+// mention its own type parameters tparams, may be assigned to want. With
+// them, only the classes and the nullability are compared.
+func (c *Checker) retFits(ret, want types.Type, tparams []*types.TypeParamSym) bool {
+	if ret.K == types.Invalid || want.K == types.Invalid {
+		return true
+	}
+	own := func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(tparams, u.Param()) }
+	if !ret.Has(own) {
+		return c.subtype(ret, want)
+	}
+	r, w := ret.Flex(), want.Flex()
+	if own(r.NonNull()) {
+		return true
+	}
+	if types.MayBeNull(r) && !types.MayBeNull(w) {
+		return false
+	}
+	if r.NonNull().K != types.Class || w.NonNull().K != types.Class {
+		return true
+	}
+	_, ok := c.asSuper(r.NonNull(), w.NonNull().C)
+	return ok
+}
+
+// setFits reports whether a receiver of type xt has an operator set
+// taking n indices whose value parameter an element's opName(arg)
+// result fits: whether x[i] op= v may also be x.set(i, x.get(i).op(v)).
+func (c *Checker) setFits(xt types.Type, n int, et types.Type, opName string, probe *syntax.Call) bool {
+	xt = xt.Flex()
+	var params []types.Type
+	if !types.MayBeNull(xt) {
+		if cls := c.classOf(xt); cls != nil {
+			cls.Ensure()
+			for _, cl := range c.memberCallees(c.accessible(cls, c.javaMethods(cls, "set")), xt) {
+				if len(cl.f.Params) == n+1 {
+					params = append(params, substRet(cl.recv, cl.f.Params[n].Type))
+				}
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor("set", xt, nil) {
+		if cl.f.Operator && len(cl.f.Params) == n+1 && c.recvTakes(xt, cl.f.Recv) {
+			p := substRet(c.extRecvSubst(xt, cl), cl.f.Params[n].Type)
+			if p.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cl.tparams, u.Param()) }) {
+				p = types.InvalidType // unknown: fits
+			}
+			params = append(params, p)
+		}
+	}
+	for _, p := range params {
+		if c.opFits(et, opName, probe, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// unresolvedArg checks the value v of an operator call that is ambiguous,
+// or that has no operator to call, once, as kotlinc checks an unresolved
+// call's arguments: the errors in a lambda's body are reported, even in
+// nested x[i] += { x[i] += { } }, whose check stays linear.
+func (c *Checker) unresolvedArg(v syntax.Expr) {
+	if v == nil {
+		return
+	}
+	if _, done := v.(*syntax.Checked); done {
+		return
+	}
+	c.args(&syntax.Call{Args: []syntax.Expr{v}}, nil)
 }
 
 func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
@@ -323,26 +553,39 @@ func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 // assignment target of type tt, isn't of a built-in type. With
 // x.plusAssign(v) and no plus, or a val x, it calls plusAssign; with plus
 // only, it is x = x.plus(v); with both and a var x, it is ambiguous.
-func (c *Checker) compoundOp(s *syntax.Assign, tt types.Type, mutable bool) {
+// recv is x read with its smart cast, of type rt, or nil if it has none.
+// It reports whether x op= v calls x.plusAssign(v), which leaves x as it
+// is.
+func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool, recv syntax.Expr, rt types.Type) bool {
 	assignName, opName := opNames[s.Op], opNames[arithOf(s.Op)]
+	if recv == nil {
+		recv, rt = checked(s.Target, tt), tt
+	}
 	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
-	hasAssign := c.hasFun(tt.NonNull(), assignName, probe)
-	hasOp := c.hasFun(tt.NonNull(), opName, probe)
+	hasAssign := c.hasFun(rt.NonNull(), assignName, probe)
+	hasOp := c.hasFun(rt.NonNull(), opName, probe)
+	fits := hasAssign && hasOp && mutable && c.opFits(rt.NonNull(), opName, probe, want)
+	if fits && rt.Flex().NonNull().IsNumeric() && c.argTypes(probe)[0].K == types.Nothing {
+		// a + todo() is ambiguous among Int's plus functions, which all
+		// take a Nothing: only a.plusAssign(todo()) applies.
+		fits = false
+	}
 	switch {
-	case hasAssign && hasOp && mutable:
+	case fits:
 		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
-		return
+		c.unresolvedArg(s.Value)
+		return false
 	case hasAssign:
-		call, t := c.opCall(s.P, checked(s.Target, tt), assignName, []syntax.Expr{s.Value}, noWant)
+		call, t := c.opCall(s.P, recv, assignName, []syntax.Expr{s.Value}, noWant)
 		c.wantUnit(s.P, assignName, t)
 		s.Stmts = []syntax.Stmt{&syntax.ExprStmt{X: call}}
-		return
+		return true
 	case !hasOp:
-		c.errorf(s.P, "operator '%s' cannot be applied to %s", s.Op, tt)
-		return
+		c.errorf(s.P, "operator '%s' cannot be applied to %s", s.Op, rt)
+		return false
 	case !mutable:
 		c.errorf(s.Target.Pos(), "val cannot be reassigned")
-		return
+		return false
 	}
 	op := arithOf(s.Op)
 	s.Stmts, _ = c.reassign(s.P, s.Target, tt, func(read syntax.Expr) syntax.Expr {
@@ -350,6 +593,7 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt types.Type, mutable bool) {
 		b.P = s.P
 		return b
 	})
+	return false
 }
 
 // incDecOp checks x++ or x-- on a target of type t that isn't a number or
@@ -432,4 +676,23 @@ func (c *Checker) reassign(p syntax.Pos, target syntax.Expr, tt types.Type, valu
 	a := &syntax.Assign{P: p, Op: syntax.ASSIGN, Target: ref(), Value: value(checked(read, rt))}
 	c.assign(a)
 	return append(stmts, a), ref
+}
+
+// opProperty reports whether the receiver recv, of type rt, has an
+// extension property name, of a function type that may take args, that
+// an operator's function of the name would be called for: a property
+// isn't an operator, as kotlinc's NOT_FUNCTION_AS_OPERATOR.
+func (c *Checker) opProperty(recv syntax.Expr, rt types.Type, name string, args ...syntax.Expr) bool {
+	if rt.K == types.Invalid {
+		return false
+	}
+	if cls := c.classOf(rt.NonNull()); cls != nil && c.hasProp(cls, name) {
+		return false
+	}
+	probe := &syntax.Member{X: checked(recv, rt), Name: name}
+	probe.P = recv.Pos()
+	n := len(c.errs)
+	pt, ok := c.extProp(probe, rt)
+	c.errs = c.errs[:n]
+	return ok && pt.IsFunc() && c.invokableWith(pt, &syntax.Call{Args: args})
 }

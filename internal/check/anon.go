@@ -123,10 +123,12 @@ func (c *Checker) localClass(s *syntax.LocalClass) {
 	d := s.Decl
 	c.localAnnotationClass(d)
 	c.localAnnotations(s.Annotations, classSite(d))
+	c.localHeaderAnnotations(d)
 	depth := len(c.lambdas)
 	scope := c.scope
 	c.anonClass(d, "local class", "local classes", func() string { return c.localName(d.Name) }, func(sym *types.ClassSym, frame *syntax.Lambda) {
 		sym.Local = true
+		c.localClassParams(sym)
 		scope.classes = append(scope.classes, sym)
 		if c.localClasses == nil {
 			c.localClasses = map[*types.ClassSym]localClassFrame{}
@@ -162,9 +164,15 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	if !c.localMembers(d, what) {
 		return nil
 	}
-	if c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil && d.Local {
+	if (c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil || c.inInlineFun && c.inlineAccessorBody()) && d.Local {
+		// Reported, with its functions, as kotlinc does; its code is
+		// still checked, which the error keeps from being generated.
 		c.errorf(d.P, "local classes are not yet supported in inline functions")
-		return nil
+		for _, m := range d.Members {
+			if fd, ok := m.(*syntax.FunDecl); ok && !fd.Generated {
+				c.errorf(fd.P, "local functions are not yet supported in inline functions")
+			}
+		}
 	}
 	if c.cls != nil && c.cls.Anonymous {
 		if od, ok := c.cls.Decl.(*syntax.ClassDecl); ok && od.EnclosingFun != nil {
@@ -184,6 +192,10 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	saved, savedClasses, savedLookup := c.state, c.classes, c.lookupCls
 	frame := &syntax.Lambda{}
 	frame.P = d.P
+	if c.classFrames == nil {
+		c.classFrames = map[*syntax.Lambda]*syntax.ClassDecl{}
+	}
+	c.classFrames[frame] = d
 	depth := len(c.lambdas)
 	ctx := &anonCtx{scope: c.scope, lambdas: append(c.lambdas[:depth:depth], frame),
 		lrets: append(c.lrets[:len(c.lrets):len(c.lrets)], &lambdaResult{}), tparams: c.tparams, localCalls: c.localCalls}
@@ -204,14 +216,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// inner or anonymous enclosing class, which come first, and
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
-		if prev := c.anon[d.Sym]; d.Sym != nil && c.redeclared[d.Sym] && prev != nil && prev.outer != nil {
-			// Declared again after a trial check of the lambda the class
-			// is in (see stubInference): it keeps the symbol, which the
-			// calls of the enclosing class's members that the trial
-			// rewrote onto it (see recvCall) refer to, as hasExpired() in
-			// an object in callbackFlow { }.
-			*prev.outer, outer = *outer, prev.outer
-		}
 		ctx.outer = outer
 		frame.Outer = outer
 		name := c.cls.DisplayName()
@@ -295,7 +299,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()
 
-	d.OuterThis = nil // a trial check's, if this check doesn't capture it
+	d.OuterThis = nil // an earlier check's, if this check doesn't capture it
 	for _, v := range frame.Captures {
 		if v == outer {
 			d.OuterThis = outer
@@ -303,8 +307,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		}
 	}
 	d.Captures = frame.Captures
-	n := len(c.file.Anon)
-	c.onUndo(func() { c.file.Anon = c.file.Anon[:n] })
 	c.file.Anon = append(c.file.Anon, d)
 	return sym
 }
@@ -443,22 +445,35 @@ func (c *Checker) anonName() string {
 	if c.file.Named == nil {
 		c.file.Named = map[string]bool{}
 	}
-	c.onUndo(func() { c.anonCount[base]--; delete(c.file.Named, name) })
 	c.file.Named[name] = true
 	return name
 }
 
 // approx returns the type that a declaration whose value is an object
 // expression has: its supertype, or Any, as Kotlin approximates it for
-// declarations visible outside.
+// declarations visible outside, in type arguments too: Inv<Any> for
+// Inv(object { }).
 func approx(t types.Type) types.Type {
+	if n := t.NonNull(); n.K != types.Class || !n.C.Anonymous {
+		return mapTypeArgs(t, approx)
+	}
+	return approxTop(t)
+}
+
+// approxTop returns t approximated as approx does, but not in its type
+// arguments: the type of a property's delegate, Lazy<anonymous> for
+// by lazy { object { } }, whose value the property's type is.
+func approxTop(t types.Type) types.Type {
 	n := t.NonNull()
 	if n.K != types.Class || !n.C.Anonymous {
 		return t
 	}
 	a := types.AnyType
 	if len(n.C.Supers) > 0 {
-		a = n.C.Supers[0]
+		// In terms of the type arguments for the type parameters it sees:
+		// ReadOnlyProperty<Any, Wrapper<Boolean>> for wrapper(true)'s
+		// object : ReadOnlyProperty<Any, Wrapper<T>>.
+		a = classSubst(n).Apply(n.C.Supers[0])
 	}
 	if types.MayBeNull(t) {
 		a = a.Nullable()
@@ -472,6 +487,20 @@ func approx(t types.Type) types.Type {
 // that isn't inline, or one of a local class or an object expression.
 func keepsAnon(m *syntax.Modifiers, cls *types.ClassSym) bool {
 	return m.Visibility == syntax.Private && !m.Inline || cls != nil && (cls.Local || cls.Anonymous)
+}
+
+// getterKeepsAnon makes the getter of property d, whose type is the
+// getter's, keep an object expression's type where d does, as a
+// delegated property's that is private: privateObj.x for a private val
+// privateObj by MyDelegate { object { val x = 42 } }. It returns the
+// function that undoes it, once the getter's type is inferred.
+func getterKeepsAnon(d *syntax.PropDecl, cls *types.ClassSym) func() {
+	g := d.Getter
+	if d.Field == nil || g.Visibility != syntax.Public || !keepsAnon(&d.Modifiers, cls) || keepsAnon(&g.Modifiers, cls) {
+		return func() {}
+	}
+	g.Visibility = d.Visibility
+	return func() { g.Visibility = syntax.Public }
 }
 
 // reified reports whether function d has a reified type parameter.

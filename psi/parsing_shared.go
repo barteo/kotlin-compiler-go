@@ -38,6 +38,9 @@ type kotlinParsing struct {
 
 	lastDotAfterReceiverLParPattern    *firstBefore
 	lastDotAfterReceiverNotLParPattern *lastBefore
+
+	// failed holds the attempts that failed, with the token kinds they set.
+	failed map[attempt]failure
 }
 
 type exprParsing struct {

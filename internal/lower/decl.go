@@ -39,8 +39,24 @@ func (l *lowerer) file(root psi.NodeRef) *syntax.File {
 		case psi.KindPACKAGE_DIRECTIVE:
 			if c.FirstChild().Valid() {
 				l.decl(c, func() {
+					// kotlinc's grammar has modifiers before package, which
+					// it reports in later phases.
+					if ml := child(c, psi.KindMODIFIER_LIST); ml.Valid() {
+						m := l.modifiers(ml)
+						for _, a := range m.Annotations {
+							l.errorLater(a.P, "annotations are not applicable to a package directive")
+						}
+						for _, w := range m.Written {
+							l.errorLater(w.P, "modifier '%s' is not applicable to 'package directive'", w.Name)
+						}
+					}
 					f.Package = l.dotted(c)
 					f.PackageP = l.pos(next(child(c, psi.KindPACKAGE_KEYWORD)))
+					for id, end := c.ID(), c.SubtreeEnd(); id < end; id++ {
+						if n := l.s.Node(id); n.NumericKind() == psi.KindIDENTIFIER && syntax.InvalidNameChars(ident(n)) {
+							l.errorLater(f.PackageP, "the package name has characters the JVM doesn't allow: %s", ident(n))
+						}
+					}
 				})
 			}
 		case psi.KindIMPORT_LIST:
@@ -77,7 +93,7 @@ func (l *lowerer) importDirective(n psi.NodeRef) *syntax.Import {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindDOT_QUALIFIED_EXPRESSION, psi.KindREFERENCE_EXPRESSION:
-			imp.Path = l.dotted(c)
+			imp.Path, imp.PathP = l.dotted(c), l.pos(c)
 		case psi.KindMUL:
 			imp.Star = true
 		case psi.KindIMPORT_ALIAS:
@@ -90,7 +106,7 @@ func (l *lowerer) importDirective(n psi.NodeRef) *syntax.Import {
 // topLevel lowers a top-level declaration.
 func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	add := func(d syntax.Decl) {
 		if m.Expect {
 			f.Expects = append(f.Expects, d)
@@ -109,14 +125,16 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 			add(d)
 		}
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		l.noContexts(&m, "classes")
+		syntax.NoContexts(&m, "classes", l)
 		add(l.class(n, m))
 	case psi.KindTYPEALIAS:
-		l.noContexts(&m, "type aliases")
+		syntax.NoContexts(&m, "type aliases", l)
 		add(l.typeAlias(n, m))
 	case psi.KindDESTRUCTURING_DECLARATION:
 		l.newDestructuring(n)
-		l.unsupported(l.pos(child(n, psi.KindLPAR)), "destructuring declaration", "destructuring declarations are not supported")
+		l.failAt(l.pos(child(n, psi.KindLPAR)), "Destructuring declarations are only allowed for local variables/values")
+	case psi.KindMODIFIER_LIST:
+		f.Dangling = append(f.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected declaration")
 	}
@@ -145,7 +163,7 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 			seenName = true
 			fd.Name = ident(c)
 		case psi.KindVALUE_PARAMETER_LIST:
-			fd.Params = l.params(c)
+			fd.Params = l.params(c, "function")
 		case psi.KindCOLON:
 			seenColon = true
 		case psi.KindTYPE_CONSTRAINT_LIST:
@@ -173,17 +191,25 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 
 // params lowers the VALUE_PARAMETER_LIST of a function or a secondary
 // constructor.
-func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
+func (l *lowerer) params(n psi.NodeRef, of string) []*syntax.Param {
 	var ps []*syntax.Param
 	for _, c := range kids(n) {
 		if c.NumericKind() != psi.KindVALUE_PARAMETER {
 			continue
 		}
 		m := l.modifiers(child(c, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
+		for _, k := range kids(c) {
+			if k.NumericKind() == psi.KindVAL_KEYWORD || k.NumericKind() == psi.KindVAR_KEYWORD {
+				syntax.ValOnParam(k.Text(), of, l.pos(k), l)
+			}
+		}
 		name := child(c, psi.KindIDENTIFIER)
 		if !name.Valid() {
 			l.fail(c, "expected a name")
+		}
+		if s := name.Text(); strings.Trim(s, "_") == "" {
+			l.errorLater(l.pos(name), "names _, __, ___, ... are reserved in Kotlin")
 		}
 		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.paramType(c, name), Vararg: m.Vararg,
 			Noinline: m.Noinline, Crossinline: m.Crossinline, Annotations: m.Annotations}, c)
@@ -259,11 +285,7 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		}
 	}
 	if delegate.Valid() {
-		for _, a := range []*syntax.FunDecl{pd.Getter, pd.Setter} {
-			if a != nil {
-				l.failAt(a.P, "delegated property cannot have accessors with non-default implementations")
-			}
-		}
+		syntax.CheckDelegated(pd, l)
 	}
 	return pd
 }
@@ -281,6 +303,7 @@ func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
 		if a.Target == "" {
 			a.Target = "field"
 		}
+		a.OnField = true
 		pd.Annotations = append(pd.Annotations, a)
 	}
 	if t := child(n, psi.KindTYPE_REFERENCE); t.Valid() {
@@ -295,53 +318,20 @@ func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
 // accessor lowers a PROPERTY_ACCESSOR of property pd.
 func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
-	l.noContexts(&m, "property accessors")
 	kw := child(n, psi.KindGET_KEYWORD)
 	name := "get"
 	if !kw.Valid() {
 		kw, name = child(n, psi.KindSET_KEYWORD), "set"
 	}
 	pos := l.pos(kw)
-	if pd.AccessorP.Line == 0 {
-		pd.AccessorP = pos
-	}
-	if len(m.Written) > 0 {
-		pd.AccessorMods = append(pd.AccessorMods, m.Written)
-	}
-	for _, a := range m.Annotations {
-		if a.Target == "" {
-			a.Target, a.Accessor = name, true
-		}
-		pd.Annotations = append(pd.Annotations, a)
-	}
-	if name == "set" {
-		pd.SetterVis = m.Visibility
-		pd.InlineSetter = m.Inline
-	} else {
-		pd.InlineGetter = m.Inline
-	}
+	syntax.AccessorMods(pd, name, pos, &m, l)
 	ps := child(n, psi.KindVALUE_PARAMETER_LIST)
 	if !ps.Valid() {
 		if has(n, psi.KindBLOCK) || has(n, psi.KindEQ) {
 			l.fail(next(kw), "unexpected %s", next(kw).Text())
 		}
 		if m.External {
-			a := record(l, &syntax.FunDecl{P: pos, Name: name, Property: pd.Name}, n)
-			a.External, a.ExternalP = true, m.ExternalP
-			switch {
-			case name == "get" && pd.Getter != nil:
-				l.failAt(pos, "property has two getters")
-			case name == "get":
-				pd.Getter = a
-			case !pd.Mutable:
-				l.failAt(pos, "a 'val'-property cannot have a setter")
-			case pd.Setter != nil:
-				l.failAt(pos, "property has two setters")
-			default:
-				a.Visibility = m.Visibility
-				a.Params = []*syntax.Param{{P: pos, Name: "value"}}
-				pd.Setter = a
-			}
+			record(l, syntax.ExternalAccessor(pd, name, pos, m, l), n)
 		}
 		return
 	}
@@ -351,10 +341,8 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	if c := child(n, psi.KindCOLON); c.Valid() {
 		ret = next(c)
 	}
+	syntax.CheckAccessor(pd, name, pos, l)
 	if name == "get" {
-		if pd.Getter != nil {
-			l.failAt(pos, "property has two getters")
-		}
 		if ret.Valid() {
 			fd.Ret = l.typeRef(ret)
 			if pd.Type == nil {
@@ -362,12 +350,6 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 			}
 		}
 	} else {
-		switch {
-		case !pd.Mutable:
-			l.failAt(pos, "a 'val'-property cannot have a setter")
-		case pd.Setter != nil:
-			l.failAt(pos, "property has two setters")
-		}
 		fd.Visibility = m.Visibility
 		vp := child(ps, psi.KindVALUE_PARAMETER)
 		if !vp.Valid() {
@@ -442,28 +424,42 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		}
 	}
 	kpos := l.pos(kw)
+	if enumWithoutKeyword(n) {
+		// enum Color { RED }: FIR keeps it as an enum class, with the
+		// missing keyword's syntax error, which recoverable lets through.
+		kpos = l.pos(child(n, psi.KindIDENTIFIER))
+		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
+			pos, msg := l.syntaxMessage(e)
+			l.errorLater(pos, "%s", msg)
+		}
+	}
 	isObject := kw.NumericKind() == psi.KindOBJECT_KEYWORD
 	if m.Inline && kw.NumericKind() == psi.KindCLASS_KEYWORD {
 		syntax.InlineClass(&m, kpos)
+	}
+	if kw.NumericKind() == psi.KindCLASS_KEYWORD || !kw.Valid() {
+		syntax.EnumAnnotation(&m)
 	}
 	cd := record(l, &syntax.ClassDecl{Modifiers: m, P: kpos, Interface: kw.NumericKind() == psi.KindINTERFACE_KEYWORD, Object: isObject}, n)
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() && has(mods, psi.KindFUN_KEYWORD) {
 		cd.Fun = true
 	}
 	name := child(n, psi.KindIDENTIFIER)
+	if m.Companion && !isObject {
+		// The modifier checks report companion on a class (WRONG_MODIFIER_TARGET).
+		cd.Companion = false
+	}
 	switch {
-	case m.Companion && !isObject:
-		l.failAt(kpos, "modifier 'companion' is only allowed on objects")
-	case m.Companion && !name.Valid():
+	case cd.Companion && !name.Valid():
 		cd.Name = "Companion"
-	case m.Companion && strings.Contains(l.src[kw.Range().End:name.Range().Start], "\n"):
+	case cd.Companion && strings.Contains(l.src[kw.Range().End:name.Range().Start], "\n"):
 		// companion object, then a name on the next line: kc ends the
 		// header at the newline, where psi reads on.
 		cd.Name = "Companion"
 		l.detachName(n, name)
-	case !name.Valid() && isObject && kw.Valid():
-		// An object declaration without its name: FIR keeps it, named
-		// <no name provided>, and KSP lists it.
+	case !name.Valid() && kw.Valid():
+		// A class or object declaration without its name: FIR keeps it,
+		// named <no name provided>, and KSP lists it.
 		pos, msg := l.end(kw), "expected a name"
 		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
 			pos, msg = l.syntaxMessage(e)
@@ -478,9 +474,9 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	cd.TypeParams = l.typeParams(child(n, psi.KindTYPE_PARAMETER_LIST))
 	if pc := child(n, psi.KindPRIMARY_CONSTRUCTOR); pc.Valid() {
 		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
-		l.noContexts(&cd.CtorMods, "primary constructors")
+		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
 		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
-			cd.HasPrimary = true
+			cd.HasPrimary, cd.WrittenPrimary = true, true
 			cd.CtorParams = l.ctorParams(ps)
 		}
 	}
@@ -516,7 +512,7 @@ func (l *lowerer) ctorParams(n psi.NodeRef) []*syntax.CtorParam {
 			continue
 		}
 		m := l.modifiers(child(c, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		cp := record(l, &syntax.CtorParam{Modifiers: m}, c)
 		if has(c, psi.KindVAL_KEYWORD) || has(c, psi.KindVAR_KEYWORD) {
 			cp.IsProp = true
@@ -594,6 +590,7 @@ func (l *lowerer) noCarry() {
 func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 	l.syntaxError(n)
 	var anns []syntax.Annotation
+	var external syntax.Pos
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() {
 		for _, c := range kids(mods) {
 			switch c.NumericKind() {
@@ -602,16 +599,22 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 			case psi.KindANNOTATION:
 				anns = append(anns, l.bracketAnnotations(c)...)
 			case psi.KindEXTERNAL_KEYWORD:
+				if external == (syntax.Pos{}) {
+					external = l.pos(c)
+				}
 			case psi.KindCONTEXT_PARAMETER_LIST:
 				l.contextParams(c)
 				l.errorLater(l.pos(c), "context parameters on enum entries are unsupported")
 			default:
-				l.unexpected(c)
+				if !c.IsLeaf() {
+					l.unexpected(c)
+				}
+				l.errorLater(l.pos(c), "modifier '%s' is not applicable to 'enum entry'", c.Text())
 			}
 		}
 	}
 	name := child(n, psi.KindIDENTIFIER)
-	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns}, n)
+	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns, External: external}, n)
 	id := &syntax.Ident{Name: cd.Name}
 	id.P = e.P
 	e.Call = &syntax.Call{Fun: id}
@@ -685,7 +688,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		ms = append([]psi.NodeRef{c}, ms...)
 	}
 	m := l.modifiersOf(ms)
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	switch n.NumericKind() {
 	case psi.KindFUN:
 		fd := l.fun(n)
@@ -695,16 +698,17 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		pd := l.prop(n, m)
 		cd.Members = append(cd.Members, syntax.DelegatedProp(pd, true, cd.Members)...)
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		l.noContexts(&m, "classes")
+		syntax.NoContexts(&m, "classes", l)
 		cd.Members = append(cd.Members, l.class(n, m))
 	case psi.KindTYPEALIAS:
-		l.noContexts(&m, "type aliases")
+		syntax.NoContexts(&m, "type aliases", l)
 		cd.Members = append(cd.Members, l.typeAlias(n, m))
 	case psi.KindSECONDARY_CONSTRUCTOR:
-		l.noContexts(&m, "constructors")
+		syntax.NoContexts(&m, "constructors", l)
 		cd.Members = append(cd.Members, l.secondaryCtor(n, m))
 	case psi.KindCLASS_INITIALIZER:
-		l.noContexts(&m, "initializers")
+		syntax.NoContexts(&m, "initializers", l)
+		syntax.NoInitModifiers(m, l)
 		b := child(n, psi.KindBLOCK)
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")
@@ -719,15 +723,28 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 			}
 		}
 		l.unsupported(pos, "companion block", "companion blocks are not supported")
+	case psi.KindMODIFIER_LIST:
+		cd.Dangling = append(cd.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected member declaration")
 	}
 }
 
+// dangling returns the annotations of MODIFIER_LIST n, which no
+// declaration follows, to check as kotlinc does. psi reports the missing
+// declaration in an error element after n; if there is none, n is
+// reported.
+func (l *lowerer) dangling(n psi.NodeRef) []syntax.Annotation {
+	if next(n).NumericKind() != psi.KindERROR_ELEMENT {
+		l.fail(n, "unexpected declaration")
+	}
+	return l.modifiers(n).Annotations
+}
+
 // secondaryCtor lowers a SECONDARY_CONSTRUCTOR with modifiers m.
 func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.SecondaryCtor {
 	sc := record(l, &syntax.SecondaryCtor{Modifiers: m, P: l.pos(child(n, psi.KindCONSTRUCTOR_KEYWORD))}, n)
-	sc.Params = l.params(child(n, psi.KindVALUE_PARAMETER_LIST))
+	sc.Params = l.params(child(n, psi.KindVALUE_PARAMETER_LIST), "secondary constructor")
 	if dc := child(n, psi.KindCONSTRUCTOR_DELEGATION_CALL); dc.Valid() {
 		ref := child(dc, psi.KindCONSTRUCTOR_DELEGATION_REFERENCE)
 		if kw := first(ref); kw.Valid() {
@@ -747,15 +764,9 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 // localClass lowers a local CLASS or OBJECT_DECLARATION with modifiers
 // m.
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
-	l.noContexts(&m, "classes")
-	switch {
-	case has(n, psi.KindINTERFACE_KEYWORD):
-		l.fail(child(n, psi.KindINTERFACE_KEYWORD), "'interface' is not allowed here: local interfaces are not supported")
-	case has(n, psi.KindOBJECT_KEYWORD):
-		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
-			ident(child(n, psi.KindIDENTIFIER)))
-	case m.Enum:
-		l.fail(child(n, psi.KindCLASS_KEYWORD), "local enum classes are not allowed")
+	syntax.NoContexts(&m, "classes", l)
+	if m.Enum {
+		l.errorLater(l.pos(child(n, psi.KindCLASS_KEYWORD)), "local enum classes are not allowed")
 	}
 	cd := l.class(n, m)
 	cd.Local = true
@@ -764,15 +775,10 @@ func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalCla
 
 // localFun lowers a local FUN with modifiers m.
 func (l *lowerer) localFun(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalFun {
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	fd := l.fun(n)
 	fd.Modifiers = m
-	if m.External {
-		l.unsupported(m.ExternalP, "local external function", "local external functions are not supported")
-	}
-	if fd.Body == nil && fd.ExprBody == nil {
-		l.failAt(fd.P, "a local function must have a body")
-	}
+	syntax.CheckLocalFun(fd, l)
 	return &syntax.LocalFun{Decl: fd}
 }
 
@@ -783,6 +789,10 @@ func (l *lowerer) objectExpr(n psi.NodeRef) *syntax.ObjectExpr {
 	cd := record(l, &syntax.ClassDecl{P: l.pos(kw), Anonymous: true, HasPrimary: true}, od)
 	if mods := child(od, psi.KindMODIFIER_LIST); mods.Valid() {
 		l.fail(mods, "unexpected modifiers")
+	}
+	if tps := child(od, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
+		// object<T> { }, which kc's parser reads as comparisons.
+		l.errorLater(l.pos(tps), "type parameters are not allowed for objects")
 	}
 	if st := child(od, psi.KindSUPER_TYPE_LIST); st.Valid() {
 		cd.Supers = l.supertypes(st)

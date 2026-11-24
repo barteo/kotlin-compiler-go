@@ -26,7 +26,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 	}
 	self := "L" + cls.Name + ";"
 	name := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
-	var access uint16 // componentN's, with its property's visibility
+	var access uint16 // of the next method, if not public: a componentN with its property's visibility, a copy with the constructor's
 	newMethod := func(name, d string) {
 		if access == 0 {
 			access = cf.AccPublic
@@ -91,6 +91,12 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 	if f := synthesized(cls, "copy"); f != nil {
 		ctor := ctorJVMDesc(cd.Ctor) // with a local class's captures
 		d := methodDesc(f.Params, f.Ret)
+		switch {
+		case f.Private:
+			access = cf.AccPrivate
+		case f.Protected:
+			access = cf.AccProtected
+		}
 		newMethod(f.JVM(), d)
 		m := g.cls.LastMethod()
 		var ps []sigPart
@@ -124,7 +130,11 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 
 		// copy$default: an omitted argument is the property's value.
-		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
+		dflt := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
+		if f.Private {
+			dflt &^= cf.AccPublic // as a private function's
+		}
+		g.code = g.cls.NewMethod(dflt, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
 		g.code.AllocLocal(self)
 		for _, p := range f.Params {
 			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
@@ -266,7 +276,7 @@ func (g *gen) hashOf(load func(), t types.Type) {
 	}
 	if t.IsPrimitive() {
 		load()
-		g.code.Invoke(cf.INVOKESTATIC, boxClass[t.K], "hashCode", "("+desc(t)+")I")
+		g.code.Invoke(cf.INVOKESTATIC, boxClass(t.K), "hashCode", "("+desc(t)+")I")
 		return
 	}
 	owner := "java/lang/Object"

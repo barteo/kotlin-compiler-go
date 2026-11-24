@@ -54,14 +54,18 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	}
 	defer cp.Close()
 	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
-	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
+	// The errors only: the analysis reports no warnings.
+	mode, _ := check.ParseAPIMode(cfg.ExplicitAPIMode)
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{ExplicitAPI: mode})
 	if err != nil {
 		return nil, err
 	}
+	unsupported := false
 	for _, e := range errs {
 		res.diags = append(res.diags, diagnostic(e.File, e))
+		unsupported = unsupported || e.Feature != ""
 	}
-	if len(res.diags) > 0 {
+	if unsupported {
 		return res, nil
 	}
 

@@ -191,12 +191,6 @@ var kotlinOfJava = map[string]string{
 	"java/lang/annotation/Annotation": "kotlin/Annotation",
 }
 
-var kindIDs = map[types.Kind]string{
-	types.Unit: "kotlin/Unit", types.Nothing: "kotlin/Nothing", types.Bool: "kotlin/Boolean", types.Int: "kotlin/Int",
-	types.Long: "kotlin/Long", types.Double: "kotlin/Double", types.Char: "kotlin/Char", types.Float: "kotlin/Float",
-	types.Byte: "kotlin/Byte", types.Short: "kotlin/Short", types.String: "kotlin/String", types.Any: "kotlin/Any",
-}
-
 // classID returns a class's Kotlin class id: packages separated by '/',
 // nested classes by '.'.
 func classID(c *types.ClassSym) string {
@@ -227,6 +221,26 @@ func classID(c *types.ClassSym) string {
 func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	if t.IsIntersection() {
 		t = types.Approx(t) // metadata has no intersection types
+	}
+	if t.K == types.Class && t.A == nil && t.C.Raw() {
+		// A raw Java type, as kotlinc writes it: flexible, from the
+		// class with its parameters' erasures to its star projection,
+		// both marked raw.
+		lower, upper := t, t
+		lower.P, lower.N = false, false
+		upper.P, upper.N = false, true
+		if upper.C.ReadOnly != nil {
+			upper.C = upper.C.ReadOnly
+		}
+		la, ua := make([]types.Arg, len(t.C.TypeParams)), make([]types.Arg, len(t.C.TypeParams))
+		for i := range la {
+			la[i], ua[i] = types.Arg{T: types.AnyType.Nullable()}, types.Arg{V: types.Star}
+		}
+		lower.A, upper.A = types.MakeArgs(la), types.MakeArgs(ua)
+		kt := s.typ(lower)
+		kt.Upper = s.typ(upper)
+		kt.Raw, kt.Upper.Raw = true, true
+		return kt
 	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
@@ -321,8 +335,8 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			}
 		}
 	default:
-		id, ok := kindIDs[t.K]
-		if !ok {
+		id := t.K.ClassID()
+		if id == "" {
 			panic("no metadata for type " + t.String())
 		}
 		kt.Class = id
@@ -458,6 +472,19 @@ func (s *metaScope) params(ps []*types.VarSym, decls []*syntax.Param) []*kmeta.P
 func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *kmeta.Function {
 	sym := fd.Sym
 	s, tps := s.with(sym.TypeParams)
+	if fd.SelfStatic && len(owner.TypeParams) > 0 {
+		// serialization's write$Self, static in kotlinc's code, declares
+		// type parameters of its own for the class's, bounded by Any?.
+		s, tps = s.with(nil)
+		for _, tp := range owner.TypeParams {
+			s.ids[tp] = s.next
+			tps = append(tps, &kmeta.TypeParam{ID: s.next, Name: tp.Name, Variance: kmeta.Inv})
+			s.next++
+		}
+		for _, p := range tps {
+			p.Bounds = []*kmeta.Type{s.typ(types.AnyType.Nullable())}
+		}
+	}
 	mod := kmeta.Final
 	switch {
 	case sym.Abstract:
@@ -472,6 +499,16 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		Params:     s.params(sym.Params, fd.Params),
 		Ret:        s.typ(sym.Ret),
 		JVM:        kmeta.JVMSig{Name: sym.JVM(), Desc: funDesc(sym)},
+	}
+	if fd.Ret != nil {
+		f.Ret.Annotations = typeAnnotationsMeta(fd.Ret.Annotations)
+	}
+	for i, p := range fd.Params {
+		if i < len(f.Params) && p.Type != nil {
+			if kt := f.Params[i].Type; kt != nil && f.Params[i].Vararg == nil {
+				kt.Annotations = typeAnnotationsMeta(p.Type.Annotations)
+			}
+		}
 	}
 	if sym.Ext {
 		f.Recv = s.typ(sym.Recv)
@@ -541,12 +578,14 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		}
 	}
 	for _, e := range sym.Implies {
-		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds}
+		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds, Negated: e.Negated}
 		switch e.Returns {
 		case 1:
 			im.Returns = kmeta.ReturnsTrue
 		case 0:
 			im.Returns = kmeta.ReturnsFalse
+		case 2:
+			im.Returns = kmeta.ReturnsNotNull
 		}
 		if e.Is != nil {
 			im.Is = s.typ(*e.Is)
@@ -580,8 +619,11 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		mod = kmeta.Open
 	}
 	vis := visibility(mods.Visibility)
-	if p.InheritsProtected {
+	switch {
+	case p.InheritsProtected:
 		vis = kmeta.Protected // an override of a protected property
+	case p.Module != "" && vis == kmeta.Public:
+		vis = kmeta.Internal // an override of an internal one, mangled as it is
 	}
 	// hasAnnotations: annotations of the declaration, as kotlinc sets it,
 	// @JvmField's on the field among them, but not its accessors' and
@@ -759,6 +801,24 @@ func (g *gen) packageMeta() *kmeta.PackageData {
 		case *syntax.TypeAliasDecl:
 			out.Aliases = append(out.Aliases, aliasMeta(nil, d))
 		}
+	}
+	return out
+}
+
+// typeAnnotationsMeta converts the annotations written on a type, @A T,
+// that class files keep, as kotlinc keeps them in the type's metadata.
+func typeAnnotationsMeta(as []syntax.Annotation) []*kmeta.Annotation {
+	var out []*kmeta.Annotation
+	for i := range as {
+		an := &as[i]
+		if an.Class == nil || an.Target != "" || an.Class.Retention == types.RetentionSource {
+			continue
+		}
+		switch an.Class.Name {
+		case "kotlin/ExtensionFunctionType", "androidx/compose/runtime/Composable", "kotlin/ContextFunctionTypeParams", "kotlin/internal/NoInfer":
+			continue // which the type's own flags say
+		}
+		out = append(out, annotationMeta(annotationOf(an)))
 	}
 	return out
 }
@@ -1175,7 +1235,11 @@ func (g *gen) dataMeta(s *metaScope, cd *syntax.ClassDecl) []*kmeta.Function {
 		// componentN has its property's visibility.
 		add(synthesized(cls, componentName(i)), visibility(cp.Visibility), kmeta.Final, true)
 	}
-	add(synthesized(cls, "copy"), kmeta.Public, kmeta.Final, false)
+	copyVis := kmeta.Public
+	if f := synthesized(cls, "copy"); f != nil && (f.Private || f.Protected || f.Module != "") {
+		copyVis = visibility(cd.CtorMods.Visibility) // @ConsistentCopyVisibility
+	}
+	add(synthesized(cls, "copy"), copyVis, kmeta.Final, false)
 	return append(out, objectMembersMeta(cd, nil)...)
 }
 

@@ -20,7 +20,10 @@ class Hidden {
     inline fun calls() = helper() // ERROR public-API inline function cannot access non-public-API function 'helper'
     inline fun allowed() = published()
     private inline fun inside() = secret + helper()
-    open inline fun <reified T> opened(x: Any) = x is T // ERROR only type parameters of inline functions can be reified
+}
+
+open class Opened {
+    open inline fun <reified T> opened(x: Any) = x is T // ERROR 'inline' modifier is not allowed on virtual members: only private or final members can be inlined
 }
 
 inline fun cycleA(x: Int = cycleB()): Int = x // ERROR the call of 'cycleB' is a part of an inline call cycle

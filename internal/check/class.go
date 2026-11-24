@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -47,6 +49,11 @@ func (c *Checker) resolveSupertypes() {
 				c.errorf(st.Type.P, "delegation cannot be used in interfaces")
 				st.Delegate = nil
 			}
+			if st.Delegate != nil && !cd.HasPrimary {
+				// The delegate is a field the primary constructor sets.
+				c.errorf(st.Type.P, "delegation without primary constructor is unsupported")
+				st.Delegate = nil
+			}
 			t := c.supertype(cd, st, seen)
 			if t.E || t.X > 0 {
 				c.errorf(st.Type.P, "extension function type or function type with context parameters is not allowed as supertype")
@@ -58,6 +65,9 @@ func (c *Checker) resolveSupertypes() {
 			st.T = t
 			if t.K != types.Class {
 				continue
+			}
+			if st.Call == nil {
+				c.superProjections(st, t)
 			}
 			seen[t.C] = true
 			cls.Supers = append(cls.Supers, t)
@@ -101,7 +111,7 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	case t.K == types.Invalid:
 		return t
 	case t.K == types.Any:
-		if cd.Interface && st.Call != nil {
+		if cd.Interface {
 			c.errorf(st.Type.P, "an interface cannot inherit from a class")
 		}
 		return types.InvalidType // the default superclass
@@ -114,11 +124,21 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	}
 	sc := t.C
 	sc.Ensure()
+	if sc.JavaSealed {
+		// javac checks that the subclasses it permits extend it, which
+		// it doesn't see a Kotlin class do.
+		c.errorf(st.Type.P, "a Kotlin class can't inherit from sealed Java class or interface '%s'", sc.DisplayName())
+	}
 	switch {
 	case seen[sc]:
 		c.errorf(st.Type.P, "a supertype appears twice")
 	case cd.Enum && !sc.Interface:
 		c.errorf(st.Type.P, "an enum class cannot inherit from a class")
+	case sc.Name == "java/lang/Enum" && !cd.Interface:
+		// Only an enum class extends kotlin.Enum. As in FIR, the class
+		// still inherits from it.
+		c.errorf(st.Type.P, "class 'Enum' cannot be extended directly")
+		return t
 	case sc.Interface:
 		if st.Call != nil {
 			c.errorf(st.Call.P, "this type has no constructor, and thus must not be called")
@@ -137,6 +157,15 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		return t
 	case !cd.HasPrimary && st.Call != nil:
 		c.errorf(st.Type.P, "supertype initialization is impossible without a primary constructor")
+		for _, sc := range cd.Secondaries() {
+			if len(sc.Params) == 0 {
+				// kotlinc's class still has a primary constructor, which
+				// a secondary one without parameters conflicts with.
+				c.errorf(cd.P, "conflicting overloads: constructor %s()", cd.Name)
+				c.errorf(sc.P, "conflicting overloads: constructor %s()", cd.Name)
+				break
+			}
+		}
 		st.Call = nil
 		return t
 	case st.Call == nil && cd.HasPrimary:
@@ -152,9 +181,66 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 // runs for all files before checkSupers breaks the cycles, so each class
 // in a cycle is reported.
 func (c *Checker) findCycles() {
+	walk := c.u.ext.javaSource
+	if c.u.shadowing {
+		// The class path's classes may inherit from the program's that
+		// take the place of theirs (see classTable.shadow):
+		//
+		//	// MODULE: dependency
+		//	interface ToSubstitute
+		//	interface Intermediate : ToSubstitute
+		//	// MODULE: main(dependency)
+		//	interface ToSubstitute : Intermediate // a cycle
+		walk = func(*types.ClassSym) bool { return true }
+	}
 	for _, cd := range c.classes {
-		if inherits(cd.Sym, cd.Sym, map[*types.ClassSym]bool{}) {
-			c.cyclic = append(c.cyclic, cd)
+		if !inherits(cd.Sym, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+			continue
+		}
+		c.cyclic = append(c.cyclic, cd)
+		c.cyclicAlias(cd, walk)
+		if !c.u.shadowing {
+			continue
+		}
+		// A cycle through the class path is reported on the supertypes
+		// that lead back, as kotlinc does, before checkSupers breaks it.
+		if c.cyclicAt == nil {
+			c.cyclicAt = map[*syntax.ClassDecl][]syntax.Pos{}
+		}
+		for _, st := range cd.Supers {
+			if st.Type != nil && st.T.K == types.Class && st.T.C != nil &&
+				(st.T.C == cd.Sym || inherits(st.T.C, cd.Sym, walk, map[*types.ClassSym]bool{})) {
+				c.cyclicAt[cd] = append(c.cyclicAt[cd], st.Type.P)
+			}
+		}
+	}
+}
+
+// cyclicAlias reports the typealiases among the supertypes of class cd,
+// in a cycle, that expand to a class nested in one of the cycle: kotlinc
+// can't expand them (RECURSIVE_TYPEALIAS_EXPANSION).
+//
+//	class A : B() { open class Nested<T> }
+//	typealias ANested<T> = A.Nested<T>
+//	open class B : ANested<Int>()
+func (c *Checker) cyclicAlias(cd *syntax.ClassDecl, walk func(*types.ClassSym) bool) {
+	saved := c.lookupCls
+	c.lookupCls = cd.Sym.Outer // as the supertypes are resolved
+	defer func() { c.lookupCls = saved }()
+	for _, st := range cd.Supers {
+		if st.Type == nil || st.T.K != types.Class {
+			continue
+		}
+		a := c.lookupAlias(st.Type.Name)
+		if a == nil || a.Decl == nil || c.u.aliasFile[a] == nil {
+			continue
+		}
+		for o := st.T.C.Outer; o != nil; o = o.Outer {
+			if o == cd.Sym || inherits(o, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+				d := a.Decl.(*syntax.TypeAliasDecl)
+				c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
+				break
+			}
 		}
 	}
 }
@@ -164,7 +250,13 @@ func (c *Checker) findCycles() {
 // arguments.
 func (c *Checker) checkSupers() {
 	for _, cd := range c.cyclic {
-		c.errorf(cd.P, "there's a cycle in the inheritance hierarchy for this type")
+		at := c.cyclicAt[cd]
+		if len(at) == 0 {
+			at = []syntax.Pos{cd.P}
+		}
+		for _, p := range at {
+			c.errorf(p, "there's a cycle in the inheritance hierarchy for this type")
+		}
 		cls := cd.Sym
 		cls.Super, cls.Interfaces, cls.Supers = c.u.ext.class("java/lang/Object"), nil, []types.Type{}
 		cd.SuperCall = nil
@@ -173,19 +265,71 @@ func (c *Checker) checkSupers() {
 		c.tparams, c.lookupCls = cd.Sym.TypeParams, cd.Sym
 		c.checkConsistentSupers(cd)
 		for _, st := range cd.Supers {
+			c.javaCycle(st)
+			if st.Type != nil && st.Type.Ret != nil {
+				for _, p := range st.Type.Named {
+					c.errorf(p, "named parameter in function type as supertype is unsupported")
+				}
+			}
 			if st.T.K == types.Class && st.T.A != nil {
-				c.checkBounds(st.T, st.Type)
+				c.lookupCls = cd.Sym.Outer // as the supertypes are resolved
+				if st.Type != nil && c.lookupAlias(st.Type.Name) != nil {
+					// The arguments of its expansion's arguments too:
+					// List<TK<Any, Any>> of OneList<Any>.
+					c.refBounds(st.T, st.Type, nil, nil)
+				} else {
+					c.checkBounds(st.T, st.Type)
+				}
+				c.lookupCls = cd.Sym
 			}
 			// A sealed class's subclasses are in its package, and known.
-			if s := st.T.C; st.T.K == types.Class && s.Sealed {
-				if packageOf(s) != packageOf(cd.Sym) {
+			if s := st.T.C; st.T.K == types.Class && s.Sealed && !s.JavaSealed {
+				switch {
+				case s.External && !s.Source && !s.JavaSealed:
+					c.errorf(st.Type.P, "inheritor of sealed class or interface declared in a different module")
+				case packageOf(s) != packageOf(cd.Sym):
 					c.errorf(st.Type.P, "inheritors of sealed classes must be in the same package")
 				}
 				s.Subclasses = append(s.Subclasses, cd.Sym)
 			}
 		}
+		c.annotationSupers(cd)
 	}
 	c.tparams, c.lookupCls = nil, nil
+	c.checkAliasBounds()
+}
+
+// annotationSupers reports a class that inherits from an annotation
+// class, as kotlinc's EXTENDING_AN_ANNOTATION_CLASS_ERROR: on each
+// supertype that is one, or, if one is further up, on the class.
+func (c *Checker) annotationSupers(cd *syntax.ClassDecl) {
+	direct := false
+	for _, st := range cd.Supers {
+		if st.T.K == types.Class && isAnnotationClass(st.T.C) {
+			c.errorf(st.Type.P, "inheriting an annotation class is prohibited")
+			direct = true
+		}
+	}
+	if direct {
+		return
+	}
+	found := false
+	cd.Sym.Supertypes(func(k *types.ClassSym) bool {
+		found = k != cd.Sym && isAnnotationClass(k)
+		return !found
+	})
+	if found {
+		c.errorf(cd.P, "inheriting an annotation class is prohibited")
+	}
+}
+
+// isAnnotationClass reports whether k is an annotation class, Kotlin's or
+// Java's.
+func isAnnotationClass(k *types.ClassSym) bool {
+	if k.KotlinAnnotation() {
+		return true
+	}
+	return k.External && k.Retention != types.NoRetention
 }
 
 // checkConsistentSupers reports a class whose supertypes reach a generic
@@ -249,14 +393,26 @@ func packageOf(cls *types.ClassSym) string {
 }
 
 // inherits reports whether one of cls's supertypes, among the program's
-// classes, is target.
-func inherits(cls, target *types.ClassSym, seen map[*types.ClassSym]bool) bool {
-	if seen[cls] || cls.External {
+// classes and those of its Java sources (javaSource), is target: class
+// K : J(), where the Java source has class J extends K, is a cycle too.
+func inherits(cls, target *types.ClassSym, javaSource func(*types.ClassSym) bool, seen map[*types.ClassSym]bool) bool {
+	if seen[cls] || cls.External && !javaSource(cls) {
 		return false
 	}
 	seen[cls] = true
+	if cls.External {
+		// A Java class has its superclass and interfaces, and Supers only
+		// if it is generic.
+		cls.Ensure()
+		for _, s := range append([]*types.ClassSym{cls.Super}, cls.Interfaces...) {
+			if s != nil && (s == target || inherits(s, target, javaSource, seen)) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, s := range cls.Supers {
-		if s.C == target || inherits(s.C, target, seen) {
+		if s.C == target || inherits(s.C, target, javaSource, seen) {
 			return true
 		}
 	}
@@ -270,7 +426,7 @@ func inherits(cls, target *types.ClassSym, seen map[*types.ClassSym]bool) bool {
 				continue
 			}
 			for o := st.T.C.Outer; o != nil; o = o.Outer {
-				if o == target || inherits(o, target, seen) {
+				if o == target || inherits(o, target, javaSource, seen) {
 					return true
 				}
 			}
@@ -402,7 +558,10 @@ func (c *Checker) hasProp(cls *types.ClassSym, name string) bool {
 		found = s.KProps[name] != nil
 		return !found
 	})
-	return found || len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
+	// A capitalized name, as TimeZone, names a class, not the property
+	// that Kotlin sees for getTimeZone(): timeZone.
+	r, _ := utf8.DecodeRuneInString(name)
+	return found || !unicode.IsUpper(r) && len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
 		name == "length" && c.isCharSequence(cls) || name == "size" && c.hasSize(cls)
 }
 
@@ -503,7 +662,63 @@ func (c *Checker) inSubclass(cls *types.ClassSym) bool {
 // memberCallees returns the candidates for a call of methods of a
 // receiver of type rt, without those that others override.
 func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
-	return c.dedupe(methodCallees(ms, func(f *types.FunSym) types.Subst { return c.memberSubst(rt, f.Owner) }))
+	cls := c.dedupe(methodCallees(ms, func(f *types.FunSym) types.Subst { return c.memberSubst(rt, f.Owner) }))
+	for i, cl := range cls {
+		if g, ok := c.unerased(rt, cl); ok {
+			cls[i] = callee{f: g, tparams: g.TypeParams, recv: c.memberSubst(rt, g.Owner)}
+		}
+		if cl := &cls[i]; len(cl.tparams) > 0 && cl.f.Owner != nil && javaClass(cl.f.Owner) && rawSubst(cl.recv) && !rt.IsParam() {
+			// A raw type's generic method is erased too, as in Kotlin:
+			// a raw StubElement's <E> E bar(E) is bar(Any!): Any!.
+			s := maps.Clone(cl.recv)
+			for _, p := range cl.tparams {
+				s[p] = types.Arg{T: erasure(p), Raw: true}
+			}
+			cl.recv, cl.tparams = s, nil
+		}
+	}
+	return cls
+}
+
+// unerased returns the method that cl's, a Java method of a raw
+// supertype of rt, overrides in a supertype rt has with arguments, and
+// that has a more specific type: as Kotlin's intersection override, a
+// class that extends raw Base and implements Params<String> has Params's
+// fetch(): Map<String, String>, not Base's erased fetch(): Map.
+func (c *Checker) unerased(rt types.Type, cl callee) (*types.FunSym, bool) {
+	f := cl.f
+	if rt.K != types.Class || f.Owner == nil || !javaClass(f.Owner) || f.Static || !rawSubst(cl.recv) {
+		return nil, false
+	}
+	var out *types.FunSym
+	rt.C.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || !f.Owner.IsSubclassOf(s) {
+			return true
+		}
+		for _, g := range methodsNamed(s, f) {
+			gs := c.memberSubst(rt, g.Owner)
+			if g.Static || g.Private || rawSubst(gs) || !c.sameParams(rt, f, g) {
+				continue
+			}
+			if c.subtype(gs.Apply(g.Ret), cl.recv.Apply(f.Ret)) && !c.subtype(cl.recv.Apply(f.Ret), gs.Apply(g.Ret)) {
+				out = g
+				return false
+			}
+		}
+		return true
+	})
+	return out, out != nil
+}
+
+// rawSubst reports whether s maps a raw type's parameters to their
+// erasures.
+func rawSubst(s types.Subst) bool {
+	for _, a := range s {
+		if a.Raw {
+			return true
+		}
+	}
+	return false
 }
 
 // sameParams reports whether method g, seen from a receiver of type rt,
@@ -521,6 +736,28 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 	}
 	for i, p := range f.Params {
 		ft, gt := fs.Apply(p.Type), gs.Apply(g.Params[i].Type)
+		if hasRaw(ft) != hasRaw(gt) {
+			raw, other, rf, of := gt, ft, g, f
+			if hasRaw(ft) {
+				raw, other, rf, of = ft, gt, f, g
+			}
+			if rf.Owner != of.Owner && rf.Owner.IsSubclassOf(of.Owner) {
+				// A Java method overriding by erasure: foo(List) overrides
+				// foo(MutableList<Int>).
+				if !c.subtype(other, rawUpper(raw)) {
+					return false
+				}
+				continue
+			}
+			// A raw type's erased member, as Kotlin sees it: from its
+			// arguments' erasures to star projections. A raw A's
+			// foo(Map<String, List<T>>) takes a Map<Any?, Any?>, not a
+			// Map<Any?, Any>.
+			if !c.subtype(rawLower(raw), other) || !c.subtype(other, rawUpper(raw)) {
+				return false
+			}
+			continue
+		}
 		if !c.sameType(ft, gt) && !c.sameType(ft, invArray(gt)) {
 			return false
 		}
@@ -530,6 +767,73 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 		return false
 	}
 	return c.sameBounds(fs, gs, f, g)
+}
+
+// isRaw reports whether t is a raw type: a generic class without type
+// arguments, as Java code may use one.
+func isRaw(t types.Type) bool {
+	return t.K == types.Class && t.A == nil && t.C.Raw()
+}
+
+// hasRaw reports whether t is or has a raw type.
+func hasRaw(t types.Type) bool { return t.Has(isRaw) }
+
+// rawLower returns t with its raw types replaced by their lower bounds,
+// as Kotlin's: the class with its parameters' erasures, a raw Map a
+// MutableMap<Any?, Any?>, and a raw HashMap a HashMap<Any!, Any!>.
+func rawLower(t types.Type) types.Type {
+	if isRaw(t) {
+		args := make([]types.Arg, len(t.C.TypeParams))
+		for i, p := range t.C.TypeParams {
+			b := erasure(p)
+			if o := p.Bound(); !o.P && !javaClass(t.C) {
+				b.P, b.N = false, o.N // a Kotlin class's, as List's
+			}
+			args[i] = types.Arg{T: b}
+		}
+		t.A = types.MakeArgs(args)
+		return t
+	}
+	return mapTypeArgs(t, rawLower)
+}
+
+// rawUpper returns t with its raw types replaced by their upper bounds,
+// as Kotlin's: the read-only class with star projections, nullable: a raw
+// Map a Map<*, *>?.
+func rawUpper(t types.Type) types.Type {
+	if isRaw(t) {
+		args := make([]types.Arg, len(t.C.TypeParams))
+		for i := range args {
+			args[i] = types.Arg{V: types.Star}
+		}
+		if t.C.ReadOnly != nil {
+			t.C = t.C.ReadOnly
+		}
+		t.A = types.MakeArgs(args)
+		return t.Nullable()
+	}
+	return mapTypeArgs(t, rawUpper)
+}
+
+// javaClass reports whether cls is a Java class, not one Kotlin sees as
+// its own, as List.
+func javaClass(cls *types.ClassSym) bool {
+	return cls.External && cls.KotlinName == "" && cls.Java == nil
+}
+
+// mapTypeArgs returns t with f applied to its type arguments.
+func mapTypeArgs(t types.Type, f func(types.Type) types.Type) types.Type {
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := slices.Clone(t.A.List)
+	for i, a := range args {
+		if a.V != types.Star {
+			args[i].T = f(a.T)
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // invArray returns the type of a Java method's array parameter, T[], which
@@ -545,10 +849,12 @@ func invArray(t types.Type) types.Type {
 // sameBounds reports whether the type parameters of methods f and g,
 // whose types sameParams maps by fs and gs, have the same upper bounds,
 // in any order: functions that differ only in them are overloads, as
-// with kotlinc, not overrides. Only the program's declarations are
-// compared, whose bounds are as written.
+// with kotlinc, not overrides. Only the program's declarations and Kotlin
+// classes' members of the class path are compared, whose bounds are as
+// written; a Java method's are not what Kotlin sees.
 func (c *Checker) sameBounds(fs, gs types.Subst, f, g *types.FunSym) bool {
-	if f.Decl == nil || g.Decl == nil {
+	asWritten := func(f *types.FunSym) bool { return f.Decl != nil || f.Owner != nil && f.Owner.FromKotlin }
+	if !asWritten(f) || !asWritten(g) {
 		return true
 	}
 	for i, p := range f.TypeParams {
@@ -617,6 +923,15 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		if s == cls || anyOnly && s.Name == "java/lang/Object" {
 			return true
 		}
+		if s.Name == "java/lang/Throwable" && f.Name == "fillInStackTrace" {
+			// Not a member, as Kotlin sees Throwable: a function of
+			// that name needs no 'override'. But K2 accepts one, as
+			// kotlinx.coroutines' exceptions have, and it then
+			// overrides Throwable's.
+			if d, ok := f.Decl.(*syntax.FunDecl); !ok || !d.Override {
+				return true
+			}
+		}
 		gs := methodsNamed(s, f)
 		if s.Name == charSequence && f.Name == "get" && !f.Ext {
 			gs = s.Methods["charAt"] // CharSequence's get, on the JVM
@@ -624,7 +939,9 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		for _, g := range gs {
 			// A private member isn't inherited: it overrides and is
 			// overridden by nothing.
-			if !g.Static && !g.Private && !f.Private && c.sameParams(this, f, g) {
+			// Nor is a Java member that is package-private in another
+			// package.
+			if !g.Static && !g.Private && !f.Private && !(g.PackagePrivate && packageOf(g.Owner) != packageOf(cls)) && c.sameParams(this, f, g) {
 				out = append(out, g)
 			}
 		}
@@ -646,13 +963,20 @@ type superProp struct {
 	setter    string // and the setter's, if it has one
 	protected bool
 	ctx       []*types.VarSym // its context parameters, in owner's type parameters
+	// vis and setterVis are the visibilities of its getter and setter.
+	// inherits is set if the property is the program's override without
+	// a visibility modifier, which has the visibility of a property it
+	// overrides, and inheritsSetter if its setter has none either.
+	vis, setterVis           syntax.Visibility
+	inherits, inheritsSetter bool
+	depr                     depr // its deprecation, or its getter's or setter's
 }
 
 // implementingProp returns the property of cls, declared or inherited,
 // that implements a property of its supertype s, of a name and context
 // parameters ctx, or nil.
 func (c *Checker) implementingProp(cls, s *types.ClassSym, name string, ctx []*types.VarSym) *types.VarSym {
-	q := c.userProp(cls, name)
+	q := c.memberProp(cls, name) // a superclass's private property is not cls's
 	if len(ctx) == 0 && (q == nil || q.Alt == nil) {
 		return q
 	}
@@ -680,6 +1004,55 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	return slices.DeleteFunc(c.superProps(cls, p.Name), func(o superProp) bool {
 		return !c.sameContextsIn(o.ctx, c.memberSubst(cls.This(), o.owner), p.Contexts, nil)
 	})
+}
+
+// markInheritedProtected marks the properties of the file's classes that
+// override a protected property without a visibility of their own, which
+// are protected too, before any code that reads them is checked.
+func (c *Checker) markInheritedProtected() {
+	for _, cd := range c.classes {
+		cls := cd.Sym
+		if cls == nil {
+			continue
+		}
+		mark := func(p *types.VarSym, override bool) {
+			if p == nil || !override || explicitVisibility(p) {
+				return
+			}
+			for _, o := range c.superProps(cls, p.Name) {
+				if o.protected {
+					p.InheritsProtected = true
+					return
+				}
+			}
+		}
+		for _, cp := range cd.CtorParams {
+			mark(cp.PropSym, cp.Override)
+		}
+		for _, m := range cd.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv == nil {
+				mark(pd.Sym, pd.Override)
+			}
+		}
+	}
+}
+
+// javaFinalAccessor returns the Java superclass of cls below o's owner
+// that declares a final method with the JVM signature of o's getter or
+// setter, which Kotlin sees as o, final: or nil.
+func javaFinalAccessor(cls *types.ClassSym, o superProp) *types.ClassSym {
+	for s := cls.Super; s != nil; s = s.Super {
+		if !javaClass(s) || s.FromKotlin || s == o.owner || !s.IsSubclassOf(o.owner) {
+			continue
+		}
+		s.Ensure()
+		for _, sig := range []string{o.getter, o.setter} {
+			if acc, ok := s.JVMMethods[sig]; ok && sig != "" && acc&classfile.AccFinal != 0 && acc&classfile.AccStatic == 0 {
+				return s
+			}
+		}
+	}
+	return nil
 }
 
 // sameContextsIn reports whether context parameters a, with substitution
@@ -718,7 +1091,14 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 						fd, _ := types.Desc(types.FieldType(p))
 						setter = types.SetterJVM(p) + "(" + fd + ")V"
 					}
-					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts})
+					vis, _ := propVisibility(p)
+					setterVis := vis
+					if pd, ok := p.Decl.(*syntax.PropDecl); ok && pd.SetterVis != syntax.Public {
+						setterVis = pd.SetterVis
+					}
+					inherits := inheritsVisibility(p.Decl)
+					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts, vis, setterVis,
+						inherits, inherits && setterVis == vis, propDeclDepr(p)})
 				}
 			}
 			return true
@@ -729,13 +1109,20 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 				if kp.Setter != nil {
 					setter = kp.Setter.JVM() + types.FunDesc(kp.Setter)
 				}
-				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts})
+				vis, setterVis := syntax.Public, syntax.Public
+				if kp.Getter.Protected {
+					vis, setterVis = syntax.Protected, syntax.Protected
+				}
+				if kp.Setter != nil && kp.Setter.Protected {
+					setterVis = syntax.Protected
+				}
+				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts, vis, setterVis, false, false, kpropDepr(kp)})
 			}
 			return true
 		}
 		if s.Name == charSequence && name == "length" {
 			// CharSequence's length, java.lang.CharSequence.length().
-			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil})
+			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil, syntax.Public, syntax.Public, false, false, depr{}})
 			return true
 		}
 		if s.KotlinName != "" || !builtinJava[s.Name] {
@@ -747,7 +1134,11 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 		// A Kotlin built-in type's, as Throwable's message.
 		for _, g := range s.Methods[types.GetterName(name)] {
 			if len(g.Params) == 0 && !g.Static && g.Ret.K != types.Unit {
-				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil})
+				vis := syntax.Public
+				if g.Protected {
+					vis = syntax.Protected
+				}
+				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil, vis, vis, false, false, deprecationLevel(g.Deprecated)})
 			}
 		}
 		return true
@@ -762,6 +1153,13 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	cls := d.Sym
 	this := cls.This()
 	c.checkExtPropOverrides(d)
+	// A class that mixes suspend and non-suspend function types is
+	// reported once, at its supertypes (checkMixedSuspendSupertypes), not
+	// again for its invoke overriding one of each kind.
+	mixed := mixesSuspendSupertypes(d)
+	if d.Value && !d.Interface && !d.Object && !d.Local {
+		c.reservedValueMembers(d)
+	}
 	for _, m := range d.Members {
 		fd, ok := m.(*syntax.FunDecl)
 		if !ok || fd.SelfStatic {
@@ -780,11 +1178,18 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			if c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name] {
 				c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 			}
+		case fd.Override && javaHidden(cls, over):
+			c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 		case len(over) > 0 && !fd.Override && !platformOnly(over):
 			c.errorf(fd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", f.Name, over[0].Owner.DisplayName())
 		}
 		if !fd.Override {
 			continue
+		}
+		c.paramNameWarnings(fd, over)
+		if !deprecated(deprecation(fd.Annotations)) && len(over) > 0 && (!slices.ContainsFunc(over, func(o *types.FunSym) bool { return !deprecated(funDepr(o)) }) ||
+			c.deprecatedOverrideOfHidden(f) != "") {
+			c.overrideDeprecation(fd.P)
 		}
 		if f.Suspend && rawSuspendRet(f.Ret) {
 			for _, o := range over {
@@ -802,6 +1207,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			}
 		}
 		own := memberDesc(f)
+		if !fd.Explicit {
+			c.inferredVisibility(fd, over)
+		}
 		for _, o := range over {
 			if o.Infix {
 				f.Infix = true // an override of an infix function is one
@@ -810,7 +1218,12 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
 				continue
 			}
+			if fd.Explicit && !o.PackagePrivate && !inheritsVisibility(o.Decl) {
+				c.overrideVisibility(fd.P, f.Name, memberVisibility(o), fd.Visibility, o.Owner)
+			}
 			switch {
+			case mixed && f.Suspend != o.Suspend && o.Owner.Func:
+				continue
 			case f.Suspend && !o.Suspend:
 				c.errorf(fd.P, "suspend function '%s' cannot override non-suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 				continue
@@ -828,7 +1241,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				continue
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
-			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) {
+			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.overrideRetFits(f.Ret, ret) {
 				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {
@@ -868,6 +1281,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	}
 	for _, op := range props {
 		p := op.p
+		c.javaFieldWarnings(cls, p, op.pos)
 		if p.Private && !op.override {
 			continue // only a field: it hides and overrides nothing
 		}
@@ -881,24 +1295,53 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if !op.override {
 			continue
 		}
+		if !deprecated(propDeclDepr(p)) && len(over) > 0 && !slices.ContainsFunc(over, func(o superProp) bool { return !deprecated(o.depr) }) {
+			c.overrideDeprecation(op.pos)
+		}
 		own := types.GetterJVM(p) + "()" + descOf(types.GetterType(p))
 		var ownSetter string
 		if p.Mutable && !p.SetterPrivate {
 			ownSetter = types.SetterJVM(p) + "(" + descOf(types.FieldType(p)) + ")V"
 		}
+		finalReported := false
 		for _, o := range over {
 			t := c.memberSubst(this, o.owner).Apply(o.t)
 			switch {
 			case o.final:
 				c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, o.owner.DisplayName())
 				continue
+			case javaFinalAccessor(cls, o) != nil:
+				if !finalReported {
+					c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, javaFinalAccessor(cls, o).DisplayName())
+					finalReported = true
+				}
+				continue
 			case o.mutable && !p.Mutable:
 				c.errorf(op.pos, "val-property cannot override var-property '%s'", p.Name)
 			case p.Type.K == types.Invalid || t.K == types.Invalid:
-			case p.Mutable && !c.sameType(p.Type, t):
+			case p.Mutable && o.mutable && !c.sameType(p.Type, t):
 				c.errorf(op.pos, "type of '%s' doesn't match the type of the overridden var-property", p.Name)
 			case !c.subtype(p.Type, t):
 				c.errorf(op.pos, "type of '%s' is not a subtype of the overridden property", p.Name)
+			}
+			vis, explicit := declVisibility(p.Decl)
+			if o.inherits {
+				// Its visibility is that of a member it overrides, which
+				// is among the others.
+			} else if explicit && explicitVisibility(p) {
+				c.overrideVisibility(op.pos, p.Name, o.vis, vis, o.owner)
+			}
+			if pd, ok := p.Decl.(*syntax.PropDecl); ok && o.mutable && p.Mutable && pd.SetterVis != syntax.Public && !o.inheritsSetter {
+				// A setter's visibility, if it has a modifier; a val's
+				// overrider may have any.
+				at := op.pos
+				switch {
+				case pd.Setter != nil:
+					at = pd.Setter.P
+				case pd.Getter == nil && pd.AccessorP.Line > 0:
+					at = pd.AccessorP
+				}
+				c.overrideVisibility(at, p.Name, o.setterVis, pd.SetterVis, o.owner)
 			}
 			if o.getter != own && !contains(p.Bridges, o.getter) {
 				p.Bridges = append(p.Bridges, o.getter)
@@ -912,9 +1355,46 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 	}
 	c.inheritedBridges(d)
-	if !cls.Abstract || d.Enum {
-		c.checkImplemented(d)
+	reported := map[string]bool{}
+	c.checkMixedSuspendSupertypes(d)
+	if !d.Annotation {
+		reported = c.checkInheritedFuns(d, mixed)
+		c.checkInheritedProps(d, reported)
 	}
+	if d.Data && !d.Object {
+		c.checkDataOverrides(d)
+	}
+	if len(d.Delegated) > 0 || slices.ContainsFunc(d.Supers, func(st *syntax.SuperType) bool { return st.Delegate != nil }) {
+		c.checkDelegatedMembers(d)
+	}
+	if !cls.Abstract || d.Enum {
+		c.checkImplemented(d, reported)
+	}
+	if !cls.Interface && c.inheritsJavaFunctionN(cls) {
+		c.errorf(d.P, "a Kotlin class can't inherit a Java member that references 'kotlin.jvm.functions.FunctionN'")
+	}
+}
+
+// inheritsJavaFunctionN reports whether class cls inherits a method of
+// the program's Java sources whose descriptor has FunctionN, the class of
+// function types of more than 22 parameters, which kotlinc doesn't
+// support.
+func (c *Checker) inheritsJavaFunctionN(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s == cls || !c.u.ext.javaSource(s) {
+			return true
+		}
+		for _, fs := range s.Methods {
+			for _, f := range fs {
+				if !f.Private && !f.Static && f.Owner == s && strings.Contains(jvmDesc(f), "Lkotlin/jvm/functions/FunctionN;") {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // inheritedBridges finds the members of class d's interfaces that it
@@ -1065,11 +1545,11 @@ func descOf(t types.Type) string {
 }
 
 // checkImplemented reports the abstract members that a class that isn't
-// abstract inherits and doesn't implement.
-func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
+// abstract inherits and doesn't implement, but those named in reported,
+// which checkInheritedFuns reported.
+func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool) {
 	cls := d.Sym
 	this := cls.This()
-	reported := map[string]bool{}
 	missing := func(name string) {
 		if !reported[name] {
 			reported[name] = true
@@ -1105,6 +1585,34 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 			}
 		}
 	}
+	// An internal abstract member of another module's superclass can't be
+	// implemented here, as kotlinc's INVISIBLE_ABSTRACT_MEMBER_FROM_SUPER:
+	// unless a subclass in that module implements it, the class can't be
+	// instantiated.
+	seen := map[string]bool{}
+invisible:
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		sc.Ensure()
+		for _, key := range slices.Sorted(maps.Keys(sc.InvisibleMembers)) {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			name, _, _ := strings.Cut(strings.TrimPrefix(key, "prop "), "/")
+			// A member of the class of that name is an error of its own,
+			// CANNOT_OVERRIDE_INVISIBLE_MEMBER, instead.
+			declares := slices.ContainsFunc(cls.Methods[name], func(f *types.FunSym) bool { return f.Owner == cls }) ||
+				cls.Prop(name) != nil && cls.Prop(name).Owner == cls
+			if sc.InvisibleMembers[key] && !d.Enum && !declares {
+				what := "class '" + cls.DisplayName() + "'"
+				if cls.Object {
+					what = "object '" + cls.DisplayName() + "'"
+				}
+				c.errorf(d.P, "%s inherits invisible abstract member '%s' of %s, which it can't implement", what, name, sc.DisplayName())
+				break invisible
+			}
+		}
+	}
 	// A class that implements Kotlin's collection types implements the
 	// abstract methods of Java's collection classes it extends with their
 	// Kotlin members, under other names: Java's AbstractList.size() with
@@ -1120,12 +1628,21 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		if s == cls || mapped && s.External && s.KotlinName == "" && s.Java == nil {
 			return true
 		}
-		for name, fs := range s.Methods {
+		// By name: the errors' order doesn't depend on the maps'.
+		for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
+			fs := s.Methods[name]
+			if d.Data && anyMember[name] {
+				continue // a data class generates them
+			}
 			for _, g := range fs {
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) {
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.Owner, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) && !c.javaImplements(cls, g) &&
+					!(s.External && s.KotlinName == "" && s.Java == nil && kotlinAccessorImplements(cls, s, g)) {
+					if s.Name == charSequence && name == "charAt" {
+						name = "get"
+					}
 					missing(name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
@@ -1139,9 +1656,9 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 				}
 			}
 		}
-		for name, fs := range s.ExtMethods {
-			for _, g := range fs {
-				if g.Abstract && !c.implemented(cls, this, g) {
+		for _, name := range slices.Sorted(maps.Keys(s.ExtMethods)) {
+			for _, g := range s.ExtMethods[name] {
+				if g.Abstract && !c.implemented(cls, this, g) && !c.javaImplements(cls, g) {
 					missing(name)
 				}
 			}
@@ -1149,7 +1666,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		if !s.External {
 			for _, p := range s.Props {
 				if p.Abstract {
-					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && (p.Mutable || !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts)) {
+					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts, p.Mutable) {
 						missing(p.Name)
 					} else {
 						c.inheritedPropImpl(d, cls, s, p, q)
@@ -1157,11 +1674,11 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 				}
 			}
 		}
-		for name, kp := range s.KProps {
-			for kp := range kpropAlts(kp) {
+		for _, name := range slices.Sorted(maps.Keys(s.KProps)) {
+			for kp := range kpropAlts(s.KProps[name]) {
 				if kp.Getter.Abstract {
-					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
-						(kp.Setter != nil || !c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts)) {
+					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, nil, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
+						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {
 						missing(name)
 					}
 				}
@@ -1169,6 +1686,85 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		}
 		return true
 	})
+}
+
+// kotlinAccessorImplements reports whether abstract method g of Java
+// class s is implemented by the accessor of a Kotlin property that isn't
+// abstract, of cls or a supertype other than s, with g's JVM name and
+// number of parameters: A.y's getY() implements Java interface C's
+// getY() for a class D extends A implements C, and an override of a
+// Kotlin interface's val B.prop1 Java interface Foo's getProp1(T t), Foo
+// extending the Kotlin one.
+func kotlinAccessorImplements(cls, s *types.ClassSym, g *types.FunSym) bool {
+	name, arity := g.JVM(), len(g.Params)
+	if !strings.HasPrefix(name, "get") && !strings.HasPrefix(name, "is") && !strings.HasPrefix(name, "set") {
+		return false
+	}
+	fits := func(f *types.FunSym) bool {
+		return f != nil && !f.Abstract && !f.Static && f.JVM() == name && jvmArity(f) == arity
+	}
+	// One of cls overrides a property of a supertype: a val y of its own
+	// is an accidental override of a Java interface's getY().
+	inherited := func(prop string) bool {
+		has := false
+		cls.Supertypes(func(t *types.ClassSym) bool {
+			has = t != cls && (t.Prop(prop) != nil || len(t.ExtProps[prop]) > 0 || t.KProps[prop] != nil)
+			return !has
+		})
+		return has
+	}
+	found := false
+	cls.Supertypes(func(t *types.ClassSym) bool {
+		if t == s {
+			return true
+		}
+		switch {
+		case !t.External:
+			for _, p := range t.Props {
+				if p.Abstract || t == cls && !inherited(p.Name) {
+					continue
+				}
+				if types.GetterJVM(p) == name && len(p.Contexts) == arity || p.Mutable && !p.SetterPrivate && types.SetterJVM(p) == name && len(p.Contexts)+1 == arity {
+					found = true
+				}
+			}
+			for prop, gs := range t.ExtProps {
+				if t != cls || inherited(prop) {
+					found = found || slices.ContainsFunc(gs, fits) || slices.ContainsFunc(gs, func(f *types.FunSym) bool { return fits(f.ExtSetter) })
+				}
+			}
+		case t.KotlinName != "":
+			for _, kp := range t.KProps {
+				found = found || fits(kp.Getter) || fits(kp.Setter)
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// jvmArity returns the number of parameters of f's JVM method: its
+// context parameters, extension receiver and parameters.
+func jvmArity(f *types.FunSym) int {
+	if f.Desc != "" {
+		n := 0
+		for d := f.Desc[1:]; len(d) > 0 && d[0] != ')'; n++ {
+			for d[0] == '[' {
+				d = d[1:]
+			}
+			if d[0] == 'L' {
+				d = d[strings.IndexByte(d, ';')+1:]
+			} else {
+				d = d[1:]
+			}
+		}
+		return n
+	}
+	n := len(f.Contexts) + len(f.Params)
+	if f.Ext {
+		n++
+	}
+	return n
 }
 
 // hasDefaults reports whether a function has parameters with default
@@ -1187,12 +1783,47 @@ func isInlineFun(f *types.FunSym) bool {
 }
 
 // concreteInSuper reports whether a superclass of cls on the class path
-// has a method with code with this name and descriptor.
-func concreteInSuper(cls *types.ClassSym, nd string) bool {
+// has a method with code with this name and descriptor. A Java source has
+// no bridge methods, so in a subclass of owner, if not nil, one of its
+// methods with a narrower return type counts too: String get(Object) for
+// Map's Object get(Object).
+func concreteInSuper(cls, owner *types.ClassSym, nd string) bool {
+	params, ret, _ := strings.Cut(nd, ")")
+	params += ")"
+	covariant := strings.HasPrefix(ret, "L") // a reference type
 	for s := cls.Super; s != nil; s = s.Super {
 		s.Ensure()
 		if acc, ok := s.JVMMethods[nd]; ok && acc&classfile.AccAbstract == 0 {
 			return true
+		}
+		if covariant && owner != nil && s.Java == nil && !s.FromKotlin && s.IsSubclassOf(owner) {
+			for k, acc := range s.JVMMethods {
+				if r, ok := strings.CutPrefix(k, params); ok && acc&(classfile.AccAbstract|classfile.AccStatic) == 0 && (r[0] == 'L' || r[0] == '[') {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// javaImplements reports whether a superclass of cls among the program's
+// Java sources, which inherits the program's abstract method g, has a
+// method that isn't abstract with g's JVM signature: Java's foo(String a,
+// int b) implements a Kotlin interface's context(a: String) foo(b: Int).
+func (c *Checker) javaImplements(cls *types.ClassSym, g *types.FunSym) bool {
+	if g.Owner == nil || g.Owner.External {
+		return false
+	}
+	sig := g.JVM() + memberDesc(g)
+	for s := cls.Super; s != nil; s = s.Super {
+		if !c.u.ext.javaSource(s) || !s.IsSubclassOf(g.Owner) {
+			continue
+		}
+		for _, f := range s.Methods[g.JVM()] {
+			if !f.Abstract && !f.Static && f.JVM()+jvmDesc(f) == sig {
+				return true
+			}
 		}
 	}
 	return false
@@ -1228,7 +1859,13 @@ func (c *Checker) implementation(cls *types.ClassSym, this types.Type, g *types.
 		if name != g.Name {
 			hs = append(hs[:len(hs):len(hs)], s.Methods[name]...)
 		}
+		if !g.Owner.Interface && g.Owner.IsSubclassOf(s) {
+			return true // g, abstract, overrides its members: A's abstract toString() Any's
+		}
 		for _, h := range hs {
+			if _, ok := h.Decl.(*syntax.FunDecl); ok && g.Owner.Name == charSequence && (g.Name == "charAt" || g.Name == "length") && h.Name == g.Name {
+				continue // a Kotlin charAt() or length() doesn't implement CharSequence's get or length
+			}
 			if !h.Abstract && c.sameParams(this, h, g) && (!s.Interface || s.IsSubclassOf(g.Owner)) {
 				found = h
 			}
@@ -1249,22 +1886,92 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	c.lookupCls = d.Sym // its nested classes
 	defer func() { c.lookupCls = nil }()
 	cands := superCands(d.Sym)
+	if len(x.TypeArgs) > 0 && sc.OuterParams > 0 && !sc.External && len(x.TypeArgs) != len(sc.TypeParams)-sc.OuterParams {
+		// Type arguments of a typealias are for all of an inner class's
+		// type parameters, its outer class's too: inner class Test1 :
+		// GI<T1>() for typealias GI<T> = Generic<T>.Inner. Written ones
+		// are its own: Inner<Int>().
+		for i := range cands {
+			cands[i].tparams, cands[i].recv = sc.TypeParams, nil
+		}
+	}
 	if len(cands) == 0 {
 		c.errorf(x.P, "%s has no constructor that a subclass can call", sc.DisplayName())
 		c.args(x, nil)
 		return
 	}
 	x.Ctor = sc
-	if !c.superOuter(d.Sym, x) {
+	if !c.superOuter(d.Sym, x) || !c.superOuterArgs(d.Sym, x) {
 		return
 	}
-	c.resolve(x, cands, noWant, nil)
+	want := noWant
+	if len(x.TypeArgs) > 0 && sc.OuterParams == 0 && c.superViaAlias(d, x) {
+		// A typealias's type arguments are its own, Alias<String> for
+		// typealias Alias<X> = Inv<X, Inv<X, X>>: its expansion, the
+		// supertype, gives the class's.
+		x.TypeArgs = nil
+	}
+	if len(x.TypeArgs) == 0 {
+		// Through a typealias, the supertype gives the type arguments:
+		// class D : FooStr() for typealias FooStr = Foo<String>.
+		for _, t := range d.Sym.Supers {
+			if t.K == types.Class && t.C == sc && t.A.Len() > 0 {
+				want = t
+			}
+		}
+		if want.K != types.Invalid && slices.ContainsFunc(want.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+			c.errorf(x.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", want)
+			c.args(x, nil)
+			return
+		}
+	}
+	c.resolve(x, cands, want, nil)
 	if d.Sym.Object {
 		c.selfCalls(d.Sym, x)
 	}
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
 	}
+}
+
+// superViaAlias reports whether class d's superclass call x names a
+// typealias.
+func (c *Checker) superViaAlias(d *syntax.ClassDecl, x *syntax.Call) bool {
+	for _, st := range d.Supers {
+		if st.Call == x {
+			return st.Type != nil && st.Type.Name != "" && c.lookupAlias(st.Type.Name) != nil
+		}
+	}
+	return false
+}
+
+// superOuterArgs reports whether the outer class type arguments of inner
+// class cls's superclass, an inner class too, are those of the outer
+// instance cls passes it: not in inner class Test2 : GIInt() of a
+// Generic<T1>, for typealias GIInt = Generic<Int>.Inner.
+func (c *Checker) superOuterArgs(cls *types.ClassSym, x *syntax.Call) bool {
+	sc := x.Ctor
+	if !sc.Inner || sc.OuterParams == 0 || !cls.Inner || cls.Outer == nil {
+		return true
+	}
+	os, ok := c.asSuper(cls.Outer.This(), sc.Outer)
+	if !ok || os.A.Len() != sc.OuterParams {
+		return true
+	}
+	own := len(sc.TypeParams) - sc.OuterParams
+	for _, t := range cls.Supers {
+		if t.K != types.Class || t.C != sc || t.A.Len() != len(sc.TypeParams) {
+			continue
+		}
+		for i := range sc.OuterParams {
+			if t.A.Get(own+i) != os.A.Get(i) {
+				c.errorf(x.P, "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
+				c.args(x, nil)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // selfCalls reports the uses of object obj in its own superclass's
@@ -1311,6 +2018,9 @@ func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
 // instance the code reaches as this@Outer's.
 func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Type, bool) {
 	cls := c.cls
+	if s.Label != "" && c.ambiguousLabel(s.Label) {
+		c.errorf(s.P, "ambiguous label: %s", s.Label)
+	}
 	switch {
 	case s.Label != "" && (cls == nil || s.Label != simpleName(cls)):
 		r := c.outerRecv(s.Label)
@@ -1340,8 +2050,15 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 		// The supertype's class, written without type arguments, which
 		// the supertype gives: super<List>.
 		var want types.Type
+		args := false // a typealias that gives the type arguments
 		if ref := s.Iface; ref.Args == nil && ref.Ret == nil && ref.Name != "Any" {
-			if wc := c.lookupClass(ref.Name); wc != nil {
+			if a := c.lookupAlias(ref.Name); a != nil && len(a.TypeParams) == 0 {
+				c.resolveAlias(a)
+				if at := a.Type; at.K == types.Class && at.A.Len() > 0 {
+					want, args = at, true
+				}
+			}
+			if wc := c.lookupClass(ref.Name); wc != nil && !args {
 				want = types.ClassType(wc)
 			}
 		}
@@ -1352,13 +2069,17 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			return want, false
 		}
 		for _, st := range cls.Supers {
-			if st.C == want.C || want.K == types.Any {
+			if st.C == want.C && (!args || c.sameArgs(st, want)) || want.K == types.Any {
 				t = st
 			}
 		}
 		if t.K == types.Invalid {
 			c.errorf(s.Iface.P, "not an immediate supertype")
 			return t, false
+		}
+		if s.Outer != nil && s.Iface.Args != nil && c.sameArgs(t, want) {
+			// kotlinc reports it of an outer class's super only.
+			c.warnf(s.Iface.P, "TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER", "type arguments do not need to be specified in a 'super' qualifier")
 		}
 	default:
 		var has []types.Type
@@ -1367,6 +2088,11 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 				has = append(has, st)
 			}
 		}
+		// A supertype that another one extends: the other's members
+		// override its own.
+		has = slices.DeleteFunc(slices.Clone(has), func(st types.Type) bool {
+			return slices.ContainsFunc(has, func(o types.Type) bool { return o.C != st.C && o.C.IsSubclassOf(st.C) })
+		})
 		if len(has) > 1 {
 			// Only the implementations count when some are abstract.
 			var impl []types.Type
@@ -1378,6 +2104,11 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			if len(impl) > 0 {
 				has = impl
 			}
+		}
+		if i := slices.IndexFunc(cls.Supers, func(st types.Type) bool { return st.C != nil && st.C.Name == "java/lang/Cloneable" }); i >= 0 && len(has) == 1 && name == "clone" && !has[0].C.IsSubclassOf(cls.Supers[i].C) {
+			// kotlin.Cloneable declares clone(), which java.lang.Cloneable
+			// doesn't: a superclass's is one of two.
+			has = append(has, cls.Supers[i])
 		}
 		if len(has) > 1 {
 			c.errorf(s.P, "many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<%s>'", has[0].C.DisplayName())
@@ -1427,8 +2158,8 @@ func simpleName(cls *types.ClassSym) string {
 	return n[strings.LastIndexByte(n, '.')+1:]
 }
 
-// superHas reports whether the supertype cls has a function (call) or a
-// property named name.
+// superHas reports whether the supertype cls has a property or, for a
+// call, a function named name.
 func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 	if call {
 		for _, f := range c.accessible(nil, c.javaMethods(cls, name)) {
@@ -1437,7 +2168,10 @@ func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 				return true
 			}
 		}
-		return false
+		// A Kotlin property of the name counts too, even one that can't
+		// be invoked: super.fn() is ambiguous between a fun fn() and a
+		// val fn of another supertype. A Java getter doesn't.
+		return c.userProp(cls, name) != nil
 	}
 	if c.userProp(cls, name) != nil {
 		return true
@@ -1454,7 +2188,9 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		// as Set.addAll for AbstractMutableSet, whose implementation is
 		// AbstractCollection's.
 		// An implementation doesn't count where a subtype of its class
-		// redeclares it abstract, as IWithToString does Any's toString.
+		// redeclares it abstract, as IWithToString does Any's toString,
+		// nor an interface's where a class declares it abstract: the
+		// intersection of them is abstract.
 		var impls, abstracts []*types.FunSym
 		cls.Supertypes(func(s *types.ClassSym) bool {
 			for _, f := range c.accessible(nil, s.Methods[name]) {
@@ -1469,12 +2205,13 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		for _, f := range impls {
 			if !slices.ContainsFunc(abstracts, func(a *types.FunSym) bool {
 				return a.Owner != nil && f.Owner != nil && a.Owner != f.Owner && paramKey(a) == paramKey(f) &&
-					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner))
+					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner) || f.Owner.Interface && !a.Owner.Interface)
 			}) {
 				return true
 			}
 		}
-		return false
+		p := c.userProp(cls, name)
+		return p != nil && !p.Abstract
 	}
 	if p := c.userProp(cls, name); p != nil {
 		return !p.Abstract
@@ -1495,7 +2232,7 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 		return types.InvalidType
 	}
 	fn.T = st
-	if !st.C.External && innerOf(st.C, fn.Name) != nil {
+	if n, _ := c.innerNamed(st.C, fn.Name); n != nil && n.Inner {
 		// super.Inner() constructs the supertype's inner class with this
 		// as its outer instance.
 		this := &syntax.This{Label: s.Label}
@@ -1509,6 +2246,15 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 			ms = c.javaMethods(object, fn.Name)
 		}
 	}
+	if len(ms) == 0 && c.hasFunProp(st, fn.Name, x) {
+		// A property of a function type, invoked: super.x(y) for a
+		// supertype's val x: (String) -> Boolean is super.x.invoke(y),
+		// which reads the supertype's property.
+		inv := &syntax.Member{X: fn, Name: "invoke"}
+		inv.P = fn.P
+		x.Fun = inv
+		return c.call(x, want, sink)
+	}
 	if len(ms) == 0 {
 		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
@@ -1517,8 +2263,34 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 	t := c.resolve(x, c.memberCallees(c.superImpls(st.C, ms), st), want, sink)
 	if x.Sym != nil && x.Sym.Abstract {
 		c.errorf(fn.P, "abstract member cannot be accessed directly")
+	} else if x.Sym != nil && usesDefaults(x) {
+		// The super call would need the supertype's foo$default, which
+		// dispatches virtually.
+		c.errorf(fn.P, "super calls with default arguments are not allowed, specify all arguments of 'super.%s' explicitly", fn.Name)
 	}
 	return t
+}
+
+// usesDefaults reports whether a resolved call leaves a parameter of its
+// callee, other than a vararg, to its default value.
+func usesDefaults(x *syntax.Call) bool {
+	ps := x.Sym.Params
+	passed := make([]bool, len(ps))
+	for i := range x.Args {
+		j := i
+		if x.ArgMap != nil {
+			j = x.ArgMap[i]
+		}
+		if j >= 0 && j < len(ps) {
+			passed[j] = true
+		}
+	}
+	for j, p := range ps {
+		if !passed[j] && !p.Vararg {
+			return true
+		}
+	}
+	return false
 }
 
 // superImpls replaces the abstract methods among ms, members of supertype
@@ -1530,7 +2302,8 @@ func (c *Checker) superImpls(cls *types.ClassSym, ms []*types.FunSym) []*types.F
 		if m.Abstract {
 			cls.Supertypes(func(s *types.ClassSym) bool {
 				for _, f := range s.Methods[m.Name] {
-					if !f.Abstract && paramKey(f) == paramKey(m) {
+					// An interface's doesn't implement a class's.
+					if !f.Abstract && paramKey(f) == paramKey(m) && (m.Owner == nil || f.Owner == nil || m.Owner.Interface || !f.Owner.Interface) {
 						m = f
 						return false
 					}
@@ -1725,22 +2498,74 @@ func (c *Checker) javaProp(s *types.ClassSym, name string) (string, types.Type) 
 }
 
 // javaPropImplements reports whether a superclass of cls on the class
-// path implements property name of interface s, of type t as s declares
-// it, with a method that Kotlin sees as a property (see javaProp): an
-// enum's name implements an interface's val name: String.
-func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym) bool {
-	if !s.Interface || len(ctx) > 0 {
-		return false
+// path implements property name of supertype s, of type t as s declares
+// it, a var if mutable, with methods Kotlin sees as the property: an
+// enum's name implements an interface's val name: String (see
+// javaProp), and a Java class's getX() and setX(x) implement a var x.
+func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym, mutable bool) bool {
+	if len(ctx) > 0 {
+		return c.javaContextAccessors(cls, s, name, ctx, mutable)
 	}
+	want := c.memberSubst(this, s).Apply(t)
 	for sc := cls.Super; sc != nil; sc = sc.Super {
 		if !sc.External {
 			continue
 		}
-		if _, pt := c.javaProp(sc, name); pt.K != types.Invalid {
-			return c.subtype(pt, c.memberSubst(this, s).Apply(t))
+		if s.Interface && !mutable {
+			if _, pt := c.javaProp(sc, name); pt.K != types.Invalid {
+				return c.subtype(pt, want)
+			}
+		}
+		if sc.KotlinName == "" && sc.Java == nil && c.javaAccessorsImplement(this, sc, name, want, mutable) {
+			return true
 		}
 	}
 	return false
+}
+
+// javaContextAccessors reports whether a superclass of cls among the
+// program's Java sources, which inherits s, declares methods with code
+// that implement s's property name with context parameters ctx, a var if
+// mutable: getX and setX that take the context parameters first, as
+// their JVM descriptors have them.
+func (c *Checker) javaContextAccessors(cls, s *types.ClassSym, name string, ctx []*types.VarSym, mutable bool) bool {
+	cd, ok := types.ParamsDesc(ctx)
+	if !ok {
+		return false
+	}
+	cd = cd[:len(cd)-1]
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		if !c.u.ext.javaSource(sc) || !sc.IsSubclassOf(s) {
+			continue
+		}
+		has := func(acc string, params int) bool {
+			return slices.ContainsFunc(sc.Methods[acc], func(h *types.FunSym) bool {
+				return h.Owner == sc && !h.Static && !h.Abstract && len(h.Params) == params && strings.HasPrefix(jvmDesc(h), cd)
+			})
+		}
+		if has(types.GetterName(name), len(ctx)) && (!mutable || has(types.SetterName(name), len(ctx)+1)) {
+			return true
+		}
+	}
+	return false
+}
+
+// javaAccessorsImplement reports whether Java class sc, a superclass of
+// this, declares methods with code that implement property name of type
+// want, a var if mutable: a getter getX() or isX() whose result is a
+// subtype of want, and a setter setX(x) that takes one.
+func (c *Checker) javaAccessorsImplement(this types.Type, sc *types.ClassSym, name string, want types.Type, mutable bool) bool {
+	sc.Ensure()
+	sub := c.memberSubst(this, sc)
+	has := func(acc string, params int, fits func(*types.FunSym) bool) bool {
+		return slices.ContainsFunc(sc.Methods[acc], func(h *types.FunSym) bool {
+			return h.Owner == sc && !h.Static && !h.Abstract && !h.Ext && len(h.TypeParams) == 0 && len(h.Params) == params && fits(h)
+		})
+	}
+	if !has(types.GetterName(name), 0, func(h *types.FunSym) bool { return c.subtype(sub.Apply(h.Ret), want) }) {
+		return false
+	}
+	return !mutable || has(types.SetterName(name), 1, func(h *types.FunSym) bool { return c.subtype(want, sub.Apply(h.Params[0].Type)) })
 }
 
 // numberImplemented reports whether g, Kotlin's Number.toInt() or one of
@@ -1764,4 +2589,184 @@ func numberImplemented(cls, s *types.ClassSym, g *types.FunSym) bool {
 		}
 	}
 	return false
+}
+
+// overrideRetFits reports whether an override's return type t is a
+// subtype of the overridden member's u. As in K2, a builder's variable
+// in t isn't constrained by it: a stub returned by an anonymous object's
+// member fits, and one in an argument doesn't (see stubInference).
+func (c *Checker) overrideRetFits(t, u types.Type) bool {
+	if !c.hasStub(t) {
+		return c.subtype(t, u)
+	}
+	if c.stub(t.Flex()) != nil {
+		return true
+	}
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	return c.subtype(t, u)
+}
+
+// methodsOfAny reports the functions of interface d with a body that are
+// equals, hashCode or toString of Any: a class always inherits Any's,
+// which wins over an interface's.
+func (c *Checker) methodsOfAny(d *syntax.ClassDecl) {
+	for _, m := range d.Members {
+		f, ok := m.(*syntax.FunDecl)
+		if !ok || f.Sym == nil || f.Body == nil && f.ExprBody == nil || f.Recv != nil || len(f.Contexts) > 0 {
+			continue
+		}
+		any := false
+		switch f.Name {
+		case "hashCode", "toString":
+			any = len(f.Sym.Params) == 0
+		case "equals":
+			any = len(f.Sym.Params) == 1 && f.Sym.Params[0].Type.K == types.Any && f.Sym.Params[0].Type.N
+		}
+		if any && !suppresses(f.Annotations, "METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE") {
+			c.errorf(f.P, "an interface may not implement a method of 'Any'")
+		}
+	}
+}
+
+// overrideVisibility reports an override, of a name, whose visibility v
+// is weaker than, or not comparable with, the visibility ov of a member of
+// owner that it overrides.
+func (c *Checker) overrideVisibility(p syntax.Pos, name string, ov, v syntax.Visibility, owner *types.ClassSym) {
+	switch cmp, ok := compareVisibility(ov, v); {
+	case !ok:
+		c.errorf(p, "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	case cmp > 0:
+		c.errorf(p, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	}
+}
+
+// inferredVisibility reports override fd, without a visibility, of
+// members over none of which is the wider of the others, as an internal
+// and a protected one: kotlinc then gives it the protected one, which
+// the internal one's can't change to.
+func (c *Checker) inferredVisibility(fd *syntax.FunDecl, over []*types.FunSym) {
+	var internal *types.FunSym
+	protected := false
+	for _, o := range over {
+		if o.PackagePrivate || inheritsVisibility(o.Decl) {
+			continue
+		}
+		switch memberVisibility(o) {
+		case syntax.Public:
+			return
+		case syntax.Internal:
+			internal = o
+		case syntax.Protected:
+			protected = true
+		}
+	}
+	if internal != nil && protected {
+		c.overrideVisibility(fd.P, fd.Name, syntax.Protected, syntax.Internal, internal.Owner)
+	}
+}
+
+// compareVisibility compares visibilities a and b: positive if a is the
+// wider, and false if neither is, as protected and internal.
+func compareVisibility(a, b syntax.Visibility) (int, bool) {
+	rank := func(v syntax.Visibility) int {
+		switch v {
+		case syntax.Private:
+			return 0
+		case syntax.Public:
+			return 2
+		}
+		return 1
+	}
+	if a == b {
+		return 0, true
+	}
+	ra, rb := rank(a), rank(b)
+	if ra == rb {
+		return 0, false // protected and internal
+	}
+	return ra - rb, true
+}
+
+// visibilityName returns the keyword of visibility v.
+func visibilityName(v syntax.Visibility) string {
+	switch v {
+	case syntax.Private:
+		return "private"
+	case syntax.Protected:
+		return "protected"
+	case syntax.Internal:
+		return "internal"
+	}
+	return "public"
+}
+
+// inheritsVisibility reports whether decl is an override of the program
+// without a visibility modifier, which has the visibility of the members
+// it overrides.
+func inheritsVisibility(decl any) bool {
+	switch d := decl.(type) {
+	case *syntax.FunDecl:
+		if d.AccessorOf != nil {
+			return inheritsVisibility(d.AccessorOf.Decl)
+		}
+		return d.Override && !d.Explicit
+	case *syntax.PropDecl:
+		return d.Override && !d.Explicit
+	case *syntax.CtorParam:
+		return d.Override && !d.Explicit
+	}
+	return false
+}
+
+// superProjections reports projected type arguments of supertype t,
+// written st without a constructor call (superCall checks those with
+// one): a class can't implement Inv<*>, nor through a typealias whose
+// expansion projects them.
+func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
+	if t.A == nil || !slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+		return
+	}
+	for _, a := range st.Type.Args {
+		if a.Variance != types.Inv {
+			c.errorf(a.P, "projections are not allowed for immediate arguments of a supertype")
+			return
+		}
+	}
+	if c.lookupAlias(st.Type.Name) != nil {
+		c.errorf(st.Type.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+	}
+}
+
+// checkMixedSuspendSupertypes reports a class that has both a suspend and
+// a non-suspend function type among its supertypes, directly or through
+// other supertypes (MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES), at its
+// supertype list, as kotlinc does. It reports whether it did.
+func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
+	if mixesSuspendSupertypes(d) {
+		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
+		return true
+	}
+	return false
+}
+
+// mixesSuspendSupertypes reports whether class d has both a suspend and
+// a non-suspend function type among its supertypes.
+func mixesSuspendSupertypes(d *syntax.ClassDecl) bool {
+	if len(d.Supers) == 0 || d.Sym == nil {
+		return false
+	}
+	var suspend, plain bool
+	d.Sym.Supertypes(func(s *types.ClassSym) bool {
+		if s != d.Sym && s.Func {
+			if s.Suspend {
+				suspend = true
+			} else {
+				plain = true
+			}
+		}
+		return !(suspend && plain)
+	})
+	return suspend && plain
 }

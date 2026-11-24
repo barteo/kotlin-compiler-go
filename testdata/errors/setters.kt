@@ -16,11 +16,28 @@ interface I {
 }
 
 open class C {
-    open var w = 1 // ERROR private setters are not allowed for open properties
-        private set
+    open var w = 1
+        private set // ERROR private setters are not allowed for open properties
 }
 
 fun f() {
     val a = A()
     a.y = 1
+}
+
+// A setter's parameter and a getter's return type of another type than the
+// property's: in the accessor, they are of the type written.
+class WrongAccessorTypes {
+    var x: Int = 0
+        set(value: String) { // ERROR setter parameter type must be equal to the type of the property, i.e. 'Int'
+            field = value // ERROR type mismatch: inferred type is String but Int was expected
+        }
+    val y: Int
+        get(): String = "s" // ERROR getter return type must be equal to the type of the property, i.e. 'Int'
+    val e = 1
+        get(): String { // ERROR getter return type must be equal to the type of the property, i.e. 'Int'
+            return field // ERROR type mismatch: inferred type is Int but String was expected
+        }
+    val same = 1
+        get(): Int = field
 }

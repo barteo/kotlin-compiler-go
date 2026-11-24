@@ -50,6 +50,9 @@ type Template struct {
 	// collect and collect$$forInline do. The copy creates the copy of the
 	// class, which renaming its constants gives.
 	copied []int
+	// literals are the String constants, by index, that code loads other
+	// than as a marker's type parameter name.
+	literals map[int]bool
 }
 
 type nestedTemplate struct {
@@ -67,11 +70,15 @@ type Instance struct {
 // three instructions from start, and the operation, which takes a class
 // constant at classAt (a class ldc's one-byte index at classAt-1 if
 // ldc). A Catch operation's astore takes none: the exception table
-// entries of its handler do, at catches.
+// entries of its handler do, at catches. The marker's ldc of the type
+// parameter's name takes its String constant's one-byte index at nameAt;
+// nullable is set if the name ends in "?".
 type reifiedOp struct {
 	start, op int // file offsets
 	kind      int
 	param     string
+	nullable  bool
+	nameAt    int
 	ldc       bool  // a class ldc, whose index is one byte
 	catches   []int // a Catch's catch_type fields, as file offsets
 }
@@ -210,6 +217,13 @@ func readTemplate(name string, data []byte) (*Template, []nestedRef, error) {
 			return nil, nil, err
 		}
 		for i, in := range insns {
+			if (in.Op == cf.LDC || in.Op == cf.LDC_W) && in.Const == cf.ConstString &&
+				(i+1 >= len(insns) || insns[i+1].Op != cf.INVOKESTATIC || insns[i+1].Name != "reifiedOperationMarker") {
+				if t.literals == nil {
+					t.literals = map[int]bool{}
+				}
+				t.literals[constIndex(m, &in)] = true
+			}
 			// An anonymous class nested in the template, which kotlinc's
 			// inliner copies with it: the copy's code creates the copy.
 			if c := created(&in); isNested(name, c) && !slices.ContainsFunc(nested, func(r nestedRef) bool { return r.class == c }) {
@@ -253,7 +267,8 @@ func readTemplate(name string, data []byte) (*Template, []nestedRef, error) {
 			}
 			t.ops = append(t.ops, reifiedOp{
 				start: m.CodeOff + insns[i-2].Off, op: m.CodeOff + op.Off, kind: kind,
-				param: trimNullable(insns[i-1].Str), ldc: op.Op == cf.LDC, catches: catches,
+				param: trimNullable(insns[i-1].Str), nullable: strings.HasSuffix(insns[i-1].Str, "?"),
+				nameAt: m.CodeOff + insns[i-1].Off + 1, ldc: op.Op == cf.LDC, catches: catches,
 			})
 		}
 	}
@@ -346,6 +361,14 @@ func isNested(outer, class string) bool {
 	return err == nil
 }
 
+// constIndex returns the constant pool index that ldc or ldc_w in takes.
+func constIndex(m *cf.Method, in *cf.Insn) int {
+	if in.Op == cf.LDC {
+		return int(m.Code[in.Off+1])
+	}
+	return int(binary.BigEndian.Uint16(m.Code[in.Off+1:]))
+}
+
 func trimNullable(s string) string {
 	if len(s) > 0 && s[len(s)-1] == '?' {
 		return s[:len(s)-1]
@@ -366,6 +389,19 @@ func (t *Template) Params() []string {
 	return out
 }
 
+// Reifiable reports whether a copy with classes keeps marked operations:
+// whether classes has, for a type parameter of its operations or those of
+// its nested templates, a reified type parameter of the copier, "?S" for
+// S, whose own copies the copier's copiers make.
+func (t *Template) Reifiable(classes map[string]string) bool {
+	for _, op := range t.ops {
+		if strings.HasPrefix(classes[op.param], "?") {
+			return true
+		}
+	}
+	return slices.ContainsFunc(t.nested, func(n nestedTemplate) bool { return n.t.Reifiable(classes) })
+}
+
 // Instantiate returns a copy of the template's class file named name,
 // whose marked operations use the classes of the type arguments, by the
 // type parameters' names (internal names, or descriptors of arrays). The
@@ -374,14 +410,27 @@ func (t *Template) Params() []string {
 // parameters' names, in place of the parameters: the superclass
 // TypeReference<T> of an object : TypeReference<T>() {} becomes the
 // TypeReference<Msg> that reflection reads.
-func (t *Template) Instantiate(name string, classes, sigs map[string]string) ([]Instance, error) {
-	return t.instantiate(name, classes, sigs, map[string]string{t.Name: name})
+//
+// A class "?S" is a reified type parameter S of the copier, as kotlinc's
+// inliner copies a template into an inline function with reified type
+// parameters: the operation keeps its marker, which names S, and the copy
+// creates its nested templates that use S after needClassReification
+// calls, so that the copier's copiers copy it in turn.
+//
+// A class with a "?" after it is a nullable type argument, String?: its
+// type checks, as a marked T? one, are true for null too. names are the
+// Kotlin names of the non-null type arguments, kotlin.String, by the type
+// parameters' names: a cast to one throws a NullPointerException for null,
+// "null cannot be cast to non-null type kotlin.String", as kotlinc's
+// reifier has it.
+func (t *Template) Instantiate(name string, classes, sigs, names map[string]string) ([]Instance, error) {
+	return t.instantiate(name, classes, sigs, names, map[string]string{t.Name: name})
 }
 
 // instantiate copies the template as name, with the classes that renames
 // maps renamed in its constants, and its nested templates, which it
 // creates instead, as name$1, name$2 and so on.
-func (t *Template) instantiate(name string, classes, sigs map[string]string, renames map[string]string) ([]Instance, error) {
+func (t *Template) instantiate(name string, classes, sigs, names map[string]string, renames map[string]string) ([]Instance, error) {
 	renames = maps.Clone(renames)
 	renames[t.Name] = name
 	for i, n := range t.nested {
@@ -389,24 +438,79 @@ func (t *Template) instantiate(name string, classes, sigs map[string]string, ren
 	}
 	var out []Instance
 	for _, n := range t.nested {
-		ins, err := n.t.instantiate(renames[n.t.Name], classes, sigs, renames)
+		ins, err := n.t.instantiate(renames[n.t.Name], classes, sigs, names, renames)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, ins...)
 	}
-	data, err := t.instantiate1(name, classes, sigs, renames)
+	data, err := t.instantiate1(name, classes, sigs, names, renames)
 	if err != nil {
 		return nil, err
 	}
 	return append([]Instance{{Name: name, Data: data}}, out...), nil
 }
 
-func (t *Template) instantiate1(name string, classes, sigs map[string]string, renames map[string]string) ([]byte, error) {
+func (t *Template) instantiate1(name string, classes, sigs, names map[string]string, renames map[string]string) ([]byte, error) {
 	data := t.data
 	dotted := map[string]string{}
 	for old, n := range renames {
 		dotted[strings.ReplaceAll(old, "/", ".")] = strings.ReplaceAll(n, "/", ".")
+	}
+	// The markers' names of operations on the copier's reified type
+	// parameters: their String constants, which only markers load, refer
+	// to new Utf8 constants; the others' markers load new constants.
+	count := len(t.pool)
+	var added bytes.Buffer
+	repoint := map[int]int{} // String constant -> new Utf8
+	fresh := map[int]int{}   // marker's name offset -> new String
+	utf8s := map[string]int{}
+	utf8 := func(s string) int {
+		if i, ok := utf8s[s]; ok {
+			return i
+		}
+		added.Write([]byte{1, byte(len(s) >> 8), byte(len(s))})
+		added.WriteString(s)
+		utf8s[s] = count
+		count++
+		return count - 1
+	}
+	// The messages of the casts' null checks, first, for ldc's one-byte
+	// index: Strings, each before its Utf8.
+	messages := map[string]int{}
+	for _, op := range t.ops {
+		n, ok := names[op.param]
+		if op.kind != As || op.nullable || !ok || messages[op.param] != 0 || strings.HasPrefix(classes[op.param], "?") {
+			continue
+		}
+		msg := "null cannot be cast to non-null type " + n
+		added.Write([]byte{8, byte((count + 1) >> 8), byte(count + 1)})
+		added.Write([]byte{1, byte(len(msg) >> 8), byte(len(msg))})
+		added.WriteString(msg)
+		messages[op.param] = count
+		count += 2
+	}
+	for _, op := range t.ops {
+		cls := classes[op.param]
+		param, ok := strings.CutPrefix(cls, "?")
+		if !ok {
+			continue
+		}
+		if op.nullable && !strings.HasSuffix(param, "?") {
+			param += "?"
+		}
+		str := int(data[op.nameAt])
+		if !t.literals[str] {
+			repoint[str] = utf8(param)
+			continue
+		}
+		u := utf8(param)
+		added.Write([]byte{8, byte(u >> 8), byte(u)})
+		if count > 0xFF {
+			return nil, fmt.Errorf("class %s: no one-byte constant for reified type parameter %s", name, param)
+		}
+		fresh[op.nameAt] = count
+		count++
 	}
 	var pool bytes.Buffer
 	for i := 1; i < len(t.pool); i++ {
@@ -440,16 +544,46 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 				s = substVars(s, sigs)
 			}
 			e = append([]byte{1, byte(len(s) >> 8), byte(len(s))}, s...)
+		} else if u, ok := repoint[i]; ok {
+			e = []byte{8, byte(u >> 8), byte(u)}
 		}
 		pool.Write(e)
 	}
-	// The classes of the operations, as new constants.
-	count := len(t.pool)
+	pool.Write(added.Bytes())
+	// The classes of the operations, as new constants, and
+	// Objects.isNull for the checks of nullable types and
+	// Intrinsics.checkNotNull for the casts to non-null ones.
 	index := map[string]int{}
+	isNull, checkMsg, check := 0, 0, 0
+	methodref := func(class, name, desc string) int {
+		for _, u := range []string{class, name, desc} {
+			pool.Write([]byte{1, byte(len(u) >> 8), byte(len(u))})
+			pool.WriteString(u)
+		}
+		pool.Write([]byte{7, byte(count >> 8), byte(count)})
+		pool.Write([]byte{12, byte((count + 1) >> 8), byte(count + 1), byte((count + 2) >> 8), byte(count + 2)})
+		pool.Write([]byte{10, byte((count + 3) >> 8), byte(count + 3), byte((count + 4) >> 8), byte(count + 4)})
+		count += 6
+		return count - 1
+	}
 	for _, op := range t.ops {
 		cls, ok := classes[op.param]
 		if !ok {
 			return nil, fmt.Errorf("no type argument for reified type parameter %s", op.param)
+		}
+		if strings.HasPrefix(cls, "?") {
+			continue
+		}
+		cls, nullable := strings.CutSuffix(cls, "?")
+		if op.kind == Is && (nullable || op.nullable) && isNull == 0 {
+			isNull = methodref("java/util/Objects", "isNull", "(Ljava/lang/Object;)Z")
+		}
+		if m := messages[op.param]; op.kind == As && m != 0 {
+			if m <= 0xFF && checkMsg == 0 {
+				checkMsg = methodref("kotlin/jvm/internal/Intrinsics", "checkNotNull", "(Ljava/lang/Object;Ljava/lang/String;)V")
+			} else if m > 0xFF && check == 0 {
+				check = methodref("kotlin/jvm/internal/Intrinsics", "checkNotNull", "(Ljava/lang/Object;)V")
+			}
 		}
 		if _, ok := index[cls]; ok {
 			continue
@@ -469,8 +603,42 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 	shift := len(out) - t.poolEnd
 	out = append(out, data[t.poolEnd:]...)
 	for _, op := range t.ops {
-		idx := index[classes[op.param]]
+		if strings.HasPrefix(classes[op.param], "?") {
+			if s, ok := fresh[op.nameAt]; ok {
+				out[op.nameAt+shift] = byte(s)
+			}
+			continue // the marker stays, for the copier's copiers
+		}
+		cls, nullable := strings.CutSuffix(classes[op.param], "?")
+		idx := index[cls]
 		start, at := op.start+shift, op.op+shift
+		if op.kind == Is && (nullable || op.nullable) {
+			// x is C?: x == null || x is C, without branches, in the bytes of
+			// the marker and the instanceof.
+			if op.op-op.start != 6 || data[op.op] != cf.INSTANCEOF {
+				return nil, fmt.Errorf("class %s: a nullable type check kc can't reify", name)
+			}
+			copy(out[start:], []byte{
+				cf.DUP, cf.INVOKESTATIC, byte(isNull >> 8), byte(isNull),
+				cf.SWAP, cf.INSTANCEOF, byte(idx >> 8), byte(idx), cf.IOR,
+			})
+			continue
+		}
+		if m := messages[op.param]; op.kind == As && m != 0 {
+			// x as C, of a non-null type: a null check first, in the bytes
+			// of the marker, as kc's casts check (see checkCastNotNull).
+			if op.op-op.start != 6 || data[op.op] != cf.CHECKCAST {
+				return nil, fmt.Errorf("class %s: a cast kc can't reify", name)
+			}
+			seq := []byte{cf.DUP, cf.LDC, byte(m), cf.INVOKESTATIC, byte(checkMsg >> 8), byte(checkMsg)}
+			if m > 0xFF {
+				// No one-byte index for the message: the check without it.
+				seq = []byte{cf.DUP, cf.INVOKESTATIC, byte(check >> 8), byte(check), cf.NOP, cf.NOP}
+			}
+			copy(out[start:], seq)
+			binary.BigEndian.PutUint16(out[at+1:], uint16(idx))
+			continue
+		}
 		for k := start; k < at; k++ {
 			out[k] = cf.NOP
 		}
@@ -488,10 +656,16 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 		}
 		binary.BigEndian.PutUint16(out[at+1:], uint16(idx))
 	}
-	// The needClassReification calls, whose classes are copied.
-	calls := slices.Clone(t.copied)
+	// The needClassReification calls, whose classes are copied, but for
+	// those of the copies that the copier's copiers copy again.
+	var calls []int
+	if !t.Reifiable(classes) {
+		calls = slices.Clone(t.copied)
+	}
 	for _, n := range t.nested {
-		calls = append(calls, n.call)
+		if !n.t.Reifiable(classes) {
+			calls = append(calls, n.call)
+		}
 	}
 	for _, call := range calls {
 		if call < 0 {

@@ -103,3 +103,25 @@ func (c *Checker) optionalAnnotations(name string) bool {
 	}
 	return false
 }
+
+// findAnnotation returns the annotation of as with use-site target
+// target that is of class fq (as kotlin/jvm/JvmStatic), written by its
+// name or through a typealias of it, or nil.
+func (c *Checker) findAnnotation(as []syntax.Annotation, target, name, fq string) *syntax.Annotation {
+	for i := range as {
+		a := &as[i]
+		if a.Target != target {
+			continue
+		}
+		if a.Is(name) {
+			return a
+		}
+		if strings.Contains(a.Name, ".") || c.lookupAlias(a.Name) == nil {
+			continue
+		}
+		if cls := c.lookupClass(a.Name); cls != nil && cls.Name == fq {
+			return a
+		}
+	}
+	return nil
+}

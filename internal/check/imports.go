@@ -158,6 +158,7 @@ func (c *Checker) importedMember(x *syntax.Ident) (types.Type, bool) {
 		return types.InvalidType, false
 	}
 	mi := c.memberImports[x.Name]
+	c.importAmbiguity(x)
 	m := c.importedRef(mi, x.P)
 	x.Member = m
 	return c.checkImportedRef(m, mi), true
@@ -168,6 +169,11 @@ func (c *Checker) importedMember(x *syntax.Ident) (types.Type, bool) {
 func (c *Checker) checkImportedRef(m *syntax.Member, mi memberImport) types.Type {
 	var t types.Type
 	if id, ok := m.X.(*syntax.Ident); ok && id.Object == nil {
+		if o := mi.owner; c.inPrivateClass(o) {
+			// An enum entry or static of a class the code can't
+			// see, as the entry of a private nested enum.
+			c.invisibleMember(m.P, mi.name, o)
+		}
 		t = c.staticField(m, c.fieldOwner(mi.owner, mi.name))
 	} else {
 		t = c.member(m)
@@ -222,7 +228,12 @@ func (c *Checker) checkClassImport(ci memberImport) {
 	}
 	cls.Ensure()
 	switch {
-	case cls.Missing || !cls.Private:
+	case cls.Missing:
+	case !cls.Private:
+		if o := c.invisibleJavaOuter(cls); o != nil {
+			// import p.Foo.Nested of a package-private p.Foo.
+			c.errorf(ci.p, "cannot access '%s': it is package-private in '%s'", o.DisplayName(), o.DisplayName())
+		}
 	case cls.Internal:
 		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
 	case ci.path != c.file.Package:
@@ -247,8 +258,12 @@ func (c *Checker) importMembers(owner *types.ClassSym, imp *syntax.Import) {
 	owner.Ensure()
 	c.starOwners = append(c.starOwners, owner)
 	add := func(name string) {
-		if _, ok := c.memberImports[name]; !ok {
-			c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
+		mi := memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
+		if first, ok := c.memberImports[name]; !ok {
+			c.memberImports[name] = mi
+		} else if first.star && first.owner != owner {
+			// Another class's, which importAmbiguity finds.
+			c.moreMemberImports[name] = append(c.moreMemberImports[name], mi)
 		}
 	}
 	if !owner.External {
@@ -323,4 +338,47 @@ func (c *Checker) starObject(name string, cls *types.ClassSym) *types.ClassSym {
 		}
 	}
 	return nil
+}
+
+// importAmbiguity reports a name that imports of one level, the explicit
+// ones or else the star imports of classes' members, give two distinct
+// values: import a.JClass.foo and import b.foo, or import
+// first.KtNodeTypes.* and import second.SomeEnum.* that both have SOME.
+// x is the name, which resolved to one of them.
+func (c *Checker) importAmbiguity(x *syntax.Ident) {
+	if c.importedValues(x.Name) > 1 {
+		c.errorf(x.P, "overload resolution ambiguity: %s is imported more than once", x.Name)
+	}
+}
+
+// importedValues counts the distinct values that the imports of the
+// nearest level that has any give a name.
+func (c *Checker) importedValues(name string) int {
+	var seen []any
+	add := func(v any) {
+		if v != nil && !slices.Contains(seen, v) {
+			seen = append(seen, v)
+		}
+	}
+	if v, ok := c.userVars[name]; ok {
+		add(v)
+	}
+	for _, star := range []bool{false, true} {
+		if star && len(seen) > 0 {
+			break
+		}
+		for _, mi := range c.memberImportsOf(name) {
+			if mi.star != star || c.importedCallable(mi) {
+				continue
+			}
+			if f := c.staticFieldOf(c.fieldOwner(mi.owner, mi.name), mi.name); f != nil {
+				add(f)
+			} else if mi.owner.Object {
+				if v := c.userProp(mi.owner, mi.name); v != nil {
+					add(v)
+				}
+			}
+		}
+	}
+	return len(seen)
 }

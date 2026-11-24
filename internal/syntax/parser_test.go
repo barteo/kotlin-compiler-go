@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,6 +24,7 @@ func TestParseValid(t *testing.T) {
 		{"when subject", "fun f(x: Int) = when (x) {\n 1, 2 -> \"a\"\n in 3..4 -> \"b\"\n !in 0..9 -> \"c\"\n else -> \"d\"\n}"},
 		{"definitely non-nullable type", "fun <T> f(x: T & Any, l: List<T & Any>?): (T & Any) -> T = { it }"},
 		{"local extension function", "fun f() { fun Int.g() = 1 }"},
+		{"local function with expression body and semicolons", "fun f() { fun a() = 1; ; println(a()); fun b() { }; println(b()); fun c() = 2; }\nfun g() = 1; fun h() = 2"},
 		{"anonymous function", "fun f() = fun(x: Int) = x"},
 		{"anonymous function on next line", "val f =\n    fun (x: Int): Int { return x }"},
 		{"anonymous extension function", "fun f(x: Int) = when (x) {\n 0 -> null\n else -> fun Int.() { }\n}"},
@@ -127,7 +129,6 @@ func TestParseValid(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	tests := []struct{ src, pos, msg string }{
-		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
 		{"fun f() { 1 + }", "1:15", "expected expression"},
 		{"fun f() { val a = 1 val b = 2 }", "1:21", "expected newline or ';'"},
 		{"val <T> x = 1", "1:1", "type parameters of a property must be used in its receiver type"},
@@ -140,11 +141,7 @@ func TestParseErrors(t *testing.T) {
 		{"import a.B as", "1:14", "expected identifier"},
 		{"fun ((@receiver:A Int) -> Unit).f() {}", "1:7", "this annotation is not applicable to target 'type usage' and use-site target '@receiver'"},
 		{"val s = \"abc", "1:9", "unterminated string literal"},
-		{"val c = ''", "1:9", "empty character literal"},
-		{"val c = '\\q'", "1:9", "illegal escape"},
-		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 		{"fun f() { try { } }", "1:11", "'try' must have at least one 'catch' or 'finally' block"},
-		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
 		{"fun <T> f() where U : Any {}", "1:19", "'U' does not refer to a type parameter of this declaration"},
 		{"context(Int) fun f() = 1", "1:9", "context parameters must be named"},
@@ -153,9 +150,13 @@ func TestParseErrors(t *testing.T) {
 		{"context(_: Any?) package p", "1:1", "context parameters are unsupported in this position"},
 		{"class C {\n  context(a: A)\n}", "2:3", "expected a declaration after the context parameters"},
 		{"context(a: A)", "1:1", "expected a declaration after the context parameters"},
+		{"fun f() { fun a() = 1; println(a()) }", "1:24", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() {\n  fun a() = 1\n  ; println(a())\n}", "3:5", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() { println(1);; }", "1:21", "expected newline or ';', found ';;'"},
+		{"val x = 1;;", "1:10", "expected newline or ';', found ';;'"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.msg, func(t *testing.T) {
+		t.Run(tt.src, func(t *testing.T) {
 			_, errs := Parse("t.kt", tt.src)
 			if len(errs) == 0 {
 				t.Fatal("expected an error")
@@ -168,6 +169,53 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+// TestLaterErrors checks errors the parser reports and parses on after.
+func TestLaterErrors(t *testing.T) {
+	tests := []struct{ src, pos, msg string }{
+		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
+		{"fun f() { enum class E { A } }", "1:16", "local enum classes are not allowed"},
+		{"interface I<in in T>", "1:16", "repeated 'in'"},
+		{"interface I<in out T>", "1:13", "modifier 'in' is incompatible with 'out'"},
+		{"enum class E { public A }", "1:16", "modifier 'public' is not applicable to 'enum entry'"},
+		{"class C { constructor(val x: Int) }", "1:23", "'val' on secondary constructor parameter is not allowed"},
+		{"fun f(var x: Int) {}", "1:7", "'var' on function parameter is not allowed"},
+		{"val f: suspend (() -> Unit)? = null", "1:8", "modifier 'suspend' is not applicable to 'nullable type'"},
+		{"val c = ''", "1:9", "empty character literal"},
+		{"val c = '\\q'", "1:9", "illegal escape"},
+		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
+		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
+		{"class C { public init {} }", "1:11", "modifier 'public' is not applicable to 'initializer'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			f, errs := Parse("t.kt", tt.src)
+			if len(errs) > 0 {
+				t.Fatalf("unexpected error: %v", errs[0])
+			}
+			if len(f.Errors) == 0 {
+				t.Fatal("expected an error")
+			}
+			if e := f.Errors[0]; e.Pos.String() != tt.pos || !strings.Contains(e.Msg, tt.msg) {
+				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
+			}
+		})
+	}
+}
+
+// TestParseKeepsLaterErrors checks that a parse that stops returns the
+// error it stopped at first, then those it went on after before it.
+func TestParseKeepsLaterErrors(t *testing.T) {
+	_, errs := Parse("t.kt", "val a = 1l\nfun f() { 1 + }")
+	var got []string
+	for _, e := range errs {
+		got = append(got, e.Pos.String()+" "+e.Msg)
+	}
+	want := []string{"2:15 expected expression, found '}'", "1:9 use 'L' instead of 'l'"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestReservedAnnotationName(t *testing.T) {
 	f, errs := Parse("t.kt", "@__(\"\") class C\n@`__` class D")
 	if len(errs) > 0 {
@@ -175,26 +223,6 @@ func TestReservedAnnotationName(t *testing.T) {
 	}
 	if len(f.Errors) != 1 || f.Errors[0].Pos.String() != "1:2" || !strings.Contains(f.Errors[0].Msg, "reserved") {
 		t.Fatalf("got %v, want one reserved-name error at 1:2", f.Errors)
-	}
-}
-
-// TestUnsupportedFeatures checks the feature that each unsupported
-// construct is reported as, which bench/survey counts.
-func TestUnsupportedFeatures(t *testing.T) {
-	tests := []struct{ src, feature string }{
-		{"val (a, b) = p", "destructuring declaration"},
-		{"fun f() {\n  external fun g()\n}", "local external function"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.src, func(t *testing.T) {
-			_, errs := Parse("t.kt", tt.src)
-			if len(errs) == 0 {
-				t.Fatal("expected an error")
-			}
-			if errs[0].Feature != tt.feature {
-				t.Errorf("got feature %q (%s), want %q", errs[0].Feature, errs[0].Msg, tt.feature)
-			}
-		})
 	}
 }
 
@@ -266,6 +294,11 @@ func TestMultiDollarString(t *testing.T) {
 		if got := strings.Join(parts, "|"); got != tt.want || toks[1].Kind != EOF {
 			t.Errorf("%s: got %q then %s, want %q", tt.src, got, toks[1].Kind, tt.want)
 		}
+		// The token keeps its prefix and its source after it.
+		prefix := len(tt.src) - len(strings.TrimLeft(tt.src, "$"))
+		if tok := toks[0]; tok.Prefix != prefix || tok.Text != tt.src[prefix:] {
+			t.Errorf("%s: prefix %d, text %q; want %d, %q", tt.src, tok.Prefix, tok.Text, prefix, tt.src[prefix:])
+		}
 	}
 }
 
@@ -297,7 +330,7 @@ func TestImports(t *testing.T) {
 	}
 	for i, w := range want {
 		g := *f.Imports[i]
-		g.P = Pos{}
+		g.P, g.PathP = Pos{}, Pos{}
 		if g != w {
 			t.Errorf("import %d: got %+v, want %+v", i, g, w)
 		}
@@ -399,9 +432,9 @@ fun ok2() {
 	f, errs := ParseAll("t.kt", src)
 	var got []string
 	for _, e := range errs {
-		got = append(got, e.Pos.String()+" "+e.Feature)
+		got = append(got, e.Pos.String()+" "+e.Msg)
 	}
-	want := []string{"6:5 destructuring declaration"}
+	want := []string{"6:5 Destructuring declarations are only allowed for local variables/values"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, ", "), strings.Join(want, ", "))
 	}

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -28,7 +29,7 @@ func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) 
 		c.errorf(d.P, "modifier 'inner' is not applicable inside an object or an interface")
 		return
 	case d.Interface || d.Object || d.Enum || d.Annotation:
-		c.errorf(d.P, "modifier 'inner' is only applicable to classes")
+		c.errorf(d.PosOf("inner", d.P), "modifier 'inner' is only applicable to classes")
 		return
 	}
 	sym.Inner = true
@@ -127,8 +128,16 @@ func (c *Checker) innerConstruct(x *syntax.Call, cls *types.ClassSym, outer synt
 	sub := types.Subst{}
 	if sup, ok := c.asSuper(ot, cls.Outer); ok {
 		own := len(cls.TypeParams) - cls.OuterParams
+		if sup.A == nil {
+			// A raw outer, from Java: the inner class is raw too, its
+			// own type parameters erased as the outer's, as in Kotlin,
+			// where rawA.Inner<Double>("") takes the "".
+			for _, tp := range cls.TypeParams {
+				sub[tp] = types.Arg{T: erasure(tp), Raw: true}
+			}
+		}
 		for i, tp := range cls.TypeParams[own:] {
-			if i < sup.A.Len() {
+			if sup.A != nil && i < sup.A.Len() {
 				sub[tp] = sup.A.Get(i)
 			}
 		}
@@ -208,6 +217,22 @@ func (c *Checker) enclosingSubclass(outer *types.ClassSym) *types.ClassSym {
 	return nil
 }
 
+// typeParamInScope reports whether type parameter p is one the code
+// being checked sees, even where a parameter of the same name shadows it:
+// an inner class's own D in its supertype list, inside an outer class
+// with a D of its own.
+func (c *Checker) typeParamInScope(p *types.TypeParamSym) bool {
+	if slices.Contains(c.tparams, p) {
+		return true
+	}
+	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner || k.Local); k = k.Outer {
+		if slices.Contains(c.anon[k].tparams, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // innerType resolves a type of an inner class of a generic class: its own
 // type arguments, then the outer class's, of the type written before it,
 // Outer<A>.Inner<B>, or in the outer class's code, its own type
@@ -218,28 +243,56 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
 		return types.InvalidType
 	}
-	if !cls.Inner {
+	if cls.Ensure(); !cls.Inner {
 		c.errorf(ref.P, "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
 		return types.InvalidType
 	}
 	own := len(cls.TypeParams) - cls.OuterParams
+	lhsOuter := c.refLHSOuter
+	c.refLHSOuter = false
+	defer func() { c.refLHSOuter = lhsOuter }()
+	if (c.refLHS || lhsOuter) && ref.Outer == nil && len(ref.Args) < len(cls.TypeParams) {
+		// Inner<B>::f in Outer's code, or Inner<B> of Inner<B>.Deeper<C>::f:
+		// kotlinc wants the outer classes' type arguments too.
+		c.errorf(ref.P, "%s expected for class %s", countArgs(len(cls.TypeParams)), cls.DisplayName())
+		return types.InvalidType
+	}
+	if c.refLHS && ref.Outer != nil && !c.segmentsFit(ref) {
+		if t, ok := c.flatInnerType(cls, ref); ok {
+			if t.K != types.Invalid {
+				c.lhsArgsWarning(cls, ref, t)
+			}
+			return t
+		}
+	}
 	args := make([]types.Arg, 0, len(cls.TypeParams))
-	if len(ref.Args) != own {
+	// On a callable reference's left side, kotlinc takes more arguments
+	// than the class's own for its outer classes', with a warning.
+	extra := 0
+	if c.refLHS && len(ref.Args) > own && len(ref.Args) <= len(cls.TypeParams) {
+		extra = len(ref.Args) - own
+	} else if len(ref.Args) != own {
 		c.errorf(ref.P, "%s expected for class %s", countArgs(own), cls.DisplayName())
 		return types.InvalidType
 	}
-	for _, a := range ref.Args {
+	inner := c.refLHS
+	c.refLHS = false
+	defer func() { c.refLHS = inner }()
+	for i, a := range ref.Args {
 		arg := types.Arg{V: a.Variance}
 		if a.Variance != types.Star {
 			if arg.T = c.resolveType(a.Type); arg.T.K == types.Invalid {
 				return arg.T
 			}
+			c.projection(a, cls.TypeParams[i], cls)
 		}
 		args = append(args, arg)
 	}
 	var outer types.Type
 	if ref.Outer != nil {
+		c.refLHSOuter = inner
 		outer = c.resolveType(ref.Outer)
+		c.refLHSOuter = false
 		if outer.K == types.Invalid {
 			return outer
 		}
@@ -250,8 +303,8 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		outer = k.This()
 	} else {
 		// In the outer class's code, where its type parameters are.
-		for _, p := range cls.TypeParams[own:] {
-			if c.lookupTypeParam(p.Name) == p {
+		for _, p := range cls.TypeParams[own+extra:] {
+			if c.typeParamInScope(p) {
 				continue
 			}
 			if strings.Contains(ref.Name, ".") { // G.I for G<T>.I
@@ -268,10 +321,111 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "%s is not an inner class of %s", ref.Name, outer)
 		return types.InvalidType
 	}
-	for i := range cls.TypeParams[own:] {
-		args = append(args, sup.A.Get(i))
+	for i := range cls.TypeParams[own+extra:] {
+		args = append(args, sup.A.Get(extra+i))
 	}
-	return c.nullable(types.GenericType(cls, args), ref)
+	t := types.GenericType(cls, args)
+	if !c.noBoundChecks {
+		c.checkBoundsOf(t, ref, own+extra)
+	}
+	if inner {
+		c.lhsArgsWarning(cls, ref, t)
+	}
+	return c.nullable(t, ref)
+}
+
+// segmentsFit reports whether each class of the type of an inner class
+// of a generic class, Outer<A>.Inner<B>, has as many type arguments as
+// type parameters of its own.
+func (c *Checker) segmentsFit(ref *syntax.TypeRef) bool {
+	cls := c.lookupClass(ref.Name)
+	if cls == nil {
+		return true
+	}
+	// The classes whose type parameters cls has: those of the type
+	// arguments that may be misplaced.
+	chain := map[*types.ClassSym]bool{cls: true}
+	for k := cls; k.Inner && k.Outer != nil; k = k.Outer {
+		chain[k.Outer] = true
+	}
+	for k := range chain {
+		if _, hidden := localOwnParams(k); hidden != nil {
+			// A local class that captures type parameters, whose type
+			// arguments kotlinc wants all of.
+			return true
+		}
+	}
+	for seg := ref; seg != nil; seg = seg.Outer {
+		k := c.lookupClass(seg.Name)
+		if k == nil {
+			return true // reported as unresolved
+		}
+		if !chain[k] && seg.Args != nil {
+			// Outer<A>.Nested.Inner, for a class nested in Outer: the
+			// arguments are an error.
+			return true
+		}
+		if seg.Outer == nil {
+			// The outermost class with type parameters must be written:
+			// Inner<A, B> in Outer's code is an error.
+			levels := 0
+			for o := k; o.Inner && o.Outer != nil; o = o.Outer {
+				levels++
+			}
+			if strings.Count(seg.Name, ".") < levels {
+				return true
+			}
+		}
+	}
+	for seg := ref; seg != nil; seg = seg.Outer {
+		k := c.lookupClass(seg.Name)
+		if k == nil {
+			return true // reported as unresolved
+		}
+		k.Ensure()
+		own := len(k.TypeParams)
+		if k.Inner {
+			if own -= k.OuterParams; seg.Outer == nil && k.OuterParams > 0 {
+				return false
+			}
+		}
+		if len(seg.Args) != own {
+			return false
+		}
+	}
+	return true
+}
+
+// flatInnerType resolves the type of inner class cls on a callable
+// reference's left side, whose classes' type arguments don't fit them, as
+// kotlinc does with a warning: all of them, the innermost class's first,
+// for the type parameters of cls and its outer classes, so that
+// Outer<C, B, A>.Middle.Inner and Outer<A>.Middle.Inner<C, B> are
+// Outer<A>.Middle<B>.Inner<C>.
+func (c *Checker) flatInnerType(cls *types.ClassSym, ref *syntax.TypeRef) (types.Type, bool) {
+	var flat []*syntax.TypeArg
+	for seg := ref; seg != nil; seg = seg.Outer {
+		flat = append(flat, seg.Args...)
+	}
+	if len(flat) != len(cls.TypeParams) {
+		return types.InvalidType, false
+	}
+	defer func(old bool) { c.refLHS = old }(c.refLHS)
+	c.refLHS = false
+	args := make([]types.Arg, len(flat))
+	for i, a := range flat {
+		args[i] = types.Arg{V: a.Variance}
+		if a.Variance != types.Star {
+			if args[i].T = c.resolveType(a.Type); args[i].T.K == types.Invalid {
+				return args[i].T, true
+			}
+		}
+	}
+	t := types.GenericType(cls, args)
+	if !c.noBoundChecks {
+		c.checkBounds(t, ref)
+	}
+	return c.nullable(t, ref), true
 }
 
 // outerAs returns outer, the type written before an inner class's name, as
@@ -294,4 +448,26 @@ func (c *Checker) outerAs(outer types.Type, k *types.ClassSym) (types.Type, bool
 		args[i] = sup.A.Get(i)
 	}
 	return types.GenericType(k, args), true
+}
+
+// aliasOuter returns the outer class type that typealias a, which
+// expands to inner class n, fixes: Generic<Int> for typealias GIntI =
+// Generic<Int>.Inner. It returns InvalidType where the alias has type
+// parameters, whose arguments the receiver gives, or the expansion
+// doesn't have the outer's arguments.
+func (c *Checker) aliasOuter(a *types.AliasSym, n *types.ClassSym) types.Type {
+	t := a.Type
+	if len(a.TypeParams) > 0 || !a.Resolved || t.K != types.Class || t.C != n || n.OuterParams == 0 || t.A == nil || t.A.Len() != len(n.TypeParams) {
+		return types.InvalidType
+	}
+	own := len(n.TypeParams) - n.OuterParams
+	return types.GenericType(n.Outer, t.A.List[own:])
+}
+
+// aliasOuterFits reports whether outer type rt can construct the inner
+// class n through typealias a: x.GIntI() needs an x that is a
+// Generic<Int>.
+func (c *Checker) aliasOuterFits(a *types.AliasSym, n *types.ClassSym, rt types.Type) bool {
+	ot := c.aliasOuter(a, n)
+	return ot.K == types.Invalid || c.subtype(rt.NonNull(), ot)
 }

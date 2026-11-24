@@ -45,6 +45,9 @@ type entry struct {
 type Path struct {
 	classes  map[string]entry // internal name -> where to read it
 	packages map[string]bool  // internal package names, e.g. java/util
+	// dups are the names of classes more than one entry of the class
+	// path has, of which the first is read: see Duplicated.
+	dups map[string]bool
 	// resources are the Kotlin metadata files, by path in the jar. A path
 	// can appear in several jars: modules are often named alike (common,
 	// or the empty module files of umbrella artifacts), so every copy is
@@ -75,6 +78,10 @@ type Path struct {
 	pkgOnce    sync.Once
 	pkgClasses map[string][]string // see Package
 
+	// names filters lookups of classes that aren't there: see MayHave.
+	filterOnce sync.Once
+	names      *nameFilter
+
 	IndexTime time.Duration
 	loaded    atomic.Int64
 	loadNanos atomic.Int64
@@ -104,10 +111,12 @@ func (c *Counter) Get() (int, time.Duration) {
 	return int(c.n.Load()), time.Duration(c.nanos.Load())
 }
 
-// Open indexes the JDK in jdkHome (skipped if empty) followed by the given
-// jars and directories. Earlier entries win when a class appears twice, as
-// on the JVM. The entries also in friends are friend paths (kotlinc's
-// -Xfriend-paths).
+// Open indexes the given jars and directories, followed by the JDK in
+// jdkHome (skipped if empty). Earlier entries win when a class appears
+// twice, as on the JVM, and the entries win over the JDK, as with kotlinc:
+// a jar of a platform's own java classes stands in for the JDK's, which
+// has the classes that the jar lacks. The entries also in friends are
+// friend paths (kotlinc's -Xfriend-paths).
 func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 	start := time.Now()
 	// The JDK has about 28,000 classes in 1,000 packages.
@@ -117,12 +126,6 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 		resources: make(map[string][]entry),
 	}
 	p.byPackage = sync.OnceValue(p.indexPackages)
-	if jdkHome != "" {
-		if err := p.addJImage(filepath.Join(jdkHome, "lib", "modules")); err != nil {
-			p.Close()
-			return nil, err
-		}
-	}
 	for _, e := range entries {
 		fi, err := os.Stat(e)
 		if err != nil {
@@ -143,12 +146,22 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 			return nil, fmt.Errorf("class path: %s: %w", e, err)
 		}
 	}
+	if jdkHome != "" {
+		if err := p.addJImage(filepath.Join(jdkHome, "lib", "modules")); err != nil {
+			p.Close()
+			return nil, err
+		}
+	}
 	p.IndexTime = time.Since(start)
 	return p, nil
 }
 
 func (p *Path) add(name string, e entry) {
 	if _, dup := p.classes[name]; dup {
+		if p.dups == nil {
+			p.dups = map[string]bool{}
+		}
+		p.dups[name] = true
 		return
 	}
 	p.classes[name] = e
@@ -159,6 +172,17 @@ func (p *Path) add(name string, e entry) {
 	}
 }
 
+// Duplicated reports whether more than one entry of the class path has
+// the class name, as two modules that each declare a class of a name: the
+// first entry's is the class, and a signature of the other's may name it
+// with other type arguments.
+func (p *Path) Duplicated(name string) bool {
+	if p.dups[name] {
+		return true
+	}
+	return p.base != nil && p.base.Duplicated(name)
+}
+
 // AddSource adds a class that a source file of the module declares, as a
 // Java class of a module that mixes Java and Kotlin: info returns what
 // its class file would hold. It hides a class of the same name on the
@@ -166,6 +190,9 @@ func (p *Path) add(name string, e entry) {
 // shared.
 func (p *Path) AddSource(name string, info func() (*classfile.Info, error)) {
 	p.classes[name] = entry{info: info}
+	if p.names != nil {
+		p.names.add(Hash(name))
+	}
 	p.bytes.Delete(name)
 	p.infos.Delete(name)
 	p.methods.Delete(name)
@@ -175,6 +202,31 @@ func (p *Path) AddSource(name string, info func() (*classfile.Info, error)) {
 	} else {
 		p.packages[""] = true
 	}
+}
+
+// ModuleHidden reports whether a class of the JDK's image is in a package
+// its module doesn't export to all modules, which the program, in the
+// unnamed module, can't use (kotlinc's JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE),
+// and returns the module. A class of a jar, a directory or a source file
+// is never hidden.
+func (p *Path) ModuleHidden(name string) (module string, hidden bool) {
+	e, ok := p.classes[name]
+	if !ok {
+		if p.base != nil {
+			return p.base.ModuleHidden(name)
+		}
+		return "", false
+	}
+	j, ok := e.src.(*jimage)
+	if !ok {
+		return "", false
+	}
+	pkg := ""
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		pkg = name[:i]
+	}
+	module, exported := j.exported(pkg)
+	return module, !exported
 }
 
 // Overlay returns a class path with p's classes, to which AddSource adds

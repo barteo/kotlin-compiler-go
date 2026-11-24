@@ -3,31 +3,32 @@
 `kc` is a Kotlin compiler for the JVM, written in Go. On real libraries
 it compiles 10x faster or more than `kotlinc` running in a warm JVM, and uses
 about a tenth of the memory. The libraries it builds pass their own test
-suites ([Survey of real code](docs/survey.md)), and it passes all 6,483
-of `kotlinc`'s box tests that it runs ([Conformance](docs/conformance.md)).
+suites ([Survey of real code](docs/survey.md)). It passes all 6,575
+of `kotlinc`'s box tests that it runs, and rejects what `kotlinc` rejects
+in 99% of its diagnostics tests ([Conformance](docs/conformance.md)).
 
 It is a prototype: it compiles most of Kotlin but not all of it, and it
 checks less than `kotlinc` does ([What it doesn't do](#what-it-doesnt-do)).
 
 ## Results
 
-`kc` against `kotlinc` 2.4.21 on an Apple M2 MacBook Air (8 cores, 16 GB),
-JDK 21. `kotlinc` runs in a warm JVM, as it does in the Gradle daemon:
+`kc` against `kotlinc` 2.4.21 on a Linux x86_64 cloud machine (4 CPUs,
+15 GB), JDK 21. `kotlinc` runs in a warm JVM, as it does in the Gradle daemon:
 the median of repeated compilations in one JVM, after the JIT has warmed
 up. `kc` uses all cores, as it does by default.
 
 | Project | Files | Lines | `kotlinc` | `kc` | Speedup |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 | 39 | 8.7k | 1.11 s | 104 ms | **11x** |
-| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 2.27 s | 244 ms | **9x** |
-| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 2.32 s | 179 ms | **13x** |
+| kotlinpoet 2.4.0 | 39 | 8.7k | 3.44 s | 211 ms | **16x** |
+| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 6.96 s | 698 ms | **10x** |
+| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 6.88 s | 643 ms | **11x** |
 
-- **On one core** (`kc -j 1`) `kc` is still 6.2–7.4x faster than warm
-  `kotlinc`: 153 ms, 366 ms and 312 ms.
+- **On one core** (`kc -j 1`) `kc` is still 8.2–11x faster than warm
+  `kotlinc`: 300 ms, 849 ms and 796 ms.
 - **Cold**, with a new JVM per build as on the command line or in CI,
-  `kotlinc` takes 7.5 s, 20.0 s and 11.2 s, 63–82x slower than `kc`.
-- **Memory:** `kc` peaks at 93–130 MB, and cold `kotlinc`, with an 8 GB
-  heap limit, at 1.0–1.1 GB.
+  `kotlinc` takes 17.8 s, 45.7 s and 28.5 s, 44–84x slower than `kc`.
+- **Memory:** `kc` peaks at 94–140 MB, and cold `kotlinc`, with an 8 GB
+  heap limit, at 0.94–1.04 GB.
 
 How each number is measured, and the full tables with CPU time, are in
 [Benchmark](docs/benchmark.md).
@@ -39,10 +40,13 @@ How each number is measured, and the full tables with CPU time, are in
 - **Some of the language.** A few features aren't supported.
   [Unsupported Kotlin](docs/unsupported.md) lists them all.
 - **Most of `kotlinc`'s checks.** `kotlinc` runs 289 checkers for
-  warnings and errors after type checking. `kc` reports the errors that
-  type checking finds, and only a few of those checkers' (opt-in and
-  deprecation, for example), which is why it agrees with `kotlinc` on
-  only 92% of the diagnostics tests.
+  warnings and errors after type checking. `kc` reports every syntax
+  error, the errors that type checking finds, and only a few of those
+  checkers' errors (opt-in and deprecation, for example), which is why it
+  agrees with `kotlinc` on only 99% of the diagnostics tests. Of the
+  warnings, it reports more than 170 kinds, such as deprecations, opt-ins,
+  useless and unchecked casts, unreachable code and unnecessary safe
+  calls: 93% of those the diagnostics tests expect.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**
@@ -58,14 +62,14 @@ on one thread, `kc` is faster at each phase that both of them run:
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 5.2 s | 0.26 s | ~20x |
-| Resolution and type checking | 8.0 s | 1.12 s | ~7x |
-| Checkers (warnings and errors) | 4.0 s | none | |
-| Reading the class path | 0.4 s | 0.01 s | |
-| Backend, with inlining and writing | 14.1 s | 1.38 s | ~10x |
-| **Total** | **31.7 s** | **2.77 s** | **11x** |
+| Parsing | 4.0 s | 0.65 s | ~6x |
+| Resolution and type checking | 26.8 s | 3.06 s | ~9x |
+| Checkers (warnings and errors) | 17.9 s | none | |
+| Reading the class path | 1.4 s | 0.03 s | |
+| Backend, with inlining and writing | 34.7 s | 3.39 s | ~10x |
+| **Total** | **84.8 s** | **7.13 s** | **12x** |
 
-Even without its checkers, `kotlinc` would take 28 s, 10x as long as
+Even without its checkers, `kotlinc` would take 67 s, 9x as long as
 `kc`. This profile is of 500 generated files (202k lines) in a warm JVM
 ([Where kotlinc's time goes](docs/benchmark.md#where-kotlincs-time-goes)).
 
@@ -75,15 +79,39 @@ Even without its checkers, `kotlinc` would take 28 s, 10x as long as
   seconds starting the JVM and warming up the JIT.
 - **Parallelism.** `kc` parses, checks bodies and generates class files
   on all cores; `kotlinc`'s frontend uses one.
-- **Fewer passes.** `kotlinc`'s time is spread over 84 IR lowerings and
-  272 checkers, none above about 2%. `kc` generates code in one pass
+- **Fewer passes.** `kotlinc`'s time is spread over 93 IR lowerings and
+  330 checkers, none above about 2%. `kc` generates code in one pass
   over the checked AST.
-- **Lazy inputs.** `kc` indexes the class path in about 5 ms while
+- **Lazy inputs.** `kc` indexes the class path in about 30 ms while
   parsing, and decodes a class only when it's first used.
 
 [Design](docs/design.md) describes the pipeline.
 
 ## Try it
+
+### Install a release
+
+The [releases](https://github.com/barteo/kotlin-compiler-go/releases) have
+`kc` for Linux and macOS, on x86_64 (`amd64`) and arm64. Each archive holds
+the binary, this README, the license and the [Gradle init
+script](#use-it-in-a-gradle-build). `kc` still needs a JDK, and
+`kotlin-stdlib.jar` on the class path for most programs (below).
+
+Set `V` to the release's name, as the releases page lists it:
+
+```sh
+V=<release> P=linux_amd64  # or linux_arm64, darwin_amd64, darwin_arm64
+curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/kc_${V}_$P.tar.gz
+curl -fLO https://github.com/barteo/kotlin-compiler-go/releases/download/$V/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS  # on macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+tar xzf kc_${V}_$P.tar.gz && sudo install kc_${V}_$P/kc /usr/local/bin/
+kc -version
+```
+
+The macOS binaries aren't signed. If macOS refuses to run one that a browser
+downloaded, clear its quarantine with `xattr -d com.apple.quarantine kc`.
+
+### Build from source
 
 Requires Go 1.27.2+ and a JDK. The tests and benchmarks also need
 `kotlinc` and `hyperfine`. On macOS: `brew install go openjdk@21 kotlin
@@ -117,7 +145,7 @@ Arguments can be files or directories. Flags:
 |---|---|
 | `-d` | output directory (default `.`) |
 | `-cp`, `-classpath` | jars and directories to compile against |
-| `-jdk-home` | JDK whose classes to use (default: `$JAVA_HOME`, or the JDK of `java` on `PATH`) |
+| `-jdk-home` | JDK whose classes to use, after the class path's (default: `$JAVA_HOME`, or the JDK of `java` on `PATH`) |
 | `-no-jdk` | don't use JDK classes |
 | `-module-name` | module name, as in `kotlinc` (default `main`) |
 | `-friend-paths` | class path entries whose internal declarations are visible (`kotlinc`'s `-Xfriend-paths`) |
@@ -125,14 +153,29 @@ Arguments can be files or directories. Flags:
 | `-parcelize`, `-serialization`, `-compose`, `-metro` | apply the parcelize, kotlinx.serialization, Compose and Metro plugins |
 | `-P` | a Metro option, as `kotlinc`'s `-P plugin:dev.zacsweers.metro.compiler:key=value`; may be repeated |
 | `-jvm-default` | how interface bodies compile, as in `kotlinc` (default `no-compatibility`) |
+| `-jvm-target` | the JVM version the class files are for, as in `kotlinc`: `1.8` (the default), or `9` to `25`; a library's inline functions built for a higher one are errors |
+| `-Xexplicit-api` | explicit API mode, as in `kotlinc`: `strict` (errors) or `warning` where a public API declaration doesn't say its visibility or its inferred type; `-XXexplicit-return-types` requires only the types |
+| `-Xmulti-platform` | compile a multiplatform module's sources (`expect` and `actual` declarations, errors without it), as in `kotlinc` |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
+| `-version` | print `kc`'s version and exit |
 | `-time` | print per-phase timings |
-| `-features` | print each error with its unsupported feature, tab-separated |
+| `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
+| `-Wextra` | also report the warnings of `kotlinc`'s extra checkers (`UNREACHABLE_CODE`), as in `kotlinc` |
+| `-Xuse-fir-experimental-checkers` | also report the warnings of `kotlinc`'s experimental checkers (`REDUNDANT_INTERPOLATION_PREFIX`, `EMPTY_RANGE`), as in `kotlinc` |
+| `-Werror` | fail if there are warnings, as in `kotlinc` |
+| `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
+
+`kc -serve` compiles again and again for a tool that runs many small
+compiles: each line of stdin is one compile's arguments as a JSON array,
+answered on stdout with its exit code and output. It keeps the JDK's
+index and the classes it read from jars for the compiles after, which
+is most of a small compile's work. The conformance tests use it
+([Conformance](docs/conformance.md#long-lived-kc)).
 
 ### Use it in a Gradle build
 
-There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode, JVM target, explicit API mode, `-Xmulti-platform` for a multiplatform module and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. A module compiles against its class path and then the JDK of its Java toolchain, so an Android module's `android.jar` stands in for the JDK's classes. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
 
 ```sh
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
@@ -146,8 +189,9 @@ If `kc` fails on a module, `kotlinc` compiles that module and the build log says
 | `KC_STRICT` | `1`: a `kc` failure or an unsupported compiler plugin fails the build instead of falling back to `kotlinc` |
 | `KC_SKIP` | comma-separated task paths to leave to `kotlinc`, such as `:app:compileDebugKotlin` |
 | `KC_VARIANTS` | comma-separated Android build types or variants, such as `debug` or `freeDebug`, to compile with `kc`; every other variant keeps `kotlinc` |
+| `KC_KSP` | the directory of kc's KSP backend, which also runs the KSP tasks on kc (below) |
 | `KC_IGNORE_PLUGINS` | comma-separated compiler plugins, as `artifact` or `group:artifact`, that `kc` may leave out because the program works without them (default: `compose-stability-compiler`) |
-| `KC_JDK_HOME` | the JDK for modules without `android.jar`, in place of the task's Java toolchain |
+| `KC_JDK_HOME` | the JDK to compile against, in place of the task's Java toolchain |
 
 `KC_VARIANTS` keeps `kc` out of the variants it doesn't list, so the init script can stay on for every build of a project while a release build is compiled by `kotlinc` alone:
 
@@ -157,6 +201,21 @@ KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew assembleDebug assembleRelease --init-
 
 An entry is a build type, which covers each variant of that type (`debug` covers `freeDebug` and `paidDebug`), or one variant's name. A listed variant's unit and instrumented tests go with it. The compile task of any other variant is left as it is: it gets neither the `kc` step nor the binary as an input, so it stays up to date after a `kotlinc` build and never reuses classes `kc` wrote. A module without variants, such as a Kotlin/JVM library, is part of every variant that depends on it, so `kc` compiles it only in a build that runs tasks of listed variants and of no other, as `assembleDebug` does; in the build above, and in one that runs no variant's tasks at all, `kotlinc` compiles it. When that module was last compiled by `kc`, Gradle runs its compile task again with `kotlinc`. A task of an Android module whose variant the script cannot tell keeps `kotlinc`. An empty `KC_VARIANTS` lists nothing, so `kotlinc` compiles everything.
 
+With `KC_KSP`, the KSP tasks (`kspKotlin`, `ksp<Variant>Kotlin`) of the modules and variants `kc` compiles run KSP on [kc's KSP backend](docs/analysis-api.md), in KSP's own Gradle plugin. `jvm/kc-aa/build.sh` writes the directory:
+
+```sh
+jvm/kc-aa/build.sh
+KC_KSP=$PWD/jvm/kc-aa/build/kc-ksp KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
+```
+
+Such a task keeps its processors, options and output directories. Its KSP class path becomes the directory's loader and KSP API jars and, from its own, KSP's configuration classes, the Kotlin standard library and kotlinx.coroutines. Those are all a processor sees of KSP, as with stock KSP: the libraries kc's backend runs on, kotlin-compiler's bundled Guava among them, are in a class loader of their own, so a processor uses the Guava or kotlinx.serialization it brings. `KC_VARIANTS` and `KC_SKIP` choose KSP tasks as they choose compile tasks, so the KSP task of a variant that isn't listed stays stock KSP's and never loads kc. If the run on kc fails, stock KSP processes the module in the same task and the build log says so; with `KC_STRICT=1` the task fails. An error a processor reports, or an exception it throws, fails the run on kc too, and stock KSP still runs, because a wrong answer from kc can be what the processor complains about. Such errors are reported once: the run on kc holds them back, so when stock KSP fails as well the build log has stock KSP's messages only, and when stock KSP passes, the task passes and one line of the log says that the processors reported errors on kc alone, a bug in kc worth reporting, followed by those errors. With `KC_STRICT=1` the errors on kc are printed as they are reported. A build that changes which of the two runs a task runs the task again.
+
+KSP's Gradle plugin loads the processors' classes anew for every task of every build, so each run starts on code the JVM has not compiled yet. KSP on kc keeps them loaded instead, for as long as the processors' jars stay the same, and the tasks and builds of a daemon share them. A processor then keeps its static state from one run to the next. For a processor whose state from one run breaks the next, `KC_KSP_KEEP=0` loads them anew for every task.
+
+Between builds, KSP on kc keeps the parsed files, the models and the class paths of the modules whose KSP tasks ran last, so that the build after an edit parses and checks only what changed. In a large project that is gigabytes of the daemon's memory, for a second or less of such a build. With `KC_KSP_FORGET=1` a run keeps nothing for the next. Either way, the memory a run's checks leave free goes back to the system two seconds after the last KSP task of a build ends.
+
+The daemon loads the directory's `libkc.so` once and keeps it, so every build in a daemon has to name the same directory and the same file: after building kc again, restart the daemon. It is checked with the KSP Gradle plugin 2.3.12 and 2.3.13 on Linux; `jvm/kc-aa/gradle.sh` runs Moshi's, Dagger's and Room's processors this way and compares their output with stock KSP's.
+
 [bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
 
 ### Repeat the benchmark
@@ -164,7 +223,7 @@ An entry is a build type, which covers each variant of that type (`debug` covers
 ```sh
 git clone --depth 1 --branch 1.11.0 https://github.com/Kotlin/kotlinx.coroutines.git \
   "${TMPDIR:-/tmp}/kc-survey/kotlinx-coroutines-1.11.0"
-RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
+COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/coroutines-time.sh
 ```
 
 `bench/coroutines-time.sh` builds `kc`, downloads the library's
@@ -216,7 +275,7 @@ more:
 ```go
 r, err := analysis.AnalyzeArena(ctx, analysis.Config{ClassPath: cp}, snapshots)
 if err != nil { ... }
-if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
+if d := r.Diagnostics(); len(d) > 0 { ... } // errors; facts of what kc resolved, if any
 f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
 ```
 
@@ -233,7 +292,7 @@ Tests use the JDK in `$JAVA_HOME`, or the JDK of `java` on `PATH`. On macOS
 `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`. Without a JDK, tests fail
 with unresolved references to Java classes such as `HashMap`.
 
-Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them. The Metro interop tests also need javax.inject 1, jakarta.inject-api 2.0.1, Dagger and hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and interop-jakarta 1.5.2, from Gradle's cache or `KC_METRO_INTEROP_CP`, a class path. The tests in the other direction, `TestMetroKotlinc`, where `kotlinc` compiles graphs against modules that `kc` compiles, also need `kotlinc` on `PATH`.
+Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.6.0 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them. The Metro interop tests also need javax.inject 1, jakarta.inject-api 2.0.1, Dagger and hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and interop-jakarta 1.6.0, from Gradle's cache or `KC_METRO_INTEROP_CP`, a class path. The tests in the other direction, `TestMetroKotlinc`, where `kotlinc` compiles graphs against modules that `kc` compiles, also need `kotlinc` on `PATH`.
 
 - `testdata/run/`: programs compiled with `kc` and run under
   `java -Xverify:all`. Output must match `*.out`, which
@@ -247,6 +306,26 @@ Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/l
   differences must be listed in `testdata/coroutine-shapes.golden`.
 - Package tests in `internal/` cover the parser, Kotlin metadata, class
   file frames and methods, the inliner and class path loading.
+
+## Releasing
+
+A release is named `<kotlin>-<n>`: the Kotlin release whose `kotlinc` `kc`
+is checked against (`KOTLIN_VERSION` in
+[.github/workflows/pr-checks.yml](.github/workflows/pr-checks.yml)), and
+`kc`'s n-th release for it, starting at 1 for each Kotlin release. To
+release, push an annotated tag of that name on a commit of `main` whose
+checks passed:
+
+```sh
+git tag -a <kotlin>-<n> -m "kc <kotlin>-<n>" && git push origin <kotlin>-<n>
+```
+
+[.github/workflows/release.yml](.github/workflows/release.yml) builds the four
+archives, runs each binary on its own platform, and publishes them with
+`SHA256SUMS` and notes generated from the merged pull requests. It fails on a
+tag whose Kotlin release isn't `KOTLIN_VERSION`. A suffix after `<n>`, such
+as `-rc.1`, makes a prerelease. Running the workflow by hand
+builds and tests the archives without publishing them.
 
 ## License
 

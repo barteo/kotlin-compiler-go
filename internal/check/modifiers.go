@@ -190,6 +190,17 @@ func (c *Checker) checkModifiers() {
 	}
 }
 
+// deprecatedMod warns, as name, of the modifier mod among written, which
+// has no effect where it is.
+func (m *modChecker) deprecatedMod(written []syntax.Mod, mod, name, msg string) {
+	for _, w := range written {
+		if w.Name == mod {
+			m.c.warnf(w.P, name, "%s", msg)
+			return
+		}
+	}
+}
+
 func (m *modChecker) errorf(p syntax.Pos, format string, args ...any) {
 	if m.lines[p.Line] {
 		return
@@ -202,6 +213,7 @@ func (m *modChecker) errorf(p syntax.Pos, format string, args ...any) {
 // targets, inside one whose targets are parent. skip lists modifiers
 // whose target and containing declaration aren't checked.
 func (m *modChecker) mods(written []syntax.Mod, targets, parent tgt, isClass bool, skip ...string) {
+	m.c.redundantModifiers(written)
 	reported := map[int]bool{}
 	for i, w := range written {
 		for j := 0; j < i; j++ {
@@ -263,9 +275,22 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 		}
 		if !hasExpectActual(&d.Modifiers) {
 			m.mods(d.Written, t, s.parent, false)
-			for _, am := range d.AccessorMods {
-				m.mods(am, tGetter|tSetter, s.parent, false)
+			if d.Mutable {
+				for _, w := range d.Written {
+					if w.Name == "const" {
+						m.errorf(w.P, "modifier 'const' is not applicable to 'vars'")
+					}
+				}
 			}
+			for i, am := range d.AccessorMods {
+				t := tGetter
+				if i < len(d.AccessorSets) && d.AccessorSets[i] {
+					t = tSetter
+				}
+				m.mods(am, t, s.parent, false)
+			}
+			m.setterVisibility(d)
+			m.getterVisibility(d)
 		}
 		m.expr(d.Init, s)
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -308,7 +333,8 @@ func classTargets(cd *syntax.ClassDecl, local bool) tgt {
 	switch {
 	case cd.Anonymous:
 		return tObjectLiteral | tClass
-	case cd.Annotation || cd.Has("annotation"):
+	case (cd.Annotation || cd.Has("annotation")) && !(cd.Enum || cd.Has("enum")):
+		// Written enum too, it is an enum class (syntax.EnumAnnotation).
 		return tAnnotationClass | tClass
 	case cd.Object && (cd.Companion || cd.Has("companion")):
 		return tCompanionObject | tObject | tClass
@@ -350,6 +376,9 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 	}
 	if !reported && !ea {
 		m.mods(cd.Written, targets, s.parent, true)
+		if cd.Interface {
+			m.deprecatedMod(cd.Written, "open", "REDUNDANT_MODIFIER_FOR_TARGET", "modifier 'open' is redundant for 'interface'")
+		}
 		if !hasExpectActual(&cd.CtorMods) {
 			m.mods(cd.CtorMods.Written, tCtor, targets, false)
 		}
@@ -367,6 +396,7 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 			if !ea {
 				m.mods(p.Written, tPropertyParam|tMemberProperty, targets, false,
 					"inline", "external", "abstract", "const", "lateinit", "noinline", "crossinline")
+				m.deprecatedMod(p.Written, "external", "DEPRECATED_MODIFIER_FOR_TARGET", "modifier 'external' is deprecated for 'value parameter'")
 			}
 		} else {
 			m.mods(p.Written, tValueParam, targets, false, "external")
@@ -384,7 +414,18 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 	for _, d := range cd.Members {
 		m.decl(d, in)
 	}
-	for _, e := range cd.Entries {
+	// kotlinc's @Suppress on an entry silences this warning on the
+	// entries before it too, so it is left to those after the last.
+	suppressed := -1
+	for i, e := range cd.Entries {
+		if slices.ContainsFunc(e.Annotations, func(a syntax.Annotation) bool { return a.Is("Suppress") }) {
+			suppressed = i
+		}
+	}
+	for i, e := range cd.Entries {
+		if e.External != (syntax.Pos{}) && i > suppressed {
+			m.c.warnf(e.External, "DEPRECATED_MODIFIER_FOR_TARGET", "modifier 'external' is deprecated for 'enum entry'")
+		}
 		if e.Call != nil {
 			for _, a := range e.Call.Args {
 				m.expr(a, in)
@@ -509,5 +550,38 @@ func (m *modChecker) anon(cd *syntax.ClassDecl, s modScope) {
 	in := modScope{parent: tLocalClass | tClass, cls: cd, clsLocal: true, inAnon: true, local: true}
 	for _, d := range cd.Members {
 		m.decl(d, in)
+	}
+}
+
+// getterVisibility reports a getter whose visibility modifier isn't its
+// property's (GETTER_VISIBILITY_DIFFERS_FROM_PROPERTY_VISIBILITY), at the
+// modifier.
+func (m *modChecker) getterVisibility(d *syntax.PropDecl) {
+	for i, am := range d.AccessorMods {
+		if i < len(d.AccessorSets) && d.AccessorSets[i] {
+			continue
+		}
+		for _, w := range am {
+			if v, ok := visibilityNamed[w.Name]; ok && v != d.Visibility {
+				m.errorf(w.P, "getter visibility must be the same as property visibility")
+			}
+		}
+	}
+}
+
+// visibilityNamed are the visibility modifiers, by keyword.
+var visibilityNamed = map[string]syntax.Visibility{
+	"public": syntax.Public, "private": syntax.Private, "protected": syntax.Protected, "internal": syntax.Internal,
+}
+
+// setterVisibility reports a setter more visible than its property, or
+// visible where it isn't, as protected set of an internal var
+// (SETTER_VISIBILITY_INCONSISTENT_WITH_PROPERTY_VISIBILITY).
+func (m *modChecker) setterVisibility(d *syntax.PropDecl) {
+	if d.SetterVisP.Line == 0 || d.Override && !d.Explicit {
+		return
+	}
+	if sv, pv := d.SetterVis, d.Visibility; sv != pv && sv != syntax.Private && pv != syntax.Public {
+		m.errorf(d.SetterVisP, "setter visibility must be the same or less permissive than property visibility")
 	}
 }

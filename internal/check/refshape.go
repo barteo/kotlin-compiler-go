@@ -29,6 +29,9 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 	if ft, ok := c.eagerRefType(l); ok {
 		return []types.Type{ft}
 	}
+	if rt, ok := c.peekRefRecv(r); ok {
+		return c.boundRefShapes(rt, r.Name)
+	}
 	if r.X == nil {
 		if ts := c.ctorRefShapes(r.Name); ts != nil {
 			return ts
@@ -39,11 +42,96 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 	if !ok || c.isVar(id.Name) {
 		return nil // a bound reference, x::m
 	}
+	if rt, ok := c.builtinRefRecv(r); ok {
+		return c.builtinRefShapes(rt, r.Name)
+	}
 	cls := c.lookupClass(id.Name)
 	if cls == nil || len(cls.TypeParams) > 0 || cls.Object {
 		return nil
 	}
 	return c.memberRefShapes(cls, r.Name)
+}
+
+// builtinRefRecv returns the builtin type, String or a primitive, that C
+// names in reference C::name: String::toInt, Int::and.
+func (c *Checker) builtinRefRecv(r *syntax.CallableRef) (types.Type, bool) {
+	id, ok := r.X.(*syntax.Ident)
+	if !ok || c.isVar(id.Name) {
+		return types.InvalidType, false
+	}
+	rt, ok := c.refRecvType(r)
+	if !ok || !rt.IsPrimitive() && rt != types.StringType {
+		return types.InvalidType, false
+	}
+	return rt, true
+}
+
+// builtinRefShapes returns the types of T::name for a builtin type rt: its
+// builtin member's, or else its extensions', nil if kc can't tell.
+func (c *Checker) builtinRefShapes(rt types.Type, name string) []types.Type {
+	if rt == types.StringType && name == "length" {
+		if t, ok := c.kpropShape(false, &rt, types.IntType); ok {
+			return []types.Type{t}
+		}
+		return nil
+	}
+	if bps, ok := builtinRefParams(rt, name); ok {
+		ret, ok := builtinRefResult(rt, name)
+		if !ok {
+			return nil
+		}
+		return []types.Type{c.u.ext.funcs.Type(append([]types.Type{rt}, bps...), ret)}
+	}
+	if builtinFun(rt, name, 1) || builtinFun(rt, name, 2) {
+		return nil // an overloaded operator
+	}
+	var out []types.Type
+	for _, f := range calleeFuns(c.extCallees(name, rt)) {
+		ensureFun(f)
+		if f.Recv.HasParams() || !c.subtype(rt, f.Recv) {
+			return nil
+		}
+		g := *f
+		g.Ext = false
+		t, ok := c.funShape(&g, &rt)
+		if !ok {
+			return nil
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// builtinRefResult returns the result type of a builtin type t's member
+// function name that builtinRefParams knows, if kc knows it.
+func builtinRefResult(t types.Type, name string) (types.Type, bool) {
+	if _, r, ok := conversion(name); ok {
+		return r, true
+	}
+	switch name {
+	case "equals", "not":
+		return types.BoolType, true
+	case "toString":
+		return types.StringType, true
+	case "hashCode":
+		return types.IntType, true
+	}
+	switch {
+	case t == types.StringType:
+		switch name {
+		case "uppercase", "lowercase", "plus", "substring":
+			return types.StringType, true
+		case "isEmpty":
+			return types.BoolType, true
+		case "get":
+			return types.CharType, true
+		}
+	case t == types.BoolType && (name == "and" || name == "or" || name == "xor"):
+		return t, true
+	case (t == types.IntType || t == types.LongType) && types.BitwiseOps[name]:
+		return t, true
+	}
+	return types.InvalidType, false
 }
 
 // refKinds reports whether reference l, ::name, C::name or a.b.C::name, names a
@@ -63,6 +151,13 @@ func (c *Checker) refKinds(l *syntax.Lambda) (fun, prop, known bool) {
 		}
 		fs, _ := c.scope.findFuns(r.Name)
 		return len(fs) > 0 || len(c.topFuns(r.Name)) > 0, c.topVar(r.Name) != nil, true
+	}
+	if rt, ok := c.builtinRefRecv(r); ok {
+		if rt == types.StringType && r.Name == "length" {
+			return false, true, true
+		}
+		fun = builtinFun(rt, r.Name, 0) || builtinFun(rt, r.Name, 1) || builtinFun(rt, r.Name, 2) || len(c.extCallees(r.Name, rt)) > 0
+		return fun, false, fun
 	}
 	var cls *types.ClassSym
 	switch x := r.X.(type) {
@@ -162,20 +257,35 @@ func (c *Checker) memberRefShapes(cls *types.ClassSym, name string) []types.Type
 	recv := cls.This()
 	fs := c.javaMethods(cls, name)
 	p := c.memberProp(cls, name)
-	switch {
-	case p != nil && len(fs) > 0:
-		return nil
-	case p != nil:
+	var out []types.Type
+	if p != nil {
 		ensureVar(p)
 		if p.Type.K == types.Invalid || p.Type.HasParams() {
 			return nil
 		}
-		if t, ok := c.kpropShape(p.Mutable, &recv, p.Type); ok {
-			return []types.Type{t}
+		t, ok := c.kpropShape(p.Mutable, &recv, p.Type)
+		if !ok {
+			return nil
 		}
-		return nil
+		out = append(out, t)
 	}
-	var out []types.Type
+	if len(fs) == 0 && p == nil {
+		// Its extensions, which a member would shadow: B::test for
+		// fun B.test(), not fun A.test().
+		for _, f := range calleeFuns(c.extCallees(name, recv)) {
+			ensureFun(f)
+			if f.Recv.HasParams() || !c.subtype(recv, f.Recv) {
+				return nil
+			}
+			g := *f
+			g.Ext = false
+			t, ok := c.funShape(&g, &recv)
+			if !ok {
+				return nil
+			}
+			out = append(out, t)
+		}
+	}
 	for _, f := range fs {
 		t, ok := c.funShape(f, &recv)
 		if !ok {
@@ -183,7 +293,71 @@ func (c *Checker) memberRefShapes(cls *types.ClassSym, name string) []types.Type
 		}
 		out = append(out, t)
 	}
+	// A Java class's static methods of the name, which take no receiver:
+	// JavaClass::bar is (String) -> Int for a static bar(String) as well
+	// as (JavaClass, CharSequence) -> Int for an instance bar.
+	if isJavaClass(cls) {
+		for _, f := range javaStatics(cls, name) {
+			t, ok := c.funShape(f, nil)
+			if !ok {
+				return nil
+			}
+			out = append(out, t)
+		}
+	}
 	return out
+}
+
+// boundRefShapes returns the types of x::name for an x of type rt: those
+// of its class's member functions of the name, if it has no property of
+// the name.
+func (c *Checker) boundRefShapes(rt types.Type, name string) []types.Type {
+	cls := c.classOf(rt.NonNull())
+	if cls == nil || len(cls.TypeParams) > 0 || c.memberProp(cls, name) != nil {
+		return nil
+	}
+	var out []types.Type
+	for _, f := range c.accessible(cls, c.javaMethods(cls, name)) {
+		if f.Static {
+			return nil
+		}
+		t, ok := c.funShape(f, nil)
+		if !ok {
+			return nil
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// refsFit reports whether candidate cd takes the arguments of call x
+// that are callable references, one of the types each may have (see
+// refShapes), where kc can tell: call(A::foo) isn't
+// call(function: suspend T.(U) -> List<R>) for fun foo(input: String): String.
+func (c *Checker) refsFit(cd *candidate, x *syntax.Call) bool {
+	trial := cd.sys
+	for i, a := range x.Args {
+		l, ok := a.(*syntax.Lambda)
+		if !ok || i >= len(cd.params) {
+			continue
+		}
+		ts := c.refShapes(l)
+		if len(ts) == 0 {
+			continue
+		}
+		var fit *system
+		for _, ft := range ts {
+			if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
+				fit = s
+				break
+			}
+		}
+		if fit == nil {
+			return false
+		}
+		trial = fit
+	}
+	return true
 }
 
 // funShape returns the function type of a reference to f, a function
@@ -234,9 +408,24 @@ func (c *Checker) kpropShape(mutable bool, recv *types.Type, t types.Type) (type
 // system s, whose variables stay within their bounds, and if so returns
 // the system with it.
 func (c *Checker) refFits(s *system, ft, p types.Type) (*system, bool) {
+	return c.refFits1(s, ft, p, true)
+}
+
+// refFits1 is refFits, where a function's result fits a parameter whose
+// result is Unit only if unit is set.
+func (c *Checker) refFits1(s *system, ft, p types.Type, unit bool) (*system, bool) {
 	trial := s.clone()
 	pt := trial.apply(p)
-	if _, r, ok := funcParts(pt); ok && r.K == types.Unit && !r.N {
+	if v, ok := c.kfunWant(pt); ok && ft.Flex().IsFunc() {
+		// A function's reference is a KFunctionN of its function type.
+		pt = v
+	} else if ft.Flex().IsFunc() && !pt.Flex().IsFunc() {
+		// Or converts to a fun interface: Callable<V>'s () -> V.
+		if m, f := c.samTarget(pt); m != nil && !m.Ext && f.K != types.Invalid {
+			pt = f
+		}
+	}
+	if _, r, ok := funcParts(pt); ok && unit && r.K == types.Unit && !r.N {
 		if ps, _, ok := funcParts(ft); ok {
 			// A function's result fits a parameter whose result is Unit.
 			if ft.Flex().IsSuspendFunc() {
@@ -344,31 +533,183 @@ func (c *Checker) varargShape(l *syntax.Lambda, n int) (types.Type, bool) {
 // function a reference ::f names, if it is the only top-level function
 // of the name and has a vararg.
 func (c *Checker) refVarargPos(r *syntax.CallableRef) (int, bool) {
+	i, _, ok := c.refVararg(r)
+	return i, ok
+}
+
+// refVararg is refVarargPos, with the number of the function's parameters
+// after the vararg.
+func (c *Checker) refVararg(r *syntax.CallableRef) (int, int, bool) {
 	if r == nil || r.X != nil || r.Type != nil || r.Bound != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	name := r.Name
 	if c.lookupClass(name) != nil || c.cls != nil && c.hasCallable(c.cls, name) || c.topVar(name) != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	if _, _, ok := c.scope.lookup(name); ok {
-		return 0, false
+		return 0, 0, false
 	}
 	fs, _ := c.scope.findFuns(name)
 	if len(fs) == 0 {
 		fs = c.topFuns(name)
 	}
 	if len(fs) != 1 {
-		return 0, false
+		return 0, 0, false
 	}
 	ensureFun(fs[0])
 	if fs[0].Ext {
-		return 0, false
+		return 0, 0, false
 	}
 	for i, q := range fs[0].Params {
 		if q.Vararg {
-			return i, true
+			return i, len(fs[0].Params) - 1 - i, true
 		}
 	}
-	return 0, false
+	return 0, 0, false
+}
+
+// refArgFit returns system s with the type of reference l, for parameter
+// type p, when only one function the reference may name takes as many
+// parameters as p's function type, or nil. As in Kotlin, a reference
+// with one candidate is resolved with the call it is passed to, the
+// type parameters of its function as the call's variables: S and T2 of
+// bar(list, ::Foo), fun <T1, T2, S> bar(list: T2, fn: (S) -> B<T1, T2>),
+// for a generic class Foo<T>(x: Int), are Int and Foo's B's, and T of
+// myLet(::foo), fun <T> myLet(block: (T) -> Unit), for
+// fun foo(vararg ints: Int), is an IntArray.
+func (c *Checker) refArgFit(s *system, l *syntax.Lambda, p types.Type) *system {
+	r := l.Ref
+	if r == nil || r.Bound != nil {
+		return nil
+	}
+	pt := s.apply(p)
+	if v, ok := c.kfunWant(pt); ok {
+		pt = v
+	}
+	ps, _, ok := funcParts(pt)
+	if !ok || !pt.HasVars() || pt.Flex().Contexts() > 0 {
+		return nil
+	}
+	var recv types.Type
+	unbound, bound := false, false
+	if t, ok := c.peekRefRecv(r); ok {
+		recv, bound = t, true
+	} else if r.X == nil && r.Type == nil {
+		if c.isVar(r.Name) || c.topVar(r.Name) != nil {
+			return nil
+		}
+		if _, _, ok := c.scope.lookup(r.Name); ok {
+			return nil
+		}
+	} else {
+		rt, ok := c.refRecvType(r)
+		if !ok || rt.HasParams() || rt.HasVars() {
+			return nil
+		}
+		cls := c.classOf(rt.NonNull())
+		if cls == nil || c.memberProp(cls, r.Name) != nil || cls.Entries != nil || cls.External && len(javaStatics(cls, r.Name)) > 0 {
+			return nil
+		}
+		recv, unbound = rt, true
+	}
+	var f *types.FunSym
+	for _, g := range c.refFuns(r, recv, nil, false) {
+		ensureFun(g)
+		n := len(g.Params)
+		if unbound {
+			n++
+		}
+		if n != len(ps) || g.Hidden || g.Unsupported || len(g.Contexts) > 0 || g.Suspend != pt.IsSuspendFunc() || g.Ret.K == types.Invalid {
+			continue
+		}
+		if f != nil {
+			return nil
+		}
+		f = g
+	}
+	if f == nil || !unbound && !bound && f.Ext || f.Name == "<init>" && (f.Owner.Inner || f.Owner.Abstract || f.Owner.Interface) {
+		return nil
+	}
+	tps := f.TypeParams
+	if f.Name == "<init>" {
+		tps = append(slices.Clone(f.Owner.TypeParams), tps...)
+	} else if !unbound && !bound && f.Owner != nil && len(f.Owner.TypeParams) > 0 {
+		return nil // an implicit receiver's member
+	}
+	off := 0
+	if unbound {
+		off = 1
+	}
+	for i, q := range f.Params {
+		// A vararg takes an array only for a parameter type that nothing
+		// else gives: myLet<Int>(::foo) passes the elements.
+		if tv := s.unfixedVar(ps[off+i]); q.Vararg && (tv == nil || len(tv.lower) > 0 || len(tv.upper) > 0) {
+			return nil
+		}
+	}
+	trial := s.clone()
+	var base types.Subst
+	if unbound || bound {
+		base = c.memberSubst(recv, f.Owner)
+	}
+	sub := trial.fresh(tps, base, l.P)
+	var fps []types.Type
+	if unbound {
+		fps = append(fps, recv)
+	}
+	if (unbound || bound) && f.Ext {
+		trial.sub(recv, sub.Apply(f.Recv))
+	}
+	for _, q := range f.Params {
+		fps = append(fps, sub.ApplyIn(q.Type))
+	}
+	ret := sub.Apply(f.Ret)
+	if f.Name == "<init>" {
+		ret = sub.Apply(f.Owner.This())
+	}
+	ft := c.u.ext.funcs.Type(fps, ret)
+	if f.Suspend {
+		ft = c.u.ext.funcs.SuspendType(fps, ret)
+	}
+	if !trial.ok {
+		return nil
+	}
+	fit, ok := c.refFits(trial, ft, p)
+	if !ok {
+		return nil
+	}
+	return fit
+}
+
+// peekRefRecv returns the type of the receiver of bound reference r,
+// x::m, without checking it, if it is a simple expression (see peekType)
+// or a call of the constructor of a class without type parameters,
+// A()::baz, that nothing else of the name may call.
+func (c *Checker) peekRefRecv(r *syntax.CallableRef) (types.Type, bool) {
+	if r.X == nil || r.Type != nil {
+		return types.InvalidType, false
+	}
+	if id, ok := r.X.(*syntax.Ident); ok && !c.isVar(id.Name) {
+		return types.InvalidType, false // a class: C::m
+	}
+	if t, ok := c.peekType(r.X); ok {
+		return t, !t.HasVars() && !t.HasParams() && t.K != types.Invalid
+	}
+	x, ok := r.X.(*syntax.Call)
+	if !ok || len(x.TypeArgs) > 0 || hasLambda(x.Args) {
+		return types.InvalidType, false
+	}
+	fn, ok := x.Fun.(*syntax.Ident)
+	if !ok || c.isVar(fn.Name) {
+		return types.InvalidType, false
+	}
+	cls := c.lookupClass(fn.Name)
+	if cls == nil || len(cls.TypeParams) > 0 || cls.Interface || cls.Object || cls.Abstract || cls.Inner {
+		return types.InvalidType, false
+	}
+	if fs, _ := c.scope.findFuns(fn.Name); len(fs) > 0 || len(c.topFuns(fn.Name)) > 0 || c.cls != nil && c.hasCallable(c.cls, fn.Name) {
+		return types.InvalidType, false
+	}
+	return cls.This(), true
 }

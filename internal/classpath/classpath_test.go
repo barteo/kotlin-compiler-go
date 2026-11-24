@@ -227,6 +227,33 @@ func TestJarAndDir(t *testing.T) {
 	}
 }
 
+// A class of the class path hides the JDK's class of the same name, and
+// the JDK has the classes that the class path lacks: a platform's jar of
+// java classes stands in for the JDK's.
+func TestClassPathBeforeJDK(t *testing.T) {
+	home := jdk(t)
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "java", "lang"), 0o755)
+	shadow := classfile.NewClass(classfile.AccPublic|classfile.AccInterface|classfile.AccAbstract, "java/lang/Runnable", "java/lang/Object")
+	shadow.AddField(classfile.AccPublic|classfile.AccStatic|classfile.AccFinal, "SHADOW", "I")
+	os.WriteFile(filepath.Join(dir, "java", "lang", "Runnable.class"), shadow.Bytes(), 0o644)
+
+	p, err := Open(home, []string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	info, err := p.Load("java/lang/Runnable")
+	if err != nil || len(info.Fields) != 1 || info.Fields[0].Name != "SHADOW" || len(info.Methods) != 0 {
+		t.Errorf("java/lang/Runnable is not the class path's: %+v, %v", info, err)
+	}
+	for _, name := range []string{"java/lang/String", "java/lang/management/ManagementFactory"} {
+		if !p.Has(name) {
+			t.Errorf("%s of the JDK not found", name)
+		}
+	}
+}
+
 // A source file's class hides a class file of the same name, and has no
 // bytes.
 func TestAddSource(t *testing.T) {
@@ -320,5 +347,28 @@ func TestOverlay(t *testing.T) {
 	o.Close()
 	if _, err := p.Bytes("demo/C"); err != nil {
 		t.Errorf("base after overlay Close: %v", err)
+	}
+}
+
+func TestModuleHidden(t *testing.T) {
+	p, err := Open(jdk(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	for _, tt := range []struct {
+		name, module string
+		hidden       bool
+	}{
+		{"java/util/List", "java.base", false},
+		{"sun/misc/Unsafe", "jdk.unsupported", false}, // exported
+		{"sun/awt/image/ImageDecoder", "java.desktop", true},
+		{"jdk/internal/misc/Unsafe", "java.base", true}, // exported to named modules only
+		{"java/awt/Image", "java.desktop", false},
+	} {
+		module, hidden := p.ModuleHidden(tt.name)
+		if hidden != tt.hidden || hidden && module != tt.module {
+			t.Errorf("ModuleHidden(%s) = %q, %v; want %q, %v", tt.name, module, hidden, tt.module, tt.hidden)
+		}
 	}
 }

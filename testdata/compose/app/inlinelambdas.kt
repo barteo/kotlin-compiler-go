@@ -3,6 +3,7 @@ package app
 import androidx.compose.runtime.Composable
 import lib.Box
 import lib.Text
+import lib.deferred
 
 // Composable lambdas kept for later.
 class Slots {
@@ -33,6 +34,13 @@ inline fun Slots.plain(label: String) {
     add { Text("fixed $it") }
 }
 
+// A lambda passed for a crossinline parameter, which a lambda of the
+// inline function calls, isn't in the file's ComposableSingletons class,
+// as an inlined one isn't.
+inline fun Slots.each(crossinline content: @Composable (String) -> Unit) {
+    add { s -> content("each $s") }
+}
+
 @Composable
 fun ShowSlots(slots: Slots) {
     for (c in slots.items) {
@@ -48,4 +56,6 @@ fun appSlots(): Slots = Slots().apply {
     typed<String> { Text("app typed $it") }
     plain("app")
     extra("app")
+    each { Text("app $it") }
+    add(deferred { Text("app $it") })
 }

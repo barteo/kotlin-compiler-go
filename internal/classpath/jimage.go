@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
+
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 )
 
 // The JDK stores its classes in lib/modules, a "jimage" file:
@@ -58,6 +61,50 @@ type jimage struct {
 	f         *os.File
 	indexSize int64
 	strs      []byte
+	// packages are the modules of the image's packages, by internal
+	// name, and moduleInfos their module-info classes, by module name:
+	// see exported.
+	packages    map[string]string
+	moduleInfos map[string]entry
+	exports     func() map[string]bool // module/package -> exported to all
+}
+
+// exported reports whether the module of a package of the image exports
+// it to all modules, as the module of an unnamed module's code needs: a
+// package of the JDK's internals, as sun.awt.image, isn't. A package of
+// no module, or whose module-info can't be read, counts as exported.
+func (j *jimage) exported(pkg string) (module string, ok bool) {
+	module = j.packages[pkg]
+	if _, has := j.moduleInfos[module]; !has {
+		return module, true
+	}
+	ex := j.exports()
+	if ex == nil || !ex[module+"/"] {
+		return module, true
+	}
+	return module, ex[module+"/"+pkg]
+}
+
+// readExports reads the image's module-info classes: for each module it
+// could read, module/ and module/package for each package it exports to
+// all modules.
+func (j *jimage) readExports() map[string]bool {
+	ex := map[string]bool{}
+	for module, e := range j.moduleInfos {
+		data, err := j.read(&e)
+		if err != nil {
+			continue
+		}
+		name, pkgs, err := classfile.ModuleExports(data)
+		if err != nil || name != module {
+			continue
+		}
+		ex[module+"/"] = true
+		for _, pkg := range pkgs {
+			ex[module+"/"+pkg] = true
+		}
+	}
+	return ex
 }
 
 func (j *jimage) str(off uint64) ([]byte, error) {
@@ -109,7 +156,8 @@ func (p *Path) addJImage(path string) error {
 	if err != nil {
 		return err
 	}
-	j := &jimage{f: f}
+	j := &jimage{f: f, packages: map[string]string{}, moduleInfos: map[string]entry{}}
+	j.exports = sync.OnceValue(j.readExports)
 	p.sources = append(p.sources, j)
 
 	const headerSize = 28
@@ -175,12 +223,22 @@ func (p *Path) addJImage(path string) error {
 		if err := errors.Join(err1, err2); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		if string(base) == "module-info" {
-			continue
-		}
 		size := attrs[attrUncompressed]
 		if attrs[attrCompressed] != 0 {
 			size = attrs[attrCompressed]
+		}
+		module, err := str(attrs[attrModule])
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if string(base) == "module-info" {
+			if len(parent) == 0 {
+				j.moduleInfos[string(module)] = entry{src: j, off: int64(attrs[attrOffset]), size: int64(size)}
+			}
+			continue
+		}
+		if _, ok := j.packages[string(parent)]; !ok {
+			j.packages[string(parent)] = string(module)
 		}
 		name = name[:0]
 		if len(parent) > 0 {

@@ -2,18 +2,18 @@
 
 square/kotlinpoet 2.4.0's JVM library: 39 files, 8696 lines (commonMain and jvmMain).
 
-- Machine: Darwin arm64, 8 CPUs
-- go version go1.27.2 darwin/arm64
-- openjdk version "21.0.12.1" 2026-08-18
-- info: kotlinc-jvm 2.4.21 (JRE 21.0.12.1)
+- Machine: Linux x86_64, 4 CPUs
+- go version go1.27.2 linux/amd64
+- Picked up _JAVA_OPTIONS: -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_base64_encodeBlock,_base64_decodeBlock
+- info: kotlinc-jvm 2.4.21 (JRE 21.0.13.0.3+1-1-24.04.1-Ubuntu)
 - kotlinc JVM options: -Xmx8g
-- Cooldown before each run (outside timing): 10 s
+- Cooldown before each run (outside timing): 0 s
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 153 ± 6 ms | — | 284 ms | 80 MB |
-| `kc -j 8` | 104 ± 3 ms | 1.5x faster | 359 ms | 93 MB |
-| `kotlinc (cold JVM)` | 7,526 ± 171 ms | 49.2x slower | 29,187 ms | 1,026 MB |
+| `kc -j 1` | 290 ± 15 ms | — | 475 ms | 89 MB |
+| `kc -j 4` | 210 ± 12 ms | 1.4x faster | 530 ms | 99 MB |
+| `kotlinc (cold JVM)` | 15,462 ± 594 ms | 53.4x slower | 46,600 ms | 966 MB |
 
-- kotlinc in a warm JVM (median of the last 10 of 20 runs in one JVM): 1112 ms
+- kotlinc in a warm JVM (median of the last 5 of 10 runs in one JVM): 3028 ms
 - Class files: kc 108, kotlinc 120

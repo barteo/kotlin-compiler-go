@@ -45,8 +45,21 @@ func (c *Checker) resolveAlias(a *types.AliasSym) {
 	}
 	d := a.Decl.(*syntax.TypeAliasDecl)
 	if a.Resolving {
-		c.u.aliasFile[a].errorf(d.P, "recursive type alias in expansion: %s", a.Name)
-		a.Type, a.Resolved = types.InvalidType, true
+		// Each alias of the cycle is an error: A and B of typealias A =
+		// B and typealias B = A.
+		cycle := c.u.aliasStack
+		if i := slices.Index(cycle, a); i >= 0 {
+			cycle = cycle[i:]
+		} else {
+			cycle = []*types.AliasSym{a}
+		}
+		for _, x := range cycle {
+			if x.Resolved {
+				continue
+			}
+			c.u.aliasFile[x].errorf(x.Decl.(*syntax.TypeAliasDecl).P, "recursive type alias in expansion: %s", x.Name)
+			x.Type, x.Resolved = types.InvalidType, true
+		}
 		return
 	}
 	if owner := c.u.aliasFile[a]; owner != c {
@@ -54,10 +67,12 @@ func (c *Checker) resolveAlias(a *types.AliasSym) {
 		return
 	}
 	a.Resolving = true
+	c.u.aliasStack = append(c.u.aliasStack, a)
 	savedParams, savedCls, savedChecks := c.tparams, c.lookupCls, c.noBoundChecks
 	c.tparams, c.lookupCls, c.noBoundChecks = a.TypeParams, a.Outer, true
 	t := c.resolveType(d.Type)
 	c.tparams, c.lookupCls, c.noBoundChecks = savedParams, savedCls, savedChecks
+	c.u.aliasStack = c.u.aliasStack[:len(c.u.aliasStack)-1]
 	a.Resolving = false
 	if !a.Resolved { // not already invalid as part of a cycle
 		a.Type, a.Resolved = t, true
@@ -83,6 +98,9 @@ func (c *Checker) lookupAlias(name string) *types.AliasSym {
 		if a := p.Aliases[last]; a != nil {
 			return a
 		}
+	}
+	if c.lookupAlias(prefix) != nil {
+		return nil // C.Self.Self, through typealias Self = C
 	}
 	if cls := c.lookupClass(prefix); cls != nil {
 		cls.Ensure()
@@ -128,12 +146,25 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 	for i, arg := range args {
 		if (arg.V == types.In || arg.V == types.Out) && projectionConflicts(a.Type, a.TypeParams[i], arg.V) {
 			c.errorf(ref.Args[i].P, "conflicting projection in typealias expansion: typealias %s uses %s where '%s' conflicts with the variance", a.Name, a.TypeParams[i].Name, arg.V)
-			return types.InvalidType
+			// As in K2, the argument is then a star.
+			args[i] = types.Arg{V: types.Star}
+		}
+	}
+	for i, arg := range args {
+		if (arg.V == types.In || arg.V == types.Out) && projectionRedundant(a.Type, a.TypeParams[i], arg.V) {
+			c.redundantProjection(ref.Args[i].P)
 		}
 	}
 	t := a.Expand(args)
 	if t.K == types.Invalid {
 		return t
+	}
+	if !c.noBoundChecks {
+		known := make([]bool, len(args))
+		for i := range known {
+			known[i] = args[i].V != types.Star && !args[i].T.HasVars()
+		}
+		c.expansionBounds(a, args, known, ref, nil, nil)
 	}
 	return c.nullable(t, ref)
 }
@@ -176,6 +207,14 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 			if w != types.Inv && w != v {
 				return true
 			}
+			// In<out T>, which kotlinc reports, and then In3<in Int>
+			// of typealias In3<T> = In<out T>: the class's own variance
+			// conflicts too.
+			if i < len(t.C.TypeParams) {
+				if d := t.C.TypeParams[i].Var; d != types.Inv && d != v {
+					return true
+				}
+			}
 			continue
 		}
 		if projectionConflicts(a.T, p, v) {
@@ -185,6 +224,51 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 	return false
 }
 
+// projectionRedundant reports whether the expansion t of a typealias
+// passes its parameter p, given the projection v, to a class's type
+// parameter declared with variance v: List<out String> for TL<out String>
+// with typealias TL<T> = List<T>.
+func projectionRedundant(t types.Type, p *types.TypeParamSym, v types.Variance) bool {
+	if t.K != types.Class || t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		if a.V == types.Star {
+			continue
+		}
+		if a.T.IsParam() && a.T.Param() == p {
+			if i < len(t.C.TypeParams) && t.C.TypeParams[i].Var == v && (a.V == types.Inv || a.V == v) {
+				return true
+			}
+			continue
+		}
+		if projectionRedundant(a.T, p, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// redundantProjection warns of a use-site projection that repeats the
+
+// projection checks the projection of type argument a for type parameter
+// p of class cls: in or out against the other variance conflicts, and the
+// same one is redundant.
+func (c *Checker) projection(a *syntax.TypeArg, p *types.TypeParamSym, cls *types.ClassSym) {
+	switch {
+	case a.Variance == types.Inv || a.Variance == types.Star:
+	case p.Var != types.Inv && a.Variance != p.Var:
+		c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+	case a.Variance == p.Var:
+		c.redundantProjection(a.P)
+	}
+}
+
+// declared variance of its type parameter, as kotlinc does.
+func (c *Checker) redundantProjection(p syntax.Pos) {
+	c.warnf(p, "REDUNDANT_PROJECTION", "projection is redundant: the corresponding type parameter has the same variance")
+}
+
 // aliasConstruct checks Alias(args), a call of the constructor of the
 // class that a typealias expands to. The expansion is the call's expected
 // type when it is known, which infers the class's type arguments that the
@@ -192,6 +276,15 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 // ArrayList<String>. Type arguments of the call are the alias's.
 func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	c.checkAliasVisible(a, p)
+	if c.aliasCtors == nil {
+		c.aliasCtors = map[*syntax.Call]*types.AliasSym{}
+	}
+	c.aliasCtors[x] = a
+	if args, ok := c.aliasTypeArgs[x]; ok {
+		// Checked again: the class's type arguments, as rewritten.
+		x.TypeArgs = args
+		return c.construct(x, cls, p, want, sink)
+	}
 	if c.inferAliasArgs[x] || len(x.TypeArgs) == 0 && len(a.TypeParams) > 0 && !bareAlias(a) && a.Type.K == types.Class && a.Type.C == cls {
 		// Alias(x) infers the alias's type arguments, as Alias<_>(x),
 		// and the class's are those the alias gives: Int for A of
@@ -214,10 +307,38 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		return c.construct(x, cls, p, want, sink)
 	}
 	if len(a.TypeParams) == 0 || len(x.TypeArgs) > 0 {
-		t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs})
+		ref := &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs}
+		savedRef, savedCall := c.ctorAliasRef, c.ctorAliasCall
+		c.ctorAliasRef, c.ctorAliasCall = ref, x
+		t := c.expandAlias(a, ref)
+		c.ctorAliasRef, c.ctorAliasCall = savedRef, savedCall
 		if t.K == types.Invalid {
 			c.args(x, nil)
 			return t
+		}
+		if t.K == types.Class && t.C == cls && t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+			// CIn() of typealias CIn = C<in Int>.
+			c.errorf(p, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+			c.args(x, nil)
+			return types.InvalidType
+		}
+		if len(x.TypeArgs) > 0 && t.K == types.Class && t.C == cls && !t.HasVars() {
+			// The explicit type arguments are the class's, not just
+			// the expected type: PR<Int, String>(1, "") is an error for
+			// typealias PR<T1, T2> = Pair<T2, T1>.
+			pos := x.TypeArgs[0].P
+			own := len(cls.TypeParams) - cls.OuterParams
+			out := make([]*syntax.TypeArg, min(own, t.A.Len()))
+			for i := range out {
+				at := t.A.Get(i).T
+				out[i] = &syntax.TypeArg{P: pos, Type: &syntax.TypeRef{P: pos, Known: &at}}
+			}
+			if c.aliasTypeArgs == nil {
+				c.aliasTypeArgs = map[*syntax.Call][]*syntax.TypeArg{}
+			}
+			c.aliasTypeArgs[x] = out
+			x.TypeArgs = out
+			return c.construct(x, cls, p, want, sink)
 		}
 		x.TypeArgs = nil
 		want = t
@@ -253,7 +374,11 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 			args[i] = &syntax.TypeArg{P: ta.P, Type: &syntax.TypeRef{P: ta.P, Known: &t}}
 		}
 	}
+	// The placeholders have no bounds to check.
+	saved := c.noBoundChecks
+	c.noBoundChecks = true
 	t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: args})
+	c.noBoundChecks = saved
 	if t.K == types.Invalid {
 		return false
 	}
@@ -268,6 +393,9 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 		arg := t.A.Get(i)
 		if arg.V == types.Star || arg.T.Has(func(u types.Type) bool { return u.IsParam() && holes[u.Param()] }) {
 			out[i] = &syntax.TypeArg{P: pos, Underscore: true}
+			if dep, ok := holeDep(arg.T, t, cls, holes); ok && arg.V == types.Inv && !(arg.T.IsParam() && holes[arg.T.Param()]) {
+				out[i].Type = &syntax.TypeRef{P: pos, Known: &dep} // see relateUnderscores
+			}
 			continue
 		}
 		at := arg.T
@@ -275,4 +403,298 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 	}
 	x.TypeArgs = out
 	return true
+}
+
+// checkAliasBounds checks the type arguments of the file's typealiases'
+// right sides against their classes' bounds, once those are resolved:
+// TC<T, Any> for class TC<T, C : Collection<T>>, as kotlinc's
+// UPPER_BOUND_VIOLATED, and those of the typealiases they name, as
+// UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION. An argument that mentions
+// the typealias's own parameters, which have no bounds, isn't checked,
+// as TC<T, C> isn't: its uses are.
+func (c *Checker) checkAliasBounds() {
+	savedParams, savedCls := c.tparams, c.lookupCls
+	for _, d := range c.aliases {
+		a := d.Sym
+		if a == nil || !a.Resolved || a.Type.K == types.Invalid || d.Type == nil {
+			continue
+		}
+		if a.Type.K == types.Class && compilerRequiredAnnotations[a.Type.C.Name] {
+			c.errorf(d.Type.P, "typealias to a compiler-required annotation '%s' is not allowed. Remove the typealias and use the annotation directly", strings.ReplaceAll(a.Type.C.Name, "/", "."))
+		}
+		own := func(t types.Type) bool {
+			return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param().Owner == a })
+		}
+		// A bound that mentions them is met if some arguments meet it:
+		// List<String> is within List<T>, but Any isn't within
+		// Collection<T>.
+		stars := types.Subst{}
+		for _, p := range a.TypeParams {
+			stars[p] = types.Arg{V: types.Star}
+		}
+		c.tparams, c.lookupCls = a.TypeParams, a.Outer
+		if r := d.Type; a.Type.IsParam() && len(r.Args) == 0 && r.Ret == nil && r.Outer == nil && r.Known == nil && c.lookupTypeParam(r.Name) != nil {
+			c.errorf(r.P, "typealias should expand to a class, an interface or an object, not a type parameter")
+		}
+		c.refBounds(a.Type, d.Type, own, stars)
+	}
+	c.tparams, c.lookupCls = savedParams, savedCls
+	c.abbreviatedNothing()
+}
+
+// compilerRequiredAnnotations are the annotations kotlinc reads before it
+// resolves types, which a typealias can't stand for
+// (TYPEALIAS_EXPANDS_TO_COMPILER_REQUIRED_ANNOTATION_ERROR), by internal
+// name: its requiredAnnotations for the JVM.
+var compilerRequiredAnnotations = map[string]bool{
+	"kotlin/Deprecated":            true,
+	"kotlin/annotation/Target":     true,
+	"kotlin/DeprecatedSinceKotlin": true,
+	"kotlin/SinceKotlin":           true,
+	"kotlin/WasExperimental":       true,
+	"kotlin/IntroducedAt":          true,
+	"java/lang/annotation/Target":  true,
+	"java/lang/Deprecated":         true,
+	"kotlin/jvm/JvmName":           true,
+	"kotlin/jvm/JvmRecord":         true,
+	"kotlin/jvm/JvmInline":         true,
+}
+
+// refBounds checks the type arguments of type t, written as ref, and of
+// the types among them, against their bounds, but those skip reports,
+// with erase applied to the bounds.
+func (c *Checker) refBounds(t types.Type, ref *syntax.TypeRef, skip func(types.Type) bool, erase types.Subst) {
+	if ref == nil || t.K != types.Class || t.A == nil || ref.Ret != nil || ref.Known != nil || ref.Outer != nil {
+		return
+	}
+	if a := c.lookupAlias(ref.Name); a != nil {
+		c.resolveAlias(a)
+		if len(ref.Args) != len(a.TypeParams) || a.Type.K == types.Invalid {
+			return
+		}
+		args, known := aliasArgs(a, t)
+		c.expansionBounds(a, args, known, ref, skip, erase)
+		for i, r := range ref.Args {
+			if known[i] && r.Type != nil && args[i].V != types.Star {
+				c.refBounds(args[i].T, r.Type, skip, erase)
+			}
+		}
+		return
+	}
+	if len(ref.Args) != len(t.A.List) {
+		return
+	}
+	c.argBounds(t, func(i int) syntax.Pos { return ref.Args[i].P }, skip, erase, nil, nil)
+	for i, r := range ref.Args {
+		if a := t.A.Get(i); r.Type != nil && a.V != types.Star {
+			c.refBounds(a.T, r.Type, skip, erase)
+		}
+	}
+}
+
+// aliasArgs returns the type arguments of a use of typealias a that
+// expands to t, and which of them t shows: those of the parameters its
+// right side uses.
+func aliasArgs(a *types.AliasSym, t types.Type) ([]types.Arg, []bool) {
+	args := make([]types.Arg, len(a.TypeParams))
+	known := make([]bool, len(a.TypeParams))
+	var match func(p, u types.Type)
+	match = func(p, u types.Type) {
+		if p.IsParam() && p.Param().Owner == a {
+			if i := p.Param().Index; i < len(args) && !known[i] {
+				if p.N {
+					u = u.NonNull()
+				}
+				args[i], known[i] = types.Arg{T: u}, true
+			}
+			return
+		}
+		if p.K != types.Class || u.K != types.Class || p.A == nil || u.A == nil || p.C != u.C || p.A.Len() != u.A.Len() {
+			return
+		}
+		for i, x := range p.A.List {
+			if y := u.A.Get(i); x.V != types.Star && y.V != types.Star {
+				match(x.T, y.T)
+			}
+		}
+	}
+	match(a.Type, t)
+	return args, known
+}
+
+// expansionBounds checks the type arguments of the generic types of
+// typealias a's right side, with the arguments args of its use ref that
+// are known, against their bounds. An error in an argument that is one
+// of a's parameters is reported on ref's argument for it, others on ref.
+func (c *Checker) expansionBounds(a *types.AliasSym, args []types.Arg, known []bool, ref *syntax.TypeRef, skip func(types.Type) bool, erase types.Subst) {
+	s := types.Subst{}
+	// The bounds that mention the unknown arguments are erased as those
+	// of the typealias's right side are (see checkAliasBounds).
+	stars := types.Subst{}
+	for p, x := range erase {
+		stars[p] = x
+	}
+	for i, p := range a.TypeParams {
+		if known[i] {
+			s[p] = args[i]
+		} else {
+			stars[p] = types.Arg{V: types.Star}
+		}
+	}
+	erase = stars
+	unknown := func(t types.Type) bool {
+		return skip != nil && skip(t) || t.Has(func(u types.Type) bool { return u.K == types.TypeVar || u.IsParam() && u.Param().Owner == a })
+	}
+	var walk func(t types.Type)
+	walk = func(t types.Type) {
+		if t.K != types.Class || t.A == nil {
+			return
+		}
+		at := func(i int) syntax.Pos {
+			if x := t.A.Get(i); x.V != types.Star && x.T.IsParam() && x.T.Param().Owner == a && x.T.Param().Index < len(ref.Args) {
+				return ref.Args[x.T.Param().Index].P
+			}
+			return ref.P
+		}
+		var warn func(int) bool
+		if ref == c.ctorAliasRef {
+			// Of a constructor call, a violation that isn't of one of
+			// the alias's arguments is only a warning, as in K2.
+			warn = func(i int) bool { return at(i) == ref.P }
+		}
+		c.argBounds(s.ApplyExact(t), at, unknown, erase, a, warn)
+		for _, x := range t.A.List {
+			if x.V != types.Star {
+				walk(x.T)
+			}
+		}
+	}
+	walk(a.Type)
+}
+
+// argBounds checks the type arguments of class type t, but those skip
+// reports, against the bounds of its class's type parameters, and
+// reports an error at(i) for argument i out of them; erase, if set, is
+// applied to the bounds, and alias, if set, is the typealias whose
+// expansion t is part of. If warn reports so for argument i, it is
+// kotlinc's UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING
+// of the constructor call ctorAliasCall instead.
+func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(types.Type) bool, erase types.Subst, alias *types.AliasSym, warn func(int) bool) {
+	ps := t.C.TypeParams
+	if t.K != types.Class || t.A == nil || len(ps) != len(t.A.List) {
+		return
+	}
+	s := classSubst(t)
+	for i, a := range t.A.List {
+		if a.V == types.Star || a.T.K == types.Invalid || skip != nil && skip(a.T) {
+			continue
+		}
+		for _, b := range ps[i].Bounds {
+			if b = s.Apply(b); erase != nil {
+				b = erase.Apply(b)
+			}
+			if !c.subtype(a.T, b) {
+				if warn != nil && warn(i) {
+					c.warnf(at(i), "UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'. This will become an error in future releases", ps[i].Name, b, a.T)
+					if c.aliasDeprecated == nil {
+						c.aliasDeprecated = map[*syntax.Call]bool{}
+					}
+					c.aliasDeprecated[c.ctorAliasCall] = true
+					break
+				}
+				if alias != nil {
+					c.errorf(at(i), "type argument is not within its bounds in the expansion of typealias %s: type parameter '%s' must be subtype of '%s', but actual: '%s'", alias.Name, ps[i].Name, b, a.T)
+				} else {
+					c.errorf(at(i), "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
+				}
+				break
+			}
+		}
+	}
+}
+
+// abbreviatedNothing reports the file's functions and properties whose
+// declared type is a typealias for Nothing, which kotlinc wants written
+// as Nothing (ABBREVIATED_NOTHING_RETURN_TYPE and _PROPERTY_TYPE).
+func (c *Checker) abbreviatedNothing() {
+	saved := c.lookupCls
+	var walk func(decls []syntax.Decl, cls *types.ClassSym)
+	walk = func(decls []syntax.Decl, cls *types.ClassSym) {
+		for _, d := range decls {
+			c.lookupCls = cls
+			switch d := d.(type) {
+			case *syntax.FunDecl:
+				if c.nothingAlias(d.Ret) {
+					c.errorf(d.P, "'Nothing' return type needs to be specified explicitly")
+				}
+			case *syntax.PropDecl:
+				if c.nothingAlias(d.Type) {
+					c.errorf(d.P, "'Nothing' property type needs to be specified explicitly")
+				}
+			case *syntax.ClassDecl:
+				walk(d.Members, d.Sym)
+			}
+		}
+	}
+	walk(c.file.Decls, nil)
+	c.lookupCls = saved
+}
+
+// nothingAlias reports whether ref names a typealias for Nothing.
+func (c *Checker) nothingAlias(ref *syntax.TypeRef) bool {
+	if ref == nil || ref.Name == "" || ref.Nullable || ref.Ret != nil || ref.Known != nil || len(ref.Args) > 0 {
+		return false
+	}
+	a := c.lookupAlias(ref.Name)
+	if a == nil {
+		return false
+	}
+	c.resolveAlias(a)
+	return a.Type.K == types.Nothing && !a.Type.N
+}
+
+// inferredAliasBounds warns of constructor call x through a typealias
+// whose type arguments it infers, Test(1, 2) of typealias Test<A, B> =
+// Hr<A, B, Foo<A>, Bar<B>>, if a class in its type's type arguments,
+// Bar<Int> for class Bar<B : CharSequence>, has an argument out of its
+// bounds: K2's UPPER_BOUND_VIOLATED_DEPRECATION_WARNING. The type's own
+// arguments are the call's, which inference keeps within its class's
+// bounds.
+func (c *Checker) inferredAliasBounds(x *syntax.Call) {
+	if !c.inferAliasArgs[x] {
+		return
+	}
+	t := x.Type()
+	if t.K != types.Class || t.A == nil || t.HasVars() {
+		return
+	}
+	var walk func(t types.Type) bool
+	walk = func(t types.Type) bool {
+		if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+			return false
+		}
+		s := classSubst(t)
+		for i, a := range t.A.List {
+			if a.V == types.Star || a.T.K == types.Invalid || a.T.IsParam() {
+				continue
+			}
+			for _, b := range t.C.TypeParams[i].Bounds {
+				if b = s.Apply(b); b.K != types.Invalid && !b.HasVars() && !c.subtype(a.T, b) {
+					c.warnf(calleePos(x), "UPPER_BOUND_VIOLATED_DEPRECATION_WARNING", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'. This will become an error in future releases", t.C.TypeParams[i].Name, b, a.T)
+					return true
+				}
+			}
+		}
+		for _, a := range t.A.List {
+			if a.V != types.Star && walk(a.T) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, a := range t.A.List {
+		if a.V != types.Star && walk(a.T) {
+			return
+		}
+	}
 }

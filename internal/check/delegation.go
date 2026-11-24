@@ -102,16 +102,7 @@ func (c *Checker) defaultImpls() {
 				// The class's or a superclass's abstract override of a
 				// member has no body to call: abstract class C : I {
 				// abstract override fun f() }.
-				for _, g := range delegable(s) {
-					if g.Abstract {
-						abstract[g.Name+paramKey(g)] = true
-					}
-				}
-				for _, p := range memberProps(s) {
-					if p.getter.Abstract {
-						abstract["prop "+p.name] = true
-					}
-				}
+				declaredAbstract(s, abstract)
 				return true
 			}
 			if !program && (!s.External || !s.Interface || s.KotlinName == "" || s.Java != nil || s.JVMDefault) {
@@ -335,8 +326,12 @@ func (c *Checker) noDefaultsChecks(d *syntax.ClassDecl) {
 // interface member g: a static method with its name that takes the
 // instance and its parameters.
 func hasImpl(impls *types.ClassSym, g *types.FunSym) bool {
+	n := len(g.Params) + 1 // and the interface's instance
+	if g.Ext {
+		n++ // and the receiver of a member extension: val T.prop
+	}
 	for _, h := range impls.Statics[g.JVM()] {
-		if len(h.Params) == len(g.Params)+1 {
+		if len(h.Params) == n {
 			return true
 		}
 	}
@@ -356,6 +351,31 @@ func delegateProp(d *syntax.ClassDecl, x syntax.Expr) *syntax.CtorParam {
 		}
 	}
 	return nil
+}
+
+// declaredAbstract adds to abstract the abstract methods and properties
+// that the program's class s declares, whose types are written, by the
+// keys of defaultImpls. Unlike delegable and memberProps, it infers no
+// omitted types, which are inferred in declaration order, as K2 does:
+// the order decides whether x.f() may invoke a property f of function
+// type (IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT).
+func declaredAbstract(s *types.ClassSym, abstract map[string]bool) {
+	cd, ok := s.Decl.(*syntax.ClassDecl)
+	if !ok {
+		return
+	}
+	for _, m := range cd.Members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			if m.Recv == nil && m.Sym != nil && m.Visibility != syntax.Private && m.Sym.Abstract {
+				abstract[m.Name+paramKey(m.Sym)] = true
+			}
+		case *syntax.PropDecl:
+			if m.Recv == nil && m.Sym != nil && m.Sym.Abstract {
+				abstract["prop "+m.Name] = true
+			}
+		}
+	}
 }
 
 // delegable returns the methods of interface s that delegation

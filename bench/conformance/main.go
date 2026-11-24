@@ -20,9 +20,15 @@
 // -kotlinc runs the tests (a -sample of them: it is slow) through the
 // same steps with kotlinc instead of kc, which checks the harness
 // itself: they must all pass.
+//
+// kc compiles on -j long-lived kc -serve processes (serve.go), which
+// keep the JDK's index and the library classes they read from test to
+// test: most of a test's compile is that work. -serve=false starts a kc
+// process for each module instead.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -45,12 +51,21 @@ func main() {
 	stdlib := flag.String("stdlib", "", "kotlin-stdlib.jar")
 	reflectJar := flag.String("reflect", "", "kotlin-reflect.jar")
 	kotlinTest := flag.String("test", "", "kotlin-test.jar, which the box tests' kotlin.test functions are in")
+	annotations := flag.String("annotations", "", "annotations-13.0.jar, the JetBrains annotations (org.jetbrains.annotations), which the test infrastructure puts on every test's class path")
 	java := flag.String("java", "java", "the java command")
 	javac := flag.String("javac", "javac", "the javac command")
 	out := flag.String("o", "", "the Markdown report to write")
 	tsv := flag.String("tsv", "", "the TSV file of results to write")
-	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with")
+	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with, read before -tsv is written; the harness fails if a test stopped passing")
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
+	list := flag.String("list", "", "only the tests whose paths, relative to the suite, this file lists, one a line (the first field of a TSV line; # starts a comment)")
+	strayErrs := flag.String("errors", "", "diagnostics mode: the TSV file to write kc's errors on lines without an expected diagnostic to (path, category, file:line, message)")
+	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line, or for a warning that warning (path, category, file:line, name, severity, hit or miss, and a missed diagnostic's cause)")
+	missedOut := flag.String("missed", "", "diagnostics mode: the TSV file to write the expected errors kc didn't report on their lines to (path, file:line, name, cause)")
+	missedBase := flag.String("missed-baseline", "", "diagnostics mode: a -missed file of an earlier run to compare with, read before -missed is written; with -baseline, the harness fails if an expected error kc reported on its line is missed")
+	missedWarnsOut := flag.String("missed-warnings", "", "diagnostics mode: the TSV file to write the expected warnings kc didn't report on their lines to (path, file:line, name, cause)")
+	missedWarnsBase := flag.String("missed-warnings-baseline", "", "diagnostics mode: a -missed-warnings file of an earlier run to compare with, read before -missed-warnings is written; with -baseline, the harness fails if an expected warning kc reported on its line is missed")
+	strayWarns := flag.String("warnings", "", "diagnostics mode: the TSV file to write kc's warnings on lines that don't expect them to (path, category, file:line, name, message)")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
 	jobs := flag.Int("j", runtime.NumCPU(), "tests compiled at a time")
@@ -58,6 +73,7 @@ func main() {
 	timeout := flag.Duration("timeout", 10*time.Second, "how long a test's box() may run")
 	work := flag.String("work", filepath.Join(os.TempDir(), "kc-conformance"), "directory for the compiled tests")
 	keep := flag.Bool("keep", false, "keep the compiled tests in -work")
+	serve := flag.Bool("serve", true, "compile on -j long-lived kc -serve processes, which keep the class path and the standard library's classes they read from test to test, instead of a kc process a module")
 	flag.Parse()
 	if *kotlin == "" || *stdlib == "" {
 		flag.Usage()
@@ -74,12 +90,45 @@ func main() {
 	if *kotlinTest != "" {
 		libs = append(libs, *kotlinTest)
 	}
-	comp := &compiler{kc: *kc, kotlinc: *kotlinc, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
+	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, annotations: *annotations, timeout: 2 * time.Minute,
+		checkerSets: *mode == "diagnostics"}
+	if *serve && *kotlinc == "" {
+		comp.servers = newKcPool(*kc, *jobs)
+		defer comp.servers.close()
+	}
 	if err := os.RemoveAll(*work); err != nil {
 		log.Fatal(err)
 	}
 	if err := os.MkdirAll(*work, 0o755); err != nil {
 		log.Fatal(err)
+	}
+	// Read before the run, whose TSV may replace it.
+	var baselineData []byte
+	if *baseline != "" {
+		var err error
+		if baselineData, err = os.ReadFile(*baseline); err != nil {
+			log.Fatal(err)
+		}
+	}
+	var missedData []byte
+	if *missedBase != "" {
+		if *baseline == "" {
+			log.Fatal("-missed-baseline needs -baseline")
+		}
+		var err error
+		if missedData, err = os.ReadFile(*missedBase); err != nil {
+			log.Fatal(err)
+		}
+	}
+	var missedWarnsData []byte
+	if *missedWarnsBase != "" {
+		if *baseline == "" {
+			log.Fatal("-missed-warnings-baseline needs -baseline")
+		}
+		var err error
+		if missedWarnsData, err = os.ReadFile(*missedWarnsBase); err != nil {
+			log.Fatal(err)
+		}
 	}
 	start := time.Now()
 
@@ -99,6 +148,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *list != "" {
+		if tests, err = filterList(tests, *list); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if *sample > 0 {
 		var run []*test
 		for _, t := range tests {
@@ -115,6 +169,7 @@ func main() {
 
 	var rs []*result
 	var report string
+	var missed, missedWarns []string // diagnostics mode: missedLines, missedWarningLines
 	good := func(cat string) bool { return cat == catPass }
 	switch *mode {
 	case "box":
@@ -140,10 +195,11 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut, strayWarns: *strayWarns}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}
+		missed, missedWarns = c.missed, c.missedWarns
 		good = func(cat string) bool { return cat == catRejectsInvalid || cat == catAcceptsValid }
 	}
 	elapsed := time.Since(start).Round(time.Second)
@@ -161,10 +217,36 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if *baseline != "" {
-		if err := compareBaseline(*baseline, rs, good); err != nil {
+	if *missedOut != "" {
+		data := missedHeader + "\n" + strings.Join(missed, "\n") + "\n"
+		if err := os.WriteFile(*missedOut, []byte(data), 0o644); err != nil {
 			log.Fatal(err)
 		}
+	}
+	if *missedWarnsOut != "" {
+		data := missedHeader + "\n" + strings.Join(missedWarns, "\n") + "\n"
+		if err := os.WriteFile(*missedWarnsOut, []byte(data), 0o644); err != nil {
+			log.Fatal(err)
+		}
+	}
+	var failed []error
+	if *baseline != "" {
+		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if *missedBase != "" {
+		if err := compareMissed("errors", *missedBase, missedData, baselineCategories(baselineData), rs, missed); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if *missedWarnsBase != "" {
+		if err := compareMissed("warnings", *missedWarnsBase, missedWarnsData, baselineCategories(baselineData), rs, missedWarns); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if err := errors.Join(failed...); err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -191,6 +273,28 @@ func findTests(suite, mode, filter string) ([]*test, error) {
 		return nil
 	})
 	return tests, err
+}
+
+// filterList returns the tests whose paths the file at name lists.
+func filterList(tests []*test, name string) ([]*test, error) {
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]bool{}
+	for _, l := range strings.Split(string(data), "\n") {
+		l, _, _ = strings.Cut(l, "#")
+		if f := strings.Fields(l); len(f) > 0 {
+			paths[f[0]] = true
+		}
+	}
+	var out []*test
+	for _, t := range tests {
+		if paths[t.path] {
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }
 
 func must[T any](v T, err error) T {

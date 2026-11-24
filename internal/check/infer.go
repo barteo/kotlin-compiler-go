@@ -1,6 +1,8 @@
 package check
 
 import (
+	"fmt"
+	"os"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -34,6 +36,10 @@ type tvar struct {
 	// projection, as T in KClass<T>.java for a KClass<*>: without other
 	// bounds, it is its declared bound.
 	star bool
+	// starArg is set when star is for a star projection of an argument's
+	// type, which is then known whatever variables the variable is equal
+	// to; not for the parameters of a delegate's operators.
+	starArg bool
 	// proj is set when it stands for a captured out or in projection, as
 	// T in Array<T> for an Array<out Enum<*>>: the capture is within T's
 	// bounds, even where its approximation isn't.
@@ -46,10 +52,64 @@ type tvar struct {
 	// fixed to it, which Subst approximates as Kotlin does, out Int in
 	// an invariant argument and Int at the top level (V is Inv if none).
 	capt types.Arg
+	// invRet is set when the variable is in an invariant or contravariant
+	// position of its call's result type, as T of Bar<T>, where K2 infers
+	// it from a T <: V? as T rather than T & Any.
+	invRet bool
 	// synth is set for a variable kc adds, which isn't a type parameter
 	// the code can give: openResult's. One without bounds, of a lambda
 	// whose body has errors, is the error type, without another error.
 	synth bool
+	// boundUp are the upper bounds that come from another variable's
+	// declared bound, which, as K2's DeclaredUpperBoundConstraintPosition,
+	// don't make the variable ready to fix.
+	boundUp []types.Type
+	// declUp are the upper bounds added from the declared bounds of the
+	// call's own type parameters, R <: T of <T : A, R : T>: a variable
+	// with no other constraints can't be inferred, as K2 has it.
+	declUp []types.Type
+	// wantUp are the upper bounds added from the type expected of the
+	// call, T <: String of val s: String = run { }, which a lambda's
+	// result that contradicts them is reported against (see
+	// postponedLambda).
+	wantUp []types.Type
+	// flexNull is set when null is passed for the variable's flexible
+	// type, V!: as K2's nullability constraint, it makes the variable
+	// Nothing? only if no other bound decides it, as T of a Java
+	// JavaBox<T>(T) for JavaBox(null) is.
+	flexNull bool
+	// typeArgUp are the upper bounds added from a parameter's type that
+	// the call's explicit type arguments give: as K2's constraints
+	// derived through those arguments' variables, they don't keep a
+	// flexNull variable from being Nothing?, so foo2<String>(JavaBox(null))
+	// for fun <S> foo2(a: JavaBox<out S>) is a mismatch where
+	// foo3(JavaBox(null)) for foo3(a: JavaBox<out String>) isn't (KT-67825).
+	typeArgUp []types.Type
+	// flexLower are the nullable lower bounds added from arguments passed
+	// for the variable's flexible type, Foo? <: V!: as K2's Foo? <: V?, an
+	// equality constraint V = Foo still holds with them (see
+	// equalityWins), so JavaBox(s) for a String? s is a JavaBox<String>
+	// where one is expected.
+	flexLower []types.Type
+	// strictFlex is set for the variables of a typealias's constructor,
+	// whose Foo? <: V! K2 keeps as Foo? <: V: kotlin.collections.HashSet(
+	// setOf(null)) is a HashSet<Nothing?> where a Set<String> is expected,
+	// though java.util.HashSet(setOf(null)) isn't.
+	strictFlex bool
+	// argUp are the upper bounds added in a type argument while an
+	// argument is constrained by its parameter's type, not one that
+	// explicit type arguments give: with them, a variable whose nullable
+	// lower bounds all come from its flexible type is that type's platform
+	// form (see flexArgWins). argTopUp are those added at the top level,
+	// T! <: String of eat(J.transform(null)), which, as K2's, don't
+	// decide a variable null is passed for (see platformUpper).
+	argUp, argTopUp []types.Type
+	// strictArg are the bounds added from a parameter's type in which
+	// the call's explicit type arguments are not flexible, as String of
+	// kg<String>(JavaBox(s)) for fun <S> kg(b: JavaBox<S>): K2 holds
+	// neither Foo? <: V! nor null passed for V! with them, so that call
+	// is a mismatch for a String? s, and so is kg<String>(JavaBox(null)).
+	strictArg []types.Type
 }
 
 type inferError struct {
@@ -68,11 +128,60 @@ type system struct {
 	// an argument of another call leaves those whose parameter types are
 	// still unknown to the outer call.
 	lambdas []pendingLambda
-	ok      bool // false once a constraint cannot hold
-	depth   int
+	// openLambdas are, for the system of a call that is an argument of
+	// another, the lambdas without parameter types passed before it to
+	// the other: see afterOpenLambda.
+	openLambdas []*syntax.Lambda
+	ok          bool // false once a constraint cannot hold
+	// nothingFix makes the variables it can't infer Nothing, besides the
+	// error: a builder's, whose lambda isn't inferred, as K2 fixes them
+	// (see lambdaResult.nothingTail).
+	nothingFix bool
+	depth      int
 	// nest counts the type arguments that sub is inside of: only a top-level
 	// argument's projection is captured.
 	nest int
+	// contra counts the in-projected type arguments sub is inside of.
+	contra int
+	// declaring is set while the declared bounds of fresh variables are
+	// added (see tvar.declUp).
+	declaring int
+	// expecting is set while the type expected of the call is added (see
+	// tvar.wantUp).
+	expecting int
+	// typeArgs is set while an argument is constrained by a parameter's
+	// type that explicit type arguments give (see tvar.typeArgUp).
+	typeArgs int
+	// argParams is set while an argument is constrained by its
+	// parameter's type (see tvar.argUp).
+	argParams int
+	// strictArgs is set while an argument is constrained by a parameter's
+	// type in which explicit type arguments are not flexible (see
+	// tvar.strictArg).
+	strictArgs int
+	// forks are the fork points not resolved yet (see fork).
+	forks []fork
+	// wholeForks is set where a fork's branch is taken only if the whole
+	// system then holds (see solves): in a builder's run, whose forks K2
+	// resolves once its lambda is analyzed. Elsewhere the first branch
+	// that its own constraints allow is.
+	wholeForks bool
+	// dep is the builder's run whose variables the call's receiver,
+	// arguments or expected type mention (see dependentRun): finish then
+	// completes it as K2's postponed call.
+	dep *stubRun
+	// elvisRet and elvisWant are the result type of a call on the left
+	// of an elvis and the type its right side gives it, where nothing
+	// else is expected (see elvisHint).
+	elvisRet, elvisWant types.Type
+}
+
+// fork is K2's fork point: an intersection below a class type through
+// more than one of its components, A<Int> & A<T> <: A<F>, each giving
+// other constraints. The first consistent with the others is taken.
+type fork struct {
+	sups []types.Type // the components' instances of b's class
+	b    types.Type
 }
 
 func newSystem(c *Checker) *system {
@@ -102,20 +211,35 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 				// fun <T : B> bar(t: T), is only Nothing: no argument is.
 				tv.captBound = true
 			}
+			if !b.IsParam() && b.Has(func(u types.Type) bool {
+				return u.IsParam() && base[u.Param()].V != types.Inv && base[u.Param()].T.K != types.Invalid
+			}) {
+				// A bound with a receiver's projection holds its capture,
+				// approximated as K2 approximates it in a parameter's
+				// type: E : Out<T> of an A<out CharSequence> is
+				// Out<Nothing>, G : In<T> an In<CharSequence> (see
+				// typeArgBounds).
+				vs[i].Bounds = append(vs[i].Bounds, sub.ApplyParam(b))
+				continue
+			}
 			vs[i].Bounds = append(vs[i].Bounds, sub.Apply(b))
 		}
 		s.vars = append(s.vars, tv)
 		s.byVar[vs[i]] = tv
 	}
 	// A bound that mentions another of the variables relates them: C's
-	// in <C : Iterable<T>> gives T from C's argument, as in onEach.
+	// in <C : Iterable<T>> gives T from C's argument, as in onEach. So
+	// does one that mentions a builder's variable that stubInference
+	// infers: S of yieldAll<S : T>(seq: Inv<S>) on an Inv<U> is U's.
 	for i := range ps {
 		for _, b := range vs[i].Bounds {
 			other := b.Has(func(u types.Type) bool {
-				return u.K == types.TypeVar && u.Param() != vs[i] && s.byVar[u.Param()] != nil
+				return u.K == types.TypeVar && u.Param() != vs[i] && (s.byVar[u.Param()] != nil || s.c.stubs[u.Param()] != nil)
 			})
 			if other {
+				s.declaring++
 				s.addUpper(s.byVar[vs[i]], b)
+				s.declaring--
 			}
 		}
 	}
@@ -128,11 +252,20 @@ func (s *system) clone() *system {
 	}
 	n := &system{c: s.c, byVar: make(map[*types.TypeParamSym]*tvar, len(s.vars)), vals: make(types.Subst, len(s.vals)),
 		fixups: append([]func(*system){}, s.fixups...), errs: append([]inferError{}, s.errs...), ok: s.ok,
-		lambdas: append([]pendingLambda{}, s.lambdas...)}
+		lambdas: append([]pendingLambda{}, s.lambdas...), forks: slices.Clip(s.forks), wholeForks: s.wholeForks}
 	for _, tv := range s.vars {
 		c := *tv
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
+		c.wantUp = slices.Clip(tv.wantUp)
+		c.typeArgUp = slices.Clip(tv.typeArgUp)
+		c.flexLower = slices.Clip(tv.flexLower)
+		c.argUp, c.argTopUp = slices.Clip(tv.argUp), slices.Clip(tv.argTopUp)
+		c.strictArg = slices.Clip(tv.strictArg)
+		// declUp is edited in place (see addUpper), and boundUp appended to:
+		// a clone that shared them would change the system it is a copy of.
+		c.declUp = slices.Clone(tv.declUp)
+		c.boundUp = slices.Clone(tv.boundUp)
 		c.lits = append([]*syntax.IntLit{}, tv.lits...)
 		n.vars = append(n.vars, &c)
 		n.byVar[c.v] = &c
@@ -161,7 +294,83 @@ func (s *system) merge(o *system) {
 	s.fixups = append(s.fixups, o.fixups...)
 	s.errs = append(s.errs, o.errs...)
 	s.lambdas = append(s.lambdas, o.lambdas...)
+	s.forks = append(s.forks, o.forks...)
 	s.ok = s.ok && o.ok
+}
+
+// resolveForks takes, for each fork point, the first branch whose
+// constraints are consistent with the others, or the first
+// (applyTheBestBranchFromForkPoint).
+func (s *system) resolveForks() {
+	if len(s.forks) > 0 && s.c.joinRun(s) != nil {
+		// Related to a builder's variables: its run resolves them, with
+		// all its lambda's constraints, without recording each branch's.
+		return
+	}
+	for len(s.forks) > 0 && s.ok {
+		f := s.forks[0]
+		s.forks = s.forks[1:]
+		chosen := false
+		for _, sup := range f.sups {
+			t := s.clone()
+			t.subArgs(sup, f.b)
+			if t.ok && (!s.wholeForks || t.solves()) {
+				*s = *t
+				chosen = true
+				break
+			}
+		}
+		if !chosen {
+			s.subArgs(f.sups[0], f.b)
+		}
+	}
+}
+
+// solves reports whether a copy of s, its lambdas left out, completes
+// without errors: T <: S of a builder's yield(w) with F := Int and F = S
+// doesn't.
+func (s *system) solves() bool {
+	t := s.clone()
+	t.lambdas, t.fixups = nil, nil
+	n := len(t.errs)
+	t.complete()
+	return t.ok && len(t.errs) == n
+}
+
+// stubFork returns the run of stubInference's whose variables are all
+// that b, a fork's supertype, has, if they are a run's and none is s's.
+func (s *system) stubFork(b types.Type) *stubRun {
+	var r *stubRun
+	ok := !b.Has(func(u types.Type) bool {
+		if u.K != types.TypeVar {
+			return false
+		}
+		q := s.c.stub(u)
+		if q == nil || s.byVar[u.Param()] != nil || r != nil && q != r {
+			return true
+		}
+		r = q
+		return false
+	})
+	if !ok {
+		return nil
+	}
+	return r
+}
+
+// forkSups returns the instances of b's class of the components of
+// intersection a, if more than one, differing, give one.
+func (s *system) forkSups(a, b types.Type) []types.Type {
+	var sups []types.Type
+	for _, comp := range a.Param().Bounds {
+		if sup, ok := s.c.asSuper(comp, b.C); ok && !slices.Contains(sups, sup) {
+			sups = append(sups, sup)
+		}
+	}
+	if len(sups) < 2 {
+		return nil
+	}
+	return sups
 }
 
 // apply replaces fixed variables in t by their values.
@@ -206,7 +415,43 @@ func (s *system) sub(a, b types.Type) {
 	case b.K == types.TypeVar && s.byVar[b.Param()] != nil:
 		tv := s.byVar[b.Param()]
 		switch {
+		case pa.P && b.P:
+			// T! <: V! gives V = T!, which takes null, not V = T & Any:
+			// SortedComboBoxModel(Comparator.comparing(f)) is a
+			// SortedComboBoxModel<DataView!>, as in Kotlin.
+			a = pa
+			if a.K == types.TypeVar && s.byVar[a.Param()] != nil {
+				// As K2's (T & Any .. T?) <: V, a T! with D, which is X!
+				// for T = X?: F of asList(x.toArray(y)) for a y of
+				// Array<String?> is a String!.
+				a.D = true
+			}
+		case b.N && !b.P && tv.invRet && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
+			// As K2 prefers it, T <: V? gives T <: V, not T & Any <: V,
+			// where V may take T and is invariant or contravariant in the
+			// call's result: Bar(t) for class Bar<T>(t: T?) and a t: T is
+			// a Bar<T>, but removeQuestionMark(t) for fun <K>
+			// removeQuestionMark(x: K?): K is a T & Any.
+		case b.P && a.N && a.K != types.Null && s.contra == 0:
+			// As K2 does, Foo? <: V! gives Foo? <: V: a Java <T> T
+			// transform(T) called with a String? returns a String?. Not
+			// in an in-projected type argument, where K2's equality constraints of
+			// explicit type arguments, which kc substitutes, make it
+			// flexible: S of Renderer.create { it.length } for a
+			// Renderer<in T?> of comboBox<String> is a String!.
+			if !tv.strictFlex {
+				s.addFlexLower(tv, a)
+				return
+			}
+		case b.P && !a.N && a.K != types.TypeVar && a.K != types.Nothing:
+			// And Foo <: V! gives Foo! <: V, a flexible lower bound,
+			// which V is then fixed before others for: Key<T> <: Key<K!>
+			// makes K a T!, which takes the T? of select(value, null).
+			a = a.Platform()
 		case b.N:
+			if b.P && a.K == types.Null && s.contra == 0 {
+				tv.flexNull = true
+			}
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
 			s.ok = false
@@ -219,17 +464,34 @@ func (s *system) sub(a, b types.Type) {
 		s.addLower(tv, a)
 		if a.K == types.TypeVar && !a.N && s.byVar[a.Param()] != nil {
 			// The constraint bounds both: the other variable is then
-			// fixed after this one.
+			// fixed after this one. V & Any <: b gives V <: b?.
+			if dnn {
+				b = b.Nullable()
+			}
 			s.addUpper(s.byVar[a.Param()], b)
 		}
 	case a.K == types.TypeVar && s.byVar[a.Param()] != nil:
 		tv := s.byVar[a.Param()]
+		if r := s.c.stub(b); r != nil && a.N && !b.N {
+			// V? <: a builder's variable says that takes null: see
+			// stubInference.
+			s.ok = r.add(a, b)
+			return
+		}
 		if a.N && !types.AcceptsNull(b) && !(b.K == types.TypeVar && b.N) {
 			s.ok = false
 			return
 		}
-		if dnn {
+		switch {
+		case dnn:
 			b = b.Nullable() // V & Any <: b gives V <: b?
+		case pa.P && !b.N && s.strictArgs == 0:
+			// As K2 does, V! <: b gives V <: b!: Key<T> <: Key<K!> lets
+			// K take a T? too. Not for explicit type arguments that
+			// aren't flexible: nl<String>(singletonList(s)) for a Java
+			// <T extends @NotNull Object> nl(List<T>) is a mismatch for a
+			// String? s (see tvar.strictArg).
+			b = b.Platform()
 		}
 		s.addUpper(tv, b)
 	case a.K == types.Nothing:
@@ -245,6 +507,18 @@ func (s *system) sub(a, b types.Type) {
 		switch b.K {
 		case types.Any:
 		case types.Class:
+			if a.IsIntersection() && b.HasVars() {
+				if sups := s.forkSups(a, b); sups != nil {
+					if r := s.stubFork(b); r != nil {
+						// Over a builder's variables alone: its run
+						// resolves it with all the lambda's constraints.
+						r.forks = append(r.forks, fork{sups, b})
+						return
+					}
+					s.forks = append(s.forks, fork{sups, b})
+					return
+				}
+			}
 			sup, ok := s.c.asSuper(a, b.C)
 			if ro, flex := readOnlyView(b); !ok && flex {
 				sup, ok = s.c.asSuper(a, ro.C)
@@ -290,11 +564,13 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		case types.In:
 			s.nest++
+			s.contra++
 			if ta.V == types.Star || ta.V == types.Out {
 				s.sub(ba.T, types.NothingType)
 			} else {
 				s.sub(ba.T, ta.T)
 			}
+			s.contra--
 			s.nest--
 		default:
 			if ta.V != types.Inv {
@@ -311,13 +587,37 @@ func (s *system) subArgs(sup, b types.Type) {
 				}
 				switch ta.V {
 				case types.Out:
+					if s.nest == 0 && tv.v.Origin != nil {
+						// As in K2, the capture of out X for a builder's
+						// variable X, which K2 can't approximate, can't be
+						// inferred: capture(getOut()) for an Inv<out R>.
+						if s.c.stub(ta.T.Flex()) != nil {
+							if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, msg}) {
+								s.errs = append(s.errs, inferError{tv.pos, msg})
+							}
+						}
+					}
 					tv.proj = true
 					s.addLower(tv, ta.T)
 				case types.In:
 					tv.proj = true
+					if s.nest == 0 && !ba.T.D && !s.captureFits(tv, sup.C.TypeParams[i]) {
+						// The capture of in X is below the class's bound,
+						// not the variable's: T : Any of bar(Array<T>) for
+						// an Array<in Int>.
+						s.ok = false
+						return
+					}
 					s.addUpper(tv, ta.T)
 				default:
 					tv.star = true
+					tv.starArg = true
+					if s.nest == 0 && !ba.T.D && tv.capt.V == types.Inv && !selfBounded(sup.C, i) {
+						// A star's capture, which a parameter of the
+						// argument's supertype takes too: Fu<F> for a CF<*>.
+						// A self type's is the variable's own star.
+						tv.capt = types.Arg{V: types.Out, T: starArgBound(sup, i)}
+					}
 				}
 				continue
 			}
@@ -327,6 +627,44 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		}
 	}
+}
+
+// markInvRet sets invRet on the variables in invariant or contravariant
+// positions of t, a call's result type.
+func (s *system) markInvRet(t types.Type) {
+	var walk func(t types.Type, inv bool)
+	walk = func(t types.Type, inv bool) {
+		switch t.K {
+		case types.TypeVar:
+			if tv := s.byVar[t.Param()]; tv != nil && inv {
+				tv.invRet = true
+			}
+		case types.Class:
+			if t.A == nil {
+				return
+			}
+			for i, a := range t.A.List {
+				v := a.V
+				if v == types.Inv && i < len(t.C.TypeParams) {
+					v = t.C.TypeParams[i].Var
+				}
+				if v != types.Star {
+					walk(a.T, inv || v != types.Out)
+				}
+			}
+		}
+	}
+	walk(t, false)
+}
+
+// nonNullBound reports whether one of tv's declared bounds excludes null.
+func (s *system) nonNullBound(tv *tvar) bool {
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !types.AcceptsNull(b) {
+			return true
+		}
+	}
+	return false
 }
 
 // unfixedVar returns the variable that t is, if it is an unfixed one of
@@ -345,23 +683,94 @@ func (s *system) unfixedVar(t types.Type) *tvar {
 func (s *system) addLower(tv *tvar, t types.Type) {
 	for _, l := range tv.lower {
 		if l == t {
+			// Passed for a type that isn't flexible too.
+			tv.flexLower = slices.DeleteFunc(tv.flexLower, func(f types.Type) bool { return f == t })
+			if s.strictArgs == 0 {
+				tv.strictArg = slices.DeleteFunc(tv.strictArg, func(a types.Type) bool { return a == t })
+			}
 			return
 		}
 	}
 	tv.lower = append(tv.lower, t)
+	if s.strictArgs > 0 {
+		tv.strictArg = append(tv.strictArg, t)
+	}
 	for _, u := range tv.upper {
 		s.sub(t, u)
 	}
 }
 
+// argUpper reports whether an upper bound added now is one of tv.argUp.
+func (s *system) argUpper() bool {
+	return s.argParams > 0 && s.typeArgs == 0 && s.expecting == 0 && s.declaring == 0
+}
+
+// addFlexLower adds nullable lower bound t from an argument passed for
+// tv's flexible type, Foo? <: V!, which, as K2's Foo? <: V?, an upper
+// bound that doesn't take null holds with (see tvar.flexLower).
+func (s *system) addFlexLower(tv *tvar, t types.Type) {
+	if slices.Contains(tv.lower, t) {
+		return
+	}
+	tv.lower = append(tv.lower, t)
+	tv.flexLower = append(tv.flexLower, t)
+	for _, u := range tv.upper {
+		if s.flexRelaxes(tv, u) {
+			s.sub(t.NonNull(), u)
+		} else {
+			s.sub(t, u)
+		}
+	}
+}
+
+// flexRelaxes reports whether upper bound u of tv holds with a lower
+// bound Foo? from tv's flexible type for Foo, as K2's Foo? <: V?: not a
+// variable, which gets Foo? (T of nn(JavaBox(s)) for a Java <T extends
+// @NotNull Object> nn(JavaBox<T>) is a String?), nor one of tv.strictArg.
+func (s *system) flexRelaxes(tv *tvar, u types.Type) bool {
+	return s.unfixedVar(u) == nil && !slices.Contains(tv.strictArg, u)
+}
+
 func (s *system) addUpper(tv *tvar, t types.Type) {
 	for _, u := range tv.upper {
 		if u == t {
+			if !s.argUpper() || s.nest == 0 {
+				// One of another constraint's too.
+				tv.argUp = slices.DeleteFunc(tv.argUp, func(a types.Type) bool { return a == t })
+			}
+			if s.strictArgs == 0 {
+				tv.strictArg = slices.DeleteFunc(tv.strictArg, func(a types.Type) bool { return a == t })
+			}
+			if s.declaring == 0 {
+				// A constraint of the call's own, not only declared.
+				tv.declUp = slices.DeleteFunc(tv.declUp, func(d types.Type) bool { return d == t })
+			}
 			return
 		}
 	}
 	tv.upper = append(tv.upper, t)
+	if s.declaring > 0 {
+		tv.declUp = append(tv.declUp, t)
+	}
+	if s.expecting > 0 {
+		tv.wantUp = append(tv.wantUp, t)
+	}
+	if s.typeArgs > 0 {
+		tv.typeArgUp = append(tv.typeArgUp, t)
+	}
+	switch {
+	case s.argUpper() && s.nest > 0:
+		tv.argUp = append(tv.argUp, t)
+	case s.argUpper():
+		tv.argTopUp = append(tv.argTopUp, t)
+	}
+	if s.strictArgs > 0 {
+		tv.strictArg = append(tv.strictArg, t)
+	}
 	for _, l := range tv.lower {
+		if slices.Contains(tv.flexLower, l) && s.flexRelaxes(tv, t) {
+			l = l.NonNull()
+		}
 		s.sub(l, t)
 	}
 	// Below another variable, it is below that one's declared bound too,
@@ -370,6 +779,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 	if w := s.unfixedVar(t); w != nil && w != tv {
 		for _, b := range w.v.Bounds {
 			if b = s.apply(b); !b.HasVars() && !(b.K == types.Any && b.N) {
+				if !slices.Contains(tv.upper, b) {
+					tv.boundUp = append(tv.boundUp, b)
+				}
 				s.addUpper(tv, b)
 			}
 		}
@@ -449,6 +861,7 @@ func (s *system) unfixed() bool {
 // complete fixes every variable, in an order that fixes a variable only
 // once the bounds it depends on are known.
 func (s *system) complete() {
+	s.resolveForks()
 	for {
 		var pick *tvar
 		best := -2
@@ -456,10 +869,14 @@ func (s *system) complete() {
 			if tv.fixed {
 				continue
 			}
-			if len(tv.lower) == 0 && len(tv.upper) == 0 && len(tv.lits) == 0 {
+			if len(tv.lower) == 0 && len(tv.upper) == 0 && len(tv.lits) == 0 && !(tv.star && s.isUpperOf(tv)) {
 				// Without bounds, last: fixing the others may give it
 				// some, as T's value Map<String, Int> does K and V in
 				// stateIn(initialValue = emptyMap()) on a Flow<Map<..>>.
+				// A captured star that another variable is below is
+				// known: G of <G : Enum<G>, T : G> on an Enum<*> is
+				// fixed before T. As an argument of another's bound, ER
+				// in ED : EventData<ER>, it still waits.
 				if best < -1 {
 					pick, best = tv, -1
 				}
@@ -473,16 +890,24 @@ func (s *system) complete() {
 			for _, l := range tv.lower {
 				if s.proper(l) {
 					score = 2
-				} else {
+				} else if !(tv.starArg && s.isVar(l)) {
+					// A captured star is known whatever the variables it
+					// is equal to: A of id's Inv<A> for a star() of Inv<*>
+					// in hh(id(star())), which hh's A then is.
 					allProper = false
 					nested = nested || !s.isVar(l)
 				}
 			}
 			// An upper bound that is another variable, as T2 in T1 <: T2,
 			// is that variable's lower bound too, which is fixed first.
-			varUppers := 0
+			varUppers, boundUppers := 0, 0
 			for _, u := range tv.upper {
 				switch {
+				case slices.Contains(tv.boundUp, u) && s.proper(u):
+					// Known, but not one to make the variable ready
+					// before one with a constraint of the call's own.
+					boundUppers++
+					score = max(score, 1)
 				case s.proper(u):
 					score = max(score, 1)
 				case s.isVar(u):
@@ -494,7 +919,11 @@ func (s *system) complete() {
 			if len(tv.lits) > 0 {
 				score = max(score, 1)
 			}
-			if allProper && (varUppers == 0 || len(tv.upper) > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
+			if slices.ContainsFunc(tv.lower, func(l types.Type) bool { return l.P && s.proper(l) }) {
+				// K2's HAS_PROPER_FLEXIBLE_LOWER_CONSTRAINT.
+				score += 4
+			}
+			if allProper && (varUppers == 0 || len(tv.upper)-boundUppers > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
 				score += 3
 			}
 			if nested && score > 0 {
@@ -509,18 +938,115 @@ func (s *system) complete() {
 		if pick == nil {
 			return
 		}
+		if k2Readiness != "kc" {
+			var k2 *tvar
+			bestR := -1
+			for _, tv := range s.vars {
+				if !tv.fixed {
+					if r := s.readiness(tv); r > bestR {
+						k2, bestR = tv, r
+					}
+				}
+			}
+			if best >= 0 && len(k2.lower) == 0 && len(k2.upper) == 0 && len(k2.lits) == 0 && !k2.star {
+				// One without bounds still waits for the others, whose
+				// values may give it some: T of failure(e) in
+				// cont.resume(failure(e)), for a builder's Continuation
+				// of its variable, is known once resume's T is that
+				// variable.
+				k2 = pick
+			}
+			if k2 != pick {
+				if k2Readiness == "log" {
+					fmt.Fprintf(os.Stderr, "READINESS %s: kc %s, K2 %s\n", pick.pos, pick.v.Name, k2.v.Name)
+				} else {
+					pick = k2
+				}
+			}
+		}
 		s.fix(pick)
 	}
 }
 
+// k2Readiness, from $KC_READINESS, keeps complete's own order of fixing
+// ("kc"), or keeps it and logs where K2's readiness order differs
+// ("log"); otherwise complete fixes variables in K2's order.
+var k2Readiness = os.Getenv("KC_READINESS")
+
+// isUpperOf reports whether tv is itself an upper bound of another
+// unfixed variable.
+func (s *system) isUpperOf(tv *tvar) bool {
+	for _, o := range s.vars {
+		if o == tv || o.fixed {
+			continue
+		}
+		for _, u := range o.upper {
+			if u.K == types.TypeVar && u.Param() == tv.v {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // fix chooses a value for a variable from its known bounds.
+// flexNull reports whether null was passed for tv's flexible type, or
+// that of a variable it is equal to or bounded by: T of
+// foo6(JavaBox(null)) for a Java <T> JavaBox<T> foo6(JavaBox<T>) is
+// JavaBox's.
+func (s *system) flexNull(tv *tvar) bool {
+	if tv.flexNull {
+		return true
+	}
+	for _, b := range append(slices.Clone(tv.lower), tv.upper...) {
+		if w := s.unfixedVar(b); w != nil && w != tv && w.flexNull {
+			return true
+		}
+	}
+	return false
+}
+
+// lambdaInput reports whether variable tv is in the types of the
+// receiver, contexts or parameters of a lambda not yet checked.
+func (s *system) lambdaInput(tv *tvar) bool {
+	for _, pl := range s.lambdas {
+		f := s.apply(pl.p).Flex().NonNull()
+		if !f.IsFunc() || f.A == nil {
+			continue
+		}
+		for i := range f.A.Len() - 1 {
+			if f.A.Get(i).T.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == tv.v }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *system) fix(tv *tvar) {
+	if len(s.forks) > 0 {
+		s.resolveForks()
+		tv = s.byVar[tv.v] // a clone's, if a branch was taken
+	}
+	// An unfixed variable below it with only integer literals passes
+	// them on, as K2 incorporates ILT <: T1 and T1 <: T: T of both(id(1),
+	// id("")) has 1 and "" below.
+	for _, l := range tv.lower {
+		if w := s.unfixedVar(l); w != nil && w != tv && len(w.lits) > 0 && !s.hasProperLower(w) {
+			for _, lit := range w.lits {
+				if !slices.Contains(tv.lits, lit) {
+					tv.lits = append(tv.lits, lit)
+				}
+			}
+		}
+	}
 	c := s.c
 	var lowers, uppers []types.Type
 	var stubs []types.Type
 	for _, l := range tv.lower {
 		if l = s.apply(l); !l.HasVars() {
-			lowers = append(lowers, l)
+			// listOf(set(key, null)) is a List<Nothing?>.
+			lowers = append(lowers, types.ApproxFlexNothing(l))
 		} else if s.c.onlyStubs(l) {
 			stubs = append(stubs, l)
 		}
@@ -547,9 +1073,48 @@ func (s *system) fix(tv *tvar) {
 		// bar(null, r) ?: x with T String? for an expected String?.
 		lowers = nil
 	}
+	if len(lowers) > 0 && len(tv.lits) == 0 && tv.v.Origin != nil && tv.v.Origin.Reified &&
+		!slices.ContainsFunc(lowers, func(l types.Type) bool { return l.K != types.Nothing && l.K != types.Null }) {
+		// Nothing is no reified type argument: as K2, one from lower
+		// bounds that are all Nothing yields to an upper bound, a
+		// declared one too (T of takeReified<T : Bound>(null) is Bound).
+		ups := uppers
+		if len(ups) == 0 {
+			for _, b := range tv.v.Bounds {
+				if b = s.apply(b); !b.HasVars() && !(b.K == types.Class && b.C == types.AnyType.C && b.N) {
+					ups = append(ups, b)
+				}
+			}
+		}
+		if len(ups) > 0 {
+			lowers, uppers = nil, ups
+		}
+	}
+	// Without other bounds, a declared bound that is a self type counts
+	// as one (see selfTypeBounds).
+	var selfStar []types.Type
+	if len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) == 0 && !tv.star && !tv.synth {
+		if bs, own, ok := s.selfTypeBounds(tv); ok {
+			if len(bs) > 0 {
+				uppers = bs
+			} else {
+				selfStar = own
+			}
+		}
+	}
 	val := types.InvalidType
 	captured := false
+	declOnly := len(tv.lower) == 0 && len(tv.lits) == 0 && len(tv.upper) > 0 && !tv.star && !tv.synth &&
+		!slices.ContainsFunc(tv.upper, func(u types.Type) bool { return !slices.Contains(tv.declUp, u) })
+	if declOnly {
+		// A builder's variable is inferred from its lambda's stubs.
+		declOnly = len(s.c.stubs) == 0 && len(stubs) == 0 && len(upperStubs) == 0 && len(s.lambdas) == 0
+	}
 	switch {
+	case declOnly:
+		// Only its declared bounds: R of <T : A, R : T> in a call that
+		// gives neither.
+		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	case len(lowers) > 0:
 		val = lowers[0]
 		for _, l := range lowers[1:] {
@@ -560,6 +1125,38 @@ func (s *system) fix(tv *tvar) {
 		}
 		if len(lowers) > 1 && len(tv.lits) == 0 {
 			val = s.withinUppers(val, lowers, uppers)
+			val = s.flexExact(val, lowers, uppers)
+		}
+		if len(lowers) > 1 {
+			val = s.equalityWins(tv, val, lowers, uppers)
+		}
+		val = s.flexArgWins(tv, val, lowers, uppers)
+		// A nullable lower bound with variables makes it nullable too, as
+		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M
+		// String.
+		if !types.MayBeNull(val) && slices.ContainsFunc(tv.lower, func(l types.Type) bool {
+			l = s.apply(l)
+			return l.HasVars() && l.N && (l.K != types.TypeVar || len(lowers) > 0 && !l.P)
+		}) {
+			val = val.Nullable()
+		}
+		if s.flexNull(tv) && len(tv.lits) == 0 && !slices.ContainsFunc(lowers, func(l types.Type) bool {
+			return l.K != types.Nothing && !slices.Contains(tv.strictArg, l)
+		}) {
+			if u, ok := s.platformUpper(tv, uppers); ok {
+				// It is the platform form of an upper bound from a
+				// flexible type, which decides it: Collections.singletonList(
+				// null) for a List<String> is a List<String!>.
+				val = u
+			} else if !slices.ContainsFunc(tv.upper, func(u types.Type) bool {
+				if slices.Contains(tv.typeArgUp, u) || slices.Contains(tv.strictArg, u) {
+					return false
+				}
+				u = s.apply(u)
+				return !u.HasVars() && !types.AcceptsNull(u)
+			}) {
+				val = types.NullType
+			}
 		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
 			// A UInt from unsigned literals is the variable's ULong,
@@ -584,18 +1181,21 @@ func (s *system) fix(tv *tvar) {
 				val = u.NonNull() // Any and List<Any>? give List<Any>
 			case !types.MayBeNull(u) && c.subtype(val.NonNull(), u):
 				val = val.NonNull()
+			case u.IsParam() && !u.N && types.MayBeNull(val) && !c.subtype(val, u) && c.subtype(val.NonNull(), u):
+				// Z? and an M that may be null, for Z : M, give Z, below
+				// both, for K2's Z? & M.
+				val = val.NonNull()
 			}
 		}
 		// Bounds that none of the others is below give their
 		// intersection: E <: Int and E <: String, of In<E> for an
 		// In<Int> and an In<String>, give Int & String, of which kotlinc
-		// only warns that it is empty. Where the variable has declared
-		// bounds, an empty one stays an error, as S <: Long? and S <:
-		// Double? of S : T? are (see the bounds below).
+		// only warns that it is empty, with declared bounds too (a
+		// candidate with one is inapplicable among others: see
+		// emptyUppers).
 		comps := []types.Type{val}
 		for _, u := range uppers {
-			if !c.subtype(val, u) && intersectable(u) && intersectable(val) &&
-				(len(tv.v.Bounds) == 0 || !c.emptyIntersection(val, u)) {
+			if !c.subtype(val, u) && intersectable(u) && intersectable(val) {
 				comps = append(comps, u)
 			}
 		}
@@ -607,7 +1207,9 @@ func (s *system) fix(tv *tvar) {
 		// A with a nullable bound and T : Any, gives T = A & Any.
 		if types.MayBeNull(val) {
 			for _, b := range tv.v.Bounds {
-				if b = s.apply(b); !b.HasVars() && !types.AcceptsNull(b) {
+				// A class bound's nullability doesn't depend on variables
+				// in its arguments: T? <: TestEnum? for T : Enum<T>.
+				if b = s.apply(b); (!b.HasVars() || b.K == types.Class) && !types.AcceptsNull(b) {
 					val = val.NonNull()
 					break
 				}
@@ -623,16 +1225,31 @@ func (s *system) fix(tv *tvar) {
 				val = b
 			}
 		}
+	case len(selfStar) > 0:
+		// Kotlin's captured star of the variable's own bounds, which kc
+		// approximates by them: B of <B : Builder<B>> is Builder<*>.
+		captured = true
+		val = selfStar[0]
+		if len(selfStar) > 1 {
+			val = c.intersect(selfStar)
+		}
 	case tv.synth:
 		val = types.InvalidType
 	default:
+		if b, ok := s.platformBound(tv); ok {
+			val = b
+			break
+		}
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		if s.nothingFix {
+			val = types.NothingType
+		}
 	}
 	// A variable with only upper constraints is their intersection with
 	// its declared bounds, as K2 infers it. kc has no intersection types:
 	// it takes a bound below the constraints, and otherwise keeps them,
-	// unless the intersection is empty: S of fun <S : Out<B>> for
-	// Foo<in S> and a Foo<K> of K : Out<L> is K & Out<B>.
+	// empty or not: S of fun <S : Out<B>> for Foo<in S> and a Foo<K> of
+	// K : Out<L> is K & Out<B>.
 	upperOnly := len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) > 0
 	inBounds := map[int]bool{}
 	if upperOnly {
@@ -652,10 +1269,18 @@ func (s *system) fix(tv *tvar) {
 				s.errs = append(s.errs, inferError{tv.pos, "type argument for reified type parameter '" + tv.v.Name +
 					"' was inferred to the intersection of ['" + b.String() + "' & '" + val.String() + "']"})
 				inBounds[i] = true
-			case !c.emptyIntersection(val, b):
+			default:
+				// K2 infers the intersection, of which kotlinc only warns
+				// if it is empty, as T of fun <T : Foo> foo(): T? for a
+				// Bar? is Foo & Bar; kc keeps the constraints'.
 				inBounds[i] = true
 			}
 		}
+	}
+	if len(lowers) > 0 && s.lambdaInput(tv) {
+		// As K2 approximates the input types of a lambda: T of
+		// it.checkType { } for a lambda that takes a capture.
+		val = approxCaptures(val)
 	}
 	if !s.onlyInputOK(tv, val) {
 		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
@@ -669,8 +1294,23 @@ func (s *system) fix(tv *tvar) {
 	if val.K == types.Invalid {
 		return
 	}
-	if tv.capt.V != types.Inv {
+	// A declared bound that mentions it is now the fixation's
+	// constraint, which K2 counts: T <: G of <G : Enum<G>, T : G> once G
+	// is known from the receiver.
+	for _, o := range s.vars {
+		if len(o.declUp) > 0 {
+			o.declUp = slices.DeleteFunc(o.declUp, func(u types.Type) bool {
+				return u.Has(func(w types.Type) bool { return w.K == types.TypeVar && w.Param() == tv.v })
+			})
+		}
+	}
+	switch {
+	case tv.capt.V != types.Inv:
 		defer func() { s.vals[tv.v] = tv.capt }()
+	case len(selfStar) == 1 && len(tv.v.Bounds) == 1:
+		// The captured star itself, as Klass<T> is Klass<*> for it, not
+		// Klass<Klass<*>>; T alone is still Klass<*>.
+		defer func() { s.vals[tv.v] = types.Arg{V: types.Star} }()
 	}
 	for _, l := range tv.lower {
 		s.sub(l, val)
@@ -683,11 +1323,108 @@ func (s *system) fix(tv *tvar) {
 			val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of its bound's captured type"})
 	}
 	for i, b := range tv.v.Bounds {
-		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !b.HasVars() && !c.subtype(val, b) {
+		// A plugin's code isn't checked, as kotlinc's plugins write IR:
+		// serialization's passes a class's T to encodeNullableSerializableElement<T : Any>.
+		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !c.state.plugin && !b.HasVars() && !c.subtype(val, b) {
 			s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
+}
+
+// hasProperLower reports whether a lower bound of tv is known: not
+// only other variables, as T of ArrayList<T> <: MutableList<R>, equal
+// to an R with only a literal below, whose literal is then T's too.
+func (s *system) hasProperLower(tv *tvar) bool {
+	return slices.ContainsFunc(tv.lower, func(l types.Type) bool { return !s.apply(l).HasVars() })
+}
+
+// selfTypeBounds reports whether tv, which has no other bounds, is
+// inferred from its declared bounds, as K2 does when one of them is a
+// self type (VariableFixationFinder.areAllProperConstraintsSelfTypeBased):
+// T of <T : B> on a Builder<B : Builder<B>>, or on a Builder<K> in
+// <K : Builder<K>>. A declared bound is no information otherwise: T of
+// <T : CharSequence> needs another. None may depend on another unfixed
+// variable. bs are the bounds without tv in them, which K2 infers tv
+// from; own, where there are none, are those with tv, with a star for
+// it (ResultTypeResolver.getDefaultTypeForSelfType): B of <B :
+// Builder<B>> is Builder<*>.
+func (s *system) selfTypeBounds(tv *tvar) (bs, own []types.Type, ok bool) {
+	self := false
+	for _, b := range tv.v.Bounds {
+		b = s.apply(b)
+		if b.Has(func(u types.Type) bool {
+			if u.K != types.TypeVar || u.Param() == tv.v {
+				return false
+			}
+			o := s.byVar[u.Param()]
+			return o != nil && !o.fixed
+		}) {
+			return nil, nil, false
+		}
+		if b.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == tv.v }) {
+			if b.K == types.Class && isSelfType(b) {
+				own = append(own, starredVar(b, tv.v))
+				self = true
+			}
+			continue
+		}
+		self = self || isSelfType(b)
+		bs = append(bs, b)
+	}
+	if !self || len(bs) == 0 && len(own) == 0 {
+		return nil, nil, false
+	}
+	return bs, own, true
+}
+
+// isSelfType reports whether t is a self type, as K2's
+// hasRecursiveTypeParametersWithGivenSelfType or isRecursiveTypeParameter
+// has it: a class type with a type parameter bounded by the class with
+// itself in it, as Enum<E : Enum<E>>, an intersection with one, or a
+// type parameter whose bound has it.
+func isSelfType(t types.Type) bool {
+	switch {
+	case t.IsIntersection():
+		return slices.ContainsFunc(t.Param().Bounds, isSelfType)
+	case t.K == types.TypeParam:
+		p := t.Param()
+		return slices.ContainsFunc(p.Bounds, func(b types.Type) bool { return mentionsParam(b, p) })
+	case t.K == types.Class && t.C != nil:
+		t.C.Ensure() // a Java class's type parameters' bounds
+		for _, p := range t.C.TypeParams {
+			for _, b := range p.Bounds {
+				if b.K == types.Class && b.C == t.C && mentionsParam(b, p) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func mentionsParam(t types.Type, p *types.TypeParamSym) bool {
+	return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == p })
+}
+
+// starredVar replaces the arguments that are v in t by stars, at any depth.
+func starredVar(t types.Type, v *types.TypeParamSym) types.Type {
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := make([]types.Arg, t.A.Len())
+	for i, a := range t.A.List {
+		switch {
+		case a.V == types.Star:
+			args[i] = a
+		case a.T.K == types.TypeVar && a.T.Param() == v:
+			args[i] = types.Arg{V: types.Star}
+		default:
+			args[i] = types.Arg{V: a.V, T: starredVar(a.T, v)}
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // litUppers returns the Long, Short or Byte types that the unfixed
@@ -754,17 +1491,37 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 // finish completes the system, reports what could not be inferred and
 // writes the results into the tree.
 func (s *system) finish() {
-	if r := s.c.joinRun(s); r != nil {
-		r.join(s)
+	r := s.c.joinRun(s)
+	if r == nil && s.dep != nil && s.ok && s.c.stubs != nil {
+		// K2's postponed call: its variables without a proper constraint
+		// are the builder's call's to fix.
+		s.completePostponed()
+		if s.unfixed() {
+			r = s.dep
+		}
+	}
+	if r != nil {
+		if !slices.Contains(r.joined, s) {
+			r.join(s)
+		}
 	} else {
 		s.complete()
 	}
-	for _, e := range s.errs {
-		s.c.errorf(e.pos, "%s", e.msg)
+	// A fixup may add errors and fixups of its own, as the one that writes
+	// the results of a builder's lambda does (see pclaSession): they are
+	// reported and run too.
+	n := 0
+	report := func() {
+		for ; n < len(s.errs); n++ {
+			s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
+		}
 	}
-	for _, f := range s.fixups {
-		f(s)
+	report()
+	for i := 0; i < len(s.fixups); i++ {
+		s.fixups[i](s)
 	}
+	report()
+	s.c.pclaPostpone(s)
 }
 
 // final returns t with all variables replaced: those that could not be
@@ -828,6 +1585,91 @@ func (s *system) withinUppers(val types.Type, lowers, uppers []types.Type) types
 		}
 	}
 	return val
+}
+
+// equalityWins returns val, the join of tv's lower bounds, but if only a
+// null among them keeps it from an upper bound that is also a lower one,
+// an equality constraint, that bound, as K2 fixes the variable to it: T of put(m, 1,
+// null) for a MutableList<Int> m and put(MutableList<T>, T, T) is Int,
+// and the null is the argument that doesn't fit, not m.
+func (s *system) equalityWins(tv *tvar, val types.Type, lowers, uppers []types.Type) types.Type {
+	c := s.c
+	fits := func(t types.Type) bool {
+		return !slices.ContainsFunc(uppers, func(u types.Type) bool { return !c.subtype(t, u) })
+	}
+	if len(uppers) == 0 || fits(val) || !val.N || !fits(val.NonNull()) {
+		return val
+	}
+	for _, u := range uppers {
+		if !types.MayBeNull(u) && slices.ContainsFunc(lowers, func(l types.Type) bool { return c.sameType(l, u) }) && fits(u) &&
+			!slices.ContainsFunc(lowers, func(l types.Type) bool {
+				return !c.subtype(l, u) && l.K != types.Null && !(l.K == types.Nothing && l.N) && !s.flexLowerFits(tv, l, u)
+			}) &&
+			(len(tv.lits) == 0 || litsFit(tv.lits, u) || c.subtype(s.litType(tv, nil), u)) {
+			return u
+		}
+	}
+	return val
+}
+
+// flexArgWins returns, for val, a nullable value of tv from its lower
+// bounds, its non-null form as a platform type where every nullable lower
+// bound comes from an argument passed for tv's flexible type, Foo? <: V!,
+// and an argument's parameter type gives a platform upper bound, V! <: Foo
+// giving V <: Foo!: as K2, kl(J.listOf(s)) for a String? s and
+// kl(l: List<String>) holds with a List<String!>, but not where a
+// declaration's type is expected, val l: List<String> = J.listOf(s).
+func (s *system) flexArgWins(tv *tvar, val types.Type, lowers, uppers []types.Type) types.Type {
+	if !val.N || val.P || val.K == types.Null || len(tv.flexLower) == 0 || len(tv.lits) > 0 {
+		return val
+	}
+	for _, l := range lowers {
+		if l.N && !(l.K == types.Nothing || l.K == types.Null) && !slices.ContainsFunc(tv.flexLower, func(f types.Type) bool {
+			return s.c.sameType(types.ApproxFlexNothing(s.apply(f)), l)
+		}) {
+			return val
+		}
+	}
+	if !slices.ContainsFunc(tv.argUp, func(u types.Type) bool {
+		u = s.apply(u)
+		return u.P && !u.HasVars() && s.c.subtype(val.NonNull(), u.Flex())
+	}) {
+		return val
+	}
+	p := val.NonNull().Platform()
+	if slices.ContainsFunc(uppers, func(u types.Type) bool { return !s.c.subtype(p, u) }) {
+		return val
+	}
+	return p
+}
+
+// platformUpper returns the upper bound of tv, a variable null is passed
+// for as its flexible type, that decides it: a platform type the expected
+// type gives, or an argument's parameter type in a type argument, V! <:
+// Foo giving V <: Foo!, below every other upper bound. As K2, val x:
+// String = J.transform(null) holds, but eat(J.transform(null)) doesn't.
+func (s *system) platformUpper(tv *tvar, uppers []types.Type) (types.Type, bool) {
+	for _, u := range tv.upper {
+		if slices.Contains(tv.typeArgUp, u) || slices.Contains(tv.strictArg, u) || slices.Contains(tv.argTopUp, u) ||
+			slices.Contains(tv.declUp, u) || slices.Contains(tv.boundUp, u) {
+			continue
+		}
+		if u = s.apply(u); !u.P || u.HasVars() || u.K == types.Null || u.Flex().K == types.Nothing {
+			continue
+		}
+		if !slices.ContainsFunc(uppers, func(o types.Type) bool { return !s.c.subtype(u, o) }) {
+			return u, true
+		}
+	}
+	return types.Type{}, false
+}
+
+// flexLowerFits reports whether lower bound l of tv is one of its
+// flexLower, whose non-null form is below u: Foo? <: V! holds for V = Foo.
+func (s *system) flexLowerFits(tv *tvar, l, u types.Type) bool {
+	return l.N && s.c.subtype(l.NonNull(), u) && !slices.Contains(tv.strictArg, u) && slices.ContainsFunc(tv.flexLower, func(f types.Type) bool {
+		return s.c.sameType(types.ApproxFlexNothing(s.apply(f)), l)
+	})
 }
 
 // finalArg is final for the type of a parameter that an argument is
@@ -901,6 +1743,20 @@ func (s *system) hasLower(t types.Type) bool {
 	})
 }
 
+// hasUpper reports whether type t is a variable with a proper upper
+// bound other than Any?, as a lambda's explicit parameter type gives
+// the T of a (T) -> Unit.
+func (s *system) hasUpper(t types.Type) bool {
+	if !s.isVar(t) {
+		return false
+	}
+	tv := s.byVar[s.apply(t).Param()]
+	return slices.ContainsFunc(tv.upper, func(b types.Type) bool {
+		b = s.apply(b)
+		return s.proper(b) && !(b.K == types.Any && b.N)
+	})
+}
+
 // fixable reports whether fix finds a value for tv in its bounds.
 func (s *system) fixable(tv *tvar) bool {
 	if len(tv.lits) > 0 || tv.star || slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper) {
@@ -920,6 +1776,19 @@ func (s *system) selfInferable(t types.Type) bool {
 	trial := s.clone()
 	trial.complete()
 	return trial.ok && len(trial.errs) == 0 && trial.proper(t)
+}
+
+// upperOnly reports whether t has an unfixed variable of s that nothing
+// bounds from below, which only its upper bounds would fix: T of
+// <T : Marker> get(key): T.
+func (s *system) upperOnly(t types.Type) bool {
+	return s.apply(t).Has(func(u types.Type) bool {
+		if u.K != types.TypeVar {
+			return false
+		}
+		tv := s.byVar[u.Param()]
+		return tv != nil && !tv.fixed && len(tv.lower) == 0 && len(tv.lits) == 0 && !tv.star && !tv.proj
+	})
 }
 
 // isVar reports whether t is an unfixed variable of s, or its nullable.
@@ -991,6 +1860,18 @@ func (s *system) upperHint(v types.Type) types.Type {
 	return noWant
 }
 
+// unitBound reports whether v is an unfixed variable, not nullable, that
+// a declared bound makes a Unit: as in Kotlin, a lambda returning it is
+// coerced to Unit, as build { c -> s } for fun <BK : Unit> build(t:
+// (Controller<BK>) -> BK).
+func (s *system) unitBound(v types.Type) bool {
+	tv := s.unfixedVar(v)
+	if tv == nil || v.N {
+		return false
+	}
+	return slices.ContainsFunc(tv.v.Bounds, func(b types.Type) bool { b = s.apply(b); return b.K == types.Unit && !b.N })
+}
+
 // boundExcludes reports whether t is an unfixed variable whose declared
 // bounds u can't be within.
 func (s *system) boundExcludes(t, u types.Type) bool {
@@ -1022,6 +1903,60 @@ func (s *system) withinBounds() bool {
 					return false
 				}
 			}
+		}
+	}
+	return true
+}
+
+// captured reports whether a is a variable inferred as a projection's
+// capture, which K2 doesn't allow as a reified type argument.
+func (s *system) captured(a types.Arg) bool {
+	if a.T.K != types.TypeVar {
+		return false
+	}
+	v := s.vals[a.T.Param()]
+	return v.V == types.Out || v.V == types.In // a star is a variable's own
+}
+
+// selfBounded reports whether class c's i-th type parameter occurs in
+// its own bounds, as E of Enum<E : Enum<E>>.
+func selfBounded(c *types.ClassSym, i int) bool {
+	if i >= len(c.TypeParams) {
+		return false
+	}
+	p := c.TypeParams[i]
+	return slices.ContainsFunc(p.Bounds, func(b types.Type) bool {
+		return b.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == p })
+	})
+}
+
+// platformBound returns the bound of variable tv, for a type parameter
+// of a Java declaration, if it has one, a platform type without
+// variables other than Object: as in Kotlin, the variable without
+// constraints is inferred to it, as E of ThrowableComputable<T, E
+// extends Throwable>.
+func (s *system) platformBound(tv *tvar) (types.Type, bool) {
+	if len(tv.v.Bounds) != 1 {
+		return types.InvalidType, false
+	}
+	b := s.apply(tv.v.Bounds[0])
+	if !b.P || b.HasVars() || b.K != types.Class || b.Flex().NonNull().K == types.Any {
+		return types.InvalidType, false
+	}
+	return b, true
+}
+
+// captureFits reports whether the capture of an in projection of class
+// parameter p, whose upper bound is p's bound, is within the declared
+// bounds of variable tv.
+func (s *system) captureFits(tv *tvar, p *types.TypeParamSym) bool {
+	cb := p.Bound()
+	if cb.HasParams() {
+		return true
+	}
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !b.HasVars() && !s.c.subtype(cb, b) {
+			return false
 		}
 	}
 	return true

@@ -87,11 +87,12 @@ type WhenSubject struct{ When *syntax.When }
 type bailout struct{}
 
 type lowerer struct {
-	s     *psi.Snapshot
-	src   string
-	path  string
-	lines []int // the offsets at which lines start
-	prov  map[any]psi.NodeID
+	typeArgDepth int // how deep in type arguments the type being lowered is
+	s            *psi.Snapshot
+	src          string
+	path         string
+	lines        []int // the offsets at which lines start
+	prov         map[any]psi.NodeID
 	// annots are the annotation entries, by position.
 	annots map[syntax.Pos]psi.NodeID
 	// negated are the prefix expressions folded into negative literals.
@@ -120,13 +121,31 @@ type lowerer struct {
 	// noTrailing is set while lowering where a brace after an expression
 	// isn't a trailing lambda for kc: a delegate in a class header.
 	noTrailing bool
+
+	// recovering is set by FileRecovering: an error in a statement of a
+	// block drops only that statement (see stmts).
+	recovering bool
 }
 
 // File lowers a psi snapshot to kc's AST, as syntax.ParseAll parses the
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+	return lowerFile(s, false)
+}
+
+// FileRecovering lowers a file with syntax errors to check as much of it
+// as kotlinc does: as File, but an error in a statement of a block, a
+// psi error element or a construct kc doesn't lower, drops only that
+// statement rather than its whole declaration. A local variable dropped
+// this way is kept with an invalid type, so its uses resolve without
+// errors of their own. The file is for checking only, never for code.
+func FileRecovering(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, true)
+}
+
+func lowerFile(s *psi.Snapshot, recovering bool) (*syntax.File, *Provenance, []*syntax.Error) {
+	l := &lowerer{recovering: recovering, s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -150,6 +169,9 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 		}
 	}
 	f.Errors = l.later
+	if recovering {
+		f.RedundantPrefixes = l.redundantPrefixes()
+	}
 	f.SuppressInvisible = l.suppressInvisible
 	f.SuppressShadowed = l.suppressShadowed
 	f.SuppressDSL = l.suppressDSL
@@ -250,6 +272,16 @@ func (l *lowerer) errorLater(pos syntax.Pos, format string, args ...any) {
 	l.later = append(l.later, &syntax.Error{File: l.path, Pos: pos, Msg: fmt.Sprintf(format, args...)})
 }
 
+// Fail, Later and Unsupported report the errors of the checks shared with
+// kc's parser (see syntax.Reporter).
+func (l *lowerer) Fail(pos syntax.Pos, format string, args ...any) { l.failAt(pos, format, args...) }
+func (l *lowerer) Later(pos syntax.Pos, format string, args ...any) {
+	l.errorLater(pos, format, args...)
+}
+func (l *lowerer) Unsupported(pos syntax.Pos, feature, format string, args ...any) {
+	l.unsupported(pos, feature, format, args...)
+}
+
 // unexpected fails on node n, which kc's grammar has no place for.
 func (l *lowerer) unexpected(n psi.NodeRef) {
 	if !n.Valid() {
@@ -267,7 +299,7 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
 	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
 		e := l.s.Node(l.errorIDs[i])
-		if l.inBody(e, n) || l.recoverable(e) {
+		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n)) {
 			continue
 		}
 		l.failSyntax(e)
@@ -277,9 +309,11 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 // recoverable reports whether the psi error element e leaves its
 // declaration whole: a value parameter written without its type, which
 // paramType gives an invalid type and reports, an object declaration
-// without its name, which class names as FIR does and reports, or a
-// property type's unclosed type argument list, which prop keeps as far as
-// it parsed, as FIR does, and reports.
+// without its name, which class names as FIR does and reports, an enum
+// class written without its class keyword (enum Color { RED }), which
+// class keeps as FIR does and reports, or a property type's unclosed type
+// argument list, which prop keeps as far as it parsed, as FIR does, and
+// reports.
 func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	p := e.Parent()
 	if unclosedPropType(e) {
@@ -288,11 +322,43 @@ func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	if p.NumericKind() == psi.KindOBJECT_DECLARATION && !first(e).Valid() && !has(p, psi.KindIDENTIFIER) {
 		return true
 	}
+	if enumWithoutKeyword(p) && !first(e).Valid() {
+		return true
+	}
+	if unnamedSubject(p) {
+		return true
+	}
 	return p.NumericKind() == psi.KindVALUE_PARAMETER && !has(p, psi.KindTYPE_REFERENCE) &&
 		has(p, psi.KindIDENTIFIER) && p.Parent().NumericKind() == psi.KindVALUE_PARAMETER_LIST &&
 		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||
 			p.Parent().Parent().NumericKind() == psi.KindFUN ||
 			p.Parent().Parent().NumericKind() == psi.KindSECONDARY_CONSTRUCTOR)
+}
+
+// unnamedSubject reports whether n is the PROPERTY of a when subject
+// written without its name, when (val = x), which psi reports missing.
+// when keeps x as its subject, as FIR does, and reports the error.
+func unnamedSubject(n psi.NodeRef) bool {
+	if n.NumericKind() != psi.KindPROPERTY || n.Parent().NumericKind() != psi.KindWHEN || has(n, psi.KindIDENTIFIER) || !has(n, psi.KindEQ) {
+		return false
+	}
+	errs := 0
+	for _, c := range kids(n) {
+		if c.NumericKind() == psi.KindERROR_ELEMENT {
+			if first(c).Valid() {
+				return false
+			}
+			errs++
+		}
+	}
+	return errs == 1
+}
+
+// enumWithoutKeyword reports whether n is a CLASS psi parses from enum and
+// a name, without the class keyword it reports missing.
+func enumWithoutKeyword(n psi.NodeRef) bool {
+	return n.NumericKind() == psi.KindCLASS && !has(n, psi.KindCLASS_KEYWORD) && !has(n, psi.KindINTERFACE_KEYWORD) &&
+		has(n, psi.KindIDENTIFIER) && has(child(n, psi.KindMODIFIER_LIST), psi.KindENUM_KEYWORD)
 }
 
 // unclosedPropType reports whether the psi error element e is a property
@@ -342,6 +408,28 @@ func unclosedTypeArgs(t psi.NodeRef) psi.NodeRef {
 	return found
 }
 
+// inBlock reports whether e is inside a BLOCK strictly under n, whose
+// statements stmts lowers one by one when recovering.
+func (l *lowerer) inBlock(e, n psi.NodeRef) bool {
+	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if p.NumericKind() == psi.KindBLOCK {
+			return true
+		}
+	}
+	return false
+}
+
+// inWhenEntry reports whether e is inside a WHEN_ENTRY strictly under n,
+// which when lowers on its own when recovering.
+func (l *lowerer) inWhenEntry(e, n psi.NodeRef) bool {
+	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if p.NumericKind() == psi.KindWHEN_ENTRY {
+			return true
+		}
+	}
+	return false
+}
+
 // inBody reports whether e is inside a CLASS_BODY strictly under n.
 func (l *lowerer) inBody(e, n psi.NodeRef) bool {
 	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
@@ -375,18 +463,28 @@ func (l *lowerer) syntaxMessage(e psi.NodeRef) (syntax.Pos, string) {
 // decl lowers one declaration with lower. An error is recorded, and
 // lowering goes on after the declaration.
 func (l *lowerer) decl(n psi.NodeRef, lower func()) {
+	l.attempt(func() {
+		l.syntaxError(n)
+		lower()
+	})
+}
+
+// attempt runs lower, and reports whether it finished. If it bails out,
+// the error is recorded.
+func (l *lowerer) attempt(lower func()) (ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(bailout); !ok {
+			if _, isBailout := r.(bailout); !isBailout {
 				panic(r)
 			}
 			if k := len(l.errs); k == 0 || *l.errs[k-1] != *l.err {
 				l.errs = append(l.errs, l.err)
 			}
+			ok = false
 		}
 	}()
-	l.syntaxError(n)
 	lower()
+	return true
 }
 
 // ---- tree helpers ----
@@ -446,6 +544,14 @@ func childAfter(n psi.NodeRef, after psi.Kind) psi.NodeRef {
 }
 
 // ident returns the text of an IDENTIFIER leaf without backticks.
+// underscoreRef reports leaf t, a name in a reference, if it is all
+// underscores and not in backticks, as kc's parser does.
+func (l *lowerer) underscoreRef(t psi.NodeRef) {
+	if s := t.Text(); s != "" && strings.Trim(s, "_") == "" {
+		l.errorLater(l.pos(t), "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
+}
+
 func ident(n psi.NodeRef) string {
 	s := n.Text()
 	if len(s) >= 2 && s[0] == '`' && s[len(s)-1] == '`' {

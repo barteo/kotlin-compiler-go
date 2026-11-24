@@ -1,6 +1,8 @@
 package check
 
 import (
+	"maps"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -25,7 +27,8 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.InPlace, d.Implies = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.AtLeastOnce, d.Implies, d.Calls, d.ContractConds = c.dropContract(d.Body, imported, o)
+					c.misplacedContracts(d.Body, d.ExprBody, imported)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
 					if cls != nil {
@@ -33,11 +36,13 @@ func dropContracts(checkers []*Checker) {
 					}
 					if d.Getter != nil {
 						c.dropContract(d.Getter.Body, imported, o)
+						c.misplacedContracts(d.Getter.Body, d.Getter.ExprBody, imported)
 					}
 					if d.Setter != nil {
 						so := o
 						so.params = d.Setter.Params
 						c.dropContract(d.Setter.Body, imported, so)
+						c.misplacedContracts(d.Setter.Body, d.Setter.ExprBody, imported)
 					}
 				case *syntax.ClassDecl:
 					decls(d.Members, d)
@@ -46,6 +51,75 @@ func dropContracts(checkers []*Checker) {
 		}
 		decls(f.Decls, nil)
 	}
+}
+
+// misplacedContracts reports the contract { } calls left in a function's
+// body, or its expression body, once dropContract took the one that may
+// start it (CONTRACT_NOT_ALLOWED): one that isn't the body's first
+// statement, an expression body, and any in a local function or a member
+// of a local class or object.
+func (c *Checker) misplacedContracts(body *syntax.Block, exprBody syntax.Expr, imported bool) {
+	if call, ok := exprBody.(*syntax.Call); ok && c.contractCall(call, imported) {
+		c.errorf(call.Fun.Pos(), "contracts are only allowed in function body blocks")
+		exprBody = nil
+		for _, a := range call.Args {
+			c.contractsIn(a, imported, false)
+		}
+	}
+	c.contractsIn(body, imported, false)
+	c.contractsIn(exprBody, imported, false)
+}
+
+// contractsIn reports the contract { } calls in code n, in a local
+// declaration if local.
+func (c *Checker) contractsIn(n any, imported, local bool) {
+	members := func(d *syntax.ClassDecl) {
+		for _, m := range d.Members {
+			switch m := m.(type) {
+			case *syntax.FunDecl:
+				c.contractsIn(m.Body, imported, true)
+				c.contractsIn(m.ExprBody, imported, true)
+			case *syntax.PropDecl:
+				for _, acc := range []*syntax.FunDecl{m.Getter, m.Setter} {
+					if acc != nil {
+						c.contractsIn(acc.Body, imported, true)
+						c.contractsIn(acc.ExprBody, imported, true)
+					}
+				}
+			}
+		}
+	}
+	syntax.Inspect(n, func(x any) bool {
+		switch x := x.(type) {
+		case *syntax.LocalFun:
+			c.contractsIn(x.Decl.Body, imported, true)
+			c.contractsIn(x.Decl.ExprBody, imported, true)
+			return false
+		case *syntax.LocalClass:
+			members(x.Decl)
+			return false
+		case *syntax.ObjectExpr:
+			members(x.Decl)
+		case *syntax.Call:
+			if c.contractCall(x, imported) {
+				if local {
+					c.errorf(x.Fun.Pos(), "contracts are not allowed for local functions")
+				} else {
+					c.errorf(x.Fun.Pos(), "contract should be the first statement")
+				}
+			}
+		}
+		return true
+	})
+}
+
+// contractCall reports whether call is contract { }.
+func (c *Checker) contractCall(call *syntax.Call, imported bool) bool {
+	if len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
+		return false
+	}
+	l, ok := call.Args[0].(*syntax.Lambda)
+	return ok && !l.Anon
 }
 
 func importsContract(f *syntax.File) bool {
@@ -83,14 +157,47 @@ func qualifiedName(x syntax.Expr) string {
 	return ""
 }
 
+// contractBuilders are the functions of kotlin.contracts' ContractBuilder
+// and its effects that a contract's lambda calls.
+var contractBuilders = map[string]bool{"returns": true, "returnsNotNull": true, "callsInPlace": true, "holdsIn": true, "implies": true}
+
+// contractBuilderCalls records the calls of contractBuilders in contract
+// lambda l, taken out of body b, for optInErrors.
+func (c *Checker) contractBuilderCalls(b *syntax.Block, l *syntax.Lambda) {
+	syntax.Inspect(l.Body, func(n any) bool {
+		x, ok := n.(*syntax.Call)
+		if !ok {
+			return true
+		}
+		switch f := x.Fun.(type) {
+		case *syntax.Ident:
+			if contractBuilders[f.Name] && f.Name != "implies" {
+				c.addContractCall(b, f.P)
+			}
+		case *syntax.Member:
+			if x.Infix && f.Name == "implies" {
+				c.addContractCall(b, f.P)
+			}
+		}
+		return true
+	})
+}
+
+func (c *Checker) addContractCall(b *syntax.Block, p syntax.Pos) {
+	if c.contractCalls == nil {
+		c.contractCalls = map[*syntax.Block][]syntax.Pos{}
+	}
+	c.contractCalls[b] = append(c.contractCalls[b], p)
+}
+
 // dropContract removes a block's first statement if it is contract { },
 // and returns the names of the parameters it says the function calls
 // exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
 // place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace map[string]bool, implies []syntax.Implies) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace, atLeast map[string]bool, implies []syntax.Implies, calls []syntax.CallsEffect, conds []syntax.Expr) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -101,22 +208,52 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
+	if c.file != nil && c.file.Annotated != nil {
+		syntax.Inspect(l.Body, func(n any) bool {
+			for _, a := range c.file.Annotated[n] {
+				c.errorf(a.P, "annotations are prohibited inside contracts")
+			}
+			// As kotlinc, they suppress what they name all the same.
+			if as, ok := c.file.Annotated[n]; ok {
+				c.contractSuppress = annotationsRange(c.contractSuppress, as, nodePos(n), nodeEnd(n))
+			}
+			return true
+		})
+		for _, n := range []any{b.Stmts[0], x} {
+			if as, ok := c.file.Annotated[n]; ok {
+				c.contractSuppress = annotationsRange(c.contractSuppress, as, nodePos(n), nodeEnd(n))
+			}
+		}
+	}
 	b.Stmts = b.Stmts[1:]
+	if c.contractAt == nil {
+		c.contractAt = map[*syntax.Block]syntax.Pos{}
+	}
+	c.contractAt[b] = call.Fun.Pos()
+	c.contractBuilderCalls(b, l)
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)
 		if !ok {
 			return true
 		}
-		if im, ok := contractImplies(c); ok {
-			implies = append(implies, im)
+		if m, ok := c.Fun.(*syntax.Member); ok && m.Name == "implies" && len(c.Args) == 1 {
+			switch {
+			case o.simpleEffect(m.X) && o.condition(c.Args[0]):
+				conds = append(conds, c.Args[0])
+			case o.condition(m.X) && o.simpleEffect(c.Args[0]):
+				conds = append(conds, m.X)
+			}
+		}
+		if ims, ok := contractImplies(c); ok {
+			implies = append(implies, ims...)
 			return false
 		}
 		if len(c.Args) != 1 && len(c.Args) != 2 {
@@ -129,6 +266,7 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 			kind, ok3 = c.Args[1].(*syntax.Member)
 		}
 		if ok1 && ok2 && ok3 && fn.Name == "callsInPlace" {
+			calls = append(calls, syntax.CallsEffect{P: syntax.StartPos(c), Param: p.Name, Kind: kind.Name})
 			if inPlace == nil {
 				inPlace = map[string]bool{}
 			}
@@ -139,42 +277,77 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 				}
 				once[p.Name] = true
 			}
+			if kind.Name == "AT_LEAST_ONCE" {
+				if atLeast == nil {
+					atLeast = map[string]bool{}
+				}
+				atLeast[p.Name] = true
+			}
 		}
 		return true
 	})
-	return once, inPlace, implies
+	return once, inPlace, atLeast, implies, calls, conds
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or
-// (p), for a Boolean p.
-func contractImplies(c *syntax.Call) (syntax.Implies, bool) {
+// (p), for a Boolean p, or a conjunction of them, and returnsNotNull()
+// implies them, (x is Int && y is
+// String), each of which holds when the function returns the value.
+func contractImplies(c *syntax.Call) ([]syntax.Implies, bool) {
 	var im syntax.Implies
 	m, ok := c.Fun.(*syntax.Member)
 	if !ok || m.Name != "implies" || len(c.Args) != 1 {
-		return im, false
+		return nil, false
 	}
 	ret, ok := m.X.(*syntax.Call)
 	if !ok || len(ret.Args) > 1 {
-		return im, false
+		return nil, false
 	}
-	if id, ok := ret.Fun.(*syntax.Ident); !ok || id.Name != "returns" {
-		return im, false
+	id, ok := ret.Fun.(*syntax.Ident)
+	if !ok || id.Name != "returns" && id.Name != "returnsNotNull" {
+		return nil, false
 	}
 	im.Returns = -1
-	if len(ret.Args) == 1 {
+	if id.Name == "returnsNotNull" {
+		if len(ret.Args) != 0 {
+			return nil, false
+		}
+		im.Returns = 2
+	} else if len(ret.Args) == 1 {
 		v, ok := ret.Args[0].(*syntax.BoolLit)
 		if !ok {
-			return im, false
+			return nil, false
 		}
 		im.Returns = 0
 		if v.Val {
 			im.Returns = 1
 		}
 	}
+	var out []syntax.Implies
+	var conj func(x syntax.Expr) bool
+	conj = func(x syntax.Expr) bool {
+		if b, ok := x.(*syntax.Binary); ok && b.Op == syntax.AND {
+			return conj(b.X) && conj(b.Y)
+		}
+		one, ok := impliedCondition(im, x)
+		if ok {
+			out = append(out, one)
+		}
+		return ok
+	}
+	if !conj(c.Args[0]) {
+		return nil, false
+	}
+	return out, true
+}
+
+// impliedCondition reads one condition of a contract's implies, im with
+// its Returns set: p != null, p is T or p.
+func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool) {
 	var p syntax.Expr
-	switch x := c.Args[0].(type) {
+	switch x := cond.(type) {
 	case *syntax.Binary:
-		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE {
+		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE && x.Op != syntax.NOT_EQ_EQ {
 			return im, false
 		}
 		p = x.X
@@ -185,6 +358,12 @@ func contractImplies(c *syntax.Call) (syntax.Implies, bool) {
 		p, im.Is = x.X, x.Ref
 	case *syntax.Ident:
 		p, im.Holds = x, true
+	case *syntax.Unary:
+		id, ok := x.X.(*syntax.Ident)
+		if x.Op != syntax.NOT || !ok {
+			return im, false
+		}
+		p, im.Holds, im.Negated = id, true, true // implies (!p)
 	default:
 		return im, false
 	}
@@ -204,7 +383,7 @@ func contractImplies(c *syntax.Call) (syntax.Implies, bool) {
 // symbol, once its parameters are declared.
 func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 	for _, im := range d.Implies {
-		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds}
+		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds, Negated: im.Negated}
 		if im.Param == "this" {
 			if d.Recv != nil {
 				e.Param = -1
@@ -245,6 +424,100 @@ func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 		}
 		sym.Implies = append(sym.Implies, e)
 	}
+	if len(d.ContractConds) > 0 {
+		env := map[string]types.Type{}
+		for i, p := range d.Params {
+			if i < len(sym.Params) {
+				env[p.Name] = sym.Params[i].Type
+			}
+		}
+		for _, cond := range d.ContractConds {
+			c.contractCondWarnings(cond, env, sym)
+		}
+	}
+}
+
+// contractCondWarnings reports the checks in contract condition x, made
+// of parameters, null comparisons, is checks, !, && and ||, that the
+// parameters' types, env, decide, as kotlinc checks the condition as
+// an expression: SENSELESS_COMPARISON and USELESS_IS_CHECK. x && y sees
+// what x being true tells of the parameters, and x || y what x being
+// false does. It returns what x being true, and being false, tells.
+func (c *Checker) contractCondWarnings(x syntax.Expr, env map[string]types.Type, sym *types.FunSym) (onTrue, onFalse map[string]types.Type) {
+	with := func(env, more map[string]types.Type) map[string]types.Type {
+		if len(more) == 0 {
+			return env
+		}
+		m := make(map[string]types.Type, len(env)+len(more))
+		maps.Copy(m, env)
+		maps.Copy(m, more)
+		return m
+	}
+	switch x := x.(type) {
+	case *syntax.Unary:
+		if x.Op == syntax.NOT {
+			t, f := c.contractCondWarnings(x.X, env, sym)
+			return f, t
+		}
+	case *syntax.Binary:
+		switch x.Op {
+		case syntax.AND:
+			lt, _ := c.contractCondWarnings(x.X, env, sym)
+			rt, _ := c.contractCondWarnings(x.Y, with(env, lt), sym)
+			return with(lt, rt), nil
+		case syntax.OR:
+			_, lf := c.contractCondWarnings(x.X, env, sym)
+			_, rf := c.contractCondWarnings(x.Y, with(env, lf), sym)
+			return nil, with(lf, rf)
+		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			id, ok := x.X.(*syntax.Ident)
+			if _, null := x.Y.(*syntax.NullLit); !ok || !null {
+				return nil, nil
+			}
+			t, ok := env[id.Name]
+			if !ok {
+				return nil, nil
+			}
+			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
+			if definitelyNonNull(t) {
+				c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", !eq)
+				return nil, nil
+			}
+			nonNull := map[string]types.Type{id.Name: t.NonNull()}
+			if eq {
+				return nil, nonNull
+			}
+			return nonNull, nil
+		}
+	case *syntax.Is:
+		id, ok := x.X.(*syntax.Ident)
+		if !ok || x.Ref == nil {
+			return nil, nil
+		}
+		t, ok := env[id.Name]
+		if !ok || !certainCastType(t) || t.K == types.Nothing || t.K == types.Null {
+			return nil, nil
+		}
+		c.bareRef, c.bareSubject = x.Ref, t
+		target := c.resolveTypeQuiet(x.Ref)
+		c.bareRef = nil
+		if !certainCastType(target) {
+			return nil, nil
+		}
+		if c.subtype(t, target) {
+			c.warnf(syntax.StartPos(x), "USELESS_IS_CHECK", "check for instance is always '%v'", !x.Not)
+			return nil, nil
+		}
+		if !c.subtype(target, t) {
+			return nil, nil
+		}
+		narrowed := map[string]types.Type{id.Name: target}
+		if x.Not {
+			return nil, narrowed
+		}
+		return narrowed, nil
+	}
+	return nil, nil
 }
 
 // contractOwner is the function, or property accessor, a contract
@@ -412,4 +685,17 @@ func (o contractOwner) value(x syntax.Expr) bool {
 		return x.Label != "" && (x.Label == o.name || x.Label == o.class && !o.recv)
 	}
 	return false
+}
+
+// resolveTypeQuiet resolves type ref as resolveType does, but reports
+// nothing: it returns the invalid type where resolveType reports an
+// error.
+func (c *Checker) resolveTypeQuiet(ref *syntax.TypeRef) types.Type {
+	n := len(c.errs)
+	t := c.resolveType(ref)
+	if len(c.errs) > n {
+		c.errs = c.errs[:n]
+		return types.InvalidType
+	}
+	return t
 }

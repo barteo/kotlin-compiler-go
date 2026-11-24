@@ -44,9 +44,9 @@
 # compose selects it.
 #
 # And testdata/metro.out (TestMetro): kotlinc, with the Metro compiler
-# plugin 1.5.2, compiles metro/lib/, then metro/mid/ against it and
+# plugin 1.6.0, compiles metro/lib/, then metro/mid/ against it and
 # metro/app/ against both, and the program runs. The runtime is Metro's
-# runtime-jvm 1.5.2 and the plugin its compiler jar, from Gradle's cache,
+# runtime-jvm 1.6.0 and the plugin its compiler jar, from Gradle's cache,
 # or $KC_METRO_CP and $KC_METRO_PLUGIN. The argument metro selects it.
 #
 # And testdata/metro-interop/X.out for each program metro-interop/X/
@@ -57,7 +57,7 @@
 # Metro needs to inject javax's and Jakarta's Provider; then it runs. The
 # class path adds javax.inject 1, jakarta.inject-api 2.0.1, Dagger and
 # hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and
-# interop-jakarta 1.5.2, from Gradle's cache, or $KC_METRO_INTEROP_CP.
+# interop-jakarta 1.6.0, from Gradle's cache, or $KC_METRO_INTEROP_CP.
 # The argument metro-interop selects them.
 #
 # And testdata/metro-kotlinc/X.out for each program metro-kotlinc/X/
@@ -274,10 +274,10 @@ fi
 if [ -n "$metro" ]; then
 	cd "$root/metro"
 	cache=$HOME/.gradle/caches/modules-2/files-2.1/dev.zacsweers.metro
-	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
-	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.6.0" -name runtime-jvm-1.6.0.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.6.0" -name compiler-1.6.0.jar 2>/dev/null | head -1)}
 	if [ -z "$rt" ] || [ -z "$mp" ]; then
-		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		echo "Metro 1.6.0 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
 		exit 1
 	fi
 	out="$work/metro"
@@ -296,17 +296,17 @@ fi
 # The Metro interop tests, in both directions.
 if [ -n "$metrointerop" ] || [ -n "$metrokotlinc" ]; then
 	cache=$HOME/.gradle/caches/modules-2/files-2.1
-	rt=${KC_METRO_CP:-$(find "$cache/dev.zacsweers.metro/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
-	mp=${KC_METRO_PLUGIN:-$(find "$cache/dev.zacsweers.metro/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	rt=${KC_METRO_CP:-$(find "$cache/dev.zacsweers.metro/runtime-jvm/1.6.0" -name runtime-jvm-1.6.0.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/dev.zacsweers.metro/compiler/1.6.0" -name compiler-1.6.0.jar 2>/dev/null | head -1)}
 	if [ -z "$rt" ] || [ -z "$mp" ]; then
-		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		echo "Metro 1.6.0 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
 		exit 1
 	fi
 	icp=${KC_METRO_INTEROP_CP:-}
 	if [ -z "$icp" ]; then
 		for j in javax.inject/javax.inject/1 jakarta.inject/jakarta.inject-api/2.0.1 com.google.dagger/dagger/2.60.1 \
-			com.google.dagger/hilt-core/2.60.1 dev.zacsweers.metro/interop-dagger/1.5.2 dev.zacsweers.metro/interop-javax/1.5.2 \
-			dev.zacsweers.metro/interop-jakarta/1.5.2; do
+			com.google.dagger/hilt-core/2.60.1 dev.zacsweers.metro/interop-dagger/1.6.0 dev.zacsweers.metro/interop-javax/1.6.0 \
+			dev.zacsweers.metro/interop-jakarta/1.6.0; do
 			a=$(echo "$j" | cut -d/ -f2)
 			v=${j##*/}
 			jar=$(find "$cache/$j" -name "$a-$v.jar" 2>/dev/null | head -1)
@@ -375,7 +375,7 @@ if [ -n "$compose" ]; then
 	# shellcheck disable=SC2046
 	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
-	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn -module-name compose-app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$rt:$out/lib:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	kotlin -cp "$out/use:$out/app:$out/lib:$out/java:$rt" UseKt >"$root/compose.out" 2>/dev/null

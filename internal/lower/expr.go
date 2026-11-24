@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -112,36 +113,36 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		return ix
 	case psi.KindINTEGER_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
 		text := t.Text()
+		if syntax.IllegalUnderscore(text) {
+			l.errorLater(l.pos(t), "illegal underscore")
+		}
+		for _, msg := range syntax.IntLiteralErrors(text) {
+			l.errorLater(l.pos(t), "%s", msg)
+		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
 			l.fail(t, "the value is out of range")
 		}
 		return lit
 	case psi.KindFLOAT_CONSTANT:
+		l.checkGlued(n)
 		t := first(n)
-		text := strings.ReplaceAll(t.Text(), "_", "")
-		if strings.HasSuffix(text, "f") || strings.HasSuffix(text, "F") {
-			v, err := strconv.ParseFloat(strings.TrimRight(text, "fF"), 32)
-			if err != nil {
-				l.fail(t, "invalid float literal")
-			}
-			f := &syntax.FloatLit{Val: float32(v)}
-			f.P = l.pos(t)
-			return f
+		if syntax.IllegalUnderscore(t.Text()) {
+			l.errorLater(l.pos(t), "illegal underscore")
 		}
-		v, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			l.fail(t, "invalid double literal")
+		lit, msg := syntax.FloatLiteral(l.pos(t), t.Text())
+		if msg != "" {
+			l.fail(t, "%s", msg)
 		}
-		d := &syntax.DoubleLit{Val: v}
-		d.P = l.pos(t)
-		return d
+		return lit
 	case psi.KindCHARACTER_CONSTANT:
+		l.checkGlued(n)
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
-			l.fail(n, "%s", msg)
+			l.errorLater(l.pos(n), "%s", msg)
 		}
 		c := &syntax.CharLit{Val: r}
 		c.P = l.pos(n)
@@ -155,6 +156,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		x.P = l.pos(n)
 		return x
 	case psi.KindSTRING_TEMPLATE:
+		l.checkGlued(n)
 		return l.stringLit(n)
 	case psi.KindTHIS_EXPRESSION:
 		th := &syntax.This{Label: l.label(n)}
@@ -189,6 +191,7 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindLAMBDA_EXPRESSION:
 		return l.lambda(n)
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		name := l.label(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
@@ -204,8 +207,14 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 			l.prov[f] = x.ID()
 			return f
 		}
-		// A label on another expression has no effect.
-		return l.expr(x)
+		// A label on another expression has no effect, but on a lambda in
+		// parentheses or with annotations, l@ ({ ... }), it is the
+		// lambda's.
+		e := l.expr(x)
+		if lam, ok := e.(*syntax.Lambda); ok && lam.Label == "" {
+			lam.Label = name
+		}
+		return e
 	case psi.KindANNOTATED_EXPRESSION:
 		if l.hoisted[n.ID()] {
 			// A statement's annotations, lowered with the statement.
@@ -259,9 +268,44 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	if !t.IsLeaf() || t.NumericKind() == psi.KindTHIS_KEYWORD || t.NumericKind() == psi.KindSUPER_KEYWORD {
 		l.fail(t, "unexpected %s", describeNode(t))
 	}
+	if p := n.Parent(); t.Text() != "_" || p.NumericKind() != psi.KindCALL_EXPRESSION || !has(p, psi.KindTYPE_ARGUMENT_LIST) {
+		l.underscoreRef(t)
+	}
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
+}
+
+// checkGlued reports a literal n written against an identifier, a number
+// or a keyword, as kc's lexer does for its parser (see TreeErrors).
+func (l *lowerer) checkGlued(n psi.NodeRef) {
+	if p := prevLeaf(n); gluedAffix(p) {
+		l.errorLater(l.pos(p), gluedLiteralMsg)
+	}
+	if x := nextLeaf(n); gluedAffix(x) {
+		l.errorLater(l.pos(x), gluedLiteralMsg)
+	}
+}
+
+// innermostLabel returns the innermost of the labels n starts with, as
+// a@ b@ while (c), reporting the others, as kotlinc does.
+func (l *lowerer) innermostLabel(n psi.NodeRef) psi.NodeRef {
+	for x := exprChild(n); x.NumericKind() == psi.KindLABELED_EXPRESSION; x = exprChild(n) {
+		l.errorLater(l.pos(child(n, psi.KindLABEL_QUALIFIER)), "multiple labels are forbidden")
+		n = x
+	}
+	return n
+}
+
+// newLineBefore reports whether whitespace between n and the node before
+// it breaks the line (a comment that spans lines doesn't).
+func newLineBefore(n psi.NodeRef) bool {
+	for c := n.PreviousSibling(); c.Valid() && c.IsTrivia(); c = c.PreviousSibling() {
+		if c.NumericKind() == psi.KindWHITE_SPACE && strings.Contains(c.Text(), "\n") {
+			return true
+		}
+	}
+	return false
 }
 
 // label returns the label of n's LABEL_QUALIFIER, or "".
@@ -270,7 +314,12 @@ func (l *lowerer) label(n psi.NodeRef) string {
 	if !q.Valid() {
 		return ""
 	}
-	return ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	name := ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	if n.NumericKind() == psi.KindLABELED_EXPRESSION && strings.Trim(name, "_") == "" {
+		// As the lexer, of a label's definition: __@{ }.
+		l.errorLater(l.pos(q), "names _, __, ___, ... are reserved in Kotlin")
+	}
+	return name
 }
 
 // annotationsOf lowers the annotations of an ANNOTATED_EXPRESSION.
@@ -306,6 +355,9 @@ func (l *lowerer) binary(n psi.NodeRef) syntax.Expr {
 		default:
 			m := &syntax.Member{X: l.expr(ops[0]), Name: ident(op)}
 			m.P = opPos
+			if op.Text() == "suspend" && ops[1].NumericKind() == psi.KindFUN {
+				l.errorLater(opPos, "modifier form for a non-built-in 'suspend' function is not allowed")
+			}
 			c := &syntax.Call{Fun: m, Args: []syntax.Expr{l.expr(ops[1])}, Infix: true}
 			c.P = opPos
 			syntax.LabelLambdas(c)
@@ -396,7 +448,8 @@ func (l *lowerer) memberExpr(x syntax.Expr, name psi.NodeRef, safe bool) *syntax
 	if t.NumericKind() != psi.KindIDENTIFIER {
 		l.fail(t, "expected a name")
 	}
-	m := &syntax.Member{X: x, Name: ident(t), Safe: safe}
+	l.underscoreRef(t)
+	m := &syntax.Member{X: x, Name: ident(t), Safe: safe, Written: true}
 	m.P = l.pos(t)
 	return record(l, m, name)
 }
@@ -462,9 +515,17 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 			c.P = l.pos(a)
 		}
 		if trailing {
-			l.fail(a, "unexpected '{'")
+			// f() {} {}: kotlinc passes only the first, and reports the
+			// others.
+			if newLineBefore(a) {
+				l.errorLater(l.pos(a), "unexpected trailing lambda on a new line")
+			} else {
+				l.errorLater(l.pos(a), "only one lambda expression is allowed outside a parenthesized argument list")
+			}
+			continue
 		}
 		c.Args = append(c.Args, l.expr(first(a)))
+		c.TrailingNL = args.Valid() && newLineBefore(a)
 		trailing = true
 	}
 	if !args.Valid() && !trailing {
@@ -502,6 +563,7 @@ func dottedName(n psi.NodeRef) (string, psi.NodeRef, bool) {
 // has type arguments.
 func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 	prefix := ""
+	var parts []syntax.Pos
 	if n.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION {
 		ops := operands(n)
 		if len(ops) != 2 {
@@ -512,6 +574,7 @@ func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 			return nil
 		}
 		prefix, n = x+".", ops[1]
+		parts = l.dottedParts(ops[0])
 	}
 	if n.NumericKind() != psi.KindCALL_EXPRESSION || has(n, psi.KindVALUE_ARGUMENT_LIST) || has(n, psi.KindLAMBDA_ARGUMENT) ||
 		!has(n, psi.KindTYPE_ARGUMENT_LIST) {
@@ -521,7 +584,25 @@ func (l *lowerer) genericName(n psi.NodeRef) *syntax.TypeRef {
 	if !ok || strings.Contains(name, ".") {
 		return nil
 	}
-	return &syntax.TypeRef{P: l.pos(last), Name: prefix + name, Args: l.typeArgsOf(n)}
+	ref := &syntax.TypeRef{P: l.pos(last), Name: prefix + name, Parts: append(parts, l.pos(last))}
+	if ta := child(n, psi.KindTYPE_ARGUMENT_LIST); ta.Valid() {
+		ref.ArgsP = l.pos(ta)
+	}
+	ref.Args = l.typeArgsOf(n)
+	return ref
+}
+
+// dottedParts returns the positions of the names of n, a dotted name.
+func (l *lowerer) dottedParts(n psi.NodeRef) []syntax.Pos {
+	switch n.NumericKind() {
+	case psi.KindREFERENCE_EXPRESSION:
+		return []syntax.Pos{l.pos(first(n))}
+	case psi.KindDOT_QUALIFIED_EXPRESSION:
+		if ops := operands(n); len(ops) == 2 {
+			return append(l.dottedParts(ops[0]), l.dottedParts(ops[1])...)
+		}
+	}
+	return nil
 }
 
 // colonColonLeft returns the left side of a class literal or callable
@@ -544,7 +625,72 @@ func (l *lowerer) colonColonLeft(n psi.NodeRef) (syntax.Expr, *syntax.TypeRef) {
 	if ref := l.genericName(left); ref != nil {
 		return nil, ref
 	}
+	if ref, ok := l.typeChain(left, true); ok && hasTypeArgs(ref) {
+		return nil, ref
+	}
 	return l.expr(left), nil
+}
+
+// typeChain returns the type that n, before ::, spells as a chain of
+// names with type arguments, possibly in parentheses, as kotlinc reads
+// it: Outer<A>.Inner<B> or (Outer<A>).Inner<B>. A dotted name's position
+// is its last name's, as kc's parser gives it, but in parentheses, where
+// the parser reads a type, its first's.
+func (l *lowerer) typeChain(n psi.NodeRef, lastPos bool) (*syntax.TypeRef, bool) {
+	switch n.NumericKind() {
+	case psi.KindPARENTHESIZED:
+		return l.typeChain(exprChild(n), false)
+	case psi.KindREFERENCE_EXPRESSION:
+		if t := first(n); t.NumericKind() == psi.KindIDENTIFIER {
+			return &syntax.TypeRef{P: l.pos(t), Name: ident(t), Parts: []syntax.Pos{l.pos(t)}}, true
+		}
+	case psi.KindCALL_EXPRESSION:
+		if has(n, psi.KindVALUE_ARGUMENT_LIST) || has(n, psi.KindLAMBDA_ARGUMENT) || !has(n, psi.KindTYPE_ARGUMENT_LIST) {
+			return nil, false
+		}
+		ref, ok := l.typeChain(exprChild(n), lastPos)
+		if !ok || ref.Args != nil || ref.Outer != nil {
+			return nil, false
+		}
+		ref.ArgsP = l.pos(child(n, psi.KindTYPE_ARGUMENT_LIST))
+		ref.Args = l.typeArgsOf(n)
+		return ref, true
+	case psi.KindDOT_QUALIFIED_EXPRESSION:
+		ops := operands(n)
+		if len(ops) != 2 {
+			return nil, false
+		}
+		outer, ok := l.typeChain(ops[0], lastPos)
+		if !ok {
+			return nil, false
+		}
+		seg, ok := l.typeChain(ops[1], lastPos)
+		if !ok || seg.Outer != nil || strings.Contains(seg.Name, ".") {
+			return nil, false
+		}
+		if outer.Args != nil {
+			return &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + seg.Name, Outer: outer, Args: seg.Args, Parts: seg.Parts, ArgsP: seg.ArgsP}, true
+		}
+		outer.Name += "." + seg.Name
+		outer.Args, outer.ArgsP = seg.Args, seg.ArgsP
+		outer.Parts = append(outer.Parts, seg.Parts...)
+		if lastPos && outer.Outer == nil {
+			outer.P = seg.P
+		}
+		return outer, true
+	}
+	return nil, false
+}
+
+// hasTypeArgs reports whether a type or one of its outer classes' has type
+// arguments.
+func hasTypeArgs(ref *syntax.TypeRef) bool {
+	for ; ref != nil; ref = ref.Outer {
+		if ref.Args != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *lowerer) classLit(n psi.NodeRef) syntax.Expr {
@@ -565,6 +711,7 @@ func (l *lowerer) callableRef(n psi.NodeRef) syntax.Expr {
 	if name.NumericKind() != psi.KindREFERENCE_EXPRESSION {
 		l.failAt(l.end(cc), "expected a name")
 	}
+	l.underscoreRef(first(name))
 	return syntax.CallableRefLambda(l.pos(cc), &syntax.CallableRef{X: x, Type: ref, Name: ident(first(name))})
 }
 
@@ -572,8 +719,12 @@ func (l *lowerer) callableRef(n psi.NodeRef) syntax.Expr {
 // in kc, so annotations in them aren't recorded and anonymous functions
 // in them are numbered from 1.
 func (l *lowerer) stringLit(n psi.NodeRef) syntax.Expr {
-	s := &syntax.StringLit{}
+	s := &syntax.StringLit{Src: n.Text()}
 	s.P = l.pos(n)
+	if p := child(n, psi.KindSTRING_INTERPOLATION_PREFIX); p.Valid() {
+		s.Prefix = len(p.Text())
+		s.Src = s.Src[s.Prefix:]
+	}
 	var sb strings.Builder
 	flush := func() {
 		if sb.Len() > 0 {
@@ -646,7 +797,7 @@ func (l *lowerer) lambda(n psi.NodeRef) *syntax.Lambda {
 	block := child(fl, psi.KindBLOCK)
 	rbrace := child(fl, psi.KindRBRACE)
 	if !rbrace.Valid() {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
 	}
 	body := &syntax.Block{}
 	if arrow := child(fl, psi.KindARROW); arrow.Valid() {
@@ -659,6 +810,9 @@ func (l *lowerer) lambda(n psi.NodeRef) *syntax.Lambda {
 	}
 	body.Stmts = l.stmts(block)
 	body.End = l.pos(rbrace)
+	if !rbrace.Valid() {
+		body.End = l.end(n)
+	}
 	lam.Body = record(l, body, block)
 	return lam
 }
@@ -746,6 +900,21 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 		}
 		lam.P, lam.AnonCtx = l.pos(m), l.contextParams(cs[0])
 	}
+	if tps := child(n, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
+		// As kotlinc, the function is kept, without them.
+		l.errorLater(l.pos(tps), "type parameters are not allowed for anonymous functions")
+		names := map[string]bool{}
+		for _, tp := range kids(tps) {
+			if tp.NumericKind() == psi.KindTYPE_PARAMETER {
+				names[ident(child(tp, psi.KindIDENTIFIER))] = true
+			}
+		}
+		for _, c := range kids(child(n, psi.KindTYPE_CONSTRAINT_LIST)) {
+			if ref := child(c, psi.KindREFERENCE_EXPRESSION); c.NumericKind() == psi.KindTYPE_CONSTRAINT && !names[ident(first(ref))] {
+				l.errorLater(l.pos(ref), "'%s' does not refer to a type parameter of this declaration", ident(first(ref)))
+			}
+		}
+	}
 	ps := child(n, psi.KindVALUE_PARAMETER_LIST)
 	if !ps.Valid() {
 		l.failAt(l.end(n), "expected '('")
@@ -760,14 +929,15 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 			continue
 		}
 		m := l.modifiers(child(p, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		name := child(p, psi.KindIDENTIFIER)
-		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name)}
+		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name), Mods: m.Written, Annotations: m.Annotations}
 		if t := child(p, psi.KindTYPE_REFERENCE); t.Valid() {
 			lp.Type = l.typeRef(t)
 		}
 		if eq := child(p, psi.KindEQ); eq.Valid() {
-			l.fail(eq, "anonymous functions can't have default values")
+			// As kotlinc, the function is kept, without the value.
+			l.errorLater(l.pos(exprAfter(p, psi.KindEQ)), "anonymous functions can't have default values")
 		}
 		lam.Params = append(lam.Params, record(l, lp, p))
 	}
@@ -784,6 +954,7 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 	case has(n, psi.KindEQ):
 		x := l.expr(exprAfter(n, psi.KindEQ))
 		lam.Body = &syntax.Block{P: x.Pos(), Stmts: []syntax.Stmt{&syntax.ExprStmt{X: x}}}
+		lam.AnonExpr = true
 	default:
 		l.failAt(l.end(n), "expected the body of an anonymous function")
 	}
@@ -807,15 +978,38 @@ func (l *lowerer) ifExpr(n psi.NodeRef) syntax.Expr {
 	return x
 }
 
+// confusingCond lowers x, a condition of w, reporting it as kc's parser
+// does if w has a subject and x is one kotlinc reserves (see confusing).
+func (l *lowerer) confusingCond(w *syntax.When, x psi.NodeRef) syntax.Expr {
+	e := l.expr(x)
+	if w.Subject != nil && confusing(x) {
+		l.errorLater(l.pos(x), confusingMsg)
+	}
+	return e
+}
+
 func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w := &syntax.When{}
 	w.P = l.pos(n)
 	if has(n, psi.KindLPAR) {
-		if pd := child(n, psi.KindPROPERTY); pd.Valid() {
+		if dd := child(n, psi.KindDESTRUCTURING_DECLARATION); dd.Valid() && has(dd, psi.KindEQ) {
+			// As kotlinc, the initializer is the subject, and the names
+			// aren't declared.
+			l.errorLater(l.pos(dd), "illegal variable declaration in 'when' subject: destructuring declaration; only 'val' variables with initializers are allowed")
+			w.Subject = l.expr(exprAfter(dd, psi.KindEQ))
+		} else if pd := child(n, psi.KindPROPERTY); pd.Valid() {
 			if m := child(pd, psi.KindMODIFIER_LIST); m.Valid() || has(pd, psi.KindVAR_KEYWORD) {
-				l.fail(pd, "unexpected declaration in 'when' subject")
+				if !has(pd, psi.KindEQ) || has(pd, psi.KindPROPERTY_DELEGATE) || has(pd, psi.KindTYPE_REFERENCE) && has(pd, psi.KindDOT) {
+					l.fail(pd, "unexpected declaration in 'when' subject")
+				}
+				// As kotlinc, the variable is declared all the same.
+				l.errorLater(l.pos(pd), "illegal variable declaration in 'when' subject; only 'val' variables with initializers are allowed")
 			}
-			w.SubjVar = ident(child(pd, psi.KindIDENTIFIER))
+			if id := child(pd, psi.KindIDENTIFIER); id.Valid() {
+				w.SubjVar = ident(id)
+			} else if e := child(pd, psi.KindERROR_ELEMENT); unnamedSubject(pd) {
+				l.errorLater(l.pos(e), "expecting property name or receiver type")
+			}
 			l.prov[WhenSubject{w}] = pd.ID()
 			if t := child(pd, psi.KindTYPE_REFERENCE); t.Valid() {
 				w.SubjType = l.typeRef(t)
@@ -829,40 +1023,82 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 		if e.NumericKind() != psi.KindWHEN_ENTRY {
 			continue
 		}
-		br := &syntax.WhenBranch{P: l.pos(e), Else: has(e, psi.KindELSE_KEYWORD)}
-		for _, c := range kids(e) {
-			var wc syntax.WhenCond
-			switch c.NumericKind() {
-			case psi.KindWHEN_CONDITION_IN_RANGE:
-				wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
-				wc.NotIn = !wc.In
-				wc.X = l.expr(exprChild(c))
-			case psi.KindWHEN_CONDITION_IS_PATTERN:
-				kw := first(c)
-				wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
-				wc.P = l.pos(kw)
-				wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
-			case psi.KindWHEN_CONDITION_EXPRESSION:
-				wc.X = l.expr(exprChild(c))
-			case psi.KindWHEN_ENTRY_GUARD:
-				br.Guard = l.expr(exprChild(c))
-				continue
-			default:
-				continue
-			}
-			br.Conds = append(br.Conds, wc)
+		var br *syntax.WhenBranch
+		if !l.recovering {
+			br = l.whenEntry(w, e)
+		} else if !l.attempt(func() {
+			l.syntaxError(e)
+			br = l.whenEntry(w, e)
+		}) {
+			br = l.placeholderEntry(e)
 		}
-		body := exprAfter(e, psi.KindARROW)
-		if !body.Valid() {
-			l.failAt(l.end(e), "expected an expression")
-		}
-		br.Body = l.bodyOf(body)
 		w.Branches = append(w.Branches, record(l, br, e))
 	}
 	if !has(n, psi.KindRBRACE) {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
 	}
 	return w
+}
+
+// whenEntry lowers WHEN_ENTRY e of when w.
+func (l *lowerer) whenEntry(w *syntax.When, e psi.NodeRef) *syntax.WhenBranch {
+	br := &syntax.WhenBranch{P: l.pos(e), Else: has(e, psi.KindELSE_KEYWORD)}
+	for _, c := range kids(e) {
+		var wc syntax.WhenCond
+		switch c.NumericKind() {
+		case psi.KindWHEN_CONDITION_IN_RANGE:
+			wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
+			wc.NotIn = !wc.In
+			wc.P = l.pos(opOf(c))
+			wc.X = l.confusingCond(w, exprChild(c))
+		case psi.KindWHEN_CONDITION_IS_PATTERN:
+			kw := first(c)
+			wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
+			wc.P = l.pos(kw)
+			wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
+		case psi.KindWHEN_CONDITION_EXPRESSION:
+			wc.X = l.confusingCond(w, exprChild(c))
+		case psi.KindWHEN_ENTRY_GUARD:
+			br.Guard = l.expr(exprChild(c))
+			continue
+		default:
+			continue
+		}
+		br.Conds = append(br.Conds, wc)
+	}
+	body := exprAfter(e, psi.KindARROW)
+	if !body.Valid() {
+		l.failAt(l.end(e), "expected an expression")
+	}
+	br.Body = l.bodyOf(body)
+	return br
+}
+
+// placeholderEntry returns the branch to keep, when recovering, for
+// WHEN_ENTRY e that has a syntax error: its condition and its value have
+// an invalid type, so that they report nothing of their own, and the when
+// keeps its other branches.
+func (l *lowerer) placeholderEntry(e psi.NodeRef) *syntax.WhenBranch {
+	p := l.pos(e)
+	invalid := func() syntax.Expr {
+		x := &syntax.As{X: &syntax.NullLit{}, Ref: &syntax.TypeRef{P: p, Known: &types.InvalidType}}
+		x.X.(*syntax.NullLit).P = p
+		x.P = p
+		return x
+	}
+	// An else branch is kept as one only last, where it is valid.
+	last := true
+	for n := next(e); n.Valid(); n = next(n) {
+		if n.NumericKind() == psi.KindWHEN_ENTRY {
+			last = false
+		}
+	}
+	br := &syntax.WhenBranch{P: p, Else: has(e, psi.KindELSE_KEYWORD) && last}
+	if !br.Else {
+		br.Conds = []syntax.WhenCond{{X: invalid()}}
+	}
+	br.Body = &syntax.Block{P: p, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: invalid()}}}
+	return br
 }
 
 func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
@@ -891,7 +1127,12 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 					case psi.KindANNOTATION:
 						ct.Annotations = append(ct.Annotations, l.bracketAnnotations(a)...)
 					default:
-						l.unexpected(a)
+						if !a.IsLeaf() {
+							l.unexpected(a)
+						}
+						// A catch parameter takes no modifiers, as kotlinc's
+						// WRONG_MODIFIER_TARGET; the try is kept.
+						l.errorLater(l.pos(a), "modifier '%s' is not applicable to 'value parameter'", a.Text())
 					}
 				}
 			}

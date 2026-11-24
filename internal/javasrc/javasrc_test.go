@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 
 	"path/filepath"
 	"sort"
@@ -182,6 +183,8 @@ public class C extends Other {
     public static final double INF = 1.0 / 0.0, NOT = Math.random();
     public static final int DIV0 = 1 / 0, CYCLE = CYCLE2, CYCLE2 = CYCLE;
 }
+`
+	other := `package p;
 class Other {
     static final int BASE = 41;
     public static final int INHERITED = 7;
@@ -191,7 +194,11 @@ class Other {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewSet([]*File{f})
+	g, err := Parse("Other.java", other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSet([]*File{f, g})
 	info, err := s.Info("p/C")
 	if err != nil {
 		t.Fatal(err)
@@ -307,5 +314,88 @@ class K {
 	}
 	if got["f"] != "[[{Lp/Defer; []}] []]" || got["g"] != "[]" {
 		t.Errorf("got %v", got)
+	}
+}
+
+// TestStarImportedNullability checks that a nullability annotation that
+// a star import of its package names, but that no class on the class
+// path declares, is resolved: kotlinc reads it all the same.
+func TestStarImportedNullability(t *testing.T) {
+	src := `package p;
+import org.jetbrains.annotations.*;
+interface K {
+	@Nullable String f(@NotNull String a);
+}
+`
+	f, err := Parse("p/K.java", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := NewSet([]*File{f}).Info("p/K")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range info.Methods {
+		if m.Name == "f" {
+			if !slices.Contains(m.Annotations, "Lorg/jetbrains/annotations/Nullable;") || fmt.Sprint(m.ParamAnnotations) != "[[Lorg/jetbrains/annotations/NotNull;]]" {
+				t.Errorf("got %v %v", m.Annotations, m.ParamAnnotations)
+			}
+			return
+		}
+	}
+	t.Error("no method f")
+}
+
+// TestDocDeprecated checks that a doc comment's @deprecated tag
+// deprecates a class, a method, a field and an enum constant, as
+// @Deprecated does, and that the word elsewhere in a comment doesn't.
+func TestDocDeprecated(t *testing.T) {
+	src := `package p;
+/**
+ * Old.
+ * @deprecated use New
+ */
+public class K {
+	/** @deprecated */
+	public void f() {}
+	/** Not {@code @deprecated}: see @deprecated below. */
+	public void g() {}
+	/**/
+	public void h() {}
+	/** @deprecated */
+	public int x;
+	public enum E { A, /** @deprecated */ B, @Deprecated C }
+}
+`
+	f, err := Parse("p/K.java", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSet([]*File{f})
+	s.Outside = kotlinOutside{map[string]bool{"java/lang/Deprecated": true}}
+	info, err := s.Info("p/K")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Deprecated == nil {
+		t.Error("K: not deprecated")
+	}
+	got := map[string]bool{}
+	for _, m := range append(info.Methods, info.Fields...) {
+		got[m.Name] = m.Deprecated != nil
+	}
+	if !got["f"] || got["g"] || got["h"] || !got["x"] {
+		t.Errorf("K's members deprecated: %v", got)
+	}
+	e, err := s.Info("p/K$E")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = map[string]bool{}
+	for _, m := range e.Fields {
+		got[m.Name] = m.Deprecated != nil
+	}
+	if got["A"] || !got["B"] || !got["C"] {
+		t.Errorf("E's entries deprecated: %v", got)
 	}
 }

@@ -1,0 +1,15 @@
+g: 'int LocalExternalKt.f$g(int)'
+-1
+defaults: 'java.lang.String LocalExternalKt.defaults$d(int, int, java.lang.String)'
+k: 'java.lang.String C.k$g()'
+twice: 'void C.twice$h()'
+o: 'java.lang.Object O.o$lambda$0$inLambda()'
+LocalExternalKt:
+  private static final native defaults$d3
+  private static final native f$g1
+C:
+  private static final native k$g0
+  private static final native twice$h$01
+  private static final native twice$h0
+O:
+  private static final native o$lambda$0$inLambda0

@@ -92,6 +92,7 @@ internal class KcInfo(
                     ?: p.info.symbolPsi
                 is KcConstructorSymbol -> p.info.symbolPsi
                 is KcPropertySymbol -> p.info.symbolPsi
+                is KcEnumEntryInitializerSymbol -> p.psi
                 else -> null
             }
         } else null
@@ -528,6 +529,32 @@ internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
     override val isExternal get() = false
     override fun createPointer(): KaSymbolPointer<KaEnumEntrySymbol> = info.pointer()
+
+    /** The entry's initializer, or null if it has none. */
+    var initializerSymbol: KcEnumEntryInitializerSymbol? = null
+    override val enumEntryInitializer: KaEnumEntryInitializerSymbol? get() = initializerSymbol
+}
+
+/**
+ * The initializer of enum entry [entry]: the anonymous object that
+ * initializes it, a subclass of the enum, whose members are the
+ * declarations of the entry's body and its constructor. FIR's is the same
+ * symbol, both a KaAnonymousObjectSymbol and a KaEnumEntryInitializerSymbol.
+ */
+internal class KcEnumEntryInitializerSymbol(val entry: KcEnumEntrySymbol) :
+    StubKaAnonymousObjectSymbol(), KaEnumEntryInitializerSymbol {
+    override val token get() = entry.token
+    override val psi: PsiElement? get() = entry.psi
+    override val origin get() = entry.origin
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), token)
+    override val superTypes: List<KaType> get() = listOf(entry.returnType)
+    lateinit var members: List<KaDeclarationSymbol>
+    override fun createPointer(): KaSymbolPointer<KcEnumEntryInitializerSymbol> = entry.info.pointer<KaSymbol>().let { p ->
+        object : StubKaSymbolPointer<KcEnumEntryInitializerSymbol>() {
+            override fun restoreSymbol(analysisSession: org.jetbrains.kotlin.analysis.api.KaSession) =
+                (p.restoreSymbol(analysisSession) as? KcEnumEntrySymbol)?.initializerSymbol
+        }
+    }
 }
 
 internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
@@ -615,7 +642,14 @@ internal class KcReceiverParameterSymbol(
     override fun hashCode() = owningCallableSymbol.hashCode() + 7
 }
 
-/** A class kc doesn't have, known only by its ID. */
+/**
+ * A class kc doesn't have, known only by its ID: one a library's class
+ * file names that isn't on the class path, as an Android library's
+ * implementation dependency isn't on its consumers'. FIR has an error type
+ * for it, without a symbol, which is none of the kinds of class below: KSP
+ * asks whether a function's parameter and result types are value classes
+ * for its JVM name, by which it orders a library class's members.
+ */
 internal class KcLibraryClassSymbol(val round: KcRound, override val classId: ClassId) : StubKaNamedClassSymbol() {
     override val token get() = round.token
     override val psi: PsiElement? get() = null
@@ -624,6 +658,13 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
     override val location get() = KaSymbolLocation.TOP_LEVEL
     override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
     override val isInner get() = false
+    override val isInline get() = false
+    override val isData get() = false
+    override val isFun get() = false
+    override val isExternal get() = false
+    override val isExpect get() = false
+    override val isActual get() = false
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = KcPointer("class:" + classId.asString())
     override fun toString() = "KcLibraryClassSymbol($classId)"
 }

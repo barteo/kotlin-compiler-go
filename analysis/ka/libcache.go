@@ -47,6 +47,8 @@ var libraries struct {
 // acquire returns a library for cfg that the caller must release: a
 // shared one if there is one for cfg, else one it opens.
 func acquire(cfg Config) (*shared, error) {
+	cfg.ClassPath = existing(cfg.ClassPath)
+	cfg.FriendPaths = existing(cfg.FriendPaths)
 	key := libraryKey(cfg)
 	libraries.mu.Lock()
 	if key != "" {
@@ -86,8 +88,21 @@ func acquire(cfg Config) (*shared, error) {
 		}
 	}
 	libraries.list = append(libraries.list, s)
-	trimLocked()
+	trimLocked(maxIdle)
 	return s, nil
+}
+
+// existing returns the paths that exist. A build lists class path entries
+// that need not exist (an output directory nothing is written to), and
+// kotlinc and stock KSP leave those out.
+func existing(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // retain adds a user to s.
@@ -108,12 +123,20 @@ func (s *shared) release() error {
 	if s.key == "" {
 		return s.lib.cp.Close()
 	}
-	return trimLocked()
+	return trimLocked(maxIdle)
+}
+
+// Trim closes the libraries no session or model uses, which are
+// otherwise kept for the next session, with their checks.
+func Trim() error {
+	libraries.mu.Lock()
+	defer libraries.mu.Unlock()
+	return trimLocked(0)
 }
 
 // trimLocked closes the least recently used unused libraries past
-// maxIdle.
-func trimLocked() error {
+// keep.
+func trimLocked(keep int) error {
 	idle := 0
 	for _, s := range libraries.list {
 		if s.refs == 0 {
@@ -122,7 +145,7 @@ func trimLocked() error {
 	}
 	var err error
 	libraries.list = slices.DeleteFunc(libraries.list, func(s *shared) bool {
-		if s.refs > 0 || idle <= maxIdle {
+		if s.refs > 0 || idle <= keep {
 			return false
 		}
 		idle--

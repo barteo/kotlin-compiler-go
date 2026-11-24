@@ -60,6 +60,13 @@
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
 //
+// OpKaHandles: nothing → n:Uint. It returns the number of sessions and
+// models that are open, for tests of what a host leaves open.
+//
+// OpKaTrim: nothing → nothing. It closes the class paths no session or
+// model uses, which are otherwise kept for the next session, with the
+// results of their last checks.
+//
 // OpKaClass: model:Int classID:String → n:Uint decl*n
 //
 // It returns the model of a class of the class path (ka's Model.Class),
@@ -78,7 +85,10 @@ import (
 	"context"
 	"io"
 	"math"
+	"runtime/debug"
 	"slices"
+	"sync"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
@@ -92,10 +102,61 @@ const (
 	OpKaClose   kcabi.Op = 12
 	OpKaClass   kcabi.Op = 13
 	OpKaPackage kcabi.Op = 14
+	OpKaHandles kcabi.Op = 15
+	OpKaTrim    kcabi.Op = 16
 )
 
 // handles are the sessions and models the JVM holds.
 var handles kcabi.Handles
+
+// Idle memory. A run's checks leave the heap larger than what stays in
+// use, and the collector returns the rest to the system only slowly: a
+// host that lives on, as a Gradle daemon, holds it between its builds.
+// So once no session has been open for idleDelay, the memory that is
+// free goes back to the system.
+var idle struct {
+	mu       sync.Mutex
+	sessions int
+	timer    *time.Timer
+}
+
+// idleDelay is how long no session is open before the free memory is
+// returned: the tasks of a build open sessions one after another.
+var idleDelay = 2 * time.Second
+
+// freeMemory returns the free memory to the system.
+var freeMemory = debug.FreeOSMemory
+
+// sessionOpened counts a session as open.
+func sessionOpened() {
+	idle.mu.Lock()
+	defer idle.mu.Unlock()
+	idle.sessions++
+	if idle.timer != nil {
+		idle.timer.Stop()
+	}
+}
+
+// sessionClosed counts a session as closed, and has the free memory
+// returned if none is opened within idleDelay.
+func sessionClosed() {
+	idle.mu.Lock()
+	defer idle.mu.Unlock()
+	if idle.sessions--; idle.sessions > 0 {
+		return
+	}
+	if idle.timer != nil {
+		idle.timer.Stop()
+	}
+	idle.timer = time.AfterFunc(idleDelay, func() {
+		idle.mu.Lock()
+		open := idle.sessions > 0
+		idle.mu.Unlock()
+		if !open {
+			freeMemory()
+		}
+	})
+}
 
 func init() {
 	kcabi.Register(OpKaOpen, open)
@@ -103,6 +164,12 @@ func init() {
 	kcabi.Register(OpKaClose, closeHandle)
 	kcabi.Register(OpKaClass, class)
 	kcabi.Register(OpKaPackage, pkg)
+	kcabi.Register(OpKaHandles, func([]byte) ([]byte, error) {
+		var w wire.Writer
+		w.Uint(uint64(handles.Len()))
+		return w.Message(), nil
+	})
+	kcabi.Register(OpKaTrim, func([]byte) ([]byte, error) { return nil, ka.Trim() })
 }
 
 func pkg(req []byte) ([]byte, error) {
@@ -168,6 +235,7 @@ func open(req []byte) ([]byte, error) {
 	}
 	var w wire.Writer
 	w.Int(int64(handles.Put(ka.Open(cfg))))
+	sessionOpened()
 	return w.Message(), nil
 }
 
@@ -371,6 +439,9 @@ func closeHandle(req []byte) ([]byte, error) {
 		return nil, err
 	}
 	handles.Delete(h)
+	if _, ok := x.(*ka.Session); ok {
+		sessionClosed()
+	}
 	if c, ok := x.(io.Closer); ok {
 		return nil, c.Close()
 	}

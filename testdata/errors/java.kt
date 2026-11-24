@@ -23,12 +23,9 @@ fun main() {
     val cs: CharSequence = 1 // ERROR inferred type is Int but CharSequence was expected
 }
 
-// A Kotlin property doesn't override a Java getter: its getter clashes.
-abstract class Named : java.security.Principal {
-    val name: String = "x" // ERROR accidental override: the following declarations have the same JVM signature (getName()Ljava/lang/String;)
-}
-
+// A frontend error: kotlinc doesn't run its backend, which would report
+// getName()'s clash with the property's getter (see backendErrors.kt).
 class NamedTwice : java.security.Principal {
     override val name: String = "x" // ERROR 'name' overrides nothing
-    override fun getName() = "y" // ERROR platform declaration clash: the following declarations have the same JVM signature (getName()Ljava/lang/String;)
+    override fun getName() = "y"
 }

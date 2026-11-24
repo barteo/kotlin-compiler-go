@@ -1,0 +1,52 @@
+// Checks that kotlinc 2.4's diagnostics tests expect and kc missed, each
+// a case of a check kc has otherwise.
+
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import kotlin.reflect.KProperty
+
+operator fun Any.provideDelegate(x: Any?, p: Int) {} // ERROR second parameter must be of type KProperty<*> or its supertype
+operator fun String.provideDelegate(x: Any?, p: KProperty<*>) = this
+
+fun anonymousReceivers() {
+    val bag: Int.() -> Unit = fun String.() {} // ERROR expected receiver of type Int
+    val ok: Int.() -> Unit = fun Int.() {}
+    val wider: Int.() -> Unit = fun Any.() {}
+}
+
+@RequiresOptIn
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.FIELD, AnnotationTarget.PROPERTY_GETTER)
+annotation class ExperimentalAPI
+
+val numbersB: List<Int>
+    @ExperimentalAPI // ERROR opt-in requirement marker 'ExperimentalAPI' can't be used on this target
+    field = mutableListOf()
+
+@field:ExperimentalAPI // ERROR opt-in requirement marker 'ExperimentalAPI' can't be used on this target
+val numbersC: List<Int> = listOf()
+
+fun readsField() {
+    val b: MutableList<Int> = numbersB // ERROR this declaration needs opt-in
+}
+
+suspend fun suspensionPoint() {}
+fun suspendBuilder(c: suspend () -> Unit) {}
+
+fun criticalSections(lock: ReentrantLock) {
+    suspendBuilder {
+        lock.withLock { suspensionPoint() } // ERROR the 'suspensionPoint' suspension point is inside a critical section
+    }
+}
+
+fun stringVararg(vararg args: String) {}
+fun useStrings(fn: (String, String, String) -> Unit) = fn("foo", "bar", "boo")
+fun useStringArray(fn: (Array<String>) -> Unit) = fn(arrayOf("foo", "bar"))
+fun useMixedStringArgs2(fn: (Array<String>, String) -> Unit) = fn(arrayOf("foo"), "baz")
+fun joinAll(vararg xs: String, sep: String = ",", end: String = ".") {}
+
+fun varargViewedAsArray() {
+    useStrings(::stringVararg)
+    useStringArray(::stringVararg)
+    useMixedStringArgs2(::stringVararg) // ERROR type mismatch
+    useMixedStringArgs2(::joinAll)
+}

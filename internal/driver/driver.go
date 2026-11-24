@@ -2,11 +2,13 @@
 package driver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -50,6 +52,11 @@ type Options struct {
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
+	// JVMTarget is the JVM version the class files are for, as kotlinc's
+	// -jvm-target names it: "1.8" (also if empty), or "9" to "25". It
+	// sets their version, and inline functions of class files built for a
+	// higher one are errors, as with kotlinc.
+	JVMTarget string
 	// NoJVMDefault compiles interfaces without JVM default methods, their
 	// bodies in DefaultImpls classes, as kotlinc's -jvm-default=disable.
 	NoJVMDefault bool
@@ -81,6 +88,20 @@ type Options struct {
 	// OptIns are the qualified names of the requirement markers the whole
 	// module opts in to, as kotlinc's -opt-in.
 	OptIns []string
+	// ExtraWarnings also reports the warnings kotlinc reports with
+	// -Wextra, and ExperimentalWarnings those it reports with
+	// -Xuse-fir-experimental-checkers: see check.Options.
+	ExtraWarnings, ExperimentalWarnings bool
+	// ExplicitAPI is kotlinc's -Xexplicit-api and ExplicitReturnTypes
+	// its -XXexplicit-return-types: see check.Options.
+	ExplicitAPI, ExplicitReturnTypes check.APIMode
+	// MultiPlatform is kotlinc's -Xmulti-platform: the sources may have
+	// expect and actual declarations, which are otherwise errors.
+	MultiPlatform bool
+	// Libraries, if set, keeps the class path and library for later
+	// compiles of the same configuration, and gives this compile those
+	// of an earlier one: see Libraries.
+	Libraries *Libraries
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
@@ -102,6 +123,63 @@ func parallel(n, jobs int, fn func(i int)) {
 	}
 	close(next)
 	wg.Wait()
+}
+
+// classWriter writes class files on goroutines of its own, so that code
+// generation, also with -j 1, doesn't wait for the file system: creating
+// thousands of files took a fifth of a large project's code generation.
+type classWriter struct {
+	major uint16 // the class files' major version: see cf.SetMajor
+	jobs  chan classFile
+	wg    sync.WaitGroup
+	mkdir func(dir string) error
+	mu    sync.Mutex
+	errs  []error
+	nanos atomic.Int64 // spent writing, summed over the writers
+	count atomic.Int64
+}
+
+type classFile struct {
+	path string
+	data []byte
+}
+
+// newClassWriter starts the writers. mkdir creates a file's directory.
+func newClassWriter(mkdir func(dir string) error, major uint16) *classWriter {
+	w := &classWriter{jobs: make(chan classFile, 256), mkdir: mkdir, major: major}
+	for range max(2, min(4, runtime.NumCPU())) {
+		w.wg.Go(func() {
+			for f := range w.jobs {
+				start := time.Now()
+				err := w.mkdir(filepath.Dir(f.path))
+				if err == nil {
+					err = os.WriteFile(f.path, f.data, 0o644)
+				}
+				w.nanos.Add(int64(time.Since(start)))
+				w.count.Add(1)
+				if err != nil {
+					w.mu.Lock()
+					w.errs = append(w.errs, err)
+					w.mu.Unlock()
+				}
+			}
+		})
+	}
+	return w
+}
+
+// write queues data to be written to path. It blocks only if the
+// writers are far behind.
+func (w *classWriter) write(path string, data []byte) {
+	w.jobs <- classFile{path, cf.SetMajor(data, w.major)}
+}
+
+// wait waits for the queued files to be written and returns the errors
+// writing them. No more files may be queued after it.
+func (w *classWriter) wait() error {
+	close(w.jobs)
+	w.wg.Wait()
+	return errors.Join(w.errs...)
 }
 
 // OpenLibrary opens the class path opts names (the JDK, unless NoJDK, and
@@ -152,6 +230,22 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 // declarations the Kotlin code sees, as kotlinc's; javac compiles them.
 // Diagnostics are returned as a joined error.
 func Compile(paths []string, opts Options) error {
+	_, err := CompileWarnings(paths, opts)
+	return err
+}
+
+// CompileWarnings is Compile, which also returns the warnings, whether
+// or not the compile fails: those of the files checked, if they were.
+func CompileWarnings(paths []string, opts Options) (warnings []*syntax.Error, err error) {
+	err = compile(paths, opts, &warnings)
+	return warnings, err
+}
+
+func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
+	major, ok := cf.TargetMajor(opts.JVMTarget)
+	if !ok {
+		return fmt.Errorf("unsupported JVM target %q: 1.8, or 9 to 25", opts.JVMTarget)
+	}
 	var javaPaths []string
 	paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
 		if strings.HasSuffix(p, ".java") {
@@ -173,9 +267,11 @@ func Compile(paths []string, opts Options) error {
 	// Kotlin standard library's default imports are read, also in the
 	// background: checking waits for a package only if it is not read yet.
 	type cpResult struct {
-		cp  *classpath.Path
-		lib *check.Library
-		err error
+		cp     *classpath.Path
+		lib    *check.Library
+		done   func() // called once the compile is done with cp
+		shared bool   // cp and lib's classes are opts.Libraries': see Libraries
+		err    error
 	}
 	cpDone := make(chan cpResult, 1)
 	// The classes the Java sources name that aren't theirs. The program's
@@ -185,15 +281,23 @@ func Compile(paths []string, opts Options) error {
 	var prefetch time.Duration
 	prefetched := make(chan struct{})
 	go func() {
-		cp, err := openClassPath(opts)
-		if err == nil && len(javaPaths) > 0 {
-			err = addJava(cp, javaPaths, opts.Jobs, java)
+		var r cpResult
+		if opts.Libraries != nil && len(javaPaths) == 0 {
+			// A shared library's default imports are read once: then
+			// Prefetch finds them read.
+			r.cp, r.lib, r.done, r.shared, r.err = opts.Libraries.get(opts)
+		} else {
+			r.cp, r.err = openClassPath(opts)
+			if r.err == nil && len(javaPaths) > 0 {
+				r.err = addJava(r.cp, javaPaths, opts.Jobs, java)
+			}
+			if r.err == nil {
+				r.lib = newLibrary(r.cp, opts)
+				r.done = func() { r.cp.Close() }
+			}
 		}
-		var lib *check.Library
-		if err == nil {
-			lib = newLibrary(cp, opts)
-		}
-		cpDone <- cpResult{cp, lib, err}
+		lib := r.lib
+		cpDone <- r
 		if lib != nil {
 			start := time.Now()
 			lib.Prefetch()
@@ -205,7 +309,7 @@ func Compile(paths []string, opts Options) error {
 	defer func() {
 		if r := openCP(); r.err == nil {
 			<-prefetched
-			r.cp.Close()
+			r.done()
 		}
 	}()
 
@@ -216,6 +320,7 @@ func Compile(paths []string, opts Options) error {
 	files := make([]*syntax.File, len(paths))
 	srcs := make([]string, len(paths))
 	errLists := make([][]*syntax.Error, len(paths))
+	softLists := make([][]*syntax.Error, len(paths))
 	ioErrs := make([]error, len(paths))
 	parallel(len(paths), opts.Jobs, func(i int) {
 		src, err := os.ReadFile(paths[i])
@@ -224,19 +329,32 @@ func Compile(paths []string, opts Options) error {
 			return
 		}
 		srcs[i] = string(src)
-		files[i], errLists[i] = parse(frontend, paths[i], srcs[i])
+		files[i], errLists[i], softLists[i] = parse(frontend, paths[i], srcs[i])
 	})
 	if err := errors.Join(ioErrs...); err != nil {
 		return err
 	}
+	// After syntax errors, the files are checked as far as the parser
+	// recovered them, as kotlinc does, for the errors it finds besides
+	// (see checkRecovered); a file the lexer rejects isn't.
 	var diags []error
-	for _, es := range errLists {
+	broken, unrecovered := false, false
+	for i, es := range errLists {
 		for _, e := range es {
 			diags = append(diags, e)
 		}
+		broken = broken || len(es)+len(softLists[i]) > 0
+		unrecovered = unrecovered || len(es)+len(softLists[i]) > 0 && files[i] == nil
 	}
-	if len(diags) > 0 {
-		return errors.Join(diags...)
+	// Until the checker runs, kc's parser's errors are all reported.
+	early := slices.Clip(diags)
+	for _, es := range softLists {
+		for _, e := range es {
+			early = append(early, e)
+		}
+	}
+	if unrecovered {
+		return errors.Join(early...)
 	}
 	classes := map[string]string{} // the files' facades and parts, by name
 	multifile := map[string]bool{} // the multi-file classes' facades
@@ -244,7 +362,9 @@ func Compile(paths []string, opts Options) error {
 		if !f.HasFacade() {
 			continue // a file of expect declarations, as a common one
 		}
-		if prev, dup := classes[f.Class()]; dup {
+		if prev, dup := classes[f.Class()]; dup && broken {
+			return errors.Join(early...) // as when only the syntax was checked
+		} else if dup {
 			return fmt.Errorf("%s: duplicate JVM class name %s (also from %s)", f.Path, f.Class(), prev)
 		}
 		classes[f.Class()] = f.Path
@@ -253,12 +373,17 @@ func Compile(paths []string, opts Options) error {
 		}
 	}
 	for name := range multifile {
-		if prev, dup := classes[name]; dup {
+		if prev, dup := classes[name]; dup && broken {
+			return errors.Join(early...)
+		} else if dup {
 			return fmt.Errorf("%s: duplicate JVM class name %s (also a multi-file class)", prev, name)
 		}
 	}
 	phase("parse")
 	r := openCP()
+	if r.err != nil && broken {
+		return errors.Join(early...) // as without the class path
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -267,12 +392,18 @@ func Compile(paths []string, opts Options) error {
 	if len(javaPaths) > 0 {
 		java.kotlin = kotlinClasses(files)
 	}
-	if opts.Timing != nil {
+	if opts.Timing != nil && r.shared {
+		fmt.Fprintf(opts.Timing, "%-8s 0s (%d classes, indexed by an earlier compile; waited %v after parse)\n", "index",
+			cp.Len(), time.Since(start).Round(time.Microsecond))
+	} else if opts.Timing != nil {
 		fmt.Fprintf(opts.Timing, "%-8s %v (%d classes, concurrent with parse; waited %v after it)\n", "index",
 			cp.IndexTime.Round(time.Microsecond), cp.Len(), time.Since(start).Round(time.Microsecond))
 	}
 	start = time.Now()
 
+	if broken {
+		return checkRecovered(files, errLists, softLists, r.lib, opts, major, diags, warnings)
+	}
 	if opts.Metro && opts.MetroOptions["enabled"] != "false" {
 		// Options kc can't compile with are an error whether or not the
 		// files use Metro: the plugin, with them, may read annotations
@@ -289,8 +420,15 @@ func Compile(paths []string, opts Options) error {
 			phase("metro")
 		}
 	}
-	for _, e := range check.CheckWith(files, r.lib, opts.Jobs) {
-		diags = append(diags, e)
+	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true,
+		JVMTarget: major, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings,
+		ExplicitAPI: opts.ExplicitAPI, ExplicitReturnTypes: opts.ExplicitReturnTypes, NotMultiplatform: !opts.MultiPlatform})
+	for _, e := range checked {
+		if e.IsWarning() {
+			*warnings = append(*warnings, e)
+		} else {
+			diags = append(diags, e)
+		}
 	}
 	if len(diags) > 0 {
 		return errors.Join(diags...)
@@ -301,6 +439,9 @@ func Compile(paths []string, opts Options) error {
 		if cp.HasKotlin() {
 			fmt.Fprintf(opts.Timing, "%-8s %v (Kotlin default imports, after index, concurrent with parse and check)\n", "prefetch",
 				prefetch.Round(time.Microsecond))
+		}
+		if r.shared {
+			fmt.Fprintf(opts.Timing, "(load, kmeta and inline: over all the compiles that share the class path)\n")
 		}
 		n, d := cp.Loaded()
 		fmt.Fprintf(opts.Timing, "%-8s %v (%d classes, part of check and prefetch)\n", "load", d.Round(time.Microsecond), n)
@@ -328,7 +469,7 @@ func Compile(paths []string, opts Options) error {
 		for n := range types.MaxArity + 1 {
 			if arities&(1<<n) != 0 {
 				c := codegen.FunctionInterface(n)
-				if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes, 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), cf.SetMajor(c.Bytes, major), 0o644); err != nil {
 					return err
 				}
 			}
@@ -348,11 +489,10 @@ func Compile(paths []string, opts Options) error {
 		}
 		return err
 	}
-	var writing atomic.Int64 // nanoseconds spent writing class files, over all workers
-	var written atomic.Int64
+	w := newClassWriter(mkdir, major)
 	genOpts := codegen.Options{Stdlib: cp.HasKotlin(), Module: opts.ModuleName,
 		Spilling: cp.Has("kotlin/coroutines/jvm/internal/SpillingKt") && !opts.Debug, Compose: opts.Compose,
-		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}}
+		JVMDefaultCompat: opts.JVMDefaultCompat, JVMTarget: major, Cache: &codegen.Cache{}, Program: codegen.ProgramClasses(files), ClassFile: cp.Load}
 	if opts.Compose {
 		genOpts.ShouldExecute = hasMethod(cp, "androidx/compose/runtime/Composer", "shouldExecute", "(ZI)Z")
 	}
@@ -367,26 +507,12 @@ func Compile(paths []string, opts Options) error {
 			if c.Part != nil {
 				parts[i] = c.Part
 			}
-		}
-		start := time.Now()
-		defer func() {
-			writing.Add(int64(time.Since(start)))
-			written.Add(int64(len(classes)))
-		}()
-		for _, c := range classes {
 			hasFacade[i] = hasFacade[i] || c.Name == files[i].Class()
-			path := filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class")
-			if err := mkdir(filepath.Dir(path)); err != nil {
-				genErrs[i] = err
-				return
-			}
-			if err := os.WriteFile(path, c.Bytes, 0o644); err != nil {
-				genErrs[i] = err
-				return
-			}
+			w.write(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes)
 		}
 	})
 	if err := errors.Join(genErrs...); err != nil {
+		w.wait()
 		return err
 	}
 	// The facades of multi-file classes, from all their parts.
@@ -399,19 +525,18 @@ func Compile(paths []string, opts Options) error {
 	for name, ps := range byFacade {
 		c, err := codegen.MultifileFacade(name, ps)
 		if err != nil {
+			w.wait()
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes, 0o644); err != nil {
-			return err
-		}
+		w.write(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes)
 	}
-	if err := writeModule(opts, files, hasFacade); err != nil {
+	if err := errors.Join(w.wait(), writeModule(opts, files, hasFacade)); err != nil {
 		return err
 	}
 	phase("codegen")
 	if opts.Timing != nil {
-		fmt.Fprintf(opts.Timing, "%-8s %v (%d class files, part of codegen, summed over workers)\n", "write",
-			time.Duration(writing.Load()).Round(time.Microsecond), written.Load())
+		fmt.Fprintf(opts.Timing, "%-8s %v (%d class files, part of codegen, summed over writers)\n", "write",
+			time.Duration(w.nanos.Load()).Round(time.Microsecond), w.count.Load())
 		fmt.Fprintf(opts.Timing, "%-8s %v (Kotlin metadata, part of codegen, summed over workers)\n", "meta",
 			time.Duration(codegen.MetaTime.Swap(0)).Round(time.Microsecond))
 	}
@@ -477,6 +602,12 @@ func addJava(cp *classpath.Path, paths []string, jobs int, outside *javaOutside)
 			return
 		}
 		files[i], errs[i] = javasrc.Parse(paths[i], string(src))
+		if files[i] != nil {
+			// A member left out, as Java PSI leaves it, but for which
+			// kotlinc goes on as well: javac reports Java's syntax
+			// errors.
+			errs[i] = nil
+		}
 	})
 	if err := errors.Join(errs...); err != nil {
 		return err
@@ -526,7 +657,15 @@ func (j *JavaSources) SetKotlin(files []*syntax.File) {
 // theirs: the class path's, and the program's Kotlin classes.
 type javaOutside struct {
 	cp     *classpath.Path
-	kotlin map[string]*syntax.ClassDecl // by internal name
+	kotlin map[string]*kotlinClass // by internal name
+}
+
+// kotlinClass is a class of the program's Kotlin sources, as the Java
+// sources see it.
+type kotlinClass struct {
+	decl  *syntax.ClassDecl
+	file  *syntax.File
+	outer string // the internal name of the class it is nested in, or ""
 }
 
 func (o *javaOutside) Has(name string) bool {
@@ -534,8 +673,24 @@ func (o *javaOutside) Has(name string) bool {
 }
 
 func (o *javaOutside) Supers(name string) ([]string, bool) {
-	if d := o.kotlin[name]; d != nil {
-		return nil, d.Interface
+	if k := o.kotlin[name]; k != nil {
+		// Its supertypes by the names written, which Java sources need
+		// for the member types it inherits: KotlinInner3 in a Java
+		// subclass of a Kotlin class whose superclass declares it. A
+		// supertype with type arguments is left out: the inner classes
+		// inherited through it would lose them, as SuperClass<String>'s
+		// NestedInSuperClass, whose T the Java sources' signatures can't
+		// give, so they stay unresolved.
+		var supers []string
+		for _, st := range k.decl.Supers {
+			if st.Type == nil || st.Type.Name == "" || len(st.Type.Args) > 0 {
+				continue
+			}
+			if n := o.kotlinType(k, st.Type.Name); n != "" {
+				supers = append(supers, n)
+			}
+		}
+		return supers, k.decl.Interface
 	}
 	info, err := o.cp.Load(name)
 	if err != nil {
@@ -547,6 +702,88 @@ func (o *javaOutside) Supers(name string) ([]string, bool) {
 	}
 	return supers, info.Access&cf.AccInterface != 0
 }
+
+// exists reports whether a class of the program or the class path has an
+// internal name.
+func (o *javaOutside) exists(name string) bool {
+	return o.kotlin[name] != nil || o.cp.Has(name)
+}
+
+// qualified returns the internal name of a class by its dotted name, with
+// the longest package prefix it exists in, or "".
+func (o *javaOutside) qualified(dotted string) string {
+	segs := strings.Split(dotted, ".")
+	for i := len(segs) - 1; i >= 0; i-- {
+		n := strings.Join(segs[i:], "$")
+		if i > 0 {
+			n = strings.Join(segs[:i], "/") + "/" + n
+		}
+		if o.exists(n) {
+			return n
+		}
+	}
+	return ""
+}
+
+// kotlinType resolves the name of a type written in Kotlin class k's
+// supertypes, without type arguments, to an internal name, or "". It
+// looks in the classes k is nested in, the file's explicit imports, its
+// package, its star imports and java.lang, and takes the name as
+// qualified last. It doesn't know type aliases.
+func (o *javaOutside) kotlinType(k *kotlinClass, written string) string {
+	first, rest, _ := strings.Cut(written, ".")
+	nested := func(n string) string {
+		if n == "" || rest == "" {
+			return n
+		}
+		n += "$" + strings.ReplaceAll(rest, ".", "$")
+		if !o.exists(n) {
+			return ""
+		}
+		return n
+	}
+	for outer := k.outer; outer != ""; outer = o.kotlin[outer].outer {
+		if n := outer + "$" + first; o.exists(n) {
+			return nested(n)
+		}
+	}
+	f := k.file
+	for _, imp := range f.Imports {
+		if imp.Star {
+			continue
+		}
+		name := imp.Alias
+		if name == "" {
+			name = imp.Path[strings.LastIndex(imp.Path, ".")+1:]
+		}
+		if name == first {
+			return nested(o.qualified(imp.Path))
+		}
+	}
+	pkg := ""
+	if f.Package != "" {
+		pkg = strings.ReplaceAll(f.Package, ".", "/") + "/"
+	}
+	if o.exists(pkg + first) {
+		return nested(pkg + first)
+	}
+	for _, imp := range f.Imports {
+		if !imp.Star {
+			continue
+		}
+		if q := o.qualified(imp.Path + "." + first); q != "" {
+			return nested(q)
+		}
+	}
+	if o.exists("java/lang/" + first) {
+		return nested("java/lang/" + first)
+	}
+	return o.qualified(written)
+}
+
+// IsKotlin reports whether a class is one of the program's Kotlin classes
+// or facades, whose const vals the Java sources can't evaluate.
+func (o *javaOutside) IsKotlin(class string) bool { return o.kotlin[class] != nil }
 
 func (o *javaOutside) Constant(class, field string) (any, string) {
 	if o.kotlin[class] != nil {
@@ -566,15 +803,15 @@ func (o *javaOutside) Constant(class, field string) (any, string) {
 
 // kotlinClasses returns the program's classes by internal name, nested
 // ones too, and its files' facades.
-func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
-	m := map[string]*syntax.ClassDecl{}
-	var add func(prefix string, d *syntax.ClassDecl)
-	add = func(prefix string, d *syntax.ClassDecl) {
+func kotlinClasses(files []*syntax.File) map[string]*kotlinClass {
+	m := map[string]*kotlinClass{}
+	var add func(f *syntax.File, outer, prefix string, d *syntax.ClassDecl)
+	add = func(f *syntax.File, outer, prefix string, d *syntax.ClassDecl) {
 		name := prefix + d.Name
-		m[name] = d
+		m[name] = &kotlinClass{decl: d, file: f, outer: outer}
 		for _, n := range d.Members {
 			if n, ok := n.(*syntax.ClassDecl); ok {
-				add(name+"$", n)
+				add(f, name, name+"$", n)
 			}
 		}
 	}
@@ -585,11 +822,11 @@ func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
 		}
 		for _, d := range f.Decls {
 			if d, ok := d.(*syntax.ClassDecl); ok {
-				add(prefix, d)
+				add(f, "", prefix, d)
 			}
 		}
 		if f.HasFacade() {
-			m[f.Class()] = &syntax.ClassDecl{}
+			m[f.Class()] = &kotlinClass{decl: &syntax.ClassDecl{}, file: f}
 		}
 	}
 	return m
@@ -610,8 +847,6 @@ func frontendOf(opts Options) (string, error) {
 	return "", fmt.Errorf("unknown frontend %q: want syntax or psi", f)
 }
 
-// parse parses a source file with frontend. Like syntax.Parse, it returns
-// only the first error.
 // MetroPluginID is the id of Metro's compiler plugin, whose options
 // MetroOptions are.
 const MetroPluginID = "dev.zacsweers.metro.compiler"
@@ -629,7 +864,7 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 	}
 	again := make([]*syntax.File, len(files), len(files)+len(plan.Files))
 	parallel(len(files), jobs, func(i int) {
-		again[i], _ = parse(frontend, files[i].Path, srcs[i])
+		again[i], _, _ = parse(frontend, files[i].Path, srcs[i])
 	})
 	for _, f := range plan.Files {
 		pf, perrs := syntax.Parse(f.Path, f.Src)
@@ -642,13 +877,98 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 	return again, nil
 }
 
-func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
+// parse parses a source file with frontend. If it has syntax errors, it
+// returns all of them, as kotlinc reports them (see syntaxErrors), with
+// the file as far as parsing recovered: without the declarations and
+// statements that failed, or nil if it can't. soft are the errors of kc's
+// parser where it is stricter than kotlinc's, which checkRecovered
+// reports unless the checker reports an error on the same line.
+//
+// kc's parser is the faster, and parses every file that compiles; a file
+// it rejects is recovered from psi's tree, which has kotlinc's grammar.
+func parse(frontend, path, src string) (f *syntax.File, errs, soft []*syntax.Error) {
 	if frontend != "psi" {
-		return syntax.Parse(path, src)
+		f, perrs := syntax.Parse(path, src)
+		if len(perrs) == 0 && !f.AmbiguousLT {
+			return f, nil, nil
+		}
+		s := psi.Parse(path, src)
+		if len(perrs) == 0 && len(s.Diagnostics()) == 0 {
+			return f, nil, nil // a comparison for kotlinc too
+		}
+		f, lerrs := lowerRecovering(s)
+		errs, soft = syntaxErrors(path, src, s, perrs, lerrs)
+		return f, errs, soft
 	}
-	f, _, errs := lower.File(psi.Parse(path, src))
-	if len(errs) > 0 {
-		return nil, errs[:1]
+	s := psi.Parse(path, src)
+	f, _, lerrs := lower.File(s)
+	if len(lerrs) > 0 {
+		// Checked as far as statement-level recovery gets, as with kc's
+		// parser.
+		rf, rerrs := lowerRecovering(s)
+		errs, soft = syntaxErrors(path, src, s, lerrs, rerrs)
+		return rf, errs, soft
 	}
-	return f, nil
+	return f, nil, nil
+}
+
+// lowerRecovering returns the file of psi tree s as lower.FileRecovering
+// recovers it, and its errors, or nil if it can't.
+func lowerRecovering(s *psi.Snapshot) (f *syntax.File, errs []*syntax.Error) {
+	defer func() {
+		// A file the token parser rejects can hold what lowering has no
+		// case for; it is then left unchecked, with its syntax errors.
+		if recover() != nil {
+			f, errs = nil, nil
+		}
+	}()
+	f, _, errs = lower.FileRecovering(s)
+	return f, errs
+}
+
+// checkRecovered checks files, some of which have syntax errors, errLists
+// by file, as far as the parser recovered them, and returns the syntax
+// errors, diags, with the checker's errors on the lines without one. A
+// declaration or statement with a syntax error is left out of its file,
+// so the checker's errors on its lines would be about what parsing left.
+// Of its warnings, added to warnings, only those are reported that what
+// is left out can't be the reason for (check.Options.Recovered): many
+// are about what isn't used, which a declaration left out may use. The
+// errors of softLists, kc's parser's where kotlinc's parser reports
+// none, are reported only on lines the checker reports no error on:
+// there, the checker's is kotlinc's error.
+func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error, lib *check.Library, opts Options, major uint16, diags []error, warnings *[]*syntax.Error) error {
+	syntaxLines := map[string]map[int]bool{}
+	for i, es := range errLists {
+		for _, e := range es {
+			if syntaxLines[files[i].Path] == nil {
+				syntaxLines[files[i].Path] = map[int]bool{}
+			}
+			syntaxLines[files[i].Path][e.Pos.Line] = true
+		}
+	}
+	checked, _ := check.CheckOptions(context.Background(), files, lib, opts.Jobs, nil, check.Options{JVMTarget: major,
+		Warnings: true, Recovered: true, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings})
+	checkerLines := map[string]map[int]bool{}
+	for _, e := range checked {
+		if e.IsWarning() {
+			*warnings = append(*warnings, e)
+			continue
+		}
+		if !syntaxLines[e.File][e.Pos.Line] {
+			diags = append(diags, e)
+			if checkerLines[e.File] == nil {
+				checkerLines[e.File] = map[int]bool{}
+			}
+			checkerLines[e.File][e.Pos.Line] = true
+		}
+	}
+	for _, es := range softLists {
+		for _, e := range es {
+			if !checkerLines[e.File][e.Pos.Line] {
+				diags = append(diags, e)
+			}
+		}
+	}
+	return errors.Join(diags...)
 }

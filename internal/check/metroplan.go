@@ -38,6 +38,7 @@ const (
 	mScope                 = "dev/zacsweers/metro/Scope"
 	mMapKey                = "dev/zacsweers/metro/MapKey"
 	mSingleIn              = "dev/zacsweers/metro/SingleIn"
+	mCloseableGraph        = "dev/zacsweers/metro/CloseableGraph"
 	mProvider              = "dev/zacsweers/metro/Provider"
 	mNothing               = "kotlin/Nothing"
 )
@@ -777,7 +778,7 @@ func (m *metroAnalysis) graphCalls(c *Checker) {
 		cls := t.C
 		var src string
 		if fn == "createGraph" {
-			src = metroGraphCall(cls, false)
+			src = metroGraphCall(cls)
 		} else {
 			src = m.factoryCall(cls)
 		}
@@ -797,17 +798,17 @@ func (m *metroAnalysis) graphCalls(c *Checker) {
 // factoryCall returns the Kotlin expression for createGraphFactory of
 // factory class f.
 func (m *metroAnalysis) factoryCall(f *types.ClassSym) string {
-	g := f.Outer
+	g := m.outer(f)
 	if g == nil {
 		return ""
 	}
 	if isSource(g) {
-		return metroGraphCall(f, true)
+		return metroFactoryCall(g)
 	}
 	g.Ensure()
 	if comp := g.Companion; comp != nil {
 		if comp.IsSubclassOf(f) {
-			return metroGraphCall(f, true)
+			return metroFactoryCall(g)
 		}
 		if len(comp.Methods["factory"]) > 0 {
 			return metroClassName(g) + ".Companion.factory()"
@@ -816,7 +817,22 @@ func (m *metroAnalysis) factoryCall(f *types.ClassSym) string {
 	if cp := m.u.ext.cp; cp != nil && cp.Has(f.Name+"$Impl") {
 		return "kotlin.run { " + metroClassName(f) + ".Impl }"
 	}
-	return metroGraphCall(f, true)
+	return metroFactoryCall(g)
+}
+
+// outer returns the class that cls is nested in, or nil. A class of the
+// class path has one only if it is inner, so a nested class's is read
+// from its InnerClasses entry.
+func (m *metroAnalysis) outer(cls *types.ClassSym) *types.ClassSym {
+	if cls.Outer != nil || isSource(cls) {
+		return cls.Outer
+	}
+	if cp := m.u.ext.cp; cp != nil {
+		if info, err := cp.Load(cls.Name); err == nil && info.Inner != nil && info.Inner.Outer != "" {
+			return m.class(info.Inner.Outer)
+		}
+	}
+	return nil
 }
 
 // importsMetroFun reports whether the file can call Metro's function

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/barteo/kotlin-compiler-go/internal/check"
 )
 
 // The categories of a diagnostics test's result, besides skip, crash and
@@ -62,23 +64,38 @@ func diagSkip(t *test) string {
 			return d
 		}
 	}
+	if t.has("IDE_MODE") && t.marks("IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR") {
+		// Checked as the IDE does, which reports the command line's
+		// warning as an error.
+		return "IDE_MODE error"
+	}
 	if strings.HasPrefix(t.path, "tests/multiplatform/") {
 		return "multiplatform"
 	}
 	// Directories whose test classes give kotlinc options.
 	for _, d := range []struct{ prefix, reason string }{
 		{"tests/crv", "return value checker (crv/, crvFull/)"},
-		{"tests/testsWithExplicitApi/", "explicit API mode"},
-		{"tests/testsWithExplicitReturnTypes/", "explicit API mode"},
 		{"tests/headerMode/", "header mode"},
 		{"tests/strictEquals/", "strict equality"},
-		{"testsWithStdLib/annotations/jvmDefault/", "-jvm-default modes"},
 	} {
 		if strings.HasPrefix(t.path, d.prefix) {
 			return d.reason
 		}
 	}
 	return ""
+}
+
+// marks reports whether the markup of one of the test's files names the
+// diagnostic name.
+func (t *test) marks(name string) bool {
+	for _, m := range t.modules {
+		for _, f := range m.files {
+			if strings.Contains(f.text, "<!"+name+"!>") || strings.Contains(f.text, ", "+name+"!>") || strings.Contains(f.text, "<!"+name+",") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Severities of diagnostics. A deprecation is a warning or an error
@@ -142,6 +159,142 @@ type diagConfig struct {
 	keep   bool
 	comp   *compiler
 	sev    map[string]string
+	// strayErrs is the file to write kc's errors on lines without an
+	// expected diagnostic to, or "".
+	strayErrs string
+	// marks is the file to write each expected diagnostic to, with
+	// whether kc hit its line, or "".
+	marks string
+	// strayWarns is the file to write kc's warnings on lines that don't
+	// expect them to, or "".
+	strayWarns string
+	// missed are the expected errors kc didn't report on their lines,
+	// as missed-errors TSV lines (missedLines), once the tests have run,
+	// and missedWarns the expected warnings (missedWarningLines).
+	missed      []string
+	missedWarns []string
+}
+
+// missedLines returns the expected errors of the tests kc checked that
+// it didn't report on their lines, as TSV lines: the test's path, file:line,
+// the diagnostic's name and the cause (missCause), sorted.
+func missedLines(rs []*result, dts []*diagTest) []string {
+	var ls []string
+	for i, dt := range dts {
+		if dt == nil || !marksChecked(rs[i].category) {
+			continue
+		}
+		for _, e := range dt.errors {
+			if !dt.hit(e) {
+				ls = append(ls, fmt.Sprintf("%s\t%s:%d\t%s\t%s", rs[i].path, e.file, e.line, e.name, dt.missCause(rs[i].category, e)))
+			}
+		}
+	}
+	slices.Sort(ls)
+	return ls
+}
+
+// missedWarningLines returns the expected warnings of the tests kc
+// compiled that it didn't report on their lines, as TSV lines like
+// missedLines': the cause is that kc's parser rejected the test, which
+// leaves out the warnings of what it didn't recover, that the warning is
+// in a module that wasn't compiled, or neither.
+func missedWarningLines(sev map[string]string, rs []*result, dts []*diagTest) []string {
+	var ls []string
+	for i, dt := range dts {
+		if !compiled(rs[i], dt) {
+			continue
+		}
+		for _, m := range dt.marks {
+			if sev[m.name] == sevWarning && !dt.warnHit(m) {
+				ls = append(ls, fmt.Sprintf("%s\t%s:%d\t%s\t%s", rs[i].path, m.file, m.line, m.name, dt.warnMissCause(m)))
+			}
+		}
+	}
+	slices.Sort(ls)
+	return ls
+}
+
+// warnMissCause returns why kc didn't report the expected warning m on
+// its line: the first of the causes that applies.
+func (dt *diagTest) warnMissCause(m mark) string {
+	switch {
+	case dt.parseErrs:
+		return causeParse
+	case dt.tried != nil && !dt.tried[m.file]:
+		return causeModule
+	}
+	return causeMissingCheck
+}
+
+// marksChecked reports whether a test in category has its marks checked
+// against kc's errors: whether kc type-checked it.
+func marksChecked(category string) bool {
+	switch category {
+	case catRejectsInvalid, catAcceptsInvalid, catAcceptsValid, catRejectsValid:
+		return true
+	}
+	return false
+}
+
+// missedHeader is the first line of a missed-errors TSV file.
+const missedHeader = "path\tfile:line\tname\tcause"
+
+// compareMissed prints the expected errors kc reports on their lines in
+// the baseline but misses now, and how many it reports now that it
+// missed. The baseline is a missed-errors TSV file, read from path, and
+// cats are the baseline's categories of the tests (its results TSV); a
+// test whose marks weren't checked then, or aren't now, is left out. It
+// returns an error if an error is missed that wasn't. what is "errors",
+// or "warnings" for the files of missed warnings.
+func compareMissed(what, path string, data []byte, cats map[string]string, rs []*result, missed []string) error {
+	key := func(line string) (string, string) {
+		f := strings.SplitN(line, "\t", 4)
+		if len(f) < 3 {
+			return "", ""
+		}
+		return f[0], f[0] + "\t" + f[1] + "\t" + f[2]
+	}
+	old := map[string]int{}
+	for _, line := range strings.Split(string(data), "\n")[1:] {
+		if _, k := key(line); k != "" {
+			old[k]++
+		}
+	}
+	now := map[string]int{}
+	for _, line := range missed {
+		_, k := key(line)
+		now[k]++
+	}
+	checked := map[string]bool{}
+	for _, r := range rs {
+		if marksChecked(r.category) && marksChecked(cats[r.path]) {
+			checked[r.path] = true
+		}
+	}
+	var worse []string
+	better := 0
+	for k, n := range now {
+		p, _ := key(k)
+		if checked[p] && n > old[k] {
+			worse = append(worse, strings.ReplaceAll(k, "\t", " "))
+		}
+	}
+	for k, n := range old {
+		p, _ := key(k)
+		if checked[p] && n > now[k] {
+			better += n - now[k]
+		}
+	}
+	slices.Sort(worse)
+	fmt.Printf("missed %s %s: %d newly missed, %d newly reported\n", what, path, len(worse), better)
+	for _, s := range worse {
+		fmt.Println("  newly missed:", s)
+	}
+	if len(worse) > 0 {
+		return fmt.Errorf("%d expected %s are no longer reported on their lines (see %s)", len(worse), what, path)
+	}
+	return nil
 }
 
 // mark is an expected diagnostic of a test, in a file.
@@ -157,6 +310,50 @@ type diagTest struct {
 	marks    []mark // its expected diagnostics
 	errors   []mark // those that are errors
 	kc       []diag // the errors kc reported, unless it crashed or found an unsupported feature
+	// kcWarns are the warnings kc reported, and off the names of the
+	// diagnostics the test's DIAGNOSTICS directive switches off, which
+	// it doesn't mark. Warnings don't decide the test's category.
+	kcWarns []diag
+	off     map[string]bool
+	// parseErrs is whether kc's parser rejects the test's code, and tried
+	// the files of the modules kc compiled or tried to: what missCause
+	// needs.
+	parseErrs bool
+	tried     map[string]bool
+}
+
+// The causes of an expected error that kc doesn't report on its line.
+const (
+	causeAccepted     = "accepted"            // kc compiled the test
+	causeParse        = "syntax-error"        // kc's parser rejected it, and checked only what it recovered
+	causeModule       = "module-not-compiled" // it is in a module after one that failed
+	causeNearby       = "nearby"              // kc reported an error within cascadeLines of it, on a line without a mark
+	causeMissingCheck = "missing-check"       // none of those
+	cascadeLines      = 3
+)
+
+// causes are the causes in the order the report lists them.
+var causes = []string{causeAccepted, causeParse, causeModule, causeNearby, causeMissingCheck}
+
+// missCause returns why kc didn't report the expected error e on its
+// line, given the test's category: the first of the causes that applies.
+func (dt *diagTest) missCause(category string, e mark) string {
+	switch {
+	case category == catAcceptsInvalid:
+		return causeAccepted
+	case dt.parseErrs:
+		return causeParse
+	case dt.tried != nil && !dt.tried[e.file]:
+		return causeModule
+	}
+	// An error on a line the markup expects another one on is most
+	// likely that one.
+	for _, d := range dt.stray() {
+		if d.file == e.file && d.line >= e.line-cascadeLines && d.line <= e.line+cascadeLines {
+			return causeNearby
+		}
+	}
+	return causeMissingCheck
 }
 
 // runDiagnostics runs the tests and writes the report.
@@ -184,7 +381,95 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 	}
 	close(next)
 	wg.Wait()
+	if c.strayErrs != "" {
+		if err := writeStray(c.strayErrs, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
+	if c.marks != "" {
+		if err := writeMarks(c.marks, c.sev, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
+	if c.strayWarns != "" {
+		if err := writeStrayWarnings(c.strayWarns, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
+	c.missed = missedLines(results, dts)
+	c.missedWarns = missedWarningLines(c.sev, results, dts)
 	return results, reportDiagnostics(c, results, dts, tag), nil
+}
+
+// writeMarks writes each expected diagnostic of the tests kc compiled as
+// TSV: the test's path, its category, file:line, the diagnostic's name,
+// its severity, and hit if kc reported an error on its line, or miss,
+// followed for a missed error by its cause (missCause), and for a missed
+// warning by its (warnMissCause).
+func writeMarks(name string, sev map[string]string, rs []*result, dts []*diagTest) error {
+	var sb strings.Builder
+	for i, dt := range dts {
+		if dt == nil || rs[i].category == catUnsupported || rs[i].category == catCrash {
+			continue
+		}
+		for _, m := range dt.marks {
+			hit := "miss"
+			if sev[m.name] == sevWarning && dt.warnHit(m) || sev[m.name] != sevWarning && dt.hit(m) {
+				hit = "hit"
+			}
+			s := sev[m.name]
+			if s == "" {
+				s = "-"
+			}
+			switch {
+			case hit == "miss" && s == sevError:
+				hit += "\t" + dt.missCause(rs[i].category, m)
+			case hit == "miss" && s == sevWarning:
+				hit += "\t" + dt.warnMissCause(m)
+			}
+			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\t%s\t%s\n", rs[i].path, rs[i].category, m.file, m.line, m.name, s, hit)
+		}
+	}
+	return os.WriteFile(name, []byte(sb.String()), 0o644)
+}
+
+// writeStray writes kc's errors on lines without an expected diagnostic
+// as TSV: the test's path, its category, file:line and the message.
+func writeStray(name string, rs []*result, dts []*diagTest) error {
+	var sb strings.Builder
+	for i, dt := range dts {
+		if dt == nil {
+			continue
+		}
+		for _, d := range dt.stray() {
+			msg := strings.NewReplacer("\t", " ", "\n", " ").Replace(d.msg)
+			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\n", rs[i].path, rs[i].category, d.file, d.line, msg)
+		}
+	}
+	return os.WriteFile(name, []byte(sb.String()), 0o644)
+}
+
+// stray returns kc's errors on lines without an expected diagnostic.
+func (dt *diagTest) stray() []diag {
+	var ds []diag
+	for _, d := range dt.kc {
+		if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) && !dt.switchedOff(d) {
+			ds = append(ds, d)
+		}
+	}
+	return ds
+}
+
+// switchedOff reports whether d, an error of kc's, is of an error the
+// test's DIAGNOSTICS directive switches off: kotlinc reports it too, but
+// the markup leaves it out.
+func (dt *diagTest) switchedOff(d diag) bool {
+	for name := range dt.off {
+		if check.IsNamed(d.msg, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
@@ -265,15 +550,13 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		reflect: t.has("WITH_REFLECT"),
 		optIns:  t.values("OPT_IN"),
 	}
-	if strings.Contains(t.path, "/contracts/") {
-		// As the contracts tests' test classes do.
-		libs.optIns = append(libs.optIns, "kotlin.contracts.ExperimentalContracts")
-	}
 	cr, err := c.comp.compile(t, dir, helpers, libs)
 	if err != nil {
 		r.category, r.key, r.detail = catKc, "harness error", err.Error()
 		return r, nil
 	}
+	dt.kcWarns, dt.off = cr.warns, switchedOff(t, dt.marks)
+	dt.parseErrs, dt.tried = len(parseErrs) > 0, cr.tried
 	rejected := false
 	switch {
 	case cr.crash != "":
@@ -290,8 +573,8 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 			r.category, r.keys, r.key = catUnsupported, keys, keys[0]
 			return r, dt
 		}
-		rejected = true
-		dt.kc = cr.diags
+		dt.kc = dropOffBackendErrors(t, cr.diags)
+		rejected = len(dt.kc) > 0
 	}
 	// A code generation error isn't a diagnostic: kc's checker accepted
 	// the test.
@@ -329,11 +612,38 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 			r.key = template(r.detail)
 			break
 		}
-		d := cr.diags[0]
+		d := dt.kc[0]
 		r.key = template(d.msg)
 		r.detail = fmt.Sprintf("%s:%d: %s", d.file, d.line, d.msg)
 	}
 	return r, dt
+}
+
+// backendMessages are the beginnings of kc's messages for the JVM
+// backend's errors, which kc reports in its checker.
+var backendMessages = map[string]string{
+	"CONFLICTING_JVM_DECLARATIONS":           "platform declaration clash",
+	"CONFLICTING_INHERITED_JVM_DECLARATIONS": "inherited platform declarations clash",
+	"ACCIDENTAL_OVERRIDE":                    "accidental override",
+	"DUPLICATE_CLASS_NAMES":                  "duplicate JVM class name",
+}
+
+// dropOffBackendErrors returns kc's errors without those of the JVM
+// backend that the test's DIAGNOSTICS directive switches off. The test
+// infrastructure doesn't report them, though kotlinc does.
+func dropOffBackendErrors(t *test, ds []diag) []diag {
+	var off []string
+	for _, v := range t.values("DIAGNOSTICS") {
+		if p, ok := backendMessages[strings.TrimPrefix(v, "-")]; ok && strings.HasPrefix(v, "-") {
+			off = append(off, p)
+		}
+	}
+	if len(off) == 0 {
+		return ds
+	}
+	return slices.DeleteFunc(slices.Clone(ds), func(d diag) bool {
+		return slices.ContainsFunc(off, func(p string) bool { return strings.HasPrefix(d.msg, p) })
+	})
 }
 
 // hit reports whether kc reported an error on the line of e.
@@ -433,7 +743,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		fmt.Fprintf(&sb, "The names without a severity: %s.\n\n", strings.Join(names, ", "))
 	}
 
-	fmt.Fprintf(&sb, "## Skipped\n\nTests for other platforms, that need language features off by default or compiler options, Java sources, or modules other than plain dependencies, or whose FIR diagnostics aren't checked.\n\n")
+	fmt.Fprintf(&sb, "## Skipped\n\nTests for other platforms, that need language features off by default or compiler options, or modules other than plain dependencies, or whose FIR diagnostics aren't checked.\n\n")
 	reportKeys(&sb, rs, catSkip, "Reason", 30, false)
 
 	fmt.Fprintf(&sb, "## Accepts invalid\n\nTests kotlinc rejects that kc compiles, by the errors their markup expects. A test counts for each; *Only error* counts the tests it is the only expected error of, which implementing it alone would fix.\n\n")
@@ -449,6 +759,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 	}
 	byName := map[string]*recall{}
 	extra := map[string]int{}
+	missed := map[string]map[string]int{} // by cause, by name
 	for i, dt := range dts {
 		if dt == nil || rs[i].category == catUnsupported || rs[i].category == catCrash || rs[i].category == catKc {
 			continue
@@ -462,13 +773,17 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 			rc.expected++
 			if dt.hit(e) {
 				rc.hits++
+			} else {
+				cause := dt.missCause(rs[i].category, e)
+				if missed[cause] == nil {
+					missed[cause] = map[string]int{}
+				}
+				missed[cause][e.name]++
 			}
 		}
 		// kc's errors on lines without an expected diagnostic.
-		for _, d := range dt.kc {
-			if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) {
-				extra[template(d.msg)]++
-			}
+		for _, d := range dt.stray() {
+			extra[template(d.msg)]++
 		}
 	}
 	var rl []*recall
@@ -494,8 +809,9 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		fmt.Fprintf(&sb, "| `%s` | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.expected-rc.hits)
 	}
 	fmt.Fprintln(&sb)
+	reportMissCauses(&sb, missed, totalExp-totalHit)
 
-	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
+	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
 	type kc struct {
 		key string
 		n   int
@@ -530,38 +846,45 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		reportKeys(&sb, rs, catCrash, "Panic", 1000, false)
 	}
 
-	fmt.Fprintf(&sb, "## Warnings\n\nkc reports no warnings. The warnings the tests run expect, as a backlog.\n\n")
-	warnings := map[string]int{}
-	for _, dt := range dts {
-		if dt == nil {
-			continue
-		}
-		for _, m := range dt.marks {
-			if c.sev[m.name] == sevWarning {
-				warnings[m.name]++
-			}
-		}
-	}
-	var wl []kc
-	for k, n := range warnings {
-		wl = append(wl, kc{k, n})
-	}
-	slices.SortFunc(wl, func(a, b kc) int {
-		if a.n != b.n {
-			return b.n - a.n
-		}
-		return strings.Compare(a.key, b.key)
-	})
-	fmt.Fprintf(&sb, "| Warning | Count |\n|:---|---:|\n")
-	for i, w := range wl {
-		if i == 30 {
-			fmt.Fprintf(&sb, "| *%d more* | |\n", len(wl)-i)
-			break
-		}
-		fmt.Fprintf(&sb, "| `%s` | %d |\n", w.key, w.n)
-	}
-	fmt.Fprintln(&sb)
+	reportWarnings(&sb, c, rs, dts)
 	return sb.String()
+}
+
+// reportMissCauses writes the expected errors kc missed by their cause
+// (missCause), each with the diagnostics it misses most.
+func reportMissCauses(sb *strings.Builder, missed map[string]map[string]int, total int) {
+	fmt.Fprintf(sb, "### Missed errors by cause\n\n")
+	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
+		causeAccepted, causeParse, causeModule, causeNearby, cascadeLines, causeMissingCheck)
+	fmt.Fprintf(sb, "| Cause | Missed | Share | Most missed |\n|:---|---:|---:|:---|\n")
+	for _, cause := range causes {
+		byName := missed[cause]
+		n := 0
+		type named struct {
+			name string
+			n    int
+		}
+		var ns []named
+		for name, k := range byName {
+			n += k
+			ns = append(ns, named{name, k})
+		}
+		slices.SortFunc(ns, func(a, b named) int {
+			if a.n != b.n {
+				return b.n - a.n
+			}
+			return strings.Compare(a.name, b.name)
+		})
+		var top []string
+		for i, x := range ns {
+			if i == 5 {
+				break
+			}
+			top = append(top, fmt.Sprintf("`%s` %d", x.name, x.n))
+		}
+		fmt.Fprintf(sb, "| %s | %d | %s | %s |\n", cause, n, pct(n, total), strings.Join(top, ", "))
+	}
+	fmt.Fprintln(sb)
 }
 
 // reportKeysSole writes reportKeys's table with the Only column named

@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -19,17 +20,64 @@ type lexer struct {
 	errs   []*Error
 	toks   []Token
 	inExpr bool // lexing a ${...} template expression: newlines never matter
+	// glued are the errors for literals written against an identifier, a
+	// number or a keyword, which kotlinc reports after parsing.
+	glued []*Error
 }
 
 // Tokenize lexes a whole file.
 func Tokenize(file, src string) ([]Token, []*Error) {
-	lx := &lexer{src: src, line: 1, col: 1, file: file}
+	toks, errs, _ := tokenize(file, src, nil)
+	return toks, errs
+}
+
+// tokenize lexes a whole file into buf, and also returns the errors of
+// literals glued to their neighbors (see lexer.glued).
+func tokenize(file, src string, buf []Token) ([]Token, []*Error, []*Error) {
+	lx := &lexer{src: src, line: 1, col: 1, file: file, toks: buf[:0]}
 	lx.run()
-	return lx.toks, lx.errs
+	return lx.toks, lx.errs, lx.glued
+}
+
+// tokenBufs are token slices to lex into, which Parse returns when it is
+// done with them: growing a file's slice from nothing is a fifth of
+// lexing's time.
+var tokenBufs struct {
+	sync.Mutex
+	free [][]Token
+}
+
+func getTokenBuf() []Token {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	n := len(tokenBufs.free)
+	if n == 0 {
+		return nil
+	}
+	b := tokenBufs.free[n-1]
+	tokenBufs.free = tokenBufs.free[:n-1]
+	return b
+}
+
+// putTokenBuf keeps b for another file. Nothing may refer to its tokens.
+func putTokenBuf(b []Token) {
+	tokenBufs.Lock()
+	defer tokenBufs.Unlock()
+	if len(tokenBufs.free) < 16 {
+		tokenBufs.free = append(tokenBufs.free, b)
+	}
 }
 
 func tokenizeAt(file, src string, pos Pos) ([]Token, []*Error) {
 	lx := &lexer{src: src, line: pos.Line, col: pos.Col, file: file, inExpr: true}
+	lx.run()
+	return lx.toks, lx.errs
+}
+
+// tokenizeArgAt lexes src, a call's argument starting at pos, as inside
+// its parentheses: newlines count only in the braces of a lambda.
+func tokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) {
+	lx := &lexer{src: src, line: pos.Line, col: pos.Col, file: file, stack: []byte{'('}}
 	lx.run()
 	return lx.toks, lx.errs
 }
@@ -85,33 +133,51 @@ func (lx *lexer) skipSpace() bool {
 			sawNL = true
 			lx.advance(1)
 		case c == '/' && lx.peekByte(1) == '/':
-			for lx.off < len(lx.src) && lx.src[lx.off] != '\n' {
-				lx.advance(1)
+			n := strings.IndexByte(lx.src[lx.off:], '\n')
+			if n < 0 {
+				n = len(lx.src) - lx.off
 			}
+			lx.off += n
+			lx.col += n
 		case c == '/' && lx.peekByte(1) == '*':
-			start := lx.pos()
-			lx.advance(2)
-			depth := 1 // Kotlin block comments nest
-			for depth > 0 {
-				if lx.off >= len(lx.src) {
-					lx.errorf(start, "unterminated comment")
-					return sawNL
-				}
-				if lx.src[lx.off] == '/' && lx.peekByte(1) == '*' {
-					depth++
-					lx.advance(2)
-				} else if lx.src[lx.off] == '*' && lx.peekByte(1) == '/' {
-					depth--
-					lx.advance(2)
-				} else {
-					lx.advance(1)
-				}
+			if !lx.blockComment() {
+				return sawNL
 			}
 		default:
 			return sawNL
 		}
 	}
 	return sawNL
+}
+
+// blockComment skips a block comment, which Kotlin lets nest, and
+// reports whether it ends. It counts lines and columns as advance does.
+func (lx *lexer) blockComment() bool {
+	start := lx.pos()
+	src, i, line, col := lx.src, lx.off+2, lx.line, lx.col+2
+	for depth := 1; depth > 0; {
+		if i >= len(src) {
+			lx.off, lx.line, lx.col = i, line, col
+			lx.errorf(start, "unterminated comment")
+			return false
+		}
+		switch c := src[i]; {
+		case c == '\n':
+			line, col = line+1, 1
+			i++
+			continue
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			depth++
+		case c == '*' && i+1 < len(src) && src[i+1] == '/':
+			depth--
+		default:
+			i, col = i+1, col+1
+			continue
+		}
+		i, col = i+2, col+2
+	}
+	lx.off, lx.line, lx.col = i, line, col
+	return true
 }
 
 func isLetter(c byte) bool { return c == '_' || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
@@ -147,6 +213,7 @@ func (lx *lexer) scanIdent() {
 }
 
 func (lx *lexer) run() {
+	lastEnd := -1 // where the last token ended
 	for {
 		p := lx.pos()
 		if lx.skipSpace() && lx.newlinesSignificant() {
@@ -156,10 +223,52 @@ func (lx *lexer) run() {
 		}
 		if lx.off >= len(lx.src) {
 			lx.emit(EOF, lx.pos(), "")
+			lx.toks = expandAnnotationLists(lx.toks)
 			return
 		}
+		n, start := len(lx.toks), lx.off
 		lx.next()
+		if len(lx.toks) > n {
+			if n > 0 && start == lastEnd {
+				lx.checkGlued(n)
+			}
+			lastEnd = lx.off
+		}
 	}
+}
+
+// checkGlued checks the token at i, which its previous token ends right
+// before: a literal may not touch an identifier, a number or a keyword,
+// as in a foo"bar" or 1in a.
+func (lx *lexer) checkGlued(i int) {
+	prev, t := &lx.toks[i-1], &lx.toks[i]
+	switch {
+	case literalToken(prev.Kind) && gluedToken(t.Kind):
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: t.Pos, Msg: gluedLiteralMsg})
+	case gluedToken(prev.Kind) && literalToken(t.Kind):
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: prev.Pos, Msg: gluedLiteralMsg})
+	}
+}
+
+// gluedLiteralMsg is kotlinc's error for a literal glued to its neighbor.
+const gluedLiteralMsg = "unsupported [literal prefixes and suffixes]"
+
+func literalToken(k Kind) bool {
+	switch k {
+	case INT, DOUBLE, FLOAT, UNSIGNED, CHAR, STRING:
+		return true
+	}
+	return false
+}
+
+// gluedToken reports whether a token of kind k may not touch a literal:
+// an identifier, a number or a keyword.
+func gluedToken(k Kind) bool {
+	switch k {
+	case IDENT, INT, DOUBLE, FLOAT, UNSIGNED, NOT_IN, NOT_IS, AS_SAFE:
+		return true
+	}
+	return FUN <= k && k <= TYPEOF
 }
 
 func (lx *lexer) next() {
@@ -175,6 +284,9 @@ func (lx *lexer) next() {
 		case !ok && lx.peekByte(0) == '@':
 			// A label: loop@ for (...), lit@{ ... }.
 			lx.advance(1)
+			if strings.Trim(word, "_") == "" {
+				lx.errorf(p, "names _, __, ___, ... are reserved in Kotlin")
+			}
 			lx.emit(LABEL, p, word)
 		case !ok:
 			lx.emit(IDENT, p, word)
@@ -236,21 +348,6 @@ func (lx *lexer) next() {
 		return
 	}
 
-	type op struct {
-		s string
-		k Kind
-	}
-	// Longest match first.
-	ops := [...]op{
-		{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
-		{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
-		{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
-		{"&&", AND}, {"||", OR}, {"&", AMP},
-		{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
-		{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
-		{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
-		{"@", AT},
-	}
 	// !in and !is are single tokens when not followed by an identifier
 	// character, so !isEmpty() is a negation.
 	for _, o := range [...]op{{"!in", NOT_IN}, {"!is", NOT_IS}} {
@@ -260,6 +357,11 @@ func (lx *lexer) next() {
 			return
 		}
 	}
+	// Kotlin's lexer reads ;; as one token, DOUBLE_SEMICOLON, which
+	// separates nothing: println(1);; is an error wherever it is.
+	if strings.HasPrefix(lx.src[lx.off:], ";;") {
+		lx.errorf(p, "expected newline or ';', found ';;'")
+	}
 	// A callable reference on a nullable type, String?::plus, is ? and ::,
 	// not ?: and :.
 	if strings.HasPrefix(lx.src[lx.off:], "?::") {
@@ -267,7 +369,7 @@ func (lx *lexer) next() {
 		lx.emit(QUEST, p, "?")
 		return
 	}
-	for _, o := range ops {
+	for _, o := range opsByByte[c] {
 		if strings.HasPrefix(lx.src[lx.off:], o.s) {
 			lx.advance(len(o.s))
 			lx.emit(o.k, p, o.s)
@@ -285,6 +387,32 @@ func (lx *lexer) next() {
 	lx.errorf(p, "unexpected character "+string(c))
 	lx.advance(1)
 }
+
+type op struct {
+	s string
+	k Kind
+}
+
+// ops are the operators and punctuation, longest match first.
+var ops = [...]op{
+	{"===", EQ_EQ_EQ}, {"!==", NOT_EQ_EQ}, {"..<", RANGE_LT}, {"::", COLON_COLON}, {"?.", SAFE_DOT}, {"?:", ELVIS}, {"!!", NOT_NULL}, {"->", ARROW},
+	{"..", RANGE}, {"++", INC}, {"--", DEC}, {"+=", PLUS_EQ}, {"-=", MINUS_EQ}, {"*=", STAR_EQ},
+	{"/=", SLASH_EQ}, {"%=", PERCENT_EQ}, {"==", EQ}, {"!=", NE}, {"<=", LE}, {">=", GE},
+	{"&&", AND}, {"||", OR}, {"&", AMP},
+	{"(", LPAREN}, {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACK}, {"]", RBRACK},
+	{",", COMMA}, {":", COLON}, {";", SEMI}, {".", DOT}, {"?", QUEST}, {"+", PLUS}, {"-", MINUS},
+	{"*", STAR}, {"/", SLASH}, {"%", PERCENT}, {"=", ASSIGN}, {"<", LT}, {">", GT}, {"!", NOT},
+	{"@", AT},
+}
+
+// opsByByte are ops by their first byte, in the same order, so the
+// first that matches is ops' first.
+var opsByByte = func() (t [256][]op) {
+	for _, o := range ops {
+		t[o.s[0]] = append(t[o.s[0]], o)
+	}
+	return t
+}()
 
 func (lx *lexer) number(p Pos) {
 	start := lx.off
@@ -316,7 +444,8 @@ func (lx *lexer) number(p Pos) {
 		k = DOUBLE
 	}
 	switch lx.peekByte(0) {
-	case 'L':
+	case 'L', 'l':
+		// 1l is a Long, with an error IntLiteralErrors reports.
 		if isDouble {
 			lx.errorf(p, "invalid Long literal")
 		}
@@ -326,12 +455,40 @@ func (lx *lexer) number(p Pos) {
 		k = FLOAT
 	case 'u', 'U':
 		lx.advance(1)
-		if lx.peekByte(0) == 'L' {
+		if c := lx.peekByte(0); c == 'L' || c == 'l' {
 			lx.advance(1)
 		}
 		k = UNSIGNED
 	}
+	if illegalUnderscore(lx.src[start:lx.off]) {
+		lx.errorf(p, "illegal underscore")
+	}
 	lx.emit(k, p, lx.src[start:lx.off])
+}
+
+// illegalUnderscore reports whether a numeric literal has an underscore
+// that doesn't separate digits: one that starts or ends a group of
+// digits, as in 1_, 0x_f, 1_.1 and 1.0e_1.
+// IllegalUnderscore is illegalUnderscore, for the psi frontend.
+func IllegalUnderscore(text string) bool { return illegalUnderscore(text) }
+
+func illegalUnderscore(text string) bool {
+	if !strings.Contains(text, "_") {
+		return false
+	}
+	text = strings.TrimRight(text, "LluU")
+	if len(text) > 2 && text[0] == '0' && strings.ContainsRune("xXbB", rune(text[1])) {
+		body := text[2:]
+		return body == "" || body[0] == '_' || body[len(body)-1] == '_'
+	}
+	text = strings.TrimRight(text, "fF")
+	groups := strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-' })
+	for _, g := range groups {
+		if g[0] == '_' || g[len(g)-1] == '_' {
+			return true
+		}
+	}
+	return false
 }
 
 // char lexes a character literal: 'a', '\n', '\u0041'.
@@ -470,8 +627,10 @@ func (lx *lexer) templateName(off int) int {
 // prefix of n dollars ($$"..."; none is n = 1): a template entry is then n
 // dollars followed by a name or {, and dollars before those are text.
 func (lx *lexer) str(p Pos) {
-	prefix := max(1, lx.dollars(lx.off))
-	lx.advance(lx.dollars(lx.off))
+	written := lx.dollars(lx.off)
+	prefix := max(1, written)
+	lx.advance(written)
+	start := lx.off
 	raw := strings.HasPrefix(lx.src[lx.off:], `"""`)
 	if raw {
 		lx.advance(3)
@@ -576,7 +735,7 @@ func (lx *lexer) str(p Pos) {
 		lx.col++
 	}
 	flush()
-	lx.toks = append(lx.toks, Token{Kind: STRING, Pos: p, Parts: parts})
+	lx.toks = append(lx.toks, Token{Kind: STRING, Pos: p, Parts: parts, Prefix: written, Text: lx.src[start:lx.off]})
 }
 
 // skipTemplate advances to the '}' that ends a ${...} template expression
@@ -611,4 +770,80 @@ func (lx *lexer) skipTemplate() bool {
 		lx.advance(1)
 	}
 	return false
+}
+
+// expandAnnotationLists rewrites the annotation lists of toks, @[A B(x)]
+// or @get:[A B], as the annotations they list, @A @B(x) or @get:A
+// @get:B: the parser reads one annotation at a time.
+func expandAnnotationLists(toks []Token) []Token {
+	var out []Token
+	for i := 0; i < len(toks); i++ {
+		t := toks[i]
+		j := i + 1 // the [ of @[ or @target:[
+		if t.Kind == AT && j+2 < len(toks) && toks[j].Kind == IDENT && toks[j+1].Kind == COLON && toks[j+2].Kind == LBRACK {
+			j += 2
+		}
+		if t.Kind != AT || j >= len(toks) || toks[j].Kind != LBRACK {
+			if out != nil {
+				out = append(out, t)
+			}
+			continue
+		}
+		end, depth := j, 0
+		for ; end < len(toks) && toks[end].Kind != EOF; end++ {
+			switch toks[end].Kind {
+			case LBRACK, LPAREN, LBRACE:
+				depth++
+			case RBRACK, RPAREN, RBRACE:
+				depth--
+			}
+			if depth == 0 {
+				break
+			}
+		}
+		if end >= len(toks) || toks[end].Kind != RBRACK {
+			if out != nil {
+				out = append(out, t)
+			}
+			continue // the parser reports it
+		}
+		if out == nil {
+			out = append(make([]Token, 0, len(toks)+8), toks[:i]...)
+		}
+		target := toks[i+1 : j] // target and colon, or none
+		depth = 0
+		first := true
+		for k := j + 1; k < end; k++ {
+			e := toks[k]
+			if e.Kind == NL {
+				continue
+			}
+			if depth == 0 && e.Kind == IDENT && (k == j+1 || toks[k-1].Kind != DOT) {
+				// The first @ is where the list's is, the others at
+				// their names; the parser puts each annotation at its
+				// name (see parser.annotation).
+				p := e.Pos
+				if first {
+					p, first = t.Pos, false
+				}
+				out = append(out, Token{Kind: AT, Pos: p, Text: "@"})
+				for _, tt := range target {
+					tt.Pos = p
+					out = append(out, tt)
+				}
+			}
+			switch e.Kind {
+			case LPAREN, LBRACK, LBRACE, LT:
+				depth++
+			case RPAREN, RBRACK, RBRACE, GT:
+				depth--
+			}
+			out = append(out, e)
+		}
+		i = end
+	}
+	if out == nil {
+		return toks
+	}
+	return out
 }

@@ -17,6 +17,8 @@ type Details struct {
 	// Nested are the internal names of the class's named nested classes,
 	// in InnerClasses order.
 	Nested []string
+	// InnerClasses are the entries of the InnerClasses attribute.
+	InnerClasses []InnerClassEntry
 	// TypeAnnotations are the annotations of the types in the class's
 	// signature: its type parameters, their bounds and its supertypes.
 	TypeAnnotations []TypeAnnotation
@@ -173,6 +175,15 @@ func ParseDetails(data []byte) (*Details, error) {
 			for range r.u2() {
 				inner, outer, simple := r.u2(), r.u2(), r.u2()
 				access := r.u2()
+				e := InnerClassEntry{Access: access}
+				e.Inner, _ = p.class(inner)
+				if outer != 0 {
+					e.Outer, _ = p.class(outer)
+				}
+				if simple != 0 {
+					e.Simple, _ = p.utf8(simple)
+				}
+				d.InnerClasses = append(d.InnerClasses, e)
 				if inner == 0 || outer == 0 || simple == 0 || access&AccSynthetic != 0 {
 					continue
 				}
@@ -244,6 +255,22 @@ func readTypeAnnotations(r *reader, p *pool) []TypeAnnotation {
 		}
 	}
 	return out
+}
+
+// boundAnnotations adds to bs, by type parameter, the descriptors of the
+// annotations among as with the target, a type parameter bound's, on the
+// top of the bound's type rather than inside it.
+func boundAnnotations(bs [][]string, as []TypeAnnotation, target byte) [][]string {
+	for _, a := range as {
+		if a.Target != target || len(a.Path) > 0 {
+			continue
+		}
+		for len(bs) <= a.Index {
+			bs = append(bs, nil)
+		}
+		bs[a.Index] = append(bs[a.Index], a.Annotation.Type)
+	}
+	return bs
 }
 
 // readAnnotation reads one annotation as an '@' element value; r is past

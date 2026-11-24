@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
@@ -281,6 +282,9 @@ internal class KcRound(
     @Synchronized
     fun packageSymbol(fq: FqName): KcPackageSymbol = packageSymbols.getOrPut(fq) { KcPackageSymbol(this, fq) }
 
+    /** Whether package [fq], or a package in it, has a source file. */
+    fun hasSources(fq: FqName) = fq in sourcePackages
+
     /** Whether package [fq], or a package in it, has a source file or a class-path class. */
     fun packageExists(fq: FqName) = fq in sourcePackages || libraryPackage(fq) != null
 
@@ -312,7 +316,10 @@ internal class KcRound(
         val out = ArrayList<KaDeclarationSymbol>()
         sources.filterTo(out) { it is KaCallableSymbol }
         lib?.decls?.filterTo(out) { it is KaCallableSymbol }
-        sources.filterTo(out) { it !is KaCallableSymbol }
+        // One classifier for each ID, the one the ID names: an expect class shares its actual declaration's.
+        sources.filter { it !is KaCallableSymbol }.mapTo(LinkedHashSet()) { d ->
+            (d as? KaClassLikeSymbol)?.classId?.let { classes[it] ?: typeAliases[it] } ?: d
+        }.let(out::addAll)
         // FIR lists them in the order of the fastutil set the CLI Java file
         // manager collects their names in (knownClassNamesInPackage).
         val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
@@ -449,8 +456,16 @@ internal class KcRound(
         is KcSyntheticSetterSymbol -> directlyOverridden(s.property)
         is KcSyntheticPropertySymbol -> members(s.owner).overridden[s].orEmpty()
         is KcRenamedFunctionSymbol -> members(s.owner).overridden[s].orEmpty()
-        is KcFunctionSymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
-        is KcPropertySymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
+        is KcFunctionSymbol -> declaredOverridden(s, s.info.parent)
+        is KcPropertySymbol -> declaredOverridden(s, s.info.parent)
+        else -> emptyList()
+    }
+
+    /** What [s], declared in [parent], overrides: in an enum entry's initializer, members of the enum class. */
+    private fun declaredOverridden(s: KaCallableSymbol, parent: KaSymbol?): List<KaCallableSymbol> = when (parent) {
+        is KcClassSymbol -> members(parent).overridden[s].orEmpty()
+        is KcEnumEntryInitializerSymbol ->
+            (parent.entry.info.parent as? KcClassSymbol)?.let { KcMemberBuilder(this, it).overriddenBy(s) }.orEmpty()
         else -> emptyList()
     }
 
@@ -580,12 +595,45 @@ internal class KcRound(
             return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
-        /** The type of a class literal of type [t]: a generic class's
-         *  without arguments, as `HashMap::class`, has star arguments. */
-        fun classLiteralType(t: KaType): KaType {
-            if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
-            val n = (t.symbol as? KaClassSymbol)?.typeParameters?.size ?: 0
-            return if (n == 0) t else KcClassType(this@KcRound, t.classId, List(n) { KcStarProjection(token) }, t.marked)
+        /**
+         * The type of a class literal the model gives type [t], written at
+         * [psi] if in a Kotlin source. FIR gives a generic class written
+         * without arguments, as `HashMap::class`, star arguments. A
+         * platform type is a Java declaration's literal (`HashMap.class` in
+         * a class file or a Java source), whose type is the Java type's
+         * lower bound, raw for a generic class. One read from a Kotlin
+         * class file has no arguments.
+         */
+        fun classLiteralType(t: KcType, psi: KtElement?): KaType {
+            val type = types.type(t)
+            val c = (type as? KcFlexibleType)?.lowerBound ?: type
+            if (c !is KcClassType || c.typeArguments.isNotEmpty() || c.isAlias) return c
+            val params = (c.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
+            return when {
+                params.isEmpty() -> c
+                type is KcFlexibleType -> {
+                    val kotlin = c.classId.packageFqName.asString().let { it == "kotlin" || it.startsWith("kotlin.") }
+                    KcClassType(this@KcRound, c.classId, params.map { rawArgument(it, kotlin) }, c.marked, raw = true)
+                }
+                psi != null -> KcClassType(this@KcRound, c.classId, params.map { KcStarProjection(token) }, c.marked)
+                else -> c
+            }
+        }
+
+        /**
+         * A raw type's argument for [p], as FIR renders it: the erased upper
+         * bound for a parameter of a Kotlin class ([kotlin]), a star for one
+         * of a Java class.
+         */
+        fun rawArgument(p: KaTypeParameterSymbol, kotlin: Boolean): KaTypeProjection {
+            if (!kotlin) return KcStarProjection(token)
+            val bound = when (val b = p.upperBounds.firstOrNull()?.let { (it as? KcFlexibleType)?.lowerBound ?: it }) {
+                null -> relations.anyType(true)
+                is KcClassType -> if (b.typeArguments.isEmpty()) b
+                    else KcClassType(this@KcRound, b.classId, b.typeArguments.map { KcStarProjection(token) }, b.marked)
+                else -> b
+            }
+            return KcTypeArgument(bound, org.jetbrains.kotlin.types.Variance.INVARIANT, token)
         }
 
         /** The KaAnnotationValue of [v], recorded as its expression's value. */
@@ -595,7 +643,7 @@ internal class KcRound(
                 is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
                 is KcValue.Enum -> KcEnumEntryValue(
                     CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
-                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(types.type(v.type)),
+                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(v.type, psi),
                     v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
                     psi, token)
                 is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)
@@ -738,7 +786,11 @@ internal class KcRound(
                 val id = d.classId
                 val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && id.isNotEmpty()) { { classFilePsi(id) } } else null
                 val c = register(KcClassSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
-                c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
+                c.classId?.let {
+                    if (origin != KaSymbolOrigin.SOURCE) libraryClasses[it] = c
+                    // An expect class and its actual one share their ID, which names the first of them, as in FIR.
+                    else classes.putIfAbsent(it, c)
+                }
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
@@ -747,7 +799,13 @@ internal class KcRound(
             }
             KcDecl.ENUM_ENTRY -> {
                 val psi = psiOf<KtEnumEntry>(d) ?: javaPsi(d, parent)
-                register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                val e = register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                if (d.members.isNotEmpty()) {
+                    val init = KcEnumEntryInitializerSymbol(e)
+                    e.initializerSymbol = init
+                    init.members = decls(d.members, init, "$key/body")
+                }
+                e
             }
             KcDecl.FUNCTION -> scoped { ctx ->
                 val psi = psiOf<KtNamedFunction>(d) ?: javaPsi(d, parent)
@@ -799,10 +857,10 @@ internal class KcRound(
          * The members FIR generates for source data class, data object or
          * value class [d] that it doesn't declare itself: equals, hashCode
          * and toString, which are in its member scope but not among its
-         * declarations.
+         * declarations. An expect class has none.
          */
         fun generated(d: KcDecl, c: KcClassSymbol, key: String): List<KaCallableSymbol> {
-            if (origin != KaSymbolOrigin.SOURCE || !d.isData && !d.has(KcDecl.VALUE)) return emptyList()
+            if (origin != KaSymbolOrigin.SOURCE || !d.isData && !d.has(KcDecl.VALUE) || d.has(KcDecl.EXPECT)) return emptyList()
             fun type(id: String, nullable: Boolean = false) = KcType(KcType.CLASS, id, if (nullable) 1 else 0, 0, "", 0, emptyList())
             fun fn(name: String, ret: String, flags: Long, params: List<KcDecl>) = KcDecl(KcDecl.FUNCTION, name, 0, "",
                 KcDecl.PUBLIC, KcDecl.OPEN, flags, 0, type(ret), null, emptyList(), emptyList(), emptyList(), emptyList(), params, emptyList())

@@ -274,12 +274,24 @@ func parseMembers(path string, p syntax.Pos, src string) ([]syntax.Decl, error) 
 	}
 	members := f.Decls[0].(*syntax.ClassDecl).Members
 	setPos(reflect.ValueOf(members), p)
+	for _, m := range members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			m.Generated = true
+		case *syntax.PropDecl:
+			m.Generated = true
+		case *syntax.ClassDecl:
+			m.Generated = true
+		}
+	}
 	return members, nil
 }
 
 var posType = reflect.TypeFor[syntax.Pos]()
 
-// setPos sets each position in a parsed tree to p.
+// setPos sets each position in a parsed tree to p. A zero position stays
+// zero: it says that the tree lacks what it is the position of, as a
+// setter's visibility modifier.
 func setPos(v reflect.Value, p syntax.Pos) {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
@@ -292,7 +304,7 @@ func setPos(v reflect.Value, p syntax.Pos) {
 		}
 	case reflect.Struct:
 		if v.Type() == posType {
-			if v.CanSet() {
+			if v.CanSet() && !v.IsZero() {
 				v.Set(reflect.ValueOf(p))
 			}
 			return
@@ -361,7 +373,7 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	case cd.Enum && d.Name == "writeToParcel":
 		g.stmt("dest.writeString(this.name)")
 	case cd.Enum:
-		g.stmt("return %s.valueOf(parcel.readString())", g.fq)
+		g.stmt("return %s.valueOf(parcel.readString()!!)", g.fq)
 	case d.Name == "writeToParcel":
 		if target.Object {
 			g.stmt("dest.writeInt(1)")
@@ -1392,6 +1404,15 @@ func (g *parcelGen) sparseElem(t types.Type) types.Type {
 	return parcelArg(t, 0)
 }
 
+// notNull returns the assertion that a value read for type t isn't null,
+// which Parcel's methods may declare their results to be.
+func notNull(t types.Type) string {
+	if t.N {
+		return ""
+	}
+	return "!!"
+}
+
 // read writes the statements that read a value of type t with serializer
 // s, and returns the expression that is the value then.
 func (g *parcelGen) read(s *parcelSer, t types.Type) string {
@@ -1424,9 +1445,9 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		if s.cast {
 			return fmt.Sprintf("(parcel.%s() as %s)", s.read, g.typeText(t))
 		}
-		return fmt.Sprintf("parcel.%s()", s.read)
+		return fmt.Sprintf("parcel.%s()%s", s.read, notNull(t))
 	case parcelLoader:
-		return fmt.Sprintf("parcel.%s(%s::class.java.classLoader)", s.read, g.fq)
+		return fmt.Sprintf("parcel.%s(%s::class.java.classLoader)%s", s.read, g.fq, notNull(t))
 	case parcelCustom:
 		x := fmt.Sprintf("%s.create(parcel)", fqName(s.obj))
 		if !g.c.subtype(s.x, t) {
@@ -1461,11 +1482,11 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 			return "(parcel.readInt() != 0)"
 		}
 	case parcelEnum:
-		return fmt.Sprintf("%s.valueOf(parcel.readString())", fqName(t.C))
+		return fmt.Sprintf("%s.valueOf(parcel.readString()!!)", fqName(t.C))
 	case parcelEfficient:
 		return fmt.Sprintf("`$c%d`.createFromParcel(parcel)", g.creator(t))
 	case parcelGeneric:
-		return fmt.Sprintf("parcel.readParcelable<%s>(%s::class.java.classLoader)", g.typeText(t.NonNull()), g.fq)
+		return fmt.Sprintf("parcel.readParcelable<%s>(%s::class.java.classLoader)%s", g.typeText(t.NonNull()), g.fq, notNull(t))
 	case parcelObject:
 		g.stmt("parcel.readInt()")
 		return fqName(t.C)
@@ -1598,9 +1619,24 @@ func (g *parcelGen) typeText(t types.Type) string {
 // kotlinType writes type t as Kotlin, with qualified names, which mean the
 // same anywhere, or reports that it can't: function types and type
 // parameters.
-func kotlinType(t types.Type) (string, bool) {
+func kotlinType(t types.Type) (string, bool) { return kotlinTypeOf(t, false) }
+
+// kotlinTypeOf is kotlinType, which writes type parameters by their names
+// if params is set: in the declarations of the class or function that
+// declares them.
+func kotlinTypeOf(t types.Type, params bool) (string, bool) {
 	var s string
 	switch t.K {
+	case types.TypeParam:
+		if !params {
+			return "", false
+		}
+		s = t.Param().Name
+	case types.Null:
+		if !params {
+			return "", false
+		}
+		s = "kotlin.Nothing"
 	case types.Int, types.Long, types.Float, types.Double, types.Byte, types.Short, types.Char, types.String, types.Any, types.Unit, types.Nothing:
 		s = "kotlin." + t.NonNull().String()
 	case types.Bool:
@@ -1616,7 +1652,7 @@ func kotlinType(t types.Type) (string, bool) {
 				var arg string
 				ok := true
 				if a.V != types.Star {
-					arg, ok = kotlinType(a.T)
+					arg, ok = kotlinTypeOf(a.T, params)
 				}
 				switch {
 				case !ok:

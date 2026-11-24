@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -24,6 +25,9 @@ type jvmMember struct {
 	static  bool
 	private bool
 	synth   bool // a method that kotlinc adds: foo$default, a @JvmOverloads overload, values()
+	// via is the Java method that overrides an inherited Kotlin member,
+	// which Kotlin sees as that member.
+	via *types.FunSym
 }
 
 // accessor reports whether m is a property's getter or setter.
@@ -261,13 +265,95 @@ func (c *Checker) sameMember(this types.Type, a, b *jvmMember) bool {
 	return a.fun.Name == b.fun.Name && c.sameParams(this, a.fun, b.fun)
 }
 
+// overridesViaJava reports whether own function m of class cls overrides
+// inherited function g through a Java method, which overrides both: Java
+// ignores type parameters' bounds, so it may override g while m, whose
+// bounds differ from g's, doesn't.
+func (c *Checker) overridesViaJava(cls *types.ClassSym, m, g *jvmMember) bool {
+	if m.fun == nil || g.fun == nil || m.fun.Name != g.fun.Name {
+		return false
+	}
+	this := cls.This()
+	for _, h := range c.overridden(cls, m.fun) {
+		if h.Decl == nil && c.sameParams(this, h, g.fun) {
+			return true
+		}
+	}
+	return false
+}
+
+// javaNullabilityClash reports whether g and h, methods of the program's
+// Java sources of which neither class inherits the other's, take a
+// parameter that one annotates nullable and the other not-null: Kotlin
+// sees two members.
+func (c *Checker) javaNullabilityClash(g, h *jvmMember) bool {
+	if g.fun == nil || h.fun == nil || g.via != nil || h.via != nil || len(g.fun.Params) != len(h.fun.Params) {
+		return false
+	}
+	a, b := g.fun.Owner, h.fun.Owner
+	if !c.u.ext.javaSource(a) || !c.u.ext.javaSource(b) || a.IsSubclassOf(b) || b.IsSubclassOf(a) {
+		return false
+	}
+	for i, p := range g.fun.Params {
+		q := h.fun.Params[i]
+		if !p.Type.P && !q.Type.P && p.Type.N != q.Type.N {
+			return true
+		}
+	}
+	return false
+}
+
+// javaInherits reports whether a class of the program's Java sources
+// among cls's supertypes inherits both a and b: their members' clash is
+// that class's, which Java reports. A member of a itself or of b itself
+// is no such member: a Java method of the JVM signature of an inherited
+// member of other Kotlin types, foo(AtomicInteger) for foo(AtomicInt),
+// doesn't override it, as Kotlin sees it.
+func (c *Checker) javaInherits(cls, a, b *types.ClassSym) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s != cls && s != a && s != b && c.u.ext.javaSource(s) && s.IsSubclassOf(a) && s.IsSubclassOf(b)
+		return !found
+	})
+	return found
+}
+
+// joinedByJava reports whether own function m of class cls is no
+// accidental override of inherited Java method g: it overrides g, or a
+// member that a Java class among cls's supertypes inherits along with g,
+// which Java joins, or nothing, which is reported instead.
+func (c *Checker) joinedByJava(cls *types.ClassSym, m, g *jvmMember) bool {
+	if m.fun == nil || g.fun == nil || g.via != nil || !c.u.ext.javaSource(g.fun.Owner) {
+		return false
+	}
+	over := c.overridden(cls, m.fun)
+	if fd, ok := m.fun.Decl.(*syntax.FunDecl); ok && fd.Override && len(over) == 0 {
+		return true // it overrides nothing, which is reported instead
+	}
+	for _, h := range over {
+		if h == g.fun || c.javaInherits(cls, h.Owner, g.fun.Owner) {
+			return true
+		}
+	}
+	return false
+}
+
 // inheritedMembers returns the JVM methods that class cls inherits from
 // its supertypes declared in the program, but not by value classes: their
 // instance methods, of each one's own erasure, as its bridges have them.
 func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
-	var out []jvmMember
+	var out, java []jvmMember
 	cls.Supertypes(func(s *types.ClassSym) bool {
-		if s == cls || s.External {
+		if s == cls {
+			return true
+		}
+		if s.External {
+			if c.u.ext.javaSource(s) {
+				java = append(java, c.javaMembers(cls, s)...)
+			}
 			return true
 		}
 		sd, ok := s.Decl.(*syntax.ClassDecl)
@@ -281,6 +367,92 @@ func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
 		}
 		return true
 	})
+	if len(java) == 0 {
+		return out
+	}
+	// A Java method that overrides Kotlin members is those members, as
+	// Kotlin sees it, and they aren't inherited past it: copies of them
+	// through the same Java method are one member, not a clash.
+	overridden := map[int]bool{}
+	var vias []jvmMember
+	for _, jm := range java {
+		// Nor is a Java method that another one below it overrides.
+		if !jm.static && slices.ContainsFunc(java, func(k jvmMember) bool {
+			return !k.static && k.sig == jm.sig && k.fun.Owner != jm.fun.Owner && k.fun.Owner.IsSubclassOf(jm.fun.Owner)
+		}) {
+			continue
+		}
+		found := false
+		for i := range out {
+			m := &out[i]
+			owner := m.owner()
+			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) && !atomicMismatch(&jm, m) && !kjkVarClash(m) {
+				overridden[i] = true
+				v := *m
+				v.via = jm.fun
+				vias = append(vias, v)
+				found = true
+			}
+		}
+		if !found {
+			vias = append(vias, jm)
+		}
+	}
+	kept := out[:0]
+	for i, m := range out {
+		if !overridden[i] {
+			kept = append(kept, m)
+		}
+	}
+	return append(kept, vias...)
+}
+
+// kjkVarClash reports whether m is an accessor of a var with a value or
+// default accessors, which a Java method overriding it isn't, to kotlinc
+// 2.4 (KT-66392): a Kotlin class inheriting both clashes, and one
+// overriding the property overrides the Java method by accident. An
+// abstract var's or a val's accessors are overridden in Java.
+func kjkVarClash(m *jvmMember) bool {
+	return m.prop != nil && m.prop.Mutable && !m.prop.Abstract && m.extProp == ""
+}
+
+// owner returns the class that declares m.
+func (m *jvmMember) owner() *types.ClassSym {
+	switch {
+	case m.prop != nil:
+		return m.prop.Owner
+	case m.fun != nil:
+		return m.fun.Owner
+	}
+	return nil
+}
+
+// javaMembers returns the JVM methods that class cls inherits from s, a
+// class of the program's Java sources: its instance methods, and the
+// static ones of a class, which the JVM sees as inherited too, but not
+// those that are private or package-private in another package.
+func (c *Checker) javaMembers(cls, s *types.ClassSym) []jvmMember {
+	var out []jvmMember
+	add := func(f *types.FunSym, static bool) {
+		if f.Private || f.Owner != s || f.PackagePrivate && packageOf(s) != packageOf(cls) {
+			return
+		}
+		if d := jvmDesc(f); d != "" {
+			out = append(out, jvmMember{sig: f.JVM() + d, fun: f, static: static})
+		}
+	}
+	for _, fs := range s.Methods {
+		for _, f := range fs {
+			add(f, false)
+		}
+	}
+	if !s.Interface {
+		for _, fs := range s.Statics {
+			for _, f := range fs {
+				add(f, true)
+			}
+		}
+	}
 	return out
 }
 
@@ -298,12 +470,14 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	}
 	own := c.classMembers(d)
 	c.sameContainer(own)
+	c.copiedFieldClashes(d)
 	if c.bigArityFuns(cls) {
 		c.errorf(d.P, "inherited platform declarations clash: class '%s' implements several function types with more than 22 parameters", cls.DisplayName())
 	}
 	inherited := c.inheritedMembers(cls)
 	this := cls.This()
 	ownSigs := map[string]bool{}
+	defaultImpls := "" // the signature of a clash in DefaultImpls
 	for i := range own {
 		m := &own[i]
 		ownSigs[m.sig] = true
@@ -316,10 +490,29 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 		}
 		for j := range inherited {
 			g := &inherited[j]
-			if g.sig == m.sig && !c.sameMember(this, m, g) {
+			if g.sig == m.sig && (g.static || !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) && !c.joinedByJava(cls, m, g)) {
 				c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
+				if cls.Interface && withBody(m) && withBody(g) && defaultImpls == "" {
+					defaultImpls = m.sig
+				}
 				break
 			}
+		}
+	}
+	if cls.Interface {
+		// Members with bodies that clash clash again in the interface's
+		// DefaultImpls class too, which kotlinc reports at the interface.
+		seen := map[string]bool{}
+		for i := range own {
+			if m := &own[i]; withBody(m) && !m.private {
+				if seen[m.sig] && defaultImpls == "" {
+					defaultImpls = m.sig
+				}
+				seen[m.sig] = true
+			}
+		}
+		if defaultImpls != "" {
+			c.errorf(d.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", defaultImpls)
 		}
 	}
 	if comp := cls.Companion; comp != nil {
@@ -329,17 +522,31 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	// doesn't declare one of.
 	for i := range inherited {
 		g := &inherited[i]
-		if ownSigs[g.sig] {
+		if ownSigs[g.sig] || g.static {
 			continue
 		}
 		for j := i + 1; j < len(inherited); j++ {
 			h := &inherited[j]
-			if h.sig == g.sig && !(g.fun != nil && g.fun == h.fun || g.prop != nil && g.prop == h.prop && g.setter == h.setter) && !c.sameMember(this, g, h) {
+			if h.sig == g.sig && !h.static && !(g.via != nil && g.via == h.via) && !c.javaInherits(cls, g.owner(), h.owner()) && !(g.fun != nil && g.fun == h.fun || g.prop != nil && g.prop == h.prop && g.setter == h.setter) && (!c.sameMember(this, g, h) || c.javaNullabilityClash(g, h)) {
 				c.errorf(d.P, "inherited platform declarations clash: the following declarations have the same JVM signature (%s)", g.sig)
 				return
 			}
 		}
 	}
+}
+
+// withBody reports whether interface member m, not static, has a body,
+// which its DefaultImpls class has a static method for.
+func withBody(m *jvmMember) bool {
+	switch {
+	case m.static || m.synth || m.field():
+		return false
+	case m.prop != nil:
+		return !m.prop.Abstract
+	case m.fun != nil:
+		return !m.fun.Abstract
+	}
+	return false
 }
 
 // jvmStaticClashes reports the @JvmStatic functions of companion object
@@ -373,6 +580,7 @@ func (c *Checker) jvmStaticClashes(comp *types.ClassSym, inherited []jvmMember, 
 // have the same JVM signature.
 func (c *Checker) sameContainer(ms []jvmMember) {
 	seen := map[string]*jvmMember{}
+	reported := map[*jvmMember]bool{}
 	for i := range ms {
 		m := &ms[i]
 		if m.sig == "" {
@@ -386,13 +594,62 @@ func (c *Checker) sameContainer(ms []jvmMember) {
 		if m.fun != nil && first.fun != nil && c.u.conflicted[m.fun] && c.u.conflicted[first.fun] {
 			continue // conflicting overloads, reported as such
 		}
-		// At both, if one is a method that kotlinc adds: at the function
-		// it adds it for, or at the class.
+		// At every member of the group, as the backend reports it; a
+		// method that kotlinc adds at the function it adds it for, or at
+		// the class.
 		sig := strings.TrimPrefix(m.sig, "field ")
-		if (m.synth || first.synth) && first.pos != m.pos {
+		if !reported[first] && first.pos != m.pos {
+			reported[first] = true
 			c.errorf(first.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 		}
 		c.errorf(m.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+	}
+}
+
+// copiedFieldClashes reports the fields of class d's companion object
+// that kotlinc copies into d's class under a name that clashes: it renames
+// the field of a companion property named as one of d's with $1, which a
+// field of the companion may already have.
+func (c *Checker) copiedFieldClashes(d *syntax.ClassDecl) {
+	cls := d.Sym
+	if cls.Companion == nil || cls.Interface {
+		return
+	}
+	fields := func(ms []syntax.Decl) ([]*syntax.PropDecl, map[string]*syntax.PropDecl) {
+		var list []*syntax.PropDecl
+		byName := map[string]*syntax.PropDecl{}
+		for _, m := range ms {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Recv == nil && pd.Sym.HasField() {
+				list = append(list, pd)
+				byName[pd.Name] = pd
+			}
+		}
+		return list, byName
+	}
+	var comp *syntax.ClassDecl
+	for _, m := range d.Members {
+		if cd, ok := m.(*syntax.ClassDecl); ok && cd.Sym == cls.Companion {
+			comp = cd
+		}
+	}
+	if comp == nil {
+		return
+	}
+	_, outer := fields(d.Members)
+	list, inComp := fields(comp.Members)
+	for _, pd := range list {
+		o := outer[pd.Name]
+		q := inComp[pd.Name+"$1"]
+		if o == nil || q == nil {
+			continue
+		}
+		fd, ok := types.Desc(types.FieldType(pd.Sym))
+		if qd, qok := types.Desc(types.FieldType(q.Sym)); !ok || !qok || qd != fd {
+			continue
+		}
+		sig := q.Name + fd
+		c.errorf(q.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+		c.errorf(o.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 	}
 }
 
@@ -412,7 +669,12 @@ func (c *Checker) bigArityFuns(cls *types.ClassSym) bool {
 // descriptor but not the same parameter types: one that takes a value
 // class's instance takes its underlying value, and List<A> is List<B>.
 func (c *Checker) ctorClashes(d *syntax.ClassDecl) {
-	seen := map[string]*types.FunSym{}
+	type ctor struct {
+		f        *types.FunSym
+		pos      syntax.Pos
+		reported bool
+	}
+	seen := map[string]*ctor{}
 	add := func(f *types.FunSym, pos syntax.Pos) {
 		if f == nil {
 			return
@@ -421,16 +683,21 @@ func (c *Checker) ctorClashes(d *syntax.ClassDecl) {
 		if !ok {
 			return
 		}
-		if g := seen[desc]; g != nil && len(g.Params) == len(f.Params) {
+		if g := seen[desc]; g != nil && len(g.f.Params) == len(f.Params) {
 			for i, p := range f.Params {
-				if !c.sameType(p.Type, g.Params[i].Type) {
+				if !c.sameType(p.Type, g.f.Params[i].Type) {
+					// At each of them, as the backend reports it.
+					if !g.reported {
+						g.reported = true
+						c.errorf(g.pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
+					}
 					c.errorf(pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
 					return
 				}
 			}
 			return
 		}
-		seen[desc] = f
+		seen[desc] = &ctor{f: f, pos: pos}
 	}
 	if d.HasPrimary {
 		add(d.Ctor, d.P)

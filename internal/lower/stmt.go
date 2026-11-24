@@ -2,6 +2,7 @@ package lower
 
 import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -14,11 +15,24 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	if !lb.Valid() {
 		l.fail(n, "expected '{'")
 	}
+	end := l.pos(rb)
 	if !rb.Valid() {
-		l.failAt(l.end(n), "expected '}'")
+		l.missingBrace(n)
+		end = l.end(n)
 	}
-	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb), Stmts: l.stmts(n)}
+	b := &syntax.Block{P: l.pos(lb), End: end, Stmts: l.stmts(n)}
 	return record(l, b, n)
+}
+
+// missingBrace reports the closing brace missing at the end of n. When
+// recovering, n is kept, as FIR keeps it, and checked for errors of its
+// own; the error is reported with them.
+func (l *lowerer) missingBrace(n psi.NodeRef) {
+	if l.recovering {
+		l.errorLater(l.end(n), "expected '}'")
+		return
+	}
+	l.failAt(l.end(n), "expected '}'")
 }
 
 // stmts lowers the statements of a BLOCK.
@@ -29,9 +43,59 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
 			continue
 		}
-		out = append(out, l.stmt(c))
+		if !l.recovering {
+			out = append(out, l.stmt(c))
+			continue
+		}
+		var st syntax.Stmt
+		if l.attempt(func() {
+			l.syntaxError(c)
+			st = l.stmt(c)
+		}) {
+			out = append(out, st)
+			continue
+		}
+		// An error about a node that is missing is at the end of the
+		// file: it belongs to the statement.
+		if e := l.errs[len(l.errs)-1]; before(l.end(c), e.Pos) {
+			e2 := *e
+			e2.Pos = l.pos(c)
+			l.errs[len(l.errs)-1] = &e2
+		}
+		if v := l.placeholderVar(c); v != nil {
+			out = append(out, v)
+		}
 	}
 	return out
+}
+
+// before reports whether a is before b.
+func before(a, b syntax.Pos) bool {
+	return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
+}
+
+// placeholderVar returns the variable to keep for a local PROPERTY n that
+// failed to lower, so that its uses resolve: of an invalid type, which the
+// checker reports nothing about, and initialized. It returns nil if n
+// isn't a local variable with a name.
+func (l *lowerer) placeholderVar(n psi.NodeRef) *syntax.VarStmt {
+	name := child(n, psi.KindIDENTIFIER)
+	if n.NumericKind() != psi.KindPROPERTY || !name.Valid() {
+		return nil
+	}
+	kw := child(n, psi.KindVAR_KEYWORD)
+	pos := l.pos(name)
+	if !kw.Valid() {
+		kw = child(n, psi.KindVAL_KEYWORD)
+	}
+	if kw.Valid() {
+		pos = l.pos(kw)
+	}
+	invalid := func() *syntax.TypeRef { return &syntax.TypeRef{P: l.pos(name), Known: &types.InvalidType} }
+	init := &syntax.As{X: &syntax.NullLit{}, Ref: invalid()}
+	init.X.(*syntax.NullLit).P = l.pos(name)
+	init.P = l.pos(name)
+	return &syntax.VarStmt{P: pos, Name: ident(name), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD, Type: invalid(), Init: init}
 }
 
 // body lowers a control structure's body, a THEN, ELSE or BODY: a block,
@@ -49,6 +113,16 @@ func (l *lowerer) body(n psi.NodeRef) *syntax.Block {
 func (l *lowerer) bodyOf(n psi.NodeRef) *syntax.Block {
 	if n.NumericKind() == psi.KindBLOCK {
 		return l.block(n)
+	}
+	if n.NumericKind() == psi.KindLABELED_EXPRESSION {
+		n = l.innermostLabel(n)
+		// while (c) a@ { ... }: a labeled block, kotlinc's parser's, where
+		// kc's reads a lambda. Its label names no loop, so a jump to it
+		// is an error.
+		if x := exprChild(n); x.NumericKind() == psi.KindBLOCK {
+			l.label(n)
+			return l.block(x)
+		}
 	}
 	if n.NumericKind() == psi.KindANNOTATED_EXPRESSION {
 		// -> @Suppress("x") { ... }: a block, whose annotations are
@@ -147,10 +221,9 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 		lf.Decl.Annotations = append(as, lf.Decl.Annotations...)
 		return record(l, lf, n)
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		as, m, _, hasKw := l.stmtModifiers(n)
-		if kw := child(n, psi.KindOBJECT_KEYWORD); kw.Valid() && hasKw {
-			l.fail(kw, "named object cannot be local: use an anonymous object instead")
-		}
+		// A named local object is kept: the checker reports it, as
+		// kotlinc, and checks its body.
+		as, m, _, _ := l.stmtModifiers(n)
 		lc := l.localClass(n, m)
 		lc.Annotations = append(as, lc.Annotations...)
 		return record(l, lc, n)
@@ -176,6 +249,7 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {
 	switch n.NumericKind() {
 	case psi.KindLABELED_EXPRESSION:
+		n = l.innermostLabel(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
 		case psi.KindFOR, psi.KindWHILE, psi.KindDO_WHILE:
@@ -277,7 +351,8 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	case has(n, psi.KindEQ):
 		vs.Init = l.expr(exprAfter(n, psi.KindEQ))
 	case vs.Type == nil:
-		l.fail(name, "this variable must either have an explicit type or be initialized")
+		l.errorLater(l.pos(name), "this variable must either have an explicit type or be initialized")
+		vs.Type = &syntax.TypeRef{P: l.pos(name), Known: &types.InvalidType}
 	}
 	if hasKw {
 		vs.Lateinit, vs.LateinitP = m.Lateinit, kwPos

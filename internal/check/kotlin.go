@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -166,14 +167,21 @@ type kotlinTable struct {
 	builtinsOnce sync.Once
 	builtins     map[string]*kmeta.Class // the built-in classes, by class id
 	collections  map[string]*types.ClassSym
+	atomics      map[string]*types.ClassSym // kotlin.concurrent.atomics' types: see atomics.go
 	raw          map[string]*types.ClassSym // the Java collection interfaces themselves
 	kfuncs       map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
 	moduleOnce sync.Once
 	parts      map[string][]kmeta.Part // by package name
 
-	pkgMu sync.Mutex
-	pkgs  map[string]*kpkg
+	// pkgs are the packages of parts, by name, made with them. A package's
+	// declarations are read on first use (see pkg).
+	pkgs map[string]*kpkg
+	// refs are the packages lookups have asked pkgRef for, by the name asked.
+	refs sync.Map
+
+	defaultOnce sync.Once
+	defaultPkgs []*pkgRef // defaultPackages' refs
 
 	platformOnce sync.Once
 	platformSet  map[string]bool
@@ -181,6 +189,7 @@ type kotlinTable struct {
 
 // kpkg is a Kotlin package's top-level declarations.
 type kpkg struct {
+	name  string // dotted, kotlin.collections
 	once  sync.Once
 	parts []*kpart
 	// names are the names of the parts' functions, properties and type
@@ -190,6 +199,10 @@ type kpkg struct {
 
 	mu   sync.Mutex
 	funs map[string][]*types.FunSym
+	// entries are the functions by name, converted as lookups need
+	// them, and kinds the functions of a kind: see pkgFunsWhere.
+	entries map[kindKey][]*kfunEntry
+	kinds   map[kindKey][]*types.FunSym
 	// internalFuns are the internal functions, by pkgInternalFuns.
 	internalFuns map[string][]*types.FunSym
 	props        map[string][]*types.FunSym // getters of extension properties
@@ -214,6 +227,154 @@ type kpart struct {
 	// annots are the methods with annotations or a deprecation.
 	annots map[string]*classfile.Member
 }
+
+// pkgRef is a package that lookups of simple names probe, resolved
+// once: a star import or a default import.
+type pkgRef struct {
+	name string // as asked: kotlin.collections
+	path string // internal: kotlin/collections
+	hash uint64 // classpath.Hash(path)
+	k    *kpkg  // its Kotlin declarations, read on first use; nil if none
+}
+
+// pkgRef returns the package of a name, dotted as kotlin.collections. A
+// slashed name finds the package's classes but no Kotlin declarations, as
+// pkg finds none for it.
+func (t *classTable) pkgRef(name string) *pkgRef {
+	t = t.root()
+	if r, ok := t.refs.Load(name); ok {
+		return r.(*pkgRef)
+	}
+	path := strings.ReplaceAll(name, ".", "/")
+	r := &pkgRef{name: name, path: path, hash: classpath.Hash(path)}
+	if t.kotlin {
+		t.modules()
+		r.k = t.pkgs[name]
+	}
+	actual, _ := t.refs.LoadOrStore(name, r)
+	return actual.(*pkgRef)
+}
+
+// javaLangHash is classpath.Hash("java/lang").
+var javaLangHash = classpath.Hash("java/lang")
+
+// starPkgs returns the packages of c.stars, by their dotted names, in
+// order.
+func (c *Checker) starPkgs() []*pkgRef {
+	for len(c.starRefs) < len(c.stars) {
+		c.starRefs = append(c.starRefs, c.u.ext.pkgRef(strings.ReplaceAll(c.stars[len(c.starRefs)], "/", ".")))
+	}
+	return c.starRefs
+}
+
+// defaultRefs returns the packages of defaultPackages.
+func (t *classTable) defaultRefs() []*pkgRef {
+	t = t.root()
+	t.defaultOnce.Do(func() {
+		for _, pkg := range defaultPackages {
+			t.defaultPkgs = append(t.defaultPkgs, t.pkgRef(pkg))
+		}
+	})
+	return t.defaultPkgs
+}
+
+// absent reports whether class certainly returns nil for the internal
+// name that hashes to h, a name that isn't one of the classes without a
+// class file (see syntheticClass): no class of the class path has it,
+// and no class of the program takes its place.
+func (t *classTable) absent(h uint64) bool {
+	r := t.root()
+	return t.cp != nil && r.shadow.Load() == nil && t.sources.Load() == nil && r.sources.Load() == nil && !t.cp.MayHave(h)
+}
+
+// classIn is class(qualified(path, name)) for a package path whose hash
+// is h: it builds the name only if the class may be there.
+func (t *classTable) classIn(path string, h uint64, name string) *types.ClassSym {
+	if path != "" && !syntheticClass(path, name) && t.absent(classpath.HashJoin(h, '/', name)) {
+		if verifyFilter {
+			t.verifyAbsent(qualified(path, name), t.class(qualified(path, name)))
+		}
+		return nil
+	}
+	return t.class(qualified(path, name))
+}
+
+// nestedNamed is class(outer + "$" + name), building the name only if the
+// class may be there.
+func (t *classTable) nestedNamed(outer, name string) *types.ClassSym {
+	if (outer != "java/util/Map" || name != "Entry") && t.absent(classpath.HashJoin(classpath.Hash(outer), '$', name)) {
+		if verifyFilter {
+			t.verifyAbsent(outer+"$"+name, t.class(outer+"$"+name))
+		}
+		return nil
+	}
+	return t.class(outer + "$" + name)
+}
+
+// syntheticClass reports whether class path/name may be one that class
+// finds without a class file: a function interface or a mutable
+// collection interface.
+func syntheticClass(path, name string) bool {
+	switch path {
+	case "kotlin/jvm/functions", "kotlin":
+		return strings.HasPrefix(name, "Function")
+	case "kotlin/reflect":
+		return strings.HasPrefix(name, "K")
+	case "kotlin/coroutines":
+		return strings.HasPrefix(name, "Suspend")
+	case "java/lang", "java/util":
+		return mutableNames[path+"/"+name] // path and name have no other separators here
+	}
+	return false
+}
+
+// maybeSynthetic reports whether class may find a class of an internal
+// name without a class file, as syntheticClass does.
+func maybeSynthetic(name string) bool {
+	i := strings.LastIndexByte(name, '/')
+	if i < 0 {
+		return false
+	}
+	return syntheticClass(name[:i], name[i+1:])
+}
+
+// mutableNames are mutableOf's keys.
+var mutableNames = func() map[string]bool {
+	m := map[string]bool{}
+	for k := range mutableOf {
+		m[k] = true
+	}
+	return m
+}()
+
+// pkgSynthetic reports whether pkgClass may find a class of a package by
+// name without a class file: a built-in type, a collection or atomic
+// type, or a class standing for a java.lang one.
+func pkgSynthetic(path, name string) bool {
+	if strings.IndexByte(name, '.') >= 0 || strings.IndexByte(name, '/') >= 0 {
+		return true
+	}
+	if path == "kotlin" && (strings.HasPrefix(name, "Function") || types.ArrayByName(name) != nil) {
+		return true
+	}
+	return syntheticNames[path][name]
+}
+
+// syntheticNames are the classes pkgClass finds by id, by package and
+// simple name.
+var syntheticNames = func() map[string]map[string]bool {
+	m := map[string]map[string]bool{}
+	for _, ids := range []map[string]string{collectionJVM, atomicJVM, javaLangOf} {
+		for id := range ids {
+			i := strings.LastIndexByte(id, '/')
+			if m[id[:i]] == nil {
+				m[id[:i]] = map[string]bool{}
+			}
+			m[id[:i]][id[i+1:]] = true
+		}
+	}
+	return m
+}()
 
 // fieldConstant returns the value of a final static field's ConstantValue,
 // as types.VarSym.Constant holds it, or nil.
@@ -253,7 +414,12 @@ func (t *classTable) timed(start time.Time, n int) {
 // functionArity returns n for the class pkg+"FunctionN", such as
 // kotlin/jvm/functions/Function1 or kotlin/Function1.
 func functionArity(name, pkg string) (int, bool) {
-	s, ok := strings.CutPrefix(name, pkg+"Function")
+	// Without building pkg+"Function": class lookups call this for every
+	// name they're asked.
+	s, ok := strings.CutPrefix(name, pkg)
+	if ok {
+		s, ok = strings.CutPrefix(s, "Function")
+	}
 	if !ok {
 		return 0, false
 	}
@@ -268,6 +434,9 @@ func (t *classTable) kclass(id string) *types.ClassSym {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		return t.collection(id)
+	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
 	}
 	if n, ok := functionArity(id, "kotlin/"); ok {
 		return t.funcs.Class(n)
@@ -543,9 +712,17 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		cls = t.funcs.ComposableClass(n)
 	}
 	if cls == nil {
+		cls = t.missingClass(kt.Class, len(kt.Args))
+	}
+	if cls == nil {
 		return types.InvalidType, false
 	}
-	if len(kt.Args) == 0 {
+	raw := kt.Raw || kt.Upper != nil && kt.Upper.Raw
+	if !raw {
+		cls = t.arityMismatch(cls, kt)
+	}
+	if len(kt.Args) == 0 || raw {
+		// A non-generic class, or a raw Java type.
 		return nullable(types.ClassType(cls)), true
 	}
 	args := make([]types.Arg, len(kt.Args))
@@ -583,6 +760,123 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		r = r.WithContexts(kt.Contexts)
 	}
 	return nullable(r), true
+}
+
+// arityMismatch returns cls, the class kt names, or a stand-in of its name
+// if kt gives it another number of type arguments than it has: kt is of a
+// class file of another module that has a class of that name, which the
+// class path's first one hides (see classpath.Duplicated). K2 finds one
+// class of a name too, and a type of it with the other module's arguments
+// is a subtype of neither its types nor others: A<Int> isn't A. But a type
+// of a class without type parameters is one of its own name with any
+// arguments (see subtype1).
+func (t *classTable) arityMismatch(cls *types.ClassSym, kt *kmeta.Type) *types.ClassSym {
+	if t.cp == nil || cls.Missing || !t.cp.Duplicated(cls.Name) {
+		return cls
+	}
+	n := len(kt.Args)
+	for o := kt.Outer; o != nil; o = o.Outer {
+		n += len(o.Args)
+	}
+	a, ok := t.arity(cls.Name, 0)
+	if !ok || a.n == n {
+		return cls
+	}
+	key := "mismatch:" + cls.Name + "/" + strconv.Itoa(n)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c, ok := t.m[key]; ok {
+		return c
+	}
+	c := types.NewExternal(cls.Name, func(*types.ClassSym) {})
+	c.Ensure()
+	c.Interface, c.ArityOf = a.iface, cls
+	for i := range n {
+		c.TypeParams = append(c.TypeParams, &types.TypeParamSym{Name: "T" + strconv.Itoa(i), Index: i, Owner: c, Library: true})
+	}
+	t.m[key] = c
+	return c
+}
+
+// classArity is a class's number of type parameters, its outer classes'
+// included, and whether it is an interface.
+type classArity struct {
+	n     int
+	iface bool
+}
+
+// arity returns the arity of the class of the class path named name, as
+// load gives it, from its class file alone. arityMismatch can't load the
+// class: a type in a class's own signatures can name it, and its loading
+// would then wait for itself.
+func (t *classTable) arity(name string, depth int) (classArity, bool) {
+	if t.cp == nil || depth > 8 {
+		return classArity{}, false
+	}
+	type key struct {
+		cp   *classpath.Path
+		name string
+	}
+	k := key{t.cp, name}
+	if v, ok := t.arities.Load(k); ok {
+		return v.(classArity), true
+	}
+	info, err := t.cp.Load(name)
+	if err != nil {
+		return classArity{}, false
+	}
+	a := classArity{iface: info.Access&classfile.AccInterface != 0}
+	outer := ""
+	fromKotlin := false
+	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
+		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+			fromKotlin = true
+			a.n = len(kc.TypeParams)
+			if kc.IsInner() && info.Inner != nil {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if !fromKotlin {
+		a.n = sigArity(info.Sig)
+		if info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+			info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
+			if oi, err := t.cp.Load(info.Inner.Outer); err == nil && oi.Access&classfile.AccInterface == 0 {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if outer != "" {
+		o, ok := t.arity(outer, depth+1)
+		if !ok {
+			return classArity{}, false
+		}
+		a.n += o.n
+	}
+	t.arities.Store(k, a)
+	return a, true
+}
+
+// sigArity returns the number of the type parameters a class's generic
+// signature declares.
+func sigArity(sig string) int {
+	p := &sigParser{s: sig, ok: true}
+	if p.peek() != '<' {
+		return 0
+	}
+	p.i++
+	n := 0
+	for p.ok && p.peek() != '>' {
+		p.ident(":")
+		n++
+		for p.ok && p.peek() == ':' {
+			p.i++
+			if p.isTypeStart() {
+				p.skipRef()
+			}
+		}
+	}
+	return n
 }
 
 // suspendType maps a suspend function type, which metadata writes as the
@@ -645,22 +939,30 @@ func isUnsigned(t types.Type) bool {
 }
 
 // markValue marks a class of the class path as a value class if its
-// metadata says it is one. Java's classes have no metadata.
-func (t *classTable) markValue(cls *types.ClassSym) {
+// metadata says it is one. Java's classes have no metadata. It returns
+// false for a class kotlinc can't see: one whose metadata says it is a
+// Kotlin class, k = 1 written out, but has neither its data nor a metadata
+// version, as a Java class annotated @Metadata(k = 1) compiles to.
+func (t *classTable) markValue(cls *types.ClassSym) bool {
 	for _, pkg := range javaPackages {
 		if strings.HasPrefix(cls.Name, pkg) {
-			return
+			return true
 		}
 	}
 	info, err := t.cp.Load(cls.Name)
 	if err != nil || info.Kotlin == nil {
-		return
+		return true
+	}
+	if m := info.Kotlin; m.KWritten && m.K == kmeta.KindClassFile && len(m.D1) == 0 && len(m.MV) == 0 {
+		return false
 	}
 	kc, err := kmeta.ReadClass(info.Kotlin)
 	if err != nil {
-		return
+		return true
 	}
 	t.valueOf(cls, kc)
+	t.decoded.Store(cls.Name, kc) // for load, which needn't decode it again
+	return true
 }
 
 // javaPackages are packages without Kotlin classes, whose classes
@@ -760,6 +1062,13 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	sym.Params, ok = t.kparams(f.Params, scope, ok)
 	ret, rok := t.ktype(f.Ret, scope)
 	sym.Ret = ret
+	sym.NoInferRet = kNoInfer(f.Ret)
+	sym.MissingAnno = t.missingTypeAnno(f.Ret)
+	for _, p := range f.Params {
+		if a := t.missingTypeAnno(p.Type); a != "" && sym.ParamMissingAnno == "" {
+			sym.ParamMissingAnno = a
+		}
+	}
 	if f.Recv != nil {
 		sym.Ext = true
 		recv, recvOK := t.ktype(f.Recv, scope)
@@ -782,6 +1091,18 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			}
 			sym.Once[ip.Param] = true
 		}
+		if ip.Kind == kmeta.AtLeastOnce {
+			if sym.AtLeastOnce == nil {
+				sym.AtLeastOnce = make([]bool, len(f.Params))
+			}
+			sym.AtLeastOnce[ip.Param] = true
+		}
+		if ip.Kind == kmeta.AtMostOnce {
+			if sym.AtMostOnce == nil {
+				sym.AtMostOnce = make([]bool, len(f.Params))
+			}
+			sym.AtMostOnce[ip.Param] = true
+		}
 	}
 	for _, im := range f.Implies {
 		// A context parameter's index follows the value parameters'.
@@ -792,8 +1113,10 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 				r = 1
 			case kmeta.ReturnsFalse:
 				r = 0
+			case kmeta.ReturnsNotNull:
+				r = 2
 			}
-			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds, Negated: im.Negated}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {
@@ -971,22 +1294,7 @@ func kNoInfer(t *kmeta.Type) bool {
 
 // jvmParams splits a method descriptor's parameter types, and returns
 // its result type.
-func jvmParams(d string) ([]string, string) {
-	var out []string
-	i := 1
-	for d[i] != ')' {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j += strings.IndexByte(d[j:], ';')
-		}
-		out = append(out, d[i:j+1])
-		i = j + 1
-	}
-	return out, d[i+1:]
-}
+func jvmParams(d string) ([]string, string) { return classfile.DescParams(d), classfile.RetDesc(d) }
 
 // boxedOnJVM returns t as the type of a JVM value of type jvm: a Kotlin
 // Int is a java.lang.Integer where the method overrides a generic one,
@@ -1152,6 +1460,7 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	abstract := p.Flags.Modality() == kmeta.Abstract
 	kp := &types.KProp{Getter: &types.FunSym{Name: g.Name, Owner: owner, Ret: pt, Desc: g.Desc, Resolved: true, Abstract: abstract,
 		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
+	kp.Getter.Declared = inlineAccessor(p.GetterFlags)
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
 	if friend && !p.IsVar() && p.Flags.Modality() == kmeta.Final && p.GetterFlags&kmeta.AccessorNotDefault == 0 && p.Flags&kmeta.PropDelegated == 0 {
@@ -1159,7 +1468,8 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	}
 	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0)) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
-			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx,
+			Declared: inlineAccessor(p.SetterFlags)}
 		matchJVM(kp.Setter)
 	}
 	return kp
@@ -1188,6 +1498,25 @@ func (t *classTable) friend(class string) bool {
 		(strings.HasPrefix(class, "kotlinx/serialization/internal/") || class == "kotlinx/serialization/UnknownFieldException"))
 }
 
+// inlineAccessor returns the Declared of a property accessor of the class
+// path with flags: set if it is inline. inlineIn sets its Class.
+func inlineAccessor(flags kmeta.Flags) *types.InlineFlags {
+	if flags>>8&1 == 0 {
+		return nil
+	}
+	return &types.InlineFlags{}
+}
+
+// inlineIn sets the Declared.Class of the inline functions and accessors
+// among fs, which the metadata of class file class declares.
+func inlineIn(class string, fs ...*types.FunSym) {
+	for _, f := range fs {
+		if f != nil && f.Declared != nil {
+			f.Declared.Class = class
+		}
+	}
+}
+
 // memberExtProp returns the getter of an extension property declared in
 // a class of the class path, as Duration.Companion's Int.milliseconds,
 // or nil. It is a method of the class that takes the extension receiver.
@@ -1202,7 +1531,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 		return nil
 	}
 	sym := &types.FunSym{Name: g.Name, Owner: owner, Desc: g.Desc, Ext: true, Resolved: true,
-		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected}
+		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected, Declared: inlineAccessor(p.GetterFlags)}
 	if inlineOnly {
 		sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
 	}
@@ -1220,10 +1549,13 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	}
 	matchJVM(sym)
 	composeShape(sym, true)
-	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) {
+	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasSetter(p, methods) {
 		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
-			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx, Declared: inlineAccessor(p.SetterFlags)}
+		if inlineOnlySetter(p, methods) {
+			set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
+		}
 		if owner.Value {
 			set.Impl, set.Facade = true, owner.Name
 		}
@@ -1303,6 +1635,32 @@ func annotatedMethods(info *classfile.Info) map[string]*classfile.Member {
 	return m
 }
 
+// defaultImplsAnnots adds to annots, the annotated methods of interface
+// cls, those of its DefaultImpls class, where an interface compiled with
+// -jvm-default=disable has its properties' $annotations methods, if one
+// of kc's properties has such a method that annots lacks.
+func (t *classTable) defaultImplsAnnots(cls *types.ClassSym, kc *kmeta.Class, annots map[string]*classfile.Member) map[string]*classfile.Member {
+	for _, p := range kc.Props {
+		if p.Synthetic == nil || annots[p.Synthetic.Name+p.Synthetic.Desc] != nil {
+			continue
+		}
+		info, err := t.cp.Load(cls.Name + "$DefaultImpls")
+		if err != nil {
+			return annots
+		}
+		for k, m := range annotatedMethods(info) {
+			if annots == nil {
+				annots = map[string]*classfile.Member{}
+			}
+			if annots[k] == nil {
+				annots[k] = m
+			}
+		}
+		return annots
+	}
+	return annots
+}
+
 // annotate gives a Kotlin function of the class path its method's
 // annotations and @Deprecated, if m isn't nil.
 func annotate(f *types.FunSym, m *classfile.Member) {
@@ -1320,6 +1678,105 @@ func annotate(f *types.FunSym, m *classfile.Member) {
 	if m.Deprecated != nil && !m.Deprecated.Java {
 		f.Deprecated = classFileDeprecation(m.Deprecated)
 	}
+}
+
+// annotateProp gives the getter and setter of a property of the class
+// path, which may be nil, their methods' annotations and @Deprecated, and
+// the property's, which kotlinc keeps on its $annotations method.
+func annotateProp(p *kmeta.Property, annots map[string]*classfile.Member, get, set *types.FunSym) {
+	var prop *classfile.Member
+	if p.Synthetic != nil {
+		prop = annots[p.Synthetic.Name+p.Synthetic.Desc]
+	}
+	for i, f := range []*types.FunSym{get, set} {
+		if f == nil {
+			continue
+		}
+		if sig := []*kmeta.JVMSig{p.Getter, p.Setter}[i]; sig != nil {
+			annotate(f, annots[sig.Name+sig.Desc])
+		}
+		if prop != nil {
+			f.PropAnnotations = prop.Annotations
+			if prop.Deprecated != nil && !prop.Deprecated.Java {
+				f.Deprecated = classFileDeprecation(prop.Deprecated)
+			}
+		}
+	}
+}
+
+// aliasRequires reports whether a typealias of the class path may have
+// an annotation that its uses must check: @Deprecated, or one that may be
+// an opt-in requirement marker. Such an alias of a class is kept as an
+// alias, which the checks see, rather than resolved as the class.
+func aliasRequires(a *kmeta.TypeAlias) bool {
+	for _, an := range a.Annotations {
+		if !neverMarker("L" + internalName(an.Class) + ";") {
+			return true
+		}
+	}
+	return false
+}
+
+// neverMarker reports whether the annotation with descriptor desc is one
+// of those that aren't opt-in requirement markers, which the checks then
+// needn't load: Kotlin's and Java's own, but kotlin.Deprecated and those
+// of the kotlin package that may be markers, and JetBrains' nullability
+// annotations.
+func neverMarker(desc string) bool {
+	switch desc {
+	case "Lkotlin/Deprecated;", "Lkotlin/DeprecatedSinceKotlin;":
+		return false
+	case "Lkotlin/SinceKotlin;", "Lkotlin/WasExperimental;", "Lkotlin/PublishedApi;", "Lkotlin/BuilderInference;",
+		"Lkotlin/OverloadResolutionByLambdaReturnType;", "Lkotlin/IgnorableReturnValue;", "Lkotlin/ReplaceWith;":
+		return true
+	}
+	for _, p := range []string{"Lkotlin/jvm/", "Lkotlin/internal/", "Lkotlin/annotation/", "Lkotlin/js/", "Ljava/lang/", "Lorg/jetbrains/annotations/", "Ljavax/annotation/", "Landroidx/annotation/"} {
+		if strings.HasPrefix(desc, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// aliasAnnotations gives a typealias of the class path the annotations
+// and @Deprecated its metadata keeps.
+func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
+	var d *types.Deprecation
+	since, notYet := "", false // the level @DeprecatedSinceKotlin gives
+	for _, an := range a.Annotations {
+		s.Annotations = append(s.Annotations, "L"+internalName(an.Class)+";")
+		switch an.Class {
+		case "kotlin/Deprecated":
+			d = &types.Deprecation{Level: "WARNING"}
+			for _, arg := range an.Args {
+				switch arg.Name {
+				case "message":
+					d.Message = arg.Value.Str
+				case "level":
+					d.Level = arg.Value.Str
+				}
+			}
+		case "kotlin/DeprecatedSinceKotlin":
+			for _, arg := range an.Args {
+				switch {
+				case classfile.LaterThanAPI(arg.Value.Str):
+					// A version the API version hasn't reached.
+					notYet = notYet || arg.Name == "warningSince"
+				case arg.Name == "hiddenSince":
+					since = "HIDDEN"
+				case arg.Name == "errorSince" && since == "":
+					since = "ERROR"
+				}
+			}
+		}
+	}
+	if notYet {
+		d = nil
+	}
+	if d != nil && (since == "HIDDEN" || since == "ERROR" && d.Level == "WARNING") {
+		d.Level = since
+	}
+	s.Deprecated = d
 }
 
 // publicMethods returns the name+desc of a class file's public and
@@ -1362,6 +1819,23 @@ func publicMethods(info *classfile.Info) map[string]bool {
 func hasMethod(methods map[string]bool, sig string, inline bool) bool {
 	v, ok := methods[sig]
 	return v || ok && !inline
+}
+
+// hasSetter reports whether a call can set var extension property p,
+// whose methods are these: through its setter's method, or a copy of its
+// body, an inline setter's whose method is synthetic or private, as one
+// with reified type parameters.
+func hasSetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	return hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) || inlineOnlySetter(p, methods)
+}
+
+// inlineOnlySetter reports whether a set of p copies its inline setter's
+// body, as its method can't be called.
+func inlineOnlySetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	inline := p.SetterFlags>>8&1 != 0
+	return inline && !hasMethod(methods, s.Name+s.Desc, inline)
 }
 
 const markerSuffix = "Lkotlin/jvm/internal/DefaultConstructorMarker;)V"
@@ -1478,7 +1952,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	if info.Super != "" {
-		cls.Super = t.class(info.Super)
+		if cls.Super = t.class(info.Super); cls.Super == nil {
+			cls.Super = t.missingClass(info.Super, 0)
+		}
 	}
 	var supers []types.Type
 	for _, st := range kc.Supers {
@@ -1514,6 +1990,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			e = a.Underlying
 		}
 		s := &types.AliasSym{Name: a.Name, Outer: cls, Resolved: true}
+		aliasAnnotations(s, a)
 		ascope := tscope{}
 		atps, aok := t.ktypeParams(a.TypeParams, s, ascope)
 		if at, tok := t.ktype(e, ascope); aok && tok {
@@ -1534,7 +2011,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		for _, fd := range info.Fields {
 			if fd.Access&classfile.AccEnum != 0 {
 				cls.Entries = append(cls.Entries, fd.Name)
-				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true}
+				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true,
+					Annotations: fd.Annotations}
 			}
 		}
 		// Its static methods, as for the program's enums.
@@ -1592,13 +2070,25 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	annots := annotatedMethods(info)
+	if cls.Interface {
+		annots = t.defaultImplsAnnots(cls, kc, annots)
+	}
 	hidden := map[string]bool{}
 	for _, m := range info.Methods {
 		if m.Access&classfile.AccPublic != 0 && m.Access&classfile.AccSynthetic != 0 {
 			hidden[m.Name+m.Desc] = true
 		}
 	}
+	invisible := func(key string, flags kmeta.Flags) {
+		if cls.InvisibleMembers == nil {
+			cls.InvisibleMembers = map[string]bool{}
+		}
+		cls.InvisibleMembers[key] = flags.Modality() == kmeta.Abstract
+	}
 	for _, f := range kc.Funcs {
+		if f.Flags.Visibility() == kmeta.Internal && !friend && f.Flags.MemberKind() != 1 && f.Recv == nil {
+			invisible(f.Name+"/"+strconv.Itoa(len(f.Params)), f.Flags)
+		}
 		if !visibleOutside(f.Flags.Visibility(), friend) || f.Flags.MemberKind() == 1 /* fake override */ {
 			continue
 		}
@@ -1610,10 +2100,16 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			sym = t.kfun(f, cls, scope, nil)
 			sym.Hidden = true
 		}
+		inlineIn(cls.Name, sym)
 		if cls.Value && f.Flags.MemberKind() != 3 /* synthesized: equals, hashCode */ {
 			// A value class's member is a static method of the class,
-			// which takes the value first; an inline-only one is copied.
+			// which takes the value first; an inline one is copied, as
+			// with kotlinc, so that a lambda passed to it can return from
+			// the caller.
 			sym.Impl, sym.Facade = true, cls.Name
+			if sym.Inline == nil && f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin {
+				sym.Inline = inlineInfo(f, false)
+			}
 			if sym.Inline != nil {
 				sym.Inline.Load = t.loadInline(cls.Name)
 				sym.Unsupported, sym.Why = false, ""
@@ -1658,6 +2154,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	for _, p := range kc.Props {
+		if p.Flags.Visibility() == kmeta.Internal && !friend && p.Flags.MemberKind() != 1 && p.Recv == nil {
+			invisible("prop "+p.Name, p.Flags)
+		}
 		if p.Getter == nil && p.Field != nil && p.Recv == nil && public(p.Flags.Visibility(), friend) && instanceFields[p.Field.Name] {
 			// A @JvmField property: a public field and no accessors, as
 			// Buffer.UnsafeCursor's offset.
@@ -1672,6 +2171,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				inlineIn(cls.Name, g, g.ExtSetter)
+				annotateProp(p, annots, g, g.ExtSetter)
 				g.Static = statics[g.JVM()+g.Desc]
 				if g.ExtSetter != nil {
 					g.ExtSetter.Static = statics[g.ExtSetter.JVM()+g.ExtSetter.Desc]
@@ -1684,6 +2185,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			continue
 		}
 		if kp := t.kprop(p, cls, scope, methods, metaGetter, metaSetter); kp != nil {
+			inlineIn(cls.Name, kp.Getter, kp.Setter)
+			annotateProp(p, annots, kp.Getter, kp.Setter)
 			if cls.Value {
 				kp.Getter.Impl, kp.Getter.Facade = true, cls.Name
 			}
@@ -1739,6 +2242,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			f.Params, ok = t.kparams(k.Params, scope, true)
 			f.Unsupported = !ok
 			matchJVM(f)
+			annotate(f, annots[k.JVM.Name+k.JVM.Desc])
+			f.Hidden = f.Deprecated != nil && f.Deprecated.Level == "HIDDEN"
 			if internal {
 				cls.InternalCtors = append(cls.InternalCtors, f)
 				continue
@@ -1746,7 +2251,37 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			cls.Ctors = append(cls.Ctors, f)
 		}
 	}
+	if cls.Data {
+		componentMarkers(kc, cls, annots)
+	}
 	t.timed(start, len(kc.Funcs)+len(kc.Props)+len(kc.Ctors))
+}
+
+// componentMarkers gives a data class's componentN functions the
+// annotations of the properties of its primary constructor they return,
+// whose opt-in requirements they have, as K2's.
+func componentMarkers(kc *kmeta.Class, cls *types.ClassSym, annots map[string]*classfile.Member) {
+	for _, k := range kc.Ctors {
+		if k.Flags&kmeta.CtorSecondary != 0 {
+			continue
+		}
+		for i, prm := range k.Params {
+			for _, p := range kc.Props {
+				if p.Name != prm.Name || p.Synthetic == nil {
+					continue
+				}
+				m := annots[p.Synthetic.Name+p.Synthetic.Desc]
+				if m == nil {
+					continue
+				}
+				for _, f := range cls.Methods["component"+strconv.Itoa(i+1)] {
+					if len(f.Params) == 0 {
+						f.PropAnnotations = m.Annotations
+					}
+				}
+			}
+		}
+	}
 }
 
 // internalName returns the JVM internal name of a class id: nested
@@ -1769,18 +2304,11 @@ func erasedDesc(kt *kmeta.Type) string {
 		return "[Ljava/lang/Object;"
 	}
 	if kt.Nullable {
-		if box, ok := kotlinBoxes[kt.Class]; ok {
+		if box := types.PrimOf(types.IDKind(kt.Class)).Box; box != "" {
 			return "L" + box + ";"
 		}
 	}
 	return kmeta.MapClass(kt.Class)
-}
-
-// kotlinBoxes are the box classes of Kotlin's primitive types, by class id.
-var kotlinBoxes = map[string]string{
-	"kotlin/Int": "java/lang/Integer", "kotlin/Long": "java/lang/Long", "kotlin/Double": "java/lang/Double",
-	"kotlin/Boolean": "java/lang/Boolean", "kotlin/Char": "java/lang/Character", "kotlin/Float": "java/lang/Float",
-	"kotlin/Byte": "java/lang/Byte", "kotlin/Short": "java/lang/Short",
 }
 
 // builtinSig returns the JVM name and descriptor of a member of a
@@ -1944,6 +2472,11 @@ func (t *classTable) modules() map[string][]kmeta.Part {
 				}
 			}
 		}
+		t.pkgs = make(map[string]*kpkg, len(t.parts))
+		for pkg := range t.parts {
+			t.pkgs[pkg] = &kpkg{name: pkg, funs: map[string][]*types.FunSym{}, props: map[string][]*types.FunSym{}, vars: map[string]*types.VarSym{},
+				aliases: map[string]*types.ClassSym{}, typeAliases: map[string]*types.AliasSym{}}
+		}
 		t.timed(start, 0)
 	})
 	return t.parts
@@ -1964,21 +2497,23 @@ func (t *classTable) isKotlinPackage(pkg string) bool {
 // use, or nil if it has none.
 func (t *classTable) pkg(name string) *kpkg {
 	t = t.root()
-	if !t.isKotlinPackage(name) {
+	if !t.kotlin {
 		return nil
 	}
-	t.pkgMu.Lock()
-	p := t.pkgs[name]
+	t.modules()
+	return t.read(t.pkgs[name])
+}
+
+// read reads the declarations of package p, if not read yet, and returns
+// it. p may be nil.
+func (t *classTable) read(p *kpkg) *kpkg {
 	if p == nil {
-		p = &kpkg{funs: map[string][]*types.FunSym{}, props: map[string][]*types.FunSym{}, vars: map[string]*types.VarSym{},
-			aliases: map[string]*types.ClassSym{}, typeAliases: map[string]*types.AliasSym{}}
-		t.pkgs[name] = p
+		return nil
 	}
-	t.pkgMu.Unlock()
 	p.once.Do(func() {
 		// A package can have dozens of classes, some large, so they are
 		// read in parallel.
-		parts := t.modules()[name]
+		parts := t.parts[p.name]
 		read := make([]*kpart, len(parts))
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, runtime.GOMAXPROCS(0))
@@ -2034,25 +2569,124 @@ func (t *classTable) pkgInternalFuns(pkg, name string) []*types.FunSym {
 }
 
 func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym {
+	return t.pkgFunsWhere(pkg, name, internal, allFuns, nil)
+}
+
+// funKind selects a package's functions by whether they are extensions.
+type funKind uint8
+
+const (
+	allFuns funKind = iota
+	extFuns
+	nonExtFuns
+)
+
+// kindKey keys kpkg.kinds.
+type kindKey struct {
+	name     string
+	internal bool
+	kind     funKind
+}
+
+// kfunEntry is a top-level function of a package, read from its metadata
+// and converted to a symbol only when a lookup can use it: a lookup of
+// extensions for a receiver needs only those whose receiver takes it, of
+// the dozens a name like map or forEach has.
+type kfunEntry struct {
+	f    *kmeta.Function
+	part *kpart
+	key  string // the method's name and descriptor
+	// recv is an extension's receiver type without its type arguments,
+	// which is enough for recvFits; recvOK is unset if it isn't had
+	// that cheaply, for a type parameter or a suspend function type.
+	recv           types.Type
+	recvOK, recvIn bool
+	sym            *types.FunSym // once converted
+}
+
+// pkgFunsWhere returns the top-level functions of a package with a name,
+// as pkgFunsOf, of a kind. If fits isn't nil, it leaves out the
+// extensions whose receiver type, without its type arguments, it rejects;
+// it must reject only receivers that can't take the call's, as recvFits
+// does, so the result is the others' in the same order, without the
+// duplicates pkgFunsOf leaves out.
+func (t *classTable) pkgFunsWhere(pkg, name string, internal bool, kind funKind, fits func(types.Type) bool) []*types.FunSym {
+	return t.pkgFunsWhereIn(t.pkgRef(pkg), name, internal, kind, fits)
+}
+
+// pkgFunsWhereIn is pkgFunsWhere of a package resolved once.
+func (t *classTable) pkgFunsWhereIn(r *pkgRef, name string, internal bool, kind funKind, fits func(types.Type) bool) []*types.FunSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	cache := p.funs
-	if internal {
+	var cache map[string][]*types.FunSym
+	var kk kindKey
+	switch {
+	case fits != nil:
+	case kind == allFuns && internal:
 		if p.internalFuns == nil {
 			p.internalFuns = map[string][]*types.FunSym{}
 		}
 		cache = p.internalFuns
+	case kind == allFuns:
+		cache = p.funs
+	default:
+		kk = kindKey{name, internal, kind}
+		if fs, ok := p.kinds[kk]; ok {
+			return fs
+		}
 	}
 	if fs, ok := cache[name]; ok {
 		return fs
 	}
-	start := time.Now()
 	var fs []*types.FunSym
+	for _, e := range t.pkgEntries(p, name, internal) {
+		if kind == extFuns && e.f.Recv == nil || kind == nonExtFuns && e.f.Recv != nil {
+			continue
+		}
+		if fits != nil && e.f.Recv != nil {
+			if !e.recvIn {
+				e.recv, e.recvOK = t.shallowType(e.f.Recv)
+				e.recvIn = true
+			}
+			if e.recvOK && !fits(e.recv) {
+				continue
+			}
+		}
+		sym := t.pkgFun(pkg, name, e)
+		// As in K2, one function of two modules on the class path, by
+		// its package, name and signature, is one candidate.
+		if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+			continue
+		}
+		fs = append(fs, sym)
+	}
+	switch {
+	case fits != nil:
+	case cache != nil:
+		cache[name] = fs
+	default:
+		if p.kinds == nil {
+			p.kinds = map[kindKey][]*types.FunSym{}
+		}
+		p.kinds[kk] = fs
+	}
+	return fs
+}
+
+// pkgEntries returns the entries of the functions of a package with a
+// name, public or internal ones, reading them on first use. p.mu is held.
+func (t *classTable) pkgEntries(p *kpkg, name string, internal bool) []*kfunEntry {
+	k := kindKey{name: name, internal: internal}
+	if es, ok := p.entries[k]; ok {
+		return es
+	}
+	var es []*kfunEntry
 	for _, part := range p.parts {
 		decls, err := part.meta.Functions(name)
 		if err != nil {
@@ -2062,59 +2696,110 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 			if internal != (f.Flags.Visibility() == kmeta.Internal && !part.friend) {
 				continue
 			}
-			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[f.JVM.Name+f.JVM.Desc] {
+			key := f.JVM.Name + f.JVM.Desc
+			if !internal && !public(f.Flags.Visibility(), part.friend) || part.hidden[key] {
 				continue
 			}
-			sym := t.kfun(f, nil, nil, part.methods)
-			sym.Facade = part.facade
-			sym.LowPriority = part.low[f.JVM.Name+f.JVM.Desc]
-			annotate(sym, part.annots[f.JVM.Name+f.JVM.Desc])
-			if sym.Why != "" && typesOK(sym) {
-				intrinsic(sym, part.facade, f.JVM)
-			}
-			switch {
-			case sym.Inline != nil && sym.Unsupported:
-				// An inline-only function is called by copying its body.
-				sym.Unsupported, sym.Why = false, ""
-			case sym.Inline != nil:
-				sym.Inline = nil // an intrinsic
-			case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
-				// A public inline function too, if its body can be copied.
-				// One with reified type parameters must be: its method
-				// doesn't know them.
-				sym.Inline = inlineInfo(f, hasReified(sym))
-			}
-			if in := sym.Inline; in != nil {
-				in.Class, in.Load = part.class, t.loadInline(part.class)
-			}
-			if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
-				// An intrinsic, as in kotlinc: its body only throws.
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.TypeOf
-			}
-			if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
-				sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
-				sym.Builtin = types.SuspendIntrinsic
-			}
-			if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
-				// An intrinsic of Compose's plugin: its body doesn't
-				// start the movable group.
-				sym.Inline, sym.Builtin = nil, types.ComposeKey
-			}
-			fs = append(fs, sym)
+			es = append(es, &kfunEntry{f: f, part: part, key: key})
 		}
 	}
-	cache[name] = fs
-	t.timed(start, len(fs))
-	return fs
+	if p.entries == nil {
+		p.entries = map[kindKey][]*kfunEntry{}
+	}
+	p.entries[k] = es
+	return es
+}
+
+// pkgFun converts entry e of a package's functions with a name to its
+// symbol, on first use. The package's lock is held.
+func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
+	if e.sym != nil {
+		return e.sym
+	}
+	start := time.Now()
+	f, part := e.f, e.part
+	sym := t.kfun(f, nil, nil, part.methods)
+	sym.Facade = part.facade
+	inlineIn(part.class, sym)
+	sym.LowPriority = part.low[e.key]
+	annotate(sym, part.annots[e.key])
+	if sym.Why != "" && typesOK(sym) {
+		intrinsic(sym, part.facade, f.JVM)
+	}
+	switch {
+	case sym.Inline != nil && sym.Unsupported:
+		// An inline-only function is called by copying its body.
+		sym.Unsupported, sym.Why = false, ""
+	case sym.Inline != nil:
+		sym.Inline = nil // an intrinsic
+	case f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin:
+		// A public inline function too, if its body can be copied.
+		// One with reified type parameters must be: its method
+		// doesn't know them.
+		sym.Inline = inlineInfo(f, hasReified(sym))
+	}
+	if in := sym.Inline; in != nil {
+		in.Class, in.Load = part.class, t.loadInline(part.class)
+	}
+	if (pkg == "kotlin.reflect" || pkg == "kotlin/reflect") && name == "typeOf" {
+		// An intrinsic, as in kotlinc: its body only throws.
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.TypeOf
+	}
+	if (pkg == "kotlin.coroutines.intrinsics" || pkg == "kotlin/coroutines/intrinsics") && name == "suspendCoroutineUninterceptedOrReturn" {
+		sym.Inline, sym.Unsupported, sym.Why = nil, false, ""
+		sym.Builtin = types.SuspendIntrinsic
+	}
+	if (pkg == "androidx.compose.runtime" || pkg == "androidx/compose/runtime") && name == "key" && sym.Composable {
+		// An intrinsic of Compose's plugin: its body doesn't
+		// start the movable group.
+		sym.Inline, sym.Builtin = nil, types.ComposeKey
+	}
+	e.sym = sym
+	t.timed(start, 1)
+	return sym
+}
+
+// shallowType is a type of metadata without its type arguments, as ktype
+// would have it but for those, or false if it is a type parameter, a
+// suspend or @Composable function type, or a class that isn't there.
+func (t *classTable) shallowType(kt *kmeta.Type) (types.Type, bool) {
+	switch {
+	case kt.Class == "" || kt.Flags&kmeta.TypeSuspend != 0 || kt.Composable:
+		return types.InvalidType, false
+	case len(kt.Args) == 0 && kt.Outer == nil:
+		return t.ktype(kt, nil)
+	}
+	switch kt.Class {
+	case "kotlin/Int", "kotlin/Long", "kotlin/Double", "kotlin/Boolean", "kotlin/Char", "kotlin/Float", "kotlin/Byte", "kotlin/Short",
+		"kotlin/String", "kotlin/Any", "kotlin/Unit", "kotlin/Nothing":
+		return types.InvalidType, false // as ktype has them, which takes no arguments
+	}
+	cls := t.kclass(kt.Class)
+	if cls == nil {
+		return types.InvalidType, false
+	}
+	r := types.ClassType(cls)
+	switch {
+	case kt.Upper != nil:
+		r = r.Platform()
+	case kt.Nullable:
+		r = r.Nullable()
+	}
+	return r, true
 }
 
 // pkgExtProps returns the getters of a package's public extension
 // properties with a name. A getter takes the receiver and has the
 // property's type parameters.
 func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
+	return t.pkgExtPropsIn(t.pkgRef(pkg), name)
+}
+
+// pkgExtPropsIn is pkgExtProps of a package resolved once.
+func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2137,7 +2822,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
-			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true}
+			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true, Declared: inlineAccessor(pr.GetterFlags)}
 			if inlineOnly {
 				sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 			}
@@ -2154,12 +2839,18 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			matchJVM(sym)
 			composeShape(sym, false) // WindowInsets.isImeVisible
 			// A var's setter: (receiver, value) on the same facade.
-			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasMethod(part.methods, s.Name+s.Desc, pr.SetterFlags>>8&1 != 0) {
+			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasSetter(pr, part.methods) {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
-					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx,
+					Declared: inlineAccessor(pr.SetterFlags)}
+				if inlineOnlySetter(pr, part.methods) {
+					set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
+				}
 				matchJVM(set)
 				sym.ExtSetter = set
 			}
+			inlineIn(part.class, sym, sym.ExtSetter)
+			annotateProp(pr, part.annots, sym, sym.ExtSetter)
 			gs = append(gs, sym)
 		}
 	}
@@ -2171,8 +2862,14 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 // pkgVar returns a package's public top-level property with a name that
 // isn't an extension, or nil.
 func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
+	return t.pkgVarIn(t.pkgRef(pkg), name)
+}
+
+// pkgVarIn is pkgVar of a package resolved once.
+func (t *classTable) pkgVarIn(r *pkgRef, name string) *types.VarSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2198,7 +2895,8 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 			}
 			prev := v
 			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
-				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
+				Resolved: true, Const: pr.IsConst(), Contexts: ctx,
+				InlineGetter: pr.GetterFlags>>8&1 != 0, InlineSetter: pr.IsVar() && pr.SetterFlags>>8&1 != 0}
 			if prev != nil && !sameContexts(prev.Contexts, ctx) {
 				// One with other context parameters.
 				addAlt(prev, v)
@@ -2208,6 +2906,14 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 			}
 			if v.Const {
 				v.Constant = t.facadeConstant(part.facade, pr.Name)
+			}
+			if pr.Synthetic != nil {
+				if m := part.annots[pr.Synthetic.Name+pr.Synthetic.Desc]; m != nil {
+					v.Annotations = m.Annotations
+					if m.Deprecated != nil && !m.Deprecated.Java {
+						v.Deprecated = classFileDeprecation(m.Deprecated)
+					}
+				}
 			}
 			if (pkg == "kotlin.coroutines" || pkg == "kotlin/coroutines") && name == "coroutineContext" {
 				v.Suspend = true // an intrinsic: its getter only throws
@@ -2311,9 +3017,30 @@ func qualified(pkg, name string) string {
 // pkgClass returns the class that a simple name refers to in a package:
 // a class, a built-in type or a typealias of a class, or nil.
 func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
-	id := qualified(strings.ReplaceAll(pkg, ".", "/"), name)
+	return t.pkgClassIn(t.pkgRef(pkg), name)
+}
+
+// pkgClassIn is pkgClass of a package resolved once. It looks the class up
+// by name only if the class path may have it.
+func (t *classTable) pkgClassIn(r *pkgRef, name string) *types.ClassSym {
+	if r.path != "" && !pkgSynthetic(r.path, name) && !syntheticClass(r.path, name) && t.absent(classpath.HashJoin(r.hash, '/', name)) {
+		alias := t.pkgClassAlias(r, name)
+		if verifyFilter && t.pkgClassFull(r, name) != alias {
+			panic("check: the class path filter ruled out " + qualified(r.path, name))
+		}
+		return alias
+	}
+	return t.pkgClassFull(r, name)
+}
+
+// pkgClassFull is pkgClassIn without the filter.
+func (t *classTable) pkgClassFull(r *pkgRef, name string) *types.ClassSym {
+	id := qualified(r.path, name)
 	if _, ok := collectionJVM[id]; ok {
 		return t.kclass(id)
+	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
 	}
 	if a := types.ArrayByID(id); a != nil {
 		return a
@@ -2327,7 +3054,13 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 	if c := t.class(id); c != nil {
 		return c
 	}
-	p := t.pkg(pkg)
+	return t.pkgClassAlias(r, name)
+}
+
+// pkgClassAlias returns the class a public typealias of a package named
+// name stands for, or nil.
+func (t *classTable) pkgClassAlias(r *pkgRef, name string) *types.ClassSym {
+	p := t.root().read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2343,7 +3076,7 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 			continue
 		}
 		for _, a := range as {
-			if c := t.aliasClass(a); c != nil && public(a.Flags.Visibility(), part.friend) {
+			if c := t.aliasClass(a); c != nil && public(a.Flags.Visibility(), part.friend) && !aliasRequires(a) {
 				found = c
 			}
 		}
@@ -2356,8 +3089,14 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 // pkgClass doesn't return as a class, such as an alias of a function type
 // or of a class with fixed type arguments, or nil.
 func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
+	return t.pkgAliasIn(t.pkgRef(pkg), name)
+}
+
+// pkgAliasIn is pkgAlias of a package resolved once.
+func (t *classTable) pkgAliasIn(r *pkgRef, name string) *types.AliasSym {
 	t = t.root()
-	p := t.pkg(pkg)
+	pkg := r.name
+	p := t.read(r.k)
 	if p == nil || !p.names[name] {
 		return nil
 	}
@@ -2377,10 +3116,11 @@ func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
 			if e == nil {
 				e = a.Underlying
 			}
-			if !public(a.Flags.Visibility(), part.friend) || t.aliasClass(a) != nil || e == nil {
+			if !public(a.Flags.Visibility(), part.friend) || t.aliasClass(a) != nil && !aliasRequires(a) || e == nil {
 				continue
 			}
 			s := &types.AliasSym{Name: name, Pkg: pkg, Resolved: true}
+			aliasAnnotations(s, a)
 			scope := tscope{}
 			tps, ok := t.ktypeParams(a.TypeParams, s, scope)
 			typ, tok := t.ktype(e, scope)
@@ -2415,4 +3155,26 @@ func (t *classTable) aliasClass(a *kmeta.TypeAlias) *types.ClassSym {
 var platformDependent = map[string]int{
 	"kotlin/collections/Map.getOrDefault":  2,
 	"kotlin/collections/MutableMap.remove": 2,
+}
+
+// verifyAbsent panics if cls, what a full lookup of name found, is a
+// class that the class path's name filter ruled out.
+func (t *classTable) verifyAbsent(name string, cls *types.ClassSym) {
+	if cls != nil {
+		panic("check: the class path filter ruled out " + name)
+	}
+}
+
+// missingTypeAnno returns the name of the class of an annotation of type
+// kt, not of its type arguments, that the class path doesn't have, or "".
+func (t *classTable) missingTypeAnno(kt *kmeta.Type) string {
+	if kt == nil {
+		return ""
+	}
+	for _, an := range kt.Annotations {
+		if c := t.missingClass(an.Class, 0); c != nil {
+			return missingName(c)
+		}
+	}
+	return ""
 }

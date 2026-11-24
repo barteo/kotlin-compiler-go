@@ -36,3 +36,18 @@ private inline fun alsoPrivate() = usesHidden()
 fun notInline() = usesHidden()
 
 fun main() {}
+
+// An inline property's accessors, or an accessor declared inline, can't
+// declare local functions or classes either.
+inline val inlineProp: Int
+    get() {
+        fun local() {} // ERROR local functions are not yet supported in inline functions
+        class Local // ERROR local classes are not yet supported in inline functions
+        return 1
+    }
+
+val inlineGetter: Int
+    inline get() {
+        fun local() {} // ERROR local functions are not yet supported in inline functions
+        return 1
+    }

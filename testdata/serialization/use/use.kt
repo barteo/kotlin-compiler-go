@@ -1,8 +1,15 @@
+import app.Arrays
 import app.Base
+import app.Big
 import app.Color
 import app.Event
 import app.Framed
+import app.GBase
+import app.GBox
+import app.GPage
+import app.GRes
 import app.Label
+import app.Late
 import app.Margin
 import app.Outer
 import app.Page
@@ -15,6 +22,8 @@ import app.Shape
 import app.WithCompanion
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
@@ -47,6 +56,45 @@ fun main() {
     val pets = Json.encodeToString(ListSerializer(Pet.serializer()), listOf(Pet.Cat(1), Pet.Wild.Fox(2)))
     println("pets: $pets -> ${Json.decodeFromString(ListSerializer(Pet.serializer()), pets)}")
     println(serializer<Prims>().descriptor.serialName)
+    // kc's generic classes: their companions' serializer functions, their
+    // $serializer classes, which kotlinc's intrinsics construct, and a
+    // generic superclass's write$Self and synthetic constructor.
+    println("gbox: ${Json.encodeToString(GBox.serializer(Int.serializer()), GBox(1))}")
+    println("gpage: ${Json.encodeToString(GPage(listOf(1), 2))} ${Json.decodeFromString<GPage<Int>>("""{"items":[3]}""")}")
+    val gh = GHold(GBox("s"), GPage(listOf(GBox(1L))), GRes.Ok(2))
+    val ght = Json.encodeToString(GHold.serializer(), gh)
+    println("ghold: $ght -> ${Json.decodeFromString(GHold.serializer(), ght) == gh}")
+    val gs = Json.encodeToString(GUseSub.serializer(), GUseSub(4))
+    println("gusesub: $gs -> ${Json.decodeFromString(GUseSub.serializer(), gs)}")
+    val gu = Json.encodeToString(GUseSub2.serializer(Long.serializer()), GUseSub2(5L))
+    println("gusesub2: $gu -> ${Json.decodeFromString(GUseSub2.serializer(Long.serializer()), gu)}")
+    println(serializer<GBox<String>>().descriptor)
+    // kc's synthetic constructor of a class of more than 32 properties,
+    // which takes two masks, from kotlinc's subclass.
+    val bs = Json.encodeToString(BigSub.serializer(), BigSub(8))
+    println("bigsub: $bs -> ${Json.decodeFromString(BigSub.serializer(), bs)}")
+    println("bigsub: ${Json.decodeFromString(BigSub.serializer(), """{"p0":1,"p31":"a","p34":2,"z":3}""")}")
+    val ar = Json.encodeToString(Arrays.serializer(), Arrays())
+    println("arrays: ${Json.encodeToString(Arrays.serializer(), Json.decodeFromString(Arrays.serializer(), ar)) == ar}")
+    println("late: ${Json.decodeFromString(Late.serializer(), """{"s":"u","list":[2]}""")}")
+}
+
+@Serializable
+class BigSub(val z: Int) : Big(2, p31 = "t", p34 = 3L) {
+    override fun toString() = "BigSub(${super.toString()}, $z)"
+}
+
+@Serializable
+data class GHold(val b: GBox<String>, val p: GPage<GBox<Long>>, val r: GRes<Int>)
+
+@Serializable
+class GUseSub(val more: Int) : GBase<String>("s") {
+    override fun toString() = "GUseSub($t, $more)"
+}
+
+@Serializable
+class GUseSub2<V>(val v: V) : GBase<V>(v) {
+    override fun toString() = "GUseSub2($t, $v)"
 }
 
 @Serializable

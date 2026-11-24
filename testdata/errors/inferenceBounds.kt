@@ -17,16 +17,33 @@ fun unitResult(): Unit = myRun {
     materializeNumber() // ERROR cannot infer type for type parameter 'N'. Specify it explicitly.
 }
 
-// A builder lambda that doesn't check with the variable unfixed, for a
-// reason other than an ambiguous call, leaves it uninferred: the other
-// lambda doesn't give it a type for a second check.
+// A member of a value of a builder's variable that nothing has given a
+// type yet isn't resolved, as in kotlinc, though the other lambda gives
+// the variable its type afterwards: the variable is inferred, and the
+// member is the only error.
 class Container<A> {
     fun consume(arg: A) {}
 }
 fun <B> build(funcA: (Container<B>) -> ((B) -> Unit), funcB: (Container<B>) -> Unit) {}
 fun twoLambdas() {
-    build( // ERROR cannot infer type for type parameter 'B'
-        { container -> { arg -> arg.length } },
+    build(
+        { container -> { arg -> arg.length } }, // ERROR unresolved reference: length
         { container -> container.consume("") },
     )
+}
+
+// A declared bound alone gives no type unless it is a self type: one of
+// a class whose type parameter is bounded by the class itself.
+open class Plain
+class Holder<K>(val k: K) {
+    fun <T : K> get(): T = TODO()
+}
+class SelfBuilder<S : SelfBuilder<S>> {
+    fun <T : S> me(): T = TODO()
+}
+fun <T : Plain> plain(): T = TODO()
+fun declaredBounds(h: Holder<Plain>, s: SelfBuilder<*>) {
+    val a = plain() // ERROR cannot infer type for type parameter 'T'. Specify it explicitly.
+    val b = h.get() // ERROR cannot infer type for type parameter 'T'. Specify it explicitly.
+    val c = s.me()
 }

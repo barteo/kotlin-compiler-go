@@ -13,6 +13,7 @@ internal object KcOps {
     const val CLOSE = 12
     const val CLASS = 13
     const val PACKAGE = 14
+    const val TRIM = 16
 
     class Config(
         val jdkHome: String?,
@@ -33,7 +34,17 @@ internal object KcOps {
         cfg.classPath.forEach { w.writeString(it) }
         w.writeUint(cfg.friendPaths.size.toLong())
         cfg.friendPaths.forEach { w.writeString(it) }
-        return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
+        return held(Wire.Reader(KcNative.call(OPEN, w.message())).readInt())
+    }
+
+    /**
+     * Has libkc close [handle] if this class loader is dropped while it
+     * holds it, as a build tool drops a class loader whose environments
+     * keep their rounds' models (KcEnvironments).
+     */
+    private fun held(handle: Long): Long {
+        KcNative.atUnload(handle, CLOSE, Wire.Writer().writeInt(handle).message())
+        return handle
     }
 
     /**
@@ -50,7 +61,7 @@ internal object KcOps {
         val t = KcTimer()
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
         t.mark("native")
-        val model = r.readInt()
+        val model = held(r.readInt())
         try {
             val check = r.readUint()
             if (r.readBool()) {
@@ -88,7 +99,13 @@ internal object KcOps {
     }
 
     fun close(handle: Long) {
+        KcNative.cancelAtUnload(handle)
         KcNative.call(CLOSE, Wire.Writer().writeInt(handle).message())
+    }
+
+    /** Has libkc close the class paths no session or model uses, which it otherwise keeps for the next session. */
+    fun trim() {
+        KcNative.call(TRIM, Wire.Writer().message())
     }
 
     private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }

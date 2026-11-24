@@ -3,7 +3,7 @@
 # with kc and kotlinc, and writes bench/results/time-kotlinpoet.md.
 #
 #   bench/kotlinpoet-time.sh                      # about 2 minutes
-#   RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/kotlinpoet-time.sh
 #
 # Both compilers get the build's options: the module name, the opt-in and
 # -jvm-default=no-compatibility, and kotlin-reflect on the class path;
@@ -53,8 +53,8 @@ kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=commo
 # shellcheck disable=SC2086 # the arguments are words
 hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \
 	--prepare "rm -rf $work/out-kc && sleep $cooldown" \
-	-n "kc -j 1" "$work/kc -j 1 -module-name $module -cp $stdlib:$reflect -d $work/out-kc $src/commonMain $src/jvmMain" \
-	-n "kc -j $cpus" "$work/kc -j $cpus -module-name $module -cp $stdlib:$reflect -d $work/out-kc $src/commonMain $src/jvmMain"
+	-n "kc -j 1" "$work/kc -j 1 -Xmulti-platform -module-name $module -cp $stdlib:$reflect -d $work/out-kc $src/commonMain $src/jvmMain" \
+	-n "kc -j $cpus" "$work/kc -j $cpus -Xmulti-platform -module-name $module -cp $stdlib:$reflect -d $work/out-kc $src/commonMain $src/jvmMain"
 # shellcheck disable=SC2086
 hyperfine --runs "$runs" --style basic --export-json "$work/kotlinc.json" \
 	--prepare "rm -rf $work/out-kotlinc && sleep $cooldown" \

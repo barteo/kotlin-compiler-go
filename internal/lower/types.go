@@ -4,7 +4,6 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
-	"strings"
 )
 
 // typeRef lowers a TYPE_REFERENCE, or any node holding a type with its
@@ -27,7 +26,7 @@ func (l *lowerer) recvType(n psi.NodeRef) (*syntax.TypeRef, []syntax.Annotation)
 func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.Annotation) {
 	var (
 		elem      psi.NodeRef
-		quest     bool
+		quest     psi.NodeRef
 		mods      []psi.NodeRef
 		recvAs    []syntax.Annotation
 		leading   = true // still before the type's other annotations
@@ -41,13 +40,13 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 			psi.KindINTERSECTION_TYPE, psi.KindTYPE_REFERENCE:
 			elem = c
 		case psi.KindQUEST:
-			quest = true
+			quest = c
 		case psi.KindLPAR, psi.KindRPAR:
 		default:
 			l.unexpected(c)
 		}
 	}
-	unsafe, composable, noInfer := false, false, false
+	unsafe, composable, noInfer, exact := false, false, false, false
 	var wild syntax.Wildcards
 	var as []syntax.Annotation
 	for _, m := range mods {
@@ -66,6 +65,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 				as = append(as, a)
 				unsafe = unsafe || a.Is("UnsafeVariance")
 				noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
+				exact = exact || a.Is("internal.Exact")
 				composable = composable || syntax.IsComposable(a)
 				if w := syntax.WildcardsOf([]syntax.Annotation{a}); w != syntax.DefaultWildcards {
 					wild = w
@@ -84,12 +84,23 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		l.fail(n, "expected a type")
 	}
 	t := l.typeElem(elem, recv)
-	if quest {
+	if quest.Valid() {
+		// T?? is a nullable type of a nullable type, outside
+		// parentheses: kotlinc warns of the second ?.
+		switch first := kids(n)[0]; {
+		case t.Quest == syntax.Pos{}:
+			t.Quest = l.pos(quest)
+		case first == elem && elem.NumericKind() == psi.KindNULLABLE_TYPE && t.Redundant == syntax.Pos{}:
+			t.Redundant = l.pos(quest)
+		}
 		t.Nullable = true
 	}
 	if suspendAt.Valid() {
 		if t.Ret == nil {
 			l.fail(suspendAt, "expected a function type after 'suspend'")
+		}
+		if elem.NumericKind() != psi.KindFUNCTION_TYPE {
+			l.errorLater(l.pos(suspendAt), "modifier 'suspend' is not applicable to 'nullable type'")
 		}
 		t.P, t.Suspend = l.pos(suspendAt), true
 	}
@@ -98,6 +109,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 	}
 	t.UnsafeVariance = t.UnsafeVariance || unsafe
 	t.NoInfer = t.NoInfer || noInfer
+	t.Exact = t.Exact || exact
 	t.Composable = t.Composable || composable
 	if wild != syntax.DefaultWildcards {
 		t.Wildcards = wild
@@ -159,11 +171,18 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 				ft.Params = []*syntax.TypeRef{}
 				for _, p := range kids(c) {
 					if p.NumericKind() == psi.KindVALUE_PARAMETER {
+						l.functionTypeParamExtras(p)
+						name := ""
+						if id := child(p, psi.KindIDENTIFIER); id.Valid() {
+							ft.Named = append(ft.Named, l.pos(id))
+							name = ident(id)
+						}
+						ft.Names = append(ft.Names, name)
 						ft.Params = append(ft.Params, l.typeRef(child(p, psi.KindTYPE_REFERENCE)))
 					}
 				}
 				if len(ft.Params) == 0 {
-					ft.Params = nil
+					ft.Params, ft.Names = nil, nil
 				}
 			case psi.KindTYPE_REFERENCE:
 				ft.Ret = l.typeRef(c)
@@ -181,11 +200,35 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 	return nil
 }
 
+// functionTypeParamExtras reports what a function type's parameter p
+// can't have, which kotlinc's grammar accepts: modifiers, annotations,
+// val or var, and a default value, as (vararg x: Int = 0) -> Unit. kc's
+// parser rejects them; the type is lowered without them.
+func (l *lowerer) functionTypeParamExtras(p psi.NodeRef) {
+	// Walked without kids, which allocates, for every parameter of every
+	// function type.
+	for c := p.FirstChild(); c.Valid(); c = c.NextSibling() {
+		switch c.NumericKind() {
+		case psi.KindMODIFIER_LIST:
+			for _, m := range kids(c) {
+				l.errorLater(l.pos(m), "unsupported [modifier on parameter in function type]")
+			}
+		case psi.KindVAL_KEYWORD, psi.KindVAR_KEYWORD:
+			l.errorLater(l.pos(c), "unsupported ['%s' on parameter in function type]", c.Text())
+		case psi.KindEQ:
+			if x := next(c); x.Valid() {
+				l.errorLater(l.pos(x), "unsupported [default value of parameter in function type]")
+			}
+		}
+	}
+}
+
 // userType lowers a USER_TYPE: a.b.C<T>, or Outer<A>.Inner<B>, whose
 // outer type is that of the generic class it is in.
 func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 	type seg struct {
 		name string
+		pos  syntax.Pos
 		args psi.NodeRef
 	}
 	var segs []seg
@@ -197,7 +240,10 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 			case psi.KindUSER_TYPE:
 				flatten(c)
 			case psi.KindREFERENCE_EXPRESSION:
-				s.name = ident(first(c))
+				if t := first(c); t.Text() != "_" || l.typeArgDepth == 0 {
+					l.underscoreRef(t)
+				}
+				s.name, s.pos = ident(first(c)), l.pos(first(c))
 			case psi.KindTYPE_ARGUMENT_LIST:
 				s.args = c
 			case psi.KindDOT:
@@ -208,24 +254,28 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 		segs = append(segs, s)
 	}
 	flatten(n)
-	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name}
+	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name, Parts: []syntax.Pos{segs[0].pos}}
 	i := 0
 	for segs[i].args == (psi.NodeRef{}) && i+1 < len(segs) {
 		i++
 		ref.Name += "." + segs[i].name
+		ref.Parts = append(ref.Parts, segs[i].pos)
 	}
 	if segs[i].args.Valid() {
+		ref.ArgsP = l.pos(segs[i].args)
 		ref.Args = l.typeArgs(segs[i].args)
 	}
 	for ref.Args != nil && i+1 < len(segs) {
 		outer := ref
 		i++
-		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer}
+		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer, Parts: []syntax.Pos{segs[i].pos}}
 		for !segs[i].args.Valid() && i+1 < len(segs) {
 			i++
 			ref.Name += "." + segs[i].name
+			ref.Parts = append(ref.Parts, segs[i].pos)
 		}
 		if segs[i].args.Valid() {
+			ref.ArgsP = l.pos(segs[i].args)
 			ref.Args = l.typeArgs(segs[i].args)
 		}
 	}
@@ -234,6 +284,8 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 
 // typeArgs lowers a TYPE_ARGUMENT_LIST: <A, out B, in C, *>.
 func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
+	l.typeArgDepth++
+	defer func() { l.typeArgDepth-- }()
 	args := []*syntax.TypeArg{}
 	for _, c := range kids(n) {
 		if c.NumericKind() != psi.KindTYPE_PROJECTION {
@@ -244,12 +296,13 @@ func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
 			a.Variance = types.Star
 		} else {
 			if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+				var vp syntax.Pos
 				for _, k := range kids(m) {
 					switch k.NumericKind() {
 					case psi.KindIN_KEYWORD:
-						a.Variance = types.In
+						syntax.VarianceMod(&a.Variance, &vp, types.In, l.pos(k), l)
 					case psi.KindOUT_KEYWORD:
-						a.Variance = types.Out
+						syntax.VarianceMod(&a.Variance, &vp, types.Out, l.pos(k), l)
 					}
 				}
 			}
@@ -277,6 +330,7 @@ func (l *lowerer) projectionAnnotations(m psi.NodeRef, t *syntax.TypeRef) {
 		a := l.annotation(c)
 		t.UnsafeVariance = t.UnsafeVariance || a.Is("UnsafeVariance")
 		t.NoInfer = t.NoInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
+		t.Exact = t.Exact || a.Is("internal.Exact")
 		t.Composable = t.Composable || syntax.IsComposable(a)
 		if w := syntax.WildcardsOf([]syntax.Annotation{a}); w != syntax.DefaultWildcards {
 			t.Wildcards = w
@@ -297,14 +351,15 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		name := child(c, psi.KindIDENTIFIER)
 		tp := record(l, &syntax.TypeParam{P: l.pos(name), Name: ident(name)}, c)
 		if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+			var vp syntax.Pos
 			for _, k := range kids(m) {
 				switch k.NumericKind() {
 				case psi.KindREIFIED_KEYWORD:
 					tp.Reified = true
 				case psi.KindIN_KEYWORD:
-					tp.Variance = types.In
+					syntax.VarianceMod(&tp.Variance, &vp, types.In, l.pos(k), l)
 				case psi.KindOUT_KEYWORD:
-					tp.Variance = types.Out
+					syntax.VarianceMod(&tp.Variance, &vp, types.Out, l.pos(k), l)
 				case psi.KindANNOTATION_ENTRY:
 					a := l.annotation(k) // kc writes no type annotations
 					tp.Annotations = append(tp.Annotations, a)
@@ -318,6 +373,7 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		}
 		if b := child(c, psi.KindTYPE_REFERENCE); b.Valid() {
 			tp.Bounds = []*syntax.TypeRef{l.typeRef(b)}
+			tp.DeclBound = true
 		}
 		ps = append(ps, tp)
 	}
@@ -336,6 +392,7 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 		for _, k := range kids(c) {
 			if k.NumericKind() == psi.KindANNOTATION_ENTRY {
 				l.annotation(k)
+				l.errorLater(l.pos(k), "type parameter annotations are not allowed inside where clauses")
 			}
 		}
 		ref := child(c, psi.KindREFERENCE_EXPRESSION)
@@ -347,9 +404,12 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 			}
 		}
 		if tp == nil {
-			l.fail(ref, "'%s' does not refer to a type parameter of this declaration", name)
+			// As kotlinc, the declaration is kept, without the bound.
+			l.errorLater(l.pos(ref), "'%s' does not refer to a type parameter of this declaration", name)
+			continue
 		}
 		tp.Bounds = append(tp.Bounds, l.typeRef(child(c, psi.KindTYPE_REFERENCE)))
+		tp.WhereBound = true
 	}
 }
 
@@ -425,12 +485,8 @@ func (l *lowerer) annotationArgs(n psi.NodeRef) []syntax.AnnotationArg {
 		})
 		if start.Valid() {
 			from := l.tokenStart(start)
-			toks, _ := syntax.TokenizeAt(l.path, l.src[from:c.Range().End], l.posAt(from))
-			for _, t := range toks {
-				if t.Kind != syntax.NL && t.Kind != syntax.EOF {
-					arg.Toks = append(arg.Toks, t)
-				}
-			}
+			toks, _ := syntax.TokenizeArgAt(l.path, l.src[from:c.Range().End], l.posAt(from))
+			arg.Toks = syntax.AnnotationArgToks(toks)
 		}
 		args = append(args, arg)
 	}
@@ -450,15 +506,7 @@ func (l *lowerer) modifiers(n psi.NodeRef) syntax.Modifiers {
 func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 	var m syntax.Modifiers
 	for _, c := range cs {
-		if c.IsLeaf() && syntax.IsModifier(c.Text()) {
-			m.Written = append(m.Written, syntax.Mod{Name: c.Text(), P: l.pos(c)})
-		}
-		k := c.NumericKind()
-		if k == psi.KindIDENTIFIER {
-			// A companion object's detached name: see detachName.
-			k = psi.KindForName(strings.ToUpper(c.Text()) + "_KEYWORD")
-		}
-		switch k {
+		switch c.NumericKind() {
 		case psi.KindANNOTATION_ENTRY:
 			a := l.annotation(c)
 			if a.Target == "" && a.Is("JvmInline") {
@@ -474,75 +522,19 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			m.Contexts, m.ContextP = l.contextParams(c), l.pos(c)
 		case psi.KindFUN_KEYWORD:
 			// fun interface: the class sets Fun.
-		case psi.KindPRIVATE_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Private, true
-		case psi.KindPUBLIC_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Public, true
-		case psi.KindINTERNAL_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Internal, true
-		case psi.KindPROTECTED_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Protected, true
-		case psi.KindOPEN_KEYWORD:
-			m.Open = true
-		case psi.KindABSTRACT_KEYWORD:
-			m.Abstract = true
-		case psi.KindOVERRIDE_KEYWORD:
-			m.Override = true
-		case psi.KindFINAL_KEYWORD:
-			m.Final = true
-		case psi.KindCOMPANION_KEYWORD:
-			m.Companion = true
-		case psi.KindDATA_KEYWORD:
-			m.Data = true
-		case psi.KindENUM_KEYWORD:
-			m.Enum = true
-		case psi.KindSEALED_KEYWORD:
-			m.Sealed = true
-		case psi.KindCONST_KEYWORD:
-			m.Const = true
-		case psi.KindVARARG_KEYWORD:
-			m.Vararg, m.VarargP = true, l.pos(c)
-		case psi.KindOPERATOR_KEYWORD:
-			m.Operator = true
-		case psi.KindINFIX_KEYWORD:
-			m.Infix = true
-		case psi.KindEXPECT_KEYWORD:
-			m.Expect, m.ExpectP = true, l.pos(c)
-		case psi.KindACTUAL_KEYWORD:
-			m.Actual = true
-		case psi.KindANNOTATION_KEYWORD:
-			m.Annotation = true
-		case psi.KindVALUE_KEYWORD:
-			m.Value = true
-		case psi.KindINLINE_KEYWORD:
-			m.Inline = true
-		case psi.KindNOINLINE_KEYWORD:
-			m.Noinline = true
-		case psi.KindCROSSINLINE_KEYWORD:
-			m.Crossinline = true
-		case psi.KindSUSPEND_KEYWORD:
-			m.Suspend = true
-		case psi.KindLATEINIT_KEYWORD:
-			m.Lateinit = true
-		case psi.KindINNER_KEYWORD:
-			m.Inner = true
-		case psi.KindTAILREC_KEYWORD:
-			m.Tailrec = true
-		case psi.KindEXTERNAL_KEYWORD:
-			m.External, m.ExternalP = true, l.pos(c)
-		default:
-			l.fail(c, "'%s' is not supported", c.Text())
+		default: // a modifier keyword, or a companion object's detached name (see detachName)
+			if !c.IsLeaf() {
+				l.fail(c, "'%s' is not supported", c.Text())
+			}
+			if !m.Set(c.Text(), l.pos(c)) {
+				// in, out or reified, which only type parameters take, as
+				// kotlinc's WRONG_MODIFIER_TARGET. The declaration is kept,
+				// so that its other modifiers and its body are checked.
+				l.errorLater(l.pos(c), "modifier '%s' is not applicable here", c.Text())
+			}
 		}
 	}
 	return m
-}
-
-// paramOnly reports modifiers that only parameters take on another
-// declaration.
-func (l *lowerer) paramOnly(m syntax.Modifiers) {
-	if m.Vararg {
-		l.failAt(m.VarargP, "modifier 'vararg' is only allowed on parameters")
-	}
 }
 
 // contextParams lowers a CONTEXT_PARAMETER_LIST of a declaration, as kc's
@@ -595,13 +587,4 @@ func (l *lowerer) contextParams(n psi.NodeRef) []*syntax.Param {
 		l.fail(child(n, psi.KindRPAR), "expected a context parameter")
 	}
 	return ps
-}
-
-// noContexts reports context parameters on a declaration that Kotlin
-// doesn't allow them on, what, as kc's parser does, and drops them.
-func (l *lowerer) noContexts(m *syntax.Modifiers, what string) {
-	if m.Contexts != nil {
-		l.errorLater(m.ContextP, "context parameters on %s are unsupported", what)
-		m.Contexts = nil
-	}
 }

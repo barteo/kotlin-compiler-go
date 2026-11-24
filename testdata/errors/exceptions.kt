@@ -8,9 +8,9 @@ fun catchString(): Int = try {
     2
 }
 
-fun mismatch(): Int = try {
+fun mismatch(): Int = try { // ERROR type mismatch
     1
-} catch (e: Exception) { // ERROR type mismatch
+} catch (e: Exception) {
     "two"
 }
 

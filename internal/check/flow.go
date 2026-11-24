@@ -66,6 +66,9 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	if found != v {
 		return false
 	}
+	if t.K != types.Invalid && !c.frameAllows(v, t, depth) {
+		return false
+	}
 	depth = c.pastInPlace(depth, v.Name)
 	if depth == c.scope.depth {
 		if t.K == types.Invalid {
@@ -90,6 +93,11 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 				return false
 			}
 		}
+		// A class's members, which may run in any order, may assign it
+		// before the code checked so far does.
+		if !t.N && c.classAssignsNull(key) {
+			return false
+		}
 	}
 	if assigned, ok := c.concurrent[key]; ok {
 		return !assigned
@@ -98,6 +106,91 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	assigned := !ok || assignedOutside(site.b.Stmts[site.i+1:], v.Name, key.frame)
 	c.concurrent[key] = assigned
 	return !assigned
+}
+
+// classAssignsNull reports whether frame key.frame is an object
+// expression's or a local class's whose code, any of its members,
+// assigns null to var key.v.
+func (c *Checker) classAssignsNull(key varFrame) bool {
+	d := c.classFrames[key.frame]
+	if d == nil {
+		return false
+	}
+	if found, ok := c.nullFrames[key]; ok {
+		return found
+	}
+	found := false
+	var code []any
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.InitBlock:
+			code = append(code, m.Body)
+		case *syntax.FunDecl:
+			code = append(code, funCode(m)...)
+		case *syntax.PropDecl:
+			code = append(code, m.Init)
+			for _, f := range []*syntax.FunDecl{m.Getter, m.Setter} {
+				if f != nil {
+					code = append(code, funCode(f)...)
+				}
+			}
+		}
+	}
+	for _, n := range code {
+		if found = nullAssigned(n, key.v.Name); found {
+			break
+		}
+	}
+	if c.nullFrames == nil {
+		c.nullFrames = map[varFrame]bool{}
+	}
+	c.nullFrames[key] = found
+	return found
+}
+
+// funCode returns the code of function d: its body, or its expression
+// body, and its parameters' default values.
+func funCode(d *syntax.FunDecl) []any {
+	var code []any
+	for _, p := range d.Params {
+		if p.Default != nil {
+			code = append(code, p.Default)
+		}
+	}
+	if d.Body != nil {
+		code = append(code, d.Body)
+	}
+	if d.ExprBody != nil {
+		code = append(code, d.ExprBody)
+	}
+	return code
+}
+
+// nullAssigned reports whether node assigns null to the local named
+// name, also in code nested in it, where no local declared in it shadows
+// name.
+func nullAssigned(node any, name string) bool {
+	found := false
+	inspect(node, func(n any) bool {
+		if found {
+			return false
+		}
+		if b, ok := n.(*syntax.Block); ok && b != nil && n != node {
+			for _, st := range b.Stmts {
+				if found = nullAssigned(st, name); found || slices.Contains(declaredNames(st), name) {
+					break
+				}
+			}
+			return false
+		}
+		if a, ok := n.(*syntax.Assign); ok && a.Op == syntax.ASSIGN {
+			if id, ok := a.Target.(*syntax.Ident); ok && id.Name == name {
+				_, found = a.Value.(*syntax.NullLit)
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // pastInPlace returns depth, the depth of the scope of a local, past the
@@ -411,21 +504,27 @@ func (c *Checker) hasDependents(v *types.VarSym) bool {
 }
 
 // loopVars returns the vars of watchedVars(nodes...) whose narrowing a
-// loop over nodes drops, and a function to call after the loop. It keeps
-// those smart cast to a non-null number or Char that the nodes only
-// increment and decrement, or, if declared as its nullable type, also
-// assign with op=, whose results, which assign checks, keep the type.
-func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
+// loop over nodes drops, those of them whose aliases it keeps at its
+// start (see resetEntry), and a function to call after the loop. It keeps
+// those smart cast to a non-null number, Char or String that the nodes
+// only increment, decrement or assign with op=, as K2 does, whose loops
+// drop the smart casts of the locals they assign with = only. The
+// results, which assign checks, must keep the type.
+func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, []*types.VarSym, func()) {
 	vars := c.watchedVars(nodes...)
-	for _, v := range vars {
-		c.unalias(v) // even those it keeps: x++ gives x another value
-	}
 	out := vars[:0:0]
+	var aliased []*types.VarSym
 	var kept []*types.VarSym
 	var old []types.Type
 	var had []bool
 	for _, v := range vars {
-		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char || !onlyIncDec(v.Name, nodes, v.Type.NonNull() == t) {
+		incDec := onlyIncDec(v.Name, nodes)
+		if incDec {
+			aliased = append(aliased, v)
+		} else {
+			c.unalias(v)
+		}
+		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char && t != types.StringType || !incDec {
 			out = append(out, v)
 		} else {
 			if c.loopKept == nil {
@@ -437,7 +536,7 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
 			c.loopKept[v] = t
 		}
 	}
-	return out, func() {
+	return out, aliased, func() {
 		for i, v := range kept {
 			if had[i] {
 				c.loopKept[v] = old[i]
@@ -449,9 +548,9 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
 }
 
 // onlyIncDec reports whether every assignment of the local name in nodes
-// is a ++, a -- or, if opAssign, an op=, outside lambdas, local functions
-// and classes, and object expressions.
-func onlyIncDec(name string, nodes []any, opAssign bool) bool {
+// is a ++, a -- or an op=, outside lambdas, local functions and classes,
+// and object expressions.
+func onlyIncDec(name string, nodes []any) bool {
 	ok := true
 	for _, node := range nodes {
 		if b, isBlock := node.(*syntax.Block); node == nil || isBlock && b == nil {
@@ -465,7 +564,7 @@ func onlyIncDec(name string, nodes []any, opAssign bool) bool {
 				}
 				return false
 			case *syntax.Assign:
-				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && (n.Op == syntax.ASSIGN || !opAssign) {
+				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && n.Op == syntax.ASSIGN {
 					ok = false
 				}
 			}
@@ -524,6 +623,32 @@ func (c *Checker) reset(vars []*types.VarSym) {
 	}
 }
 
+// stableConds returns the smart casts of a Boolean val's condition (see
+// condVal) that hold where it is read: not those of a local var that code
+// nested here may assign.
+func (c *Checker) stableConds(ns []narrow) []narrow {
+	if !slices.ContainsFunc(ns, func(n narrow) bool { return n.recv == nil && isVar(n.sym) }) {
+		return ns
+	}
+	return slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool {
+		return n.recv == nil && isVar(n.sym) && !c.varStable(n.sym, types.Type{})
+	})
+}
+
+// resetEntry is reset at the start of a loop, but keeps the aliases of
+// the vars of aliased, which the loop only increments, decrements or
+// assigns with op=: K2's loops drop those of the locals they assign with
+// = only, so y += "" in the loop doesn't end y = x at its start.
+func (c *Checker) resetEntry(vars, aliased []*types.VarSym) {
+	for _, v := range vars {
+		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: v.Type})
+		c.dropMembers(v)
+		if !slices.Contains(aliased, v) {
+			c.unalias(v)
+		}
+	}
+}
+
 // impliedBy returns the smart casts that smart cast k implies: of the
 // values that hold the same value as k's (see alias), to k's type, and,
 // if k says it isn't null, those that implies (see bindValue).
@@ -535,6 +660,16 @@ func (c *Checker) impliedBy(k narrow) []narrow {
 	for _, p := range c.sameAs[flowKey{k.recv, k.sym}] {
 		cur := c.scope.narrowedMember(p.recv, p.sym, p.t)
 		out = append(out, narrow{recv: p.recv, sym: p.sym, t: c.isNarrowed(cur, k.t)})
+	}
+	if k.recv != nil {
+		// The same property of a local that holds the same value as k's
+		// receiver, as K2's aliases go through properties: after val b =
+		// x, b.value is String smart casts x.value.
+		for _, p := range c.sameAs[flowKey{sym: k.recv}] {
+			if p.recv == nil && p.sym != k.recv {
+				out = append(out, narrow{recv: p.sym, sym: k.sym, t: k.t, not: k.not, onlyNot: k.onlyNot})
+			}
+		}
 	}
 	return out
 }
@@ -551,7 +686,16 @@ func (c *Checker) aliasable(k narrow) bool {
 	if !base.Mutable {
 		return true
 	}
-	return isVar(base) && len(c.nestedAssigns[base]) == 0 && c.varStable(base, types.Type{})
+	return isVar(base) && c.varUntouched(base)
+}
+
+// varUntouched reports whether no code that may run while the code here
+// does assigns local v, a val or a var: as K2 has it, of a var that a
+// lambda assigns, whatever the type, the code knows nothing but its
+// positive smart casts (see varStable), not the values it isn't, nor the
+// smart casts of its properties.
+func (c *Checker) varUntouched(v *types.VarSym) bool {
+	return !isVar(v) || len(c.nestedAssigns[v]) == 0 && c.varStable(v, types.Type{})
 }
 
 // alias records that local v holds the value of k, as after val v = x,
@@ -591,6 +735,12 @@ func (c *Checker) unalias(v *types.VarSym) {
 	delete(c.implied, v)
 	for u, ns := range c.implied {
 		c.implied[u] = slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool { return of(n.recv, n.sym) })
+	}
+	// A Boolean val's condition on v (see condVal) no longer holds.
+	for u, ns := range c.conds {
+		if slices.ContainsFunc(ns[0], func(n narrow) bool { return of(n.recv, n.sym) }) || slices.ContainsFunc(ns[1], func(n narrow) bool { return of(n.recv, n.sym) }) {
+			delete(c.conds, u)
+		}
 	}
 }
 
@@ -675,6 +825,11 @@ func (c *Checker) joinFlows(states []flowState) []narrow {
 			if t.K == types.Invalid && !v {
 				break
 			}
+		}
+		if decl := k.sym.Type; decl.P && t.K != types.Invalid && t == decl.Nullable() {
+			// A platform value null on one path and not on another is of
+			// its platform type again, not a nullable one.
+			t = decl
 		}
 		cur := c.scope.narrowedMember(k.recv, k.sym, types.InvalidType)
 		switch {
@@ -805,10 +960,15 @@ func (c *Checker) loopJump(i int, brk bool) {
 }
 
 // assignedVar narrows local var v to the type vt of the value assigned to
-// it, for the rest of the current scope.
-func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
+// it, for the rest of the current scope. A value that is always null
+// narrows it to Nothing? only if null is set: assigned, as K2, which
+// doesn't so narrow var x: T? = null.
+func (c *Checker) assignedVar(v *types.VarSym, vt types.Type, null bool) {
 	t := v.Type
-	if vt.K != types.Invalid && vt.K != types.Null && vt.K != types.Nothing && c.subtype(vt, v.Type) {
+	switch {
+	case vt.K == types.Null && null && !v.Type.P && types.MayBeNull(v.Type):
+		t = types.NullType
+	case vt.K != types.Invalid && vt.K != types.Null && vt.K != types.Nothing && c.subtype(vt, v.Type):
 		t = vt
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
@@ -968,6 +1128,10 @@ func (c *Checker) memberSym(m *syntax.Member) *types.VarSym {
 // memberKey returns the narrowing of a.p, where p is a stable property
 // of a stable value a, and the type of a.p is t.
 func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
+	if p := m.Prop; p != nil && p.Kind == types.Global && c.stable(p) && c.packageRef(m.X) != nil {
+		// a.b.x, a top-level property by its qualified name, is x.
+		return narrow{sym: p, t: c.scope.narrowedMember(nil, p, t)}, true
+	}
 	sym := c.memberSym(m)
 	if sym == nil {
 		return narrow{}, false
@@ -977,7 +1141,7 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 		return narrow{sym: sym, t: c.scope.narrowedMember(nil, sym, t)}, true
 	}
 	recv := c.narrowSym(m.X)
-	if recv == nil {
+	if recv == nil || !c.varUntouched(recv) {
 		return narrow{}, false
 	}
 	return narrow{recv: recv, sym: sym, t: c.scope.narrowedMember(recv, sym, t)}, true
@@ -995,6 +1159,9 @@ func (c *Checker) stableMember(p *types.VarSym) bool {
 // open val is stable too if recv's class is final and inherits it, as
 // x.p for an x: B, where B doesn't override A's open val p.
 func (c *Checker) stableOn(p *types.VarSym, recv types.Type) bool {
+	if p.Kind == types.Prop && !p.Mutable && p.Owner != nil && p.Owner.JavaFields[p.Name] == p {
+		return true // a final Java field, as kotlinc has it
+	}
 	if p.Kind != types.Prop || p.Mutable || p.Getter != nil || !p.HasField() || p.Owner == nil || p.Owner.External {
 		return false
 	}
@@ -1415,4 +1582,92 @@ func (c *Checker) elvisNarrowing(x *syntax.Binary) (whenTrue, whenFalse []narrow
 		return nil, append(f[:len(f):len(f)], n...)
 	}
 	return append(t[:len(t):len(t)], n...), nil
+}
+
+// frameName is a frame's node and the name of a local var it assigns.
+type frameName struct {
+	node any
+	name string
+}
+
+// assignChecked records that assignment a of a local var, checked,
+// assigns it a value of type t.
+func (c *Checker) assignChecked(a *syntax.Assign, t types.Type) {
+	if c.assignTypes == nil {
+		c.assignTypes = map[*syntax.Assign]types.Type{}
+	}
+	c.assignTypes[a] = t
+}
+
+// frameAllows reports whether a smart cast to t of local var v, declared
+// at scope depth depth, holds in the frames entered since, as K2's
+// FirLocalVariableAssignmentAnalyzer has it. Of the outermost one,
+// unless it is the only one and runs in place, every assignment of v,
+// nested ones included, may come between the check and the read: a
+// frame that doesn't run in place may run while it runs, and the lambdas
+// of a call aren't checked in order. So each must have been checked
+// already and assign v a value of type t: as in K2, a later one, whose
+// type the code doesn't know yet, is unstable whatever it assigns.
+// x++ isn't an assignment here, as in K2.
+func (c *Checker) frameAllows(v *types.VarSym, t types.Type, depth int) bool {
+	n := c.scope.depth - depth
+	if n <= 0 || depth >= len(c.lambdas) {
+		return true
+	}
+	f := c.lambdas[depth]
+	if n == 1 && (f.InPlace || f.Inline && !f.Crossinline) {
+		return true
+	}
+	var node any = f
+	if f.Body == nil {
+		if d, ok := c.classFrames[f]; ok {
+			node = d
+		} else if node = c.frameNodes[f]; node == nil {
+			return true
+		}
+	}
+	for _, a := range c.assignsIn(node, v.Name) {
+		at, ok := c.assignTypes[a]
+		if !ok || !c.subtype(at, t) {
+			return false
+		}
+	}
+	return true
+}
+
+// assignsIn returns the assignments of local name in node, a frame's
+// lambda, local function or class, but in the blocks after a
+// declaration of another local of the name, which shadows it.
+func (c *Checker) assignsIn(node any, name string) []*syntax.Assign {
+	key := frameName{node, name}
+	if as, ok := c.frameMemo[key]; ok {
+		return as
+	}
+	var as []*syntax.Assign
+	var walk func(node any)
+	walk = func(node any) {
+		inspect(node, func(n any) bool {
+			if b, ok := n.(*syntax.Block); ok && b != nil && n != node {
+				for _, st := range b.Stmts {
+					walk(st)
+					if slices.Contains(declaredNames(st), name) {
+						break
+					}
+				}
+				return false
+			}
+			if a, ok := n.(*syntax.Assign); ok {
+				if id, ok := a.Target.(*syntax.Ident); ok && id.Name == name {
+					as = append(as, a)
+				}
+			}
+			return true
+		})
+	}
+	walk(node)
+	if c.frameMemo == nil {
+		c.frameMemo = map[frameName][]*syntax.Assign{}
+	}
+	c.frameMemo[key] = as
+	return as
 }

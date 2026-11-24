@@ -1,7 +1,10 @@
 package check
 
 import (
+	"cmp"
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -16,8 +19,9 @@ import (
 // written, (@M A).() -> Unit, or the typealias it's written with.
 
 // dslKey is a use for dslUse: a call or a property read, and which value
-// it takes, -1 its receiver, -2 a member extension's dispatch receiver, or
-// the index of a context argument.
+// it takes, -1 its receiver, -2 a member extension's dispatch receiver, -3
+// the receiver argument a function value is invoked with, or the index of
+// a context argument.
 type dslKey struct {
 	x syntax.Expr
 	k int
@@ -60,6 +64,16 @@ func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
 	if len(ms) == 0 {
 		return t
 	}
+	if n := len(ref.Contexts); ref.Ret != nil && (n > 1 || n == 1 && ref.Recv != nil) {
+		// The marker of a function type is that of its receiver and of
+		// its context parameters, all at once.
+		for i := range ref.Annotations {
+			if len(c.annotationMarkers(ref.Annotations[i:i+1])) > 0 {
+				c.warnf(ref.Annotations[i].P, "DSL_MARKER_PROPAGATES_TO_MANY", "the '@DslMarker' annotation is implicitly propagated to the extension receiver and all context parameters of this function type. Annotate each of them explicitly instead")
+				break
+			}
+		}
+	}
 	if i := len(ref.Contexts); ref.Recv != nil && t.IsExtFunc() && t.A != nil && i < t.A.Len() {
 		args := slices.Clone(t.A.List)
 		args[i].T = args[i].T.WithMarkers(ms)
@@ -68,15 +82,16 @@ func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
 	return t.WithMarkers(ms)
 }
 
-// annotationMarkers returns the DSL markers among annotations as.
-func (c *Checker) annotationMarkers(as []syntax.Annotation) []*types.ClassSym {
+// annotationMarkers returns the names of the DSL markers among
+// annotations as.
+func (c *Checker) annotationMarkers(as []syntax.Annotation) []string {
 	if len(as) == 0 {
 		return nil
 	}
-	var ms []*types.ClassSym
+	var ms []string
 	for _, a := range c.classAnnotations(as) {
 		if isDslMarker(a) || declaredDslMarker(a) {
-			ms = append(ms, a)
+			ms = append(ms, a.Name)
 		}
 	}
 	return ms
@@ -90,10 +105,10 @@ func declaredDslMarker(a *types.ClassSym) bool {
 	return d != nil && slices.ContainsFunc(d.Annotations, func(m syntax.Annotation) bool { return m.Is("DslMarker") })
 }
 
-// dslMarkers returns the DSL markers of values of type t: its own, and
-// those of its class and of the class's supertypes, or of a type
-// parameter's bounds.
-func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
+// dslMarkers returns the names of the DSL markers of values of type t:
+// its own, and those of its class and of the class's supertypes, or of a
+// type parameter's bounds.
+func (c *Checker) dslMarkers(t types.Type) []string {
 	if own := t.Markers(); len(own) > 0 {
 		t.M = 0
 		out := slices.Clone(own)
@@ -106,7 +121,7 @@ func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
 	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
-		var out []*types.ClassSym
+		var out []string
 		for _, b := range t.Param().Bounds {
 			for _, m := range c.dslMarkers(b) {
 				if !slices.Contains(out, m) {
@@ -122,17 +137,17 @@ func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
 	if ms, ok := c.markers[t.C]; ok {
 		return ms
 	}
-	var out []*types.ClassSym
+	var out []string
 	t.C.Supertypes(func(s *types.ClassSym) bool {
 		for _, a := range s.Annotations {
-			if !slices.Contains(out, a) && isDslMarker(a) {
-				out = append(out, a)
+			if !slices.Contains(out, a.Name) && isDslMarker(a) {
+				out = append(out, a.Name)
 			}
 		}
 		return true
 	})
 	if c.markers == nil {
-		c.markers = map[*types.ClassSym][]*types.ClassSym{}
+		c.markers = map[*types.ClassSym][]string{}
 	}
 	c.markers[t.C] = out
 	return out
@@ -193,7 +208,7 @@ func (c *Checker) implicitVals() []implicitVal {
 // v is nil, has a DSL marker that another implicit value as near or
 // nearer has too.
 func (c *Checker) dslViolation(v *types.VarSym) bool {
-	var ms []*types.ClassSym
+	var ms []string
 	switch {
 	case v != nil:
 		ms = c.dslMarkers(v.Type)
@@ -255,14 +270,23 @@ func (c *Checker) dslCall(x *syntax.Call, cl *callee) {
 
 // dslInvoke checks implicit value v, nil for the class's this, that
 // call x passes as the receiver of a function value, block() for block:
-// A.() -> Unit.
+// A.() -> Unit, or for the value of an extension property, f() for this.f.
 func (c *Checker) dslInvoke(x *syntax.Call, v *types.VarSym) {
-	id, ok := x.Fun.(*syntax.Ident)
-	if !ok || len(x.Args) == 0 {
+	var name string
+	var p syntax.Pos
+	switch fn := x.Fun.(type) {
+	case *syntax.Ident:
+		name, p = fn.Name, fn.P
+	case *syntax.Member:
+		name, p = fn.Name, fn.P // an extension property's value: f() for this.f
+	default:
+		return
+	}
+	if len(x.Args) == 0 {
 		return
 	}
 	this := x.Args[0]
-	c.dslUse(dslKey{x, -1}, v, id.Name, id.P, func() bool { return len(x.Args) > 0 && x.Args[0] == this })
+	c.dslUse(dslKey{x, -3}, v, name, p, func() bool { return len(x.Args) > 0 && x.Args[0] == this })
 }
 
 // dslProp checks the implicit receiver of x, a property read.
@@ -298,7 +322,11 @@ func (c *Checker) dslTarget(x *syntax.Member) {
 // class owner or, if ext, an extension: its receiver, and a member
 // extension's dispatch receiver.
 func (c *Checker) dslMember(x syntax.Expr, m *syntax.Member, ext bool, owner *types.ClassSym, name string, still func() bool) {
-	if th, _ := m.X.(*syntax.This); th != nil && th.Implicit {
+	recv := m.X
+	if ch, ok := recv.(*syntax.Checked); ok {
+		recv = ch.X // an extension property invoked: f() for this.f
+	}
+	if th, _ := recv.(*syntax.This); th != nil && th.Implicit {
 		c.dslUse(dslKey{x, -1}, th.Recv, name, m.P, still)
 	}
 	if !ext || owner == nil || m.Dispatch != nil {
@@ -339,10 +367,19 @@ func (c *Checker) dslErrors() {
 	if c.file.SuppressDSL {
 		return
 	}
+	// Once per use and per position, in a stable order: an invoked
+	// property's receivers and its value's receiver are uses at one place.
+	keys := slices.Collect(maps.Keys(c.dslUses))
+	slices.SortFunc(keys, func(a, b dslKey) int {
+		pa, pb := c.dslUses[a].p, c.dslUses[b].p
+		return cmp.Or(cmp.Compare(pa.Line, pb.Line), cmp.Compare(pa.Col, pb.Col), cmp.Compare(b.k, a.k), strings.Compare(c.dslUses[a].name, c.dslUses[b].name))
+	})
 	seen := map[syntax.Expr]bool{}
-	for key, u := range c.dslUses {
-		if !seen[key.x] && u.still() {
-			seen[key.x] = true
+	at := map[syntax.Pos]bool{}
+	for _, key := range keys {
+		u := c.dslUses[key]
+		if !seen[key.x] && !at[u.p] && u.still() {
+			seen[key.x], at[u.p] = true, true
 			c.errorf(u.p, "'%s' cannot be called in this context with an implicit receiver: use an explicit receiver if necessary", u.name)
 		}
 	}

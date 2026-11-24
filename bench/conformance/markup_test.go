@@ -84,6 +84,12 @@ func TestNonNullAnyCalls(t *testing.T) {
 	if got := nonNullAnyCalls(src); got != want {
 		t.Errorf("nonNullAnyCalls(%q) = %q, want %q", src, got, want)
 	}
+	src = "fun f(x: Int?): Any = x::<!UNSAFE_CALLABLE_REFERENCE!>hashCode<!>\nfun g(j: J): Any = j.s()::hashCode"
+	want = "fun f(x: Int?): Any = x::<!UNSAFE_CALLABLE_REFERENCE!>kcNonNull_hashCode<!>\nfun g(j: J): Any = j.s()::hashCode" +
+		"\nprivate fun Any.kcNonNull_hashCode(): Int = hashCode()\n"
+	if got := nonNullAnyCalls(src); got != want {
+		t.Errorf("nonNullAnyCalls(%q) = %q, want %q", src, got, want)
+	}
 	if src := "fun f() = super.hashCode()"; nonNullAnyCalls(src) != src {
 		t.Errorf("nonNullAnyCalls(%q) changed an unmarked call", src)
 	}

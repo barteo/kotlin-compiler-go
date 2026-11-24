@@ -8,6 +8,10 @@ import mf.processors
 import mf.settable
 import mf.withPublished
 import mf.half
+import mf.late
+import mf.lateInit
+import mf.lateOwner
+import mf.lateReady
 import mf.pad
 import mf.scaledSum
 import mf.shout
@@ -37,6 +41,18 @@ fun main() {
     println(LIMIT)
     println(withPublished())
     println(::counter.get())
+    println(lateReady())
+    try {
+        println(late)
+    } catch (e: UninitializedPropertyAccessException) {
+        println(e.message)
+    }
+    late = "late"
+    late += "r"
+    println(lateReady())
+    println(late)
+    lateInit("owner")
+    println(lateOwner)
     // The facade's methods, as Java calls them.
     val facade = Class.forName("mf.Text")
     println(facade.getMethod("shout", String::class.java).invoke(null, "x"))

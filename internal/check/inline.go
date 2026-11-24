@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -19,6 +21,7 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 			i := cl.paramIndex(k)
 			l.Once = i >= 0 && i < len(cl.f.Once) && cl.f.Once[i]
 			l.InPlace = i >= 0 && i < len(cl.f.InPlace) && cl.f.InPlace[i]
+			l.InlineArg = inlineParam(cl.f, i)
 			lambdas = append(lambdas, l)
 		}
 	}
@@ -68,6 +71,22 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 	}
 }
 
+// inlineParam reports whether f is an inline function that inlines the
+// lambdas passed for its parameter i, as kotlinc does: a parameter of a
+// function type that isn't noinline.
+func inlineParam(f *types.FunSym, i int) bool {
+	if i < 0 || i >= len(f.Params) {
+		return false
+	}
+	if p := f.Params[i]; p.Vararg || p.Type.N || !p.Type.Flex().IsFunc() {
+		return false
+	}
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return d.Inline && i < len(d.Params) && !d.Params[i].Noinline
+	}
+	return f.Declared != nil && i < len(f.Declared.Noinline) && !f.Declared.Noinline[i]
+}
+
 // siblings records the locals that each of the lambdas passed to a call
 // assigns for the others, which it may run in any order.
 func (c *Checker) siblings(lambdas []*syntax.Lambda) {
@@ -99,18 +118,27 @@ func (c *Checker) markInline(l *syntax.Lambda, f *types.FunSym, b *inline.Body, 
 	}
 	j := c.jumps[l]
 	j.callee, j.composable, j.suspends = f.Name, f.Composable, f.Suspend
+	// As K2's, a critical section is synchronized's lambda or
+	// kotlin.concurrent's withLock's, which holds a lock and not a monitor.
+	j.critical = f.Name == "synchronized" || f.Name == "withLock" && strings.HasPrefix(f.Facade, "kotlin/concurrent/")
 	j.crossinline = j.crossinline || f.Inline.Crossinline[i]
 	l.Crossinline = j.crossinline
-	for _, t := range b.Params[jvmParam(f, b, i)].InTry {
+	bp := b.Params[jvmParam(f, b, i)]
+	for _, t := range bp.InTry {
 		j.inTry = j.inTry || t
 	}
+	j.inMonitor = bp.InMonitor
 	c.jumps[l] = j
 }
 
 // jvmParam returns the index of f's parameter i in its body b, where an
-// extension's receiver comes first, after a member's dispatch receiver.
+// extension's receiver comes first, after a member's dispatch receiver,
+// or a value class's value, which its -impl method takes first.
 func jvmParam(f *types.FunSym, b *inline.Body, i int) int {
 	if f.Ext {
+		i++
+	}
+	if f.Impl {
 		i++
 	}
 	if b.This {
