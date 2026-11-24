@@ -1517,8 +1517,16 @@ func (c *Checker) assign(s *syntax.Assign) {
 		}
 		return
 	}
+	// x op= v on a local var x that a smart cast narrows reads x with it:
+	// x.plusAssign(v) for a MutableList? known not to be null.
+	var recv syntax.Expr
+	if v != nil && rt != tt {
+		id := &syntax.Ident{Name: v.Name}
+		id.P = s.Target.Pos()
+		recv = checked(id, c.expr(id, noWant))
+		rt = recv.Type()
+	}
 	if v != nil {
-		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
 		c.assignChecked(s, v.Type)
 	}
@@ -1533,8 +1541,13 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if v != nil {
 			want = v.Type
 		}
-		c.compoundOp(s, tt, want, mutable)
+		if !c.compoundOp(s, tt, want, mutable, recv, rt) && v != nil {
+			c.reset([]*types.VarSym{v})
+		}
 		return
+	}
+	if v != nil {
+		defer c.reset([]*types.VarSym{v})
 	}
 	if c.opProperty(s.Target, tt, opNames[s.Op], s.Value) {
 		// An extension property plusAssign of a function type isn't an

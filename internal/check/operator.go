@@ -553,13 +553,19 @@ func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 // assignment target of type tt, isn't of a built-in type. With
 // x.plusAssign(v) and no plus, or a val x, it calls plusAssign; with plus
 // only, it is x = x.plus(v); with both and a var x, it is ambiguous.
-func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool) {
+// recv is x read with its smart cast, of type rt, or nil if it has none.
+// It reports whether x op= v calls x.plusAssign(v), which leaves x as it
+// is.
+func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool, recv syntax.Expr, rt types.Type) bool {
 	assignName, opName := opNames[s.Op], opNames[arithOf(s.Op)]
+	if recv == nil {
+		recv, rt = checked(s.Target, tt), tt
+	}
 	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
-	hasAssign := c.hasFun(tt.NonNull(), assignName, probe)
-	hasOp := c.hasFun(tt.NonNull(), opName, probe)
-	fits := hasAssign && hasOp && mutable && c.opFits(tt.NonNull(), opName, probe, want)
-	if fits && tt.Flex().NonNull().IsNumeric() && c.argTypes(probe)[0].K == types.Nothing {
+	hasAssign := c.hasFun(rt.NonNull(), assignName, probe)
+	hasOp := c.hasFun(rt.NonNull(), opName, probe)
+	fits := hasAssign && hasOp && mutable && c.opFits(rt.NonNull(), opName, probe, want)
+	if fits && rt.Flex().NonNull().IsNumeric() && c.argTypes(probe)[0].K == types.Nothing {
 		// a + todo() is ambiguous among Int's plus functions, which all
 		// take a Nothing: only a.plusAssign(todo()) applies.
 		fits = false
@@ -568,18 +574,18 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 	case fits:
 		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
 		c.unresolvedArg(s.Value)
-		return
+		return false
 	case hasAssign:
-		call, t := c.opCall(s.P, checked(s.Target, tt), assignName, []syntax.Expr{s.Value}, noWant)
+		call, t := c.opCall(s.P, recv, assignName, []syntax.Expr{s.Value}, noWant)
 		c.wantUnit(s.P, assignName, t)
 		s.Stmts = []syntax.Stmt{&syntax.ExprStmt{X: call}}
-		return
+		return true
 	case !hasOp:
-		c.errorf(s.P, "operator '%s' cannot be applied to %s", s.Op, tt)
-		return
+		c.errorf(s.P, "operator '%s' cannot be applied to %s", s.Op, rt)
+		return false
 	case !mutable:
 		c.errorf(s.Target.Pos(), "val cannot be reassigned")
-		return
+		return false
 	}
 	op := arithOf(s.Op)
 	s.Stmts, _ = c.reassign(s.P, s.Target, tt, func(read syntax.Expr) syntax.Expr {
@@ -587,6 +593,7 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 		b.P = s.P
 		return b
 	})
+	return false
 }
 
 // incDecOp checks x++ or x-- on a target of type t that isn't a number or
