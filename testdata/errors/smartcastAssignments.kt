@@ -389,3 +389,25 @@ fun propertyOfCapturedVar() {
     b.x as String
     b.x.length // ERROR unresolved reference: length
 }
+
+// A var whose value has a lambda, as rem { } has, is as stable in a
+// lambda as any other var.
+class S { fun n() = 1 }
+
+fun <T> rem(f: () -> T): T = f()
+
+fun lambdaInValue() {
+    var s = rem { null as S? }
+    later { if (s == null) { s = S() }; s.n() }
+}
+
+fun lambdaInTypedValue() {
+    var s: S? = rem { null }
+    later { if (s != null) s.n() }
+}
+
+fun lambdaInValueAssignedAfter() {
+    var s = rem { null as S? }
+    later { if (s != null) s.n() } // ERROR only safe (?.) or non-null asserted
+    s = null
+}
