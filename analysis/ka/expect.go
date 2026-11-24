@@ -122,8 +122,11 @@ type expects struct {
 // apart for the model of the declarations it has instead, the expect one.
 // An expect class whose actual declaration is a typealias is in both, as
 // the class is what the name resolves to, and the typealias in the second
-// only.
-func keepExpects(files []*syntax.File, second bool) *expects {
+// only. But with bodies, for a check of the bodies too, the first has the
+// typealias, as the actual declarations' bodies use what it names: a
+// java.lang.Runnable's run, for actual typealias Runnable =
+// java.lang.Runnable, which the expect class doesn't declare.
+func keepExpects(files []*syntax.File, second, bodies bool) *expects {
 	ex := &expects{other: map[syntax.Decl]bool{}, defaults: map[syntax.Expr]bool{}}
 	some := false
 	for _, f := range files {
@@ -155,6 +158,7 @@ func keepExpects(files []*syntax.File, second bool) *expects {
 			if a, ok := actuals[k]; ok {
 				ex.paired = true
 				_, alias := a.(*syntax.TypeAliasDecl)
+				alias = alias && !bodies
 				switch {
 				case alias && second:
 					ex.other[a] = true

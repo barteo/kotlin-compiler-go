@@ -444,7 +444,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken, ex := lowerAll(snaps, m, jobs, false)
+	files, provs, broken, ex := lowerAll(snaps, m, jobs, false, s.facts)
 	if java != nil {
 		java.SetKotlin(files)
 	}
@@ -481,7 +481,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		var others []otherFile
 		if ex.paired {
 			var err error
-			if others, err = otherView(ctx, snaps, m.lib, lib, java, jobs, files, only); err != nil {
+			if others, err = otherView(ctx, snaps, m.lib, lib, java, jobs, files, only, s.facts); err != nil {
 				return nil, err
 			}
 		}
@@ -493,7 +493,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
 			// The checker can't take a file with syntax errors: check the
 			// others, and model the broken ones from syntax alone.
-			files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
+			files, provs, _, ex = lowerAll(snaps, nil, jobs, false, s.facts)
 			if java != nil {
 				java.SetKotlin(files)
 			}
@@ -609,7 +609,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if len(dirty)*maxDirtyShare > len(sources) {
 			dirty, only = nil, nil
 		}
-		files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
+		files, provs, _, ex = lowerAll(snaps, nil, jobs, false, s.facts)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
@@ -653,14 +653,15 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 
 // lowerAll lowers snaps to their first or second view (keepExpects),
 // adding their errors to m if it isn't nil, and reports which have errors.
-func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int, second bool) ([]*syntax.File, []*lower.Provenance, map[int]bool, *expects) {
+// With bodies, the views are for a check of the bodies too.
+func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int, second, bodies bool) ([]*syntax.File, []*lower.Provenance, map[int]bool, *expects) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
 	errLists := make([][]*syntax.Error, len(snaps))
 	parallel(len(snaps), jobs, func(i int) {
 		files[i], provs[i], errLists[i] = lower.File(snaps[i])
 	})
-	ex := keepExpects(files, second)
+	ex := keepExpects(files, second, bodies)
 	broken := map[int]bool{}
 	for i, snap := range snaps {
 		errs := errLists[i]
@@ -686,9 +687,9 @@ type otherFile struct {
 // otherView returns what the second view (keepExpects) of each of the
 // files first adds to its model: nothing for a file that isn't in only, if
 // only isn't nil. The second view is lowered and checked for that alone,
-// and a check that crashes leaves it out.
-func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *check.Library, java *driver.JavaSources, jobs int, first []*syntax.File, only map[*syntax.File]bool) ([]otherFile, error) {
-	files, provs, _, ex := lowerAll(snaps, nil, jobs, true)
+// and a check that crashes leaves it out. bodies is lowerAll's.
+func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *check.Library, java *driver.JavaSources, jobs int, first []*syntax.File, only map[*syntax.File]bool, bodies bool) ([]otherFile, error) {
+	files, provs, _, ex := lowerAll(snaps, nil, jobs, true, bodies)
 	if java != nil {
 		java.SetKotlin(files)
 		defer java.SetKotlin(first)
