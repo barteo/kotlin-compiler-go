@@ -634,6 +634,9 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 }
 
 func (c *Checker) varStmt(s *syntax.VarStmt) {
+	// The site of the declaration, before checking its value: a lambda's
+	// block in the value moves c.site to its statements.
+	site := c.site
 	if s.Init != nil {
 		c.jvmFunctionInit(s.Type, s.Init)
 	}
@@ -683,8 +686,8 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		c.lateinitChecks(s.LateinitP, s.Mutable, s.Init != nil, false, t)
 		s.Sym.Lateinit = true
 	}
-	if s.Mutable && c.site.b != nil && c.site.b.Stmts[c.site.i] == syntax.Stmt(s) {
-		c.varSites[s.Sym] = c.site
+	if s.Mutable && site.b != nil && site.b.Stmts[site.i] == syntax.Stmt(s) {
+		c.varSites[s.Sym] = site
 	}
 	if s.Sym.Deferred {
 		c.deferred++
