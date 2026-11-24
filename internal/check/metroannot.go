@@ -19,6 +19,9 @@ import (
 type mAnn struct {
 	cls  string
 	args map[string]mVal
+	// orig is the class of an annotation of another framework that Metro
+	// reads as cls, its own, or "".
+	orig string
 	// typeArgs are a generic annotation's type arguments, which only the
 	// program's annotations have: binding<T>().
 	typeArgs []types.Type
@@ -37,6 +40,21 @@ type mVal struct {
 }
 
 func (a *mAnn) is(name string) bool { return a != nil && a.cls == name }
+
+// str returns a string argument of an annotation, or "".
+func (a *mAnn) str(name string) string {
+	if a == nil {
+		return ""
+	}
+	return a.args[name].str
+}
+
+// alias makes an annotation of another framework, by aliases, Metro's.
+func (a *mAnn) alias(aliases map[string]string) {
+	if to, ok := aliases[a.cls]; ok {
+		a.orig, a.cls = a.cls, to
+	}
+}
 
 // key is a string that is the same for equal annotations.
 func (a *mAnn) key() string {
@@ -188,6 +206,7 @@ func (c *Checker) fromSourceAnn(a *syntax.Annotation, scope *types.ClassSym) *mA
 		return nil
 	}
 	m := &mAnn{cls: a.Class.Name, args: map[string]mVal{}}
+	m.alias(c.metroAlias)
 	for _, v := range a.Values {
 		var elems []mVal
 		for _, e := range v.Elems {
@@ -328,9 +347,13 @@ func typeClassName(t types.Type) string {
 
 // kotlinAnnSrc writes an annotation as Kotlin.
 func (m *metroAnalysis) kotlinAnnSrc(a *mAnn) (string, error) {
-	cls := m.class(a.cls)
+	name := a.cls
+	if a.orig != "" {
+		name = a.orig
+	}
+	cls := m.class(name)
 	if cls == nil {
-		return "", fmt.Errorf("unknown annotation class %s", a.cls)
+		return "", fmt.Errorf("unknown annotation class %s", name)
 	}
 	names := make([]string, 0, len(a.args))
 	for n := range a.args {
@@ -356,6 +379,8 @@ func (m *metroAnalysis) kotlinValSrc(v mVal) (string, error) {
 		switch {
 		case v.class == "kotlin/Nothing":
 			return "kotlin.Nothing::class", nil
+		case strings.HasPrefix(v.class, "["):
+			return "", fmt.Errorf("kc doesn't support array class literals as Metro annotation arguments")
 		case cls == nil:
 			return "", fmt.Errorf("unknown class %s", v.class)
 		}
