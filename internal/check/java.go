@@ -2488,7 +2488,9 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 // override inherits the nullability of its parameters, C's foo(F x) of
 // A's foo(@NotNull T x). So for a result of a platform type that a
 // Kotlin member it overrides gives as not null (see kotlinNonNullRet),
-// as K2 enhances it.
+// as K2 enhances it, with the read-only collection type of the members
+// it overrides (see readOnlyRet): List<String>, not MutableList<String>,
+// for a java.util.List.
 func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
 	var out []*types.FunSym
 	for i, f := range ms {
@@ -2499,6 +2501,9 @@ func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*
 		if f.Ret.P && (isJavaClass(f.Owner) || f.Platform && f.Owner.Java != nil) && kotlinNonNullRet(f) {
 			cp := *f
 			cp.Ret.P, cp.Ret.N = false, false
+			if cp.Ret.K == types.Class && cp.Ret.C.ReadOnly != nil && readOnlyRet(f, cp.Ret.C.ReadOnly) {
+				cp.Ret.C = cp.Ret.C.ReadOnly
+			}
 			fo = &cp
 		}
 		if !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
@@ -2589,6 +2594,30 @@ func kotlinNonNullRet(f *types.FunSym) bool {
 		return true
 	})
 	return found
+}
+
+// readOnlyRet reports whether the Kotlin members that Java method f
+// overrides return read-only collection type ro, and none another type:
+// List for a Kotlin interface's List result, not for ArrayList's
+// iterator(), which overrides MutableCollection's.
+func readOnlyRet(f *types.FunSym, ro *types.ClassSym) bool {
+	found, other := false, false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || isJavaClass(s) {
+			return true
+		}
+		for _, g := range s.Methods[f.Name] {
+			if !g.Static && !g.Private && !g.Platform && len(g.Params) == len(f.Params) && jvmDesc(g) == jvmDesc(f) {
+				if g.Ret.K == types.Class && g.Ret.C == ro {
+					found = true
+				} else {
+					other = true
+				}
+			}
+		}
+		return true
+	})
+	return found && !other
 }
 
 // substOverrides reports whether Java method f overrides g, a method of
