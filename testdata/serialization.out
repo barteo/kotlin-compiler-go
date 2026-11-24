@@ -348,6 +348,27 @@ wallet: {"m":5,"l":[1],"mm":{"k":null},"d":1000,"dl":[2],"box":"<q>","u":"000000
 CONTEXTUAL
 kotlinx.serialization.Polymorphic<Critter>?
 noModule: Serializer for class 'Money' is not found.
+aliased: {"crate":"c","crates":[1,2],"maybe":"m","shout":"LOUD","body":1.5}
+  back: Aliased(crate=CrateImpl(v=c), crates=[CrateImpl(v=1), CrateImpl(v=2)], maybe=CrateImpl(v=m), chained=CrateImpl(v=1), nested=CrateImpl(v=CrateImpl(v=2)), nullableArg=CrateImpl(v=null), wrap=ListWrap(items=[w]), shout=loud, shouts=[a], onProp=CrateImpl(v=3), onType=CrateImpl(v=true)) true
+  defaults: {"crate":"c","crates":[1,2],"maybe":"m","chained":1,"nested":2,"nullableArg":null,"wrap":["w"],"shout":"LOUD","shouts":["A"],"onProp":3,"onType":true,"body":1.5}
+  list: [c, 2, 1, 2, !, m, 1, 2, null, 1, w, LOUD, 1, A, 3, true, 1.5] -> Aliased(crate=CrateImpl(v=c), crates=[CrateImpl(v=1), CrateImpl(v=2)], maybe=CrateImpl(v=m), chained=CrateImpl(v=1), nested=CrateImpl(v=CrateImpl(v=2)), nullableArg=CrateImpl(v=null), wrap=ListWrap(items=[w]), shout=loud, shouts=[a], onProp=CrateImpl(v=3), onType=CrateImpl(v=true))
+aliased defaults: {"crate":"d"}
+  back: Aliased(crate=CrateImpl(v=d), crates=[], maybe=null, chained=CrateImpl(v=1), nested=CrateImpl(v=CrateImpl(v=2)), nullableArg=CrateImpl(v=null), wrap=ListWrap(items=[w]), shout=hey, shouts=[a], onProp=CrateImpl(v=3), onType=CrateImpl(v=true)) true
+  defaults: {"crate":"d","crates":[],"maybe":null,"chained":1,"nested":2,"nullableArg":null,"wrap":["w"],"shout":"HEY","shouts":["A"],"onProp":3,"onType":true,"body":0.5}
+  list: [d, 0, null, 1, 2, null, 1, w, HEY, 1, A, 3, true, 0.5] -> Aliased(crate=CrateImpl(v=d), crates=[], maybe=null, chained=CrateImpl(v=1), nested=CrateImpl(v=CrateImpl(v=2)), nullableArg=CrateImpl(v=null), wrap=ListWrap(items=[w]), shout=hey, shouts=[a], onProp=CrateImpl(v=3), onType=CrateImpl(v=true))
+generic aliased: {"crate":4,"wrap":[5,6]}
+  back: GenericAliased(crate=CrateImpl(v=4), wrap=ListWrap(items=[5, 6])) true
+  defaults: {"crate":4,"wrap":[5,6]}
+  list: [4, 2, 5, 6] -> GenericAliased(crate=CrateImpl(v=4), wrap=ListWrap(items=[5, 6]))
+inline crate: "i"
+  back: InlineCrate(c=CrateImpl(v=i)) true
+  defaults: "i"
+  list: [i] -> InlineCrate(c=CrateImpl(v=i))
+inline shout: "QUIET"
+  back: InlineShout(s=quiet) true
+  defaults: "QUIET"
+  list: [QUIET] -> InlineShout(s=quiet)
+app.Aliased(crate: kotlin.String, crates: kotlin.collections.ArrayList, maybe: kotlin.String?, chained: kotlin.Int, nested: kotlin.Long, nullableArg: kotlin.String?, wrap: kotlin.collections.ArrayList, shout: Shout, shouts: kotlin.collections.ArrayList, onProp: kotlin.Int, onType: kotlin.Boolean, body: kotlin.Double)
 true
 [init 5 10 body5 11, init 5 10 body5 11, init 5 10 body5 11, init 1 2 body1 3, init 1 2 body1 3, init 1 2 body1 3, init 3 6 b 7]
 use: {"p":{"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"},"c":"vert","s":{"type":"app.Shape.Rect","w":2,"h":3},"e":{"type":"app.Event.Key","id":2,"code":"k"},"w":{"v":1},"inner":{"q":2},"r":{"type":"app.Page","n":3}}
