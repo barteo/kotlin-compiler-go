@@ -63,9 +63,41 @@ func classFQ(c *types.ClassSym) string {
 	return n
 }
 
+// classID returns the Kotlin class id of class c, as Type.ClassID: its
+// own, or a Java class's, with the Java classes Kotlin maps named by
+// Kotlin's.
+func classID(c *types.ClassSym) string {
+	if c == nil {
+		return ""
+	}
+	if c.KotlinName != "" {
+		return c.KotlinName
+	}
+	if k, ok := kotlinNames[javaFQ(c)]; ok {
+		i := strings.LastIndexByte(k, '.')
+		return k[:i] + "/" + k[i+1:]
+	}
+	i := strings.LastIndexByte(c.Name, '/')
+	return c.Name[:i+1] + strings.ReplaceAll(c.Name[i+1:], "$", ".")
+}
+
+// fqClassID returns the class id of a top-level class named by the
+// dotted fully qualified name fq, kotlin.Int.
+func fqClassID(fq string) string {
+	i := strings.LastIndexByte(fq, '.')
+	if i < 0 {
+		return fq
+	}
+	return strings.ReplaceAll(fq[:i], ".", "/") + "/" + fq[i+1:]
+}
+
+// binaryToDotted turns a JVM binary name, a/b/C$D, into a/b/C/D's dotted
+// form. It is shared: building a Replacer costs more than using one.
+var binaryToDotted = strings.NewReplacer("/", ".", "$", ".")
+
 // javaFQ returns the JVM binary name of c, dotted.
 func javaFQ(c *types.ClassSym) string {
-	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
+	return binaryToDotted.Replace(c.Name)
 }
 
 // facadePackage returns the dotted package of a facade class's internal
@@ -76,6 +108,16 @@ func facadePackage(facade string) string {
 		return ""
 	}
 	return strings.ReplaceAll(facade[:i], "/", ".")
+}
+
+// kotlinPackage returns the Kotlin package of a top-level declaration of
+// a facade: pkg if it is set, as the metadata of a facade with a
+// @JvmPackageName gives it, or else the facade's package.
+func kotlinPackage(pkg, facade string) string {
+	if pkg != "" {
+		return pkg
+	}
+	return facadePackage(facade)
 }
 
 func qualify(pkg, name string) string {
@@ -95,7 +137,7 @@ func funFQ(f *types.FunSym) string {
 	case f.Owner != nil:
 		return classFQ(f.Owner) + "." + f.Name
 	case f.Facade != "":
-		return qualify(facadePackage(f.Facade), f.Name)
+		return qualify(kotlinPackage(f.Pkg, f.Facade), f.Name)
 	}
 	return f.Name
 }
@@ -105,7 +147,7 @@ func funFQ(f *types.FunSym) string {
 func varFQ(v *types.VarSym) string {
 	switch v.Kind {
 	case types.Global:
-		return qualify(facadePackage(v.Facade), v.Name)
+		return qualify(kotlinPackage(v.Pkg, v.Facade), v.Name)
 	case types.Prop, types.Static:
 		if v.Owner != nil {
 			return classFQ(v.Owner) + "." + v.Name
@@ -154,6 +196,25 @@ type converter struct {
 	decl func(any) *ElementID
 	// supers caches classes' supertypes.
 	supers map[*types.ClassSym][]string
+	// names caches classes' names, class ids and SAM-ness.
+	names map[*types.ClassSym]className
+}
+
+type className struct {
+	fq, id string
+	sam    bool
+}
+
+func (cv *converter) nameOf(c *types.ClassSym) className {
+	if n, ok := cv.names[c]; ok {
+		return n
+	}
+	n := className{fq: classFQ(c), id: classID(c), sam: c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))}
+	if cv.names == nil {
+		cv.names = map[*types.ClassSym]className{}
+	}
+	cv.names[c] = n
+	return n
 }
 
 func (cv *converter) supertypesOf(c *types.ClassSym) []string {
@@ -179,14 +240,19 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	switch t.K {
 	case types.Class:
 		c := t.C
-		out.Name = classFQ(c)
-		out.SAM = c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))
+		n := cv.nameOf(c)
+		out.Name, out.ClassID, out.SAM = n.fq, n.id, n.sam
 		out.Suspend = c.Suspend
+		out.Receiver = t.E
+		if c.Anonymous && cv.decl != nil {
+			out.ParameterOwner = cv.decl(c.Decl)
+		}
 		if depth == 0 {
 			out.Supertypes = cv.supertypesOf(c)
 		}
 		if t.IsFunc() {
 			out.Name = functionName(t)
+			out.ClassID = fqClassID(out.Name)
 		}
 		if t.A != nil && depth < 8 {
 			for _, a := range t.A.List {
@@ -209,6 +275,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		default:
 			out.Name = "kotlin.ranges.IntRange"
 		}
+		out.ClassID = fqClassID(out.Name)
 	case types.TypeParam, types.TypeVar:
 		p := t.Param()
 		out.Name = p.Name
@@ -224,6 +291,9 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	default:
 		if int(t.K) < len(primitives) {
 			out.Name = primitives[t.K]
+			if out.Name != "" {
+				out.ClassID = fqClassID(out.Name)
+			}
 		}
 		if depth == 0 {
 			out.Supertypes = primitiveSupers[t.K]

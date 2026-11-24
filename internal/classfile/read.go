@@ -150,6 +150,9 @@ type Member struct {
 	ParamAnnotations [][]string
 	// Deprecated is the member's deprecation, or nil.
 	Deprecated *Deprecation
+	// since is its @DeprecatedSinceKotlin, which raises Deprecated by the
+	// class's metadata version, read after the members.
+	since sinceKotlin
 	// BoundAnnotations are, for a generic method, as Info's for a class,
 	// the descriptors of the type annotations on its type parameters'
 	// bounds.
@@ -175,14 +178,45 @@ func javaDeprecation(d *Deprecation) *Deprecation {
 	return &Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
 }
 
+// sinceKotlin is a @DeprecatedSinceKotlin: the Kotlin versions since
+// which a declaration is deprecated, an error and hidden, "" if never, and
+// whether the annotation is there.
+type sinceKotlin struct {
+	set                    bool
+	warning, error, hidden string
+}
+
+// level returns the level the versions give: HIDDEN with hiddenSince,
+// ERROR with errorSince, or "", of those that the API version reaches;
+// NONE if it doesn't reach warningSince, before which the declaration
+// isn't deprecated. kc takes the API version as kotlinc does: APIVersion,
+// but no newer than the class path, as the standard library's, the only
+// one that declares @DeprecatedSinceKotlin, which is its classes'
+// metadata version mv.
+func (s sinceKotlin) level(mv []int) string {
+	api := APIVersion
+	if len(mv) >= 2 {
+		if v := strconv.Itoa(mv[0]) + "." + strconv.Itoa(mv[1]); !laterThan(v, api) {
+			api = v
+		}
+	}
+	reached := func(v string) bool { return v != "" && !laterThan(v, api) }
+	switch {
+	case s.warning != "" && !reached(s.warning):
+		return "NONE"
+	case reached(s.hidden):
+		return "HIDDEN"
+	case reached(s.error):
+		return "ERROR"
+	}
+	return ""
+}
+
 // deprecationPairs reads the element-value pairs of @kotlin.Deprecated,
 // whose message and level it sets in d, or, with d nil, those of
-// @DeprecatedSinceKotlin, and returns the level its versions give: HIDDEN
-// with hiddenSince, ERROR with errorSince, or "", of those that APIVersion
-// has reached; NONE if it hasn't reached warningSince, before which the
-// declaration isn't deprecated.
-func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
-	since, notYet := "", false
+// @DeprecatedSinceKotlin, and returns its versions.
+func deprecationPairs(r *reader, p *pool, d *Deprecation) sinceKotlin {
+	since := sinceKotlin{set: d == nil}
 	for range r.u2() {
 		name, err := p.utf8(r.u2())
 		if err != nil {
@@ -190,22 +224,12 @@ func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
 			continue
 		}
 		switch tag := r.u1(); {
-		case d == nil && tag == 's' && (name == "warningSince" || name == "errorSince" || name == "hiddenSince"):
-			v, _ := p.utf8(r.u2())
-			switch {
-			case !LaterThanAPI(v):
-			case name == "warningSince":
-				notYet = true
-				continue
-			default:
-				continue // a level the API version hasn't reached
-			}
-			switch {
-			case name == "hiddenSince":
-				since = "HIDDEN"
-			case name == "errorSince" && since != "HIDDEN":
-				since = "ERROR"
-			}
+		case d == nil && tag == 's' && name == "warningSince":
+			since.warning, _ = p.utf8(r.u2())
+		case d == nil && tag == 's' && name == "hiddenSince":
+			since.hidden, _ = p.utf8(r.u2())
+		case d == nil && tag == 's' && name == "errorSince":
+			since.error, _ = p.utf8(r.u2())
 		case d != nil && tag == 's' && name == "message":
 			d.Message, _ = p.utf8(r.u2())
 		case d != nil && tag == 'e' && name == "level":
@@ -215,9 +239,6 @@ func deprecationPairs(r *reader, p *pool, d *Deprecation) string {
 			r.pos--
 			skipValue(r)
 		}
-	}
-	if notYet {
-		return "NONE"
 	}
 	return since
 }
@@ -246,9 +267,13 @@ const APIVersion = "2.4"
 // LaterThanAPI reports whether version v, major.minor or
 // major.minor.patch, is later than APIVersion, as 2.4.1 is: its parts
 // compare as numbers.
-func LaterThanAPI(v string) bool {
+func LaterThanAPI(v string) bool { return laterThan(v, APIVersion) }
+
+// laterThan reports whether version v is later than version than, as
+// LaterThanAPI.
+func laterThan(v, than string) bool {
 	parts := strings.Split(v, ".")
-	api := strings.Split(APIVersion, ".")
+	api := strings.Split(than, ".")
 	for len(api) < len(parts) {
 		api = append(api, "0")
 	}
@@ -490,7 +515,6 @@ func Parse(data []byte) (*Info, error) {
 					size = end - r.pos
 				case name == "RuntimeVisibleAnnotations":
 					end := r.pos + size
-					since := ""
 					for range r.u2() {
 						typ, e := p.utf8(r.u2())
 						if e != nil {
@@ -506,12 +530,11 @@ func Parse(data []byte) (*Info, error) {
 							deprecationPairs(r, p, d)
 							m.Deprecated = d
 						case "Lkotlin/DeprecatedSinceKotlin;":
-							since = deprecationPairs(r, p, nil)
+							m.since = deprecationPairs(r, p, nil)
 						default:
 							skipPairs(r)
 						}
 					}
-					m.Deprecated = sinceDeprecation(m.Deprecated, since)
 					m.Hidden = m.Hidden || m.Deprecated != nil && m.Deprecated.Level == "HIDDEN"
 					size = end - r.pos
 				}
@@ -627,6 +650,18 @@ func Parse(data []byte) (*Info, error) {
 	if err != nil {
 		return nil, err
 	}
+	var mv []int
+	if info.Kotlin != nil {
+		mv = info.Kotlin.MV
+	}
+	for _, ms := range [][]Member{info.Fields, info.Methods} {
+		for i := range ms {
+			if m := &ms[i]; m.since.set {
+				m.Deprecated = sinceDeprecation(m.Deprecated, m.since.level(mv))
+				m.Hidden = m.Hidden || m.Deprecated != nil && m.Deprecated.Level == "HIDDEN"
+			}
+		}
+	}
 	return info, nil
 }
 
@@ -635,7 +670,7 @@ func Parse(data []byte) (*Info, error) {
 // class's retention and targets in info, and the others' descriptors.
 func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 	var meta *KotlinMeta
-	since := "" // the level @DeprecatedSinceKotlin gives
+	var since sinceKotlin
 	for range r.u2() {
 		typ, err := p.utf8(r.u2())
 		if err != nil {
@@ -732,13 +767,12 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			info.Visible = append(info.Visible, typ)
 			d := &Deprecation{Level: "WARNING"}
 			deprecationPairs(r, p, d)
-			info.Deprecated = sinceDeprecation(d, since)
+			info.Deprecated = d
 			continue
 		}
 		if typ == "Lkotlin/DeprecatedSinceKotlin;" {
 			info.Visible = append(info.Visible, typ)
 			since = deprecationPairs(r, p, nil)
-			info.Deprecated = sinceDeprecation(info.Deprecated, since)
 			continue
 		}
 		if typ != "Lkotlin/Metadata;" {
@@ -790,6 +824,13 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 				return nil, fmt.Errorf("@kotlin.Metadata %s: %w", name, err)
 			}
 		}
+	}
+	if since.set {
+		var mv []int
+		if meta != nil {
+			mv = meta.MV
+		}
+		info.Deprecated = sinceDeprecation(info.Deprecated, since.level(mv))
 	}
 	return meta, r.err
 }

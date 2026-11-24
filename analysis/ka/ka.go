@@ -20,9 +20,11 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
+	"github.com/barteo/kotlin-compiler-go/analysis/internal/facts"
 	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
@@ -41,6 +43,9 @@ type Config = analysis.Config
 // whose configurations and jars are the same; Close releases them.
 type Session struct {
 	cfg Config
+	// facts is set if updates check the bodies too, and build package
+	// analysis's facts of the sources (Model.Facts): see OpenFacts.
+	facts bool
 
 	mu  sync.Mutex
 	lib *shared // the library of the last Update, unless it has Java sources
@@ -81,6 +86,13 @@ func (s *Session) library() (*shared, error) {
 
 // Open returns a session for the module cfg describes.
 func Open(cfg Config) *Session { return &Session{cfg: cfg} }
+
+// OpenFacts returns a session for the module cfg describes whose updates
+// check the sources' bodies too, as package analysis does, and give their
+// Models package analysis's facts of the sources (Model.Facts), from the
+// same check. Its updates check every file, and don't reuse an earlier
+// check: they are for a linter's one look at a module, not KSP's rounds.
+func OpenFacts(cfg Config) *Session { return &Session{cfg: cfg, facts: true} }
 
 // Source is a source file: its path and, if Text is nil, the file at Path
 // is read.
@@ -206,6 +218,10 @@ type Model struct {
 	// made it. A client that kept what it built from that model may keep
 	// using it.
 	Check uint64
+	// Facts are package analysis's facts of the sources, from the
+	// update's check, if the session is OpenFacts's and the sources have
+	// no errors; nil otherwise.
+	Facts *analysis.Result
 
 	lib       *library // the class path's classes; see Class
 	shared    *shared  // lib, which Close releases
@@ -374,6 +390,9 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	}
 	cache := &sl.checks
 	prev, whole := cache.find("", paths, texts)
+	if s.facts {
+		whole = false
+	}
 	if whole {
 		tm.Mark("reused")
 		lib := sl.lib
@@ -425,7 +444,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken, ex := lowerAll(snaps, m, jobs, false)
+	files, provs, broken, ex := lowerAll(snaps, m, jobs, false, s.facts)
 	if java != nil {
 		java.SetKotlin(files)
 	}
@@ -439,7 +458,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	// were, or it would check too many (declEdits, dependents).
 	var only map[*syntax.File]bool
 	var dirty map[int]bool
-	if len(broken) == 0 {
+	if len(broken) == 0 && !s.facts {
 		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
 			incrementalUpdates.Add(1)
 			only = map[*syntax.File]bool{}
@@ -462,11 +481,11 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		var others []otherFile
 		if ex.paired {
 			var err error
-			if others, err = otherView(ctx, snaps, m.lib, lib, java, jobs, files, only); err != nil {
+			if others, err = otherView(ctx, snaps, m.lib, lib, java, jobs, files, only, s.facts); err != nil {
 				return nil, err
 			}
 		}
-		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
+		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only), s.facts)
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)
 		}
@@ -474,7 +493,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
 			// The checker can't take a file with syntax errors: check the
 			// others, and model the broken ones from syntax alone.
-			files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
+			files, provs, _, ex = lowerAll(snaps, nil, jobs, false, s.facts)
 			if java != nil {
 				java.SetKotlin(files)
 			}
@@ -484,7 +503,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					clean = append(clean, f)
 				}
 			}
-			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil)
+			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil, false)
 		}
 		if err != nil {
 			return nil, err
@@ -511,16 +530,34 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
 				cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 		})
-		for i, f := range files {
+		if others != nil {
+			// The second view's lookups, up front: the files' models are built on several goroutines.
+			for i, f := range files {
+				if only == nil || only[f] {
+					rec.lookups[f] = append(rec.lookups[f], others[i].lookups...)
+				}
+			}
+		}
+		// The facts and the files' models only read what the check
+		// found, so the facts are built on a goroutine of their own while
+		// the files' models are built on the others.
+		var factsDone chan any
+		if rec.facts != nil && len(m.Diagnostics) == 0 && !SerialModel {
+			factsDone = make(chan any, 1)
+			go func() {
+				defer func() { factsDone <- recover() }()
+				m.Facts = facts.Build(snaps, files, provs, rec.facts, ml.cp).(*analysis.Result)
+			}()
+		}
+		m.Files = make([]*File, len(files))
+		build := func(i int) {
+			f := files[i]
 			if only != nil && !only[f] {
-				m.Files = append(m.Files, prev.files[i])
-				continue
+				m.Files[i] = prev.files[i]
+				return
 			}
 			b := newFileBuilder(f, snaps[i], provs[i], rec, m.lib)
 			b.inherited = ex.defaults
-			if others != nil {
-				rec.lookups[f] = append(rec.lookups[f], others[i].lookups...)
-			}
 			mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
 			mf.Annotations = b.annotations(f.Annotations)
 			pkg := strings.ReplaceAll(f.Package, ".", "/")
@@ -539,9 +576,25 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					mf.Decls = slices.Insert(mf.Decls, j, md)
 				}
 			}
-			m.Files = append(m.Files, mf)
+			m.Files[i] = mf
+		}
+		if !SerialModel {
+			eachFile(len(files), jobs, build)
+		} else {
+			for i := range files {
+				build(i)
+			}
 		}
 		tm.Mark("model")
+		if factsDone != nil {
+			if p := <-factsDone; p != nil {
+				panic(p)
+			}
+			tm.Mark("facts")
+		} else if rec.facts != nil && len(m.Diagnostics) == 0 {
+			m.Facts = facts.Build(snaps, files, provs, rec.facts, ml.cp).(*analysis.Result)
+			tm.Mark("facts")
+		}
 		if dirty == nil {
 			break
 		}
@@ -556,11 +609,11 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if len(dirty)*maxDirtyShare > len(sources) {
 			dirty, only = nil, nil
 		}
-		files, provs, _, ex = lowerAll(snaps, nil, jobs, false)
+		files, provs, _, ex = lowerAll(snaps, nil, jobs, false, s.facts)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
-	if cache != nil {
+	if cache != nil && !s.facts {
 		c := &checked{check: m.Check, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
 			clean: len(broken) == 0,
 			snaps: make(map[string]checkedSnap, len(sources))}
@@ -600,14 +653,15 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 
 // lowerAll lowers snaps to their first or second view (keepExpects),
 // adding their errors to m if it isn't nil, and reports which have errors.
-func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int, second bool) ([]*syntax.File, []*lower.Provenance, map[int]bool, *expects) {
+// With bodies, the views are for a check of the bodies too.
+func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int, second, bodies bool) ([]*syntax.File, []*lower.Provenance, map[int]bool, *expects) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
 	errLists := make([][]*syntax.Error, len(snaps))
 	parallel(len(snaps), jobs, func(i int) {
 		files[i], provs[i], errLists[i] = lower.File(snaps[i])
 	})
-	ex := keepExpects(files, second)
+	ex := keepExpects(files, second, bodies)
 	broken := map[int]bool{}
 	for i, snap := range snaps {
 		errs := errLists[i]
@@ -633,9 +687,9 @@ type otherFile struct {
 // otherView returns what the second view (keepExpects) of each of the
 // files first adds to its model: nothing for a file that isn't in only, if
 // only isn't nil. The second view is lowered and checked for that alone,
-// and a check that crashes leaves it out.
-func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *check.Library, java *driver.JavaSources, jobs int, first []*syntax.File, only map[*syntax.File]bool) ([]otherFile, error) {
-	files, provs, _, ex := lowerAll(snaps, nil, jobs, true)
+// and a check that crashes leaves it out. bodies is lowerAll's.
+func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *check.Library, java *driver.JavaSources, jobs int, first []*syntax.File, only map[*syntax.File]bool, bodies bool) ([]otherFile, error) {
+	files, provs, _, ex := lowerAll(snaps, nil, jobs, true, bodies)
 	if java != nil {
 		java.SetKotlin(files)
 		defer java.SetKotlin(first)
@@ -649,7 +703,7 @@ func otherView(ctx context.Context, snaps []*psi.Snapshot, ml *library, lib *che
 			}
 		}
 	}
-	rec, _, err := checkFiles(ctx, files, lib, jobs, checked, namesIn(snaps, files, checked))
+	rec, _, err := checkFiles(ctx, files, lib, jobs, checked, namesIn(snaps, files, checked), false)
 	if _, crashed := err.(checkPanic); crashed {
 		return nil, nil
 	}
@@ -723,17 +777,22 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
+// checkFiles checks files; with withFacts, their bodies too, and rec's
+// facts recorder hears what package analysis builds its facts from.
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool, withFacts bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, annotAliases: map[*syntax.File]map[syntax.Pos]*types.AliasSym{},
 		lookups: map[*syntax.File][]Lookup{}}
+	if withFacts {
+		rec.facts = facts.NewRecorder()
+	}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: !withFacts, Only: only, Infer: infer})
 	return rec, errs, err
 }
 
@@ -765,6 +824,16 @@ type recorder struct {
 	bodies time.Time
 	// lookups are the files' lookups, as the checker reports them.
 	lookups map[*syntax.File][]Lookup
+	// facts is package analysis's recorder, which hears what this one
+	// does, if the session builds facts; nil otherwise.
+	facts facts.Recorder
+}
+
+// Overridden implements check.OverrideRecorder, for the facts.
+func (r *recorder) Overridden(fn func(*types.FunSym) []*types.FunSym) {
+	if r.facts != nil {
+		r.facts.Overridden(fn)
+	}
 }
 
 func (r *recorder) Lookup(f *syntax.File, scope string, kind check.LookupKind, name string) {
@@ -789,6 +858,9 @@ func (r *recorder) fileLookups(f *syntax.File) []Lookup {
 func (r *recorder) Bodies() { r.bodies = time.Now() }
 
 func (r *recorder) Alias(x any, a *types.AliasSym) {
+	if r.facts != nil {
+		r.facts.Alias(x, a)
+	}
 	if ref, ok := x.(*syntax.TypeRef); ok {
 		r.mu.Lock()
 		r.aliases[ref] = a
@@ -808,12 +880,18 @@ func (r *recorder) AnnotationAlias(f *syntax.File, a *syntax.Annotation, alias *
 }
 
 func (r *recorder) TypeRef(ref *syntax.TypeRef, t types.Type) {
+	if r.facts != nil {
+		r.facts.TypeRef(ref, t)
+	}
 	r.mu.Lock()
 	r.refs[ref] = t
 	r.mu.Unlock()
 }
 
 func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym) {
+	if r.facts != nil {
+		r.facts.Annotation(f, a, cls)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m := r.annots[f]
@@ -834,11 +912,84 @@ func (r *recorder) AnnotationValues(f *syntax.File, a *syntax.Annotation, values
 	m[a.P] = values
 }
 
-func (*recorder) When(*syntax.When, bool, bool)    {}
-func (*recorder) Stmt(syntax.Stmt, bool)           {}
-func (*recorder) Unreachable(syntax.Stmt)          {}
-func (*recorder) Elvis(*syntax.Binary, bool)       {}
-func (*recorder) StmtType(syntax.Expr, types.Type) {}
+// The reports only the facts need.
+
+func (r *recorder) When(x *syntax.When, covered, valueUsed bool) {
+	if r.facts != nil {
+		r.facts.When(x, covered, valueUsed)
+	}
+}
+
+func (r *recorder) Stmt(st syntax.Stmt, valueUsed bool) {
+	if r.facts != nil {
+		r.facts.Stmt(st, valueUsed)
+	}
+}
+
+func (r *recorder) Unreachable(st syntax.Stmt) {
+	if r.facts != nil {
+		r.facts.Unreachable(st)
+	}
+}
+
+func (r *recorder) Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool) {
+	if r.facts != nil {
+		r.facts.Elvis(x, nonNullLeftSubtypeRight)
+	}
+}
+
+func (r *recorder) StmtType(x syntax.Expr, t types.Type) {
+	if r.facts != nil {
+		r.facts.StmtType(x, t)
+	}
+}
+
+// SerialModel is whether Update builds the files' models one after
+// another and the facts after them, instead of on several goroutines and
+// alongside each other. KC_SERIAL_MODEL sets it, to time it.
+var SerialModel = os.Getenv("KC_SERIAL_MODEL") != ""
+
+// eachFile runs f(0) ... f(n-1) on at most jobs goroutines, files in
+// order of their index, and returns when all have.
+func eachFile(n, jobs int, f func(int)) {
+	jobs = max(1, min(jobs, n))
+	if jobs == 1 {
+		for i := range n {
+			f(i)
+		}
+		return
+	}
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failed any
+	for range jobs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if p := recover(); p != nil {
+					mu.Lock()
+					if failed == nil {
+						failed = p
+					}
+					mu.Unlock()
+				}
+			}()
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= n {
+					return
+				}
+				f(i)
+			}
+		}()
+	}
+	wg.Wait()
+	if failed != nil {
+		panic(failed)
+	}
+}
 
 type fileBuilder struct {
 	f      *syntax.File

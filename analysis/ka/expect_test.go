@@ -316,3 +316,39 @@ enum class Defaulted(val n: Int = 0) { A }
 		t.Errorf("entries: %q, want %q", got, want)
 	}
 }
+
+// TestExpectActualFacts checks that an OpenFacts session, which checks
+// the bodies too, checks an actual declaration's body against the
+// typealias that is its expect class's actual declaration: a
+// java.lang.Runnable's run, which the expect class doesn't declare, as
+// kotlinx-coroutines' Runnable is.
+func TestExpectActualFacts(t *testing.T) {
+	srcs := []string{`package a
+
+expect interface Runnable
+expect class Text()
+fun common(r: Runnable, t: Text): Text = t
+`, `package a
+
+actual typealias Runnable = java.lang.Runnable
+actual typealias Text = StringBuilder
+fun jvm(r: Runnable, t: Text): Int {
+    r.run()
+    return t.append("x").length
+}
+`}
+	sources := make([]Source, len(srcs))
+	for i := range srcs {
+		sources[i] = Source{Path: fmt.Sprintf("f%d.kt", i), Text: &srcs[i]}
+	}
+	s := OpenFacts(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if len(m.Diagnostics) != 0 {
+		t.Errorf("diagnostics: %+v", m.Diagnostics)
+	}
+}

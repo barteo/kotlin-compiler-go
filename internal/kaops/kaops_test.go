@@ -26,8 +26,10 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.Bool(true) // no JDK
 	w.String("m")
 	w.Uint(1)
-	w.Uint(0) // no class path
-	w.Uint(0) // no friend paths
+	w.Uint(0)     // no class path
+	w.Uint(0)     // no friend paths
+	w.Bool(false) // no facts
+	w.Uint(0)     // no opt-ins
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +231,9 @@ func TestClass(t *testing.T) {
 	w.Uint(1)
 	w.Uint(1)
 	w.String(jar)
-	w.Uint(0) // no friend paths
+	w.Uint(0)     // no friend paths
+	w.Bool(false) // no facts
+	w.Uint(0)     // no opt-ins
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -385,6 +389,27 @@ func readAnnotations(r *wire.Reader) []ka.Annotation {
 		out = append(out, *readAnnotation(r))
 	}
 	return out
+}
+
+// TestOpenOldLayout checks that a config that ends after the friend
+// paths, as before facts and -opt-ins were appended, still opens a session.
+func TestOpenOldLayout(t *testing.T) {
+	var w wire.Writer
+	w.String("")
+	w.Bool(true) // no JDK
+	w.String("m")
+	w.Uint(1)
+	w.Uint(0) // no class path
+	w.Uint(0) // no friend paths
+	resp, err := kcabi.Call(OpKaOpen, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = wire.Writer{}
+	w.Int(wire.NewReader(resp).Int())
+	if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestIdleMemory checks that the free memory is returned once the last

@@ -216,6 +216,7 @@ type kpkg struct {
 type kpart struct {
 	meta    *kmeta.Package
 	facade  string          // the class to call
+	pkg     string          // the Kotlin package, if the facade's JVM package isn't it (@JvmPackageName)
 	class   string          // the class with the declarations: the facade, or a multifile part
 	methods map[string]bool // name+desc of the public methods
 	friend  bool            // in a friend path: its internal declarations are visible
@@ -2535,7 +2536,7 @@ func (t *classTable) read(p *kpkg) *kpkg {
 				if facade == "" {
 					facade = part.Class
 				}
-				read[i] = &kpart{meta: meta, facade: facade, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info), annots: annotatedMethods(info)}
+				read[i] = &kpart{meta: meta, facade: facade, pkg: info.Kotlin.PN, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info), annots: annotatedMethods(info)}
 			})
 		}
 		wg.Wait()
@@ -2719,7 +2720,7 @@ func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
 	start := time.Now()
 	f, part := e.f, e.part
 	sym := t.kfun(f, nil, nil, part.methods)
-	sym.Facade = part.facade
+	sym.Facade, sym.Pkg = part.facade, part.pkg
 	inlineIn(part.class, sym)
 	sym.LowPriority = part.low[e.key]
 	annotate(sym, part.annots[e.key])
@@ -2822,7 +2823,7 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
-			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true, Declared: inlineAccessor(pr.GetterFlags)}
+			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Pkg: part.pkg, Ext: true, Resolved: true, Declared: inlineAccessor(pr.GetterFlags)}
 			if inlineOnly {
 				sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 			}
@@ -2894,7 +2895,7 @@ func (t *classTable) pkgVarIn(r *pkgRef, name string) *types.VarSym {
 				continue
 			}
 			prev := v
-			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
+			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade, Pkg: part.pkg,
 				Resolved: true, Const: pr.IsConst(), Contexts: ctx,
 				InlineGetter: pr.GetterFlags>>8&1 != 0, InlineSetter: pr.IsVar() && pr.SetterFlags>>8&1 != 0}
 			if prev != nil && !sameContexts(prev.Contexts, ctx) {

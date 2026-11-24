@@ -9,7 +9,9 @@
 # holding the analysis-api, analysis-internal-utils and
 # analysis-api-platform-interface modules, plus the few plain value classes of
 # analysis-api-impl-base that clients such as KSP construct directly
-# ($implbase below), compiled against the unshaded
+# ($implbase below), and the references of analysis-api-standalone-base
+# ($refs below: KtSimpleNameReference and the mainReference helpers,
+# which clients such as detekt resolve names through), compiled against the unshaded
 # org.jetbrains.kotlin:kotlin-compiler:2.4.21 from Maven Central, which also
 # bundles IntelliJ core, Guava, ASM and kotlinx-collections-immutable.
 set -euo pipefail
@@ -53,11 +55,12 @@ src=$work/kotlin
 modules="analysis/analysis-api analysis/analysis-internal-utils analysis/analysis-api-platform-interface"
 implbase_dir=analysis/analysis-api-impl-base/src/org/jetbrains/kotlin/analysis/api/impl/base
 implbase="annotations/KaAnnotationImpl.kt annotations/KaBaseNamedAnnotationValue.kt types/KaBaseTypeProjection.kt"
-if [ "$(git -C "$src" rev-parse HEAD 2>/dev/null)" != $KOTLIN_COMMIT ] || [ ! -d "$src/$implbase_dir" ]; then
+refs=analysis/analysis-api-standalone/analysis-api-standalone-base/src/org/jetbrains/kotlin/idea/references
+if [ "$(git -C "$src" rev-parse HEAD 2>/dev/null)" != $KOTLIN_COMMIT ] || [ ! -d "$src/$implbase_dir" ] || [ ! -d "$src/$refs" ]; then
 	rm -rf "$src"
 	git init -q "$src"
 	git -C "$src" remote add origin https://github.com/JetBrains/kotlin.git
-	git -C "$src" sparse-checkout set $modules $implbase_dir/annotations $implbase_dir/types
+	git -C "$src" sparse-checkout set $modules $implbase_dir/annotations $implbase_dir/types $refs
 	git -C "$src" fetch -q --depth 1 --filter=blob:none origin $KOTLIN_COMMIT
 	git -C "$src" checkout -q FETCH_HEAD
 fi
@@ -76,6 +79,8 @@ for f in $implbase; do
 	mkdir -p "$(dirname "$patched/$implbase_dir/$f")"
 	cp "$src/$implbase_dir/$f" "$patched/$implbase_dir/$f"
 done
+mkdir -p "$patched/$refs"
+cp "$src/$refs"/*.kt "$patched/$refs/"
 find "$patched" -name '*.kt' -print0 | xargs -0 perl -0777 -pi -e '
 	s/(\):\s*([\w.]+)(?:<[^=\n]*>)?\??\s*=[^\n]*?(?:\n\s*)?[\w.()]+?)\.(?:service|serviceOrNull)\(\)/$1.getService(${2}::class.java)/g;
 	s/\.(?:service|serviceOrNull)<([\w.]+)>\(\)/.getService(${1}::class.java)/g;'

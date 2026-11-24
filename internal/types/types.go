@@ -252,6 +252,7 @@ type VarSym struct {
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	Pkg      string    // Global: Kotlin package, as FunSym.Pkg
 	// InlineGetter and InlineSetter are set on a Global of the class path
 	// whose accessors are declared inline.
 	InlineGetter, InlineSetter bool
@@ -533,6 +534,7 @@ type FunSym struct {
 	Ret        Type
 	Owner      *ClassSym // methods
 	Facade     string    // top-level functions
+	Pkg        string    // a library top-level function's Kotlin package, if not Facade's (@JvmPackageName)
 	Builtin    Builtin
 	Decl       any
 
