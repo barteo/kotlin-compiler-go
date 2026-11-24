@@ -315,7 +315,7 @@ func onCtorField(c *types.ClassSym) bool {
 // and an int of change flags after it, as kotlinc's Compose plugin writes
 // it. It returns the method's name and descriptor, which metadata refers
 // to, or "".
-func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, as []syntax.Annotation, p placement, private, composable bool) (string, string) {
+func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, as []syntax.Annotation, p placement, vis uint16, composable bool) (string, string) {
 	n := 0
 	for i := range as {
 		a := &as[i]
@@ -338,10 +338,7 @@ func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, 
 	if composable {
 		d = types.ComposeDesc(d, 1)
 	}
-	access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
-	if private {
-		access = cf.AccPrivate | cf.AccStatic | cf.AccSynthetic
-	}
+	access := vis | cf.AccStatic | cf.AccSynthetic
 	if c.Access&cf.AccInterface != 0 {
 		access = cf.AccPublic | cf.AccStatic | cf.AccSynthetic
 	}
@@ -473,10 +470,23 @@ func nestedDefault(call *syntax.Call) (cf.Annotation, bool) {
 	return a, true
 }
 
+// annotationsAccess returns the access flag of the $annotations method of
+// a property of visibility vis, as kotlinc writes it: the property's own,
+// and public for an internal one.
+func annotationsAccess(vis syntax.Visibility) uint16 {
+	switch vis {
+	case syntax.Private:
+		return cf.AccPrivate
+	case syntax.Protected:
+		return cf.AccProtected
+	}
+	return cf.AccPublic
+}
+
 // propAnnotations writes the $annotations method of property p of class
 // c, if it has annotations for its property target, and records it for
 // the property's metadata.
-func (g *gen) propAnnotations(c *cf.Class, p *syntax.PropDecl, recv *types.Type, private bool) {
+func (g *gen) propAnnotations(c *cf.Class, p *syntax.PropDecl, recv *types.Type) {
 	getter := types.GetterName(p.Name)
 	switch {
 	case p.Getter != nil && p.Getter.Sym != nil:
@@ -484,7 +494,7 @@ func (g *gen) propAnnotations(c *cf.Class, p *syntax.PropDecl, recv *types.Type,
 	case p.Sym != nil:
 		getter = types.GetterJVM(p.Sym)
 	}
-	name, d := g.propertyAnnotations(c, getter, recv, p.Annotations, placement{site: "property", dflt: onProperty}, private, p.Sym != nil && p.Sym.Composable)
+	name, d := g.propertyAnnotations(c, getter, recv, p.Annotations, placement{site: "property", dflt: onProperty}, annotationsAccess(p.Visibility), p.Sym != nil && p.Sym.Composable)
 	if name != "" && p.Sym != nil {
 		g.shared.annotated[p.Sym] = [2]string{name, d}
 	}

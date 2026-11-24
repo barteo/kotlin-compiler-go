@@ -2533,6 +2533,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
 		default:
 			sym.JvmStatic = true
+			sym.StaticGetter, sym.StaticSetter = true, d.Mutable
 		}
 	} else if owner == nil || !owner.Object || owner.Anonymous || d.Override && owner.CompanionOf == nil {
 		// @get:JvmStatic, or @JvmStatic on an accessor.
@@ -2552,6 +2553,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 				break
 			}
 		}
+	} else {
+		sym.StaticGetter = d.Find("get", "JvmStatic") != nil
+		sym.StaticSetter = d.Mutable && d.Find("set", "JvmStatic") != nil
 	}
 	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
 		p := d.AccessorP

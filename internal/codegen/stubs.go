@@ -246,7 +246,7 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 			continue
 		}
 		for _, m := range ccd.Members {
-			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Sym.JvmStatic && !pd.Sym.Private && pd.Visibility != syntax.Private {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && (pd.Sym.StaticGetter || pd.Sym.StaticSetter) && !pd.Sym.Private && pd.Visibility != syntax.Private {
 				g.propStubs(pd.Sym, comp)
 				continue
 			}
@@ -271,8 +271,9 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 	}
 }
 
-// propStubs generates the static accessors of companion comp's @JvmStatic
-// property p, which call its accessors on the companion.
+// propStubs generates the static accessors of companion comp's property
+// p, those of its accessors that are @JvmStatic, which call them on the
+// companion.
 func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 	t := types.GetterType(p)
 	access := g.stubAccess()
@@ -304,8 +305,10 @@ func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
-	stub(access, types.GetterJVM(p), "()"+desc(t), types.UnitType)
-	if p.Mutable && !p.SetterPrivate {
+	if p.StaticGetter {
+		stub(access, types.GetterJVM(p), "()"+desc(t), types.UnitType)
+	}
+	if p.StaticSetter && !p.SetterPrivate {
 		stub(setAccess, types.SetterJVM(p), "("+desc(types.FieldType(p))+")V", types.FieldType(p))
 	}
 }
@@ -335,15 +338,15 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 	for _, fw := range cd.Forwarders {
 		f := fw.Fun
 		fd := funDesc(f) // with a member extension's receiver
-		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic, f.JVM(), "("+self+fd[1:])
-		g.signInherited(c.LastMethod(), cls, fw.Of, f)
+		d := inheritedDesc(cls, fw.Of, f, true)
+		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic, f.JVM(), "("+self+d[1:])
+		g.signInherited(c.LastMethod(), cls, fw.Of, f, d)
 		g.code.Local(cf.ALOAD, g.code.AllocLocal(self))
 		g.code.Checkcast(fw.Of.Name)
-		for _, pd := range cf.DescParams(fd) {
-			g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
-		}
+		g.inheritedArgs(d, fd)
 		g.code.Invoke(cf.INVOKESTATIC, fw.Impls, f.JVM(), "(L"+fw.Of.Name+";"+fd[1:])
-		g.code.Op(returnOpOf(cf.RetDesc(fd)))
+		g.convertDesc(cf.RetDesc(fd), cf.RetDesc(d))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	g.cls = iface
@@ -354,10 +357,80 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 
 // signInherited gives mr, the DefaultImpls method of interface cls for
 // member f that it inherits from interface of, its generic signature: f's
-// as cls sees it, with cls's type parameters.
-func (g *gen) signInherited(mr cf.MemberRef, cls, of *types.ClassSym, f *types.FunSym) {
+// as cls sees it, with cls's type parameters. d is f's descriptor there:
+// see inheritedDesc.
+func (g *gen) signInherited(mr cf.MemberRef, cls, of *types.ClassSym, f *types.FunSym, d string) {
 	fd, _ := f.Decl.(*syntax.FunDecl)
-	g.signParams(mr, f, fd, "(L"+cls.Name+";"+funDesc(f)[1:], cls.This(), f.Params, superSubst(cls, of))
+	g.signParams(mr, f, fd, "(L"+cls.Name+";"+d[1:], cls.This(), f.Params, superSubst(cls, of))
+}
+
+// inheritedDesc returns the descriptor of member f of interface of as
+// cls, which inherits it, sees it, as kotlinc writes the methods that
+// call an inherited body: with of's type parameters replaced by their
+// arguments in cls's supertype, so that test(T) of Cond<T> is test(Fin)
+// in a subtype of Cond<Fin>. A result that becomes a primitive is its
+// box if boxed, as an override's is. It is f's own descriptor for a
+// suspend or composable member, and where an argument is a value class,
+// which would mangle the name; a result that becomes Unit stays f's.
+func inheritedDesc(cls, of *types.ClassSym, f *types.FunSym, boxed bool) string {
+	fd := funDesc(f)
+	if f == nil || cls == of || f.Suspend || f.Composable {
+		return fd
+	}
+	sub := superSubst(cls, of)
+	if len(sub) == 0 {
+		return fd
+	}
+	params := bridgeParams(f)
+	pds := cf.DescParams(fd)
+	if len(pds) != len(params) {
+		return fd
+	}
+	var sb strings.Builder
+	sb.WriteByte('(')
+	for i, p := range params {
+		t := sub.Apply(p.Type)
+		was, ok := types.ParamDesc(p.Type)
+		now, ok2 := types.ParamDesc(t)
+		switch {
+		case !ok || !ok2 || was == now:
+			sb.WriteString(pds[i])
+		case types.Unboxed(t) || types.Mangles(t):
+			return fd
+		default:
+			sb.WriteString(now)
+		}
+	}
+	sb.WriteByte(')')
+	ret := sub.Apply(f.Ret)
+	was, ok := types.RetDesc(f.Ret)
+	now, ok2 := types.RetDesc(ret)
+	switch {
+	case !ok || !ok2 || was == now:
+		sb.WriteString(cf.RetDesc(fd))
+	case types.Unboxed(ret):
+		return fd
+	case ret.K == types.Unit:
+		// As the member returns it: kc's Unit type doesn't tell Unit,
+		// which kotlinc makes void here, from Unit?, which may be null.
+		sb.WriteString(cf.RetDesc(fd))
+	case boxed && ret.IsPrimitive():
+		sb.WriteString(desc(ret.Nullable()))
+	default:
+		sb.WriteString(now)
+	}
+	return sb.String()
+}
+
+// inheritedArgs loads the parameters of the method being generated, of
+// descriptor d after its receiver, as the arguments of a method of
+// descriptor target: see inheritedDesc.
+func (g *gen) inheritedArgs(d, target string) {
+	to := cf.DescParams(target)
+	for i, pd := range cf.DescParams(d) {
+		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
+		g.convertDesc(pd, to[i])
+	}
 }
 
 // superSubst maps the type parameters of class of to their arguments in
@@ -486,9 +559,10 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		return nil
 	}
 	own := ownBodies(cd.Sym)
+	declared := declaredDescs(cd.Sym)
 	var ms []defaultBody
 	for _, m := range allBodies(cd.Sym) {
-		if !overrides(own, m) {
+		if !overrides(own, m) && !overriddenAs(declared, cd.Sym, m) {
 			ms = append(ms, m)
 		}
 	}
@@ -503,21 +577,29 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 	self := "L" + iface.Name + ";"
 	c := g.implsOf(cd.Sym, iface)
 	body := func(m defaultBody) {
-		d := "(" + self + m.desc[1:]
-		ret := cf.RetDesc(m.desc)
-		jd := "access$" + m.name + "$jd"
-		code := iface.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, jd, d)
-		for _, pd := range cf.DescParams(d) {
-			code.Local(loadOpOf(pd), code.AllocLocal(pd))
+		// As kotlinc writes them, the accessor returns a result that the
+		// interface's type arguments make a primitive as it is, and the
+		// DefaultImpls method its box.
+		md, jdd := m.desc, m.desc
+		if m.fun != nil && m.owner != nil {
+			md, jdd = inheritedDesc(cd.Sym, m.owner, m.fun, true), inheritedDesc(cd.Sym, m.owner, m.fun, false)
 		}
+		d := "(" + self + md[1:]
+		ret := cf.RetDesc(md)
+		jd := "access$" + m.name + "$jd"
+		code := iface.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, jd, "("+self+jdd[1:])
+		g.code = code
+		code.Local(cf.ALOAD, code.AllocLocal(self))
+		g.inheritedArgs(jdd, m.desc)
 		code.InvokeSpecialInterface(iface.Name, m.name, m.desc)
-		code.Op(returnOpOf(ret))
+		g.convertDesc(cf.RetDesc(m.desc), cf.RetDesc(jdd))
+		code.Op(returnOpOf(cf.RetDesc(jdd)))
 		if err := code.Err(); err != nil {
 			panic(err)
 		}
 		code = c.NewMethod(cf.AccPublic|cf.AccStatic|m.synthetic(), m.name, d)
 		if !m.hidden && m.fun != nil {
-			g.signInherited(c.LastMethod(), cd.Sym, m.owner, m.fun)
+			g.signInherited(c.LastMethod(), cd.Sym, m.owner, m.fun, md)
 		}
 		g.code = code
 		if m.line > 0 {
@@ -548,7 +630,8 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		for i, pd := range pds {
 			code.Local(loadOpOf(pd), slots[i])
 		}
-		code.InvokeStaticInterface(iface.Name, jd, d)
+		code.InvokeStaticInterface(iface.Name, jd, "("+self+jdd[1:])
+		g.convertDesc(cf.RetDesc(jdd), ret)
 		code.Op(returnOpOf(ret))
 		if err := code.Err(); err != nil {
 			panic(err)
@@ -580,6 +663,44 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		body(m)
 	}
 	return c
+}
+
+// declaredDescs returns the JVM names and descriptors of the members,
+// abstract or not, that Kotlin interface s and the interfaces with
+// default methods that it inherits declare.
+func declaredDescs(s *types.ClassSym) map[string]bool {
+	out := map[string]bool{}
+	visited := map[*types.ClassSym]bool{}
+	var visit func(s *types.ClassSym)
+	visit = func(s *types.ClassSym) {
+		if visited[s] {
+			return
+		}
+		visited[s] = true
+		for _, m := range ownBodies(s) {
+			out[m.name+m.desc] = true
+		}
+		for _, i := range s.Interfaces {
+			if i.JVMDefault {
+				visit(i)
+			}
+		}
+	}
+	visit(s)
+	return out
+}
+
+// overriddenAs reports whether inherited member m has, as cls sees it, the
+// descriptor of a member in declared, which overrides it with the type
+// arguments in place: test(String) of a subinterface of Foo<String>
+// overrides test(T) of Foo<T>, and cls has the one method, the
+// override's. See inheritedDesc.
+func overriddenAs(declared map[string]bool, cls *types.ClassSym, m defaultBody) bool {
+	if m.fun == nil || m.owner == nil {
+		return false
+	}
+	d := inheritedDesc(cls, m.owner, m.fun, true)
+	return d != m.desc && declared[m.name+d]
 }
 
 // overrides reports whether one of an interface's own members, own,
@@ -745,6 +866,34 @@ func allBodies(s *types.ClassSym) []defaultBody {
 // calls the default method with invokespecial, as kotlinc writes them.
 func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 	cls := cd.Sym
+	declared := map[string]bool{}
+	for _, i := range cls.Interfaces {
+		if i.JVMDefault {
+			maps.Copy(declared, declaredDescs(i))
+		}
+	}
+	// erased adds the synthetic bridge of descriptor d that calls the
+	// class's method name of descriptor md: what callers through an
+	// interface whose member has the erased descriptor call.
+	erased := func(name, d, md string) {
+		g.code = c.NewMethod(cf.AccPublic|cf.AccBridge|cf.AccSynthetic, name, d)
+		g.code.Local(cf.ALOAD, g.code.AllocLocal("L"+cls.Name+";"))
+		g.inheritedArgs(d, md)
+		g.code.Invoke(cf.INVOKEVIRTUAL, cls.Name, name, md)
+		g.convertDesc(cf.RetDesc(md), cf.RetDesc(d))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
+		if err := g.code.Err(); err != nil {
+			panic(err)
+		}
+	}
+	var replaced []defaultBody // by an override with the type arguments
+	defer func() {
+		for _, m := range replaced {
+			if md := inheritedDesc(cls, m.owner, m.fun, true); c.HasMethod(m.name, md) && !c.HasMethod(m.name, m.desc) {
+				erased(m.name, m.desc, md)
+			}
+		}
+	}()
 	for _, i := range cls.Interfaces {
 		if !i.JVMDefault || cls.Super != nil && cls.Super.IsSubclassOf(i) {
 			continue
@@ -753,8 +902,23 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			if c.HasMethod(m.name, m.desc) || superImplements(cls.Super, m) || cls.Super != nil && cls.Super.IsSubclassOf(m.owner) {
 				continue
 			}
-			code := c.NewMethod(cf.AccPublic|cf.AccBridge|m.synthetic(), m.name, m.desc)
+			if overriddenAs(declared, cls, m) {
+				replaced = append(replaced, m)
+				continue
+			}
+			md := m.desc // as the class sees the member
+			if m.fun != nil && m.owner != nil {
+				md = inheritedDesc(cls, m.owner, m.fun, true)
+			}
+			if c.HasMethod(m.name, md) {
+				continue
+			}
+			code := c.NewMethod(cf.AccPublic|cf.AccBridge|m.synthetic(), m.name, md)
 			ref := c.LastMethod()
+			if !m.hidden && m.fun != nil && m.owner != nil {
+				fd, _ := m.fun.Decl.(*syntax.FunDecl)
+				g.signParams(ref, m.fun, fd, md, types.InvalidType, m.fun.Params, superSubst(cls, m.owner))
+			}
 			g.bridgeAnnotations(ref, m)
 			nullability(methodAdder(ref), m.ret)
 			lead := 0
@@ -767,7 +931,7 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			}
 			code.Line(cd.P.Line)
 			code.AllocLocal("L" + cls.Name + ";")
-			pds := cf.DescParams(m.desc)
+			pds, to := cf.DescParams(md), cf.DescParams(m.desc)
 			slots := make([]int, len(pds))
 			for j, pd := range pds {
 				slots[j] = code.AllocLocal(pd)
@@ -775,15 +939,22 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 					code.NameLocal(slots[j], m.params[j].Name)
 				}
 			}
+			g.code = code
 			code.Local(cf.ALOAD, 0)
 			for j, pd := range pds {
 				code.Local(loadOpOf(pd), slots[j])
+				g.convertDesc(pd, to[j])
 			}
 			code.InvokeSpecialInterface(i.Name, m.name, m.desc)
-			code.Op(returnOpOf(cf.RetDesc(m.desc)))
+			g.convertDesc(cf.RetDesc(m.desc), cf.RetDesc(md))
+			code.Op(returnOpOf(cf.RetDesc(md)))
 			if err := code.Err(); err != nil {
 				panic(err)
 			}
+			if md == m.desc {
+				continue
+			}
+			erased(m.name, m.desc, md)
 		}
 	}
 }

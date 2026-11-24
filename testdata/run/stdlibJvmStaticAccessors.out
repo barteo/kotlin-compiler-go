@@ -1,0 +1,24 @@
+Counter.getBoth: public static final
+Counter.getComputed: public static final
+Counter.getDoubled: public static final
+Counter.getG: public static final
+Counter.getWhole: public static final
+Counter.setBoth: public static final
+Counter.setPlusOne: public static final
+Counter.setWhole: public static final
+Counter.setX: public static final
+Counter.setY: public static final
+Registry.getDoubled: public static final
+Registry.getG: public static final
+Registry.getWhole: public static final
+Registry.setPlusOne: public static final
+Registry.setWhole: public static final
+Registry.setX: public static final
+Host.getG: public static
+Host.setS: public static
+20 z 31 40
+2 6 22 40
+5 z! 13 14 32 18
+50 61 2 8
+61 79 72 18 84
+8 70 8

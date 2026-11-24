@@ -842,7 +842,7 @@ func (g *gen) facade() *cf.Class {
 		if ad, ok := d.(*syntax.TypeAliasDecl); ok {
 			// A type alias's annotations, on its synthetic method
 			// name$annotations, as kotlinc writes them.
-			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, ad.Visibility == syntax.Private, false)
+			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, annotationsAccess(ad.Visibility), false)
 		}
 	}
 	// The fields that the static initializer assigns: all but those
@@ -853,7 +853,7 @@ func (g *gen) facade() *cf.Class {
 		if p.Getter != nil && p.Getter.Sym.Ext {
 			recv = &p.Getter.Sym.Recv
 		}
-		g.propAnnotations(c, p, recv, p.Visibility == syntax.Private)
+		g.propAnnotations(c, p, recv)
 		// As with kotlinc, a property's field is private, with a getter
 		// and a setter, but for a const's and a @JvmField property's,
 		// which are public, and a private property's, which has no
@@ -1448,7 +1448,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			continue // with the delegated members, below
 		}
 		as, _, propSite := classPropAnnotations(p)
-		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, p.Private, p.Composable); name != "" {
+		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, propAnnotationsAccess(p), p.Composable); name != "" {
 			g.shared.annotated[p] = [2]string{name, md}
 		}
 		if isDelegateField(p.Decl) || p.Const || p.JvmField {
@@ -1464,8 +1464,15 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		if p.Final {
 			acc |= cf.AccFinal
 		}
-		if p.JvmStatic && cls.CompanionOf == nil {
-			acc |= cf.AccStatic // an object's: see staticStubs for a companion's
+		setAcc := acc // the setter's
+		if cls.CompanionOf == nil {
+			// An object's: see staticStubs for a companion's.
+			if p.StaticGetter {
+				acc |= cf.AccStatic
+			}
+			if p.StaticSetter {
+				setAcc |= cf.AccStatic
+			}
 		}
 		if cls.HasDefaultImpls() && !p.Abstract && !p.Private && p.Getter != nil {
 			// Abstract accessors, and their bodies in DefaultImpls.
@@ -1529,19 +1536,19 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			case !p.Mutable || p.SetterPrivate:
 				// private set has no setter: its class writes the field.
 			case p.Setter != nil:
-				m := g.function(p.Setter.Decl.(*syntax.FunDecl), acc)
+				m := g.function(p.Setter.Decl.(*syntax.FunDecl), setAcc)
 				if pd != nil {
 					g.accessorAnnotations(m, pd, "set")
 				}
 			default:
 				if pd != nil && pd.SetterVis == syntax.Protected {
-					acc = acc&^cf.AccPublic | cf.AccProtected
+					setAcc = setAcc&^cf.AccPublic | cf.AccProtected
 				}
-				g.code = c.NewMethod(acc|accessorSynthetic(as, "set"), types.SetterJVM(p), "("+d+")V")
+				g.code = c.NewMethod(setAcc|accessorSynthetic(as, "set"), types.SetterJVM(p), "("+d+")V")
 				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+d+")V", as, cls)
 				g.defaultAccessorAnnotations(c.LastMethod(), as, "set", p.Type)
 				g.code.Line(declPos(p.Decl).Line)
-				if acc&cf.AccStatic == 0 {
+				if setAcc&cf.AccStatic == 0 {
 					g.code.AllocLocal(self)
 				}
 				slot := g.code.AllocLocal(d)
@@ -1578,7 +1585,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	for _, m := range cd.Members {
 		if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv != nil && pd.Getter != nil {
 			// An extension property's accessors, which take the receiver.
-			g.propAnnotations(g.annotationsHolder(c, cls), pd, &pd.Getter.Sym.Recv, pd.Visibility == syntax.Private)
+			g.propAnnotations(g.annotationsHolder(c, cls), pd, &pd.Getter.Sym.Recv)
 			for _, a := range []*syntax.FunDecl{pd.Getter, pd.Setter} {
 				if a == nil {
 					continue
@@ -3570,7 +3577,7 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 	case p.Owner != nil && p.Owner.Value && p == p.Owner.Underlying && !underlyingGetter(p.Owner):
 		g.code.Invoke(cf.INVOKEVIRTUAL, p.Owner.Name, "unbox-impl", "()"+d) // the box's value
 		return
-	case p.JvmStatic && p.Owner.CompanionOf == nil && !p.Private:
+	case p.StaticGetter && p.Owner.CompanionOf == nil && !p.Private:
 		// An object's @JvmStatic property: its getter is static.
 		g.code.Op(cf.POP)
 		g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, types.GetterJVM(p), "()"+desc(types.GetterType(p)))
@@ -3620,6 +3627,29 @@ func protectedProp(p *types.VarSym, set bool) bool {
 	return set && pd != nil && pd.SetterVis == syntax.Protected
 }
 
+// propAnnotationsAccess returns the access flag of the $annotations
+// method of class property p: see annotationsAccess. An override without
+// a modifier has the protected visibility of the property it overrides.
+func propAnnotationsAccess(p *types.VarSym) uint16 {
+	switch d := p.Decl.(type) {
+	case *syntax.PropDecl:
+		if d.Visibility == syntax.Private {
+			return cf.AccPrivate
+		}
+	case *syntax.CtorParam:
+		if d.Visibility == syntax.Private {
+			return cf.AccPrivate
+		}
+	}
+	switch {
+	case p.Private:
+		return cf.AccPrivate
+	case protectedProp(p, false):
+		return cf.AccProtected
+	}
+	return cf.AccPublic
+}
+
 // setProp calls the setter of property p, as getProp the getter.
 func (g *gen) setProp(cls *types.ClassSym, p *types.VarSym) {
 	if p.JvmField {
@@ -3630,7 +3660,7 @@ func (g *gen) setProp(cls *types.ClassSym, p *types.VarSym) {
 	d := desc(ft)
 	g.toField(p, ft)
 	switch {
-	case p.JvmStatic && p.Owner.CompanionOf == nil && !p.Private && !p.SetterPrivate:
+	case p.StaticSetter && p.Owner.CompanionOf == nil && !p.Private && !p.SetterPrivate:
 		g.dropUnder(ft)
 		g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, types.SetterJVM(p), "("+d+")V")
 		return

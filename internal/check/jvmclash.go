@@ -142,12 +142,12 @@ func (c *Checker) propMembers(out []jvmMember, p *types.VarSym, private bool, po
 	}
 	ctx = ctx[:len(ctx)-1]
 	if gd, ok := types.Desc(types.GetterType(p)); ok {
-		out = append(out, jvmMember{sig: types.GetterJVM(p) + ctx + ")" + gd, pos: getPos, prop: p, private: private, static: p.JvmStatic && p.Owner != nil && p.Owner.CompanionOf == nil})
+		out = append(out, jvmMember{sig: types.GetterJVM(p) + ctx + ")" + gd, pos: getPos, prop: p, private: private, static: p.StaticGetter && p.Owner != nil && p.Owner.CompanionOf == nil})
 	}
 	if p.Mutable && !p.SetterPrivate {
 		if fd, ok := types.ParamDesc(types.FieldType(p)); ok {
 			out = append(out, jvmMember{sig: types.SetterJVM(p) + ctx + fd + ")V", pos: setPos, prop: p, setter: true, private: private,
-				static: p.JvmStatic && p.Owner != nil && p.Owner.CompanionOf == nil})
+				static: p.StaticSetter && p.Owner != nil && p.Owner.CompanionOf == nil})
 		}
 	}
 	return out
