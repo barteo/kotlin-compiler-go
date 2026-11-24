@@ -665,13 +665,16 @@ func (c *Checker) valueSerializerBodies(in *serialInfo) {
 	cd := in.cd
 	p := cd.Serial.Props[0]
 	t := p.Sym().Type
-	ser, ok := c.propSerializer(p.Annotations(), p.Param.P, true)
+	ser, ok := c.propSerializer(p.Annotations(), p.Param.P, true, t, nil, c.serialFile, p.TypeRef())
 	if !ok {
 		return
 	}
 	custom := ser != ""
 	if !custom {
-		ser = c.serialSerializer(t.NonNull())
+		// The serializer of the type as written, which a typealias's
+		// @Serializable(with) may name.
+		ser = c.serialSerializerAt(t.NonNull(), nil, c.serialFile, p.TypeRef(), nil)
+		custom = serialPrimitives[t.K] != "" && ser != "" && ser != c.serialSerializer(t.NonNull())
 	}
 	if ser == "" {
 		c.unsupported(p.Param.P, "serialization", "serialization can't write a property of type %s", t)
@@ -972,7 +975,7 @@ func (c *Checker) serialFill(in *serialInfo) {
 		} else {
 			pos = p.Prop.P
 		}
-		s, ok := c.propSerializer(p.Annotations(), pos, report)
+		s, ok := c.propSerializer(p.Annotations(), pos, report, t, scope, c.serialFile, p.TypeRef())
 		if !ok {
 			return
 		}
@@ -1415,36 +1418,89 @@ func serialMasks(n int) int {
 }
 
 // propSerializer returns the Kotlin of the serializer that a property's
-// @Serializable(with = S::class), among its annotations as, names: S, an
-// object, or else a new S. It returns "" if the property names none, and
-// false, after it reports it if report is set, if kc can't make S.
-func (c *Checker) propSerializer(as []syntax.Annotation, pos syntax.Pos, report bool) (string, bool) {
+// @Serializable(with = S::class), among its annotations as, names, for
+// the property's type t, written as ref (or nil): withSerializerOf's. It
+// returns "" if the property names none, and false, after it reports it if
+// report is set, if kc can't make S.
+func (c *Checker) propSerializer(as []syntax.Annotation, pos syntax.Pos, report bool, t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef) (string, bool) {
 	toks := withSerializer(as)
 	if toks == nil {
 		return "", true
 	}
-	var name strings.Builder
-	for _, t := range toks {
-		name.WriteString(t.Text)
-	}
-	cls := c.classRef(qualifiedExpr(name.String(), pos))
+	cls := c.withClass(toks, pos)
 	if cls == nil {
 		if report {
-			c.errorf(pos, "unresolved reference '%s'", name.String())
+			c.errorf(pos, "unresolved reference '%s'", tokensText(toks))
 		}
 		return "", false
 	}
-	cls.Ensure()
-	switch {
-	case len(cls.TypeParams) > 0:
+	if ref != nil {
+		ref = c.serialTypeOf(ref, 0).ref
+	}
+	s := c.withSerializerOf(cls, t.NonNull(), scope, ctx, ref)
+	if s == "" {
 		if report {
 			c.unsupported(pos, "serialization", "generic serializers of properties are not supported")
 		}
 		return "", false
-	case cls.Object:
-		return fqName(cls), true
 	}
-	return fqName(cls) + "()", true
+	return s, true
+}
+
+// tokensText returns the source of toks, a qualified name.
+func tokensText(toks []syntax.Token) string {
+	var name strings.Builder
+	for _, t := range toks {
+		name.WriteString(t.Text)
+	}
+	return name.String()
+}
+
+// withClass returns the class that toks, the name S of
+// @Serializable(with = S::class), names in the file, or nil.
+func (c *Checker) withClass(toks []syntax.Token, pos syntax.Pos) *types.ClassSym {
+	cls := c.classRef(qualifiedExpr(tokensText(toks), pos))
+	if cls != nil {
+		cls.Ensure()
+	}
+	return cls
+}
+
+// withSerializerOf returns the Kotlin of serializer class cls, which
+// @Serializable(with = cls::class) names for the values of type t, which
+// isn't nullable, written as ref (or nil): cls, an object, or else a new
+// cls. As with the plugin, the constructor of a generic cls takes the
+// serializers of t's type arguments: BoxSer(String.serializer()) of
+// Box<String>. It returns "" if kc can't make it.
+func (c *Checker) withSerializerOf(cls *types.ClassSym, t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef) string {
+	cls.Ensure()
+	switch {
+	case cls.Object:
+		return fqName(cls)
+	case len(cls.TypeParams) == 0:
+		return fqName(cls) + "()"
+	case t.K != types.Class || t.A == nil:
+		return ""
+	}
+	args := make([]string, t.A.Len())
+	for i, a := range t.A.List {
+		if a.V == types.Star {
+			return ""
+		}
+		s := c.serialSerializerAt(a.T.NonNull(), scope, ctx, refArg(ref, t, i), nil)
+		if s == "" {
+			return ""
+		}
+		args[i] = serialNullable(a.T, s)
+	}
+	takes := cls.Ctor != nil && len(cls.Ctor.Params) == len(args)
+	for _, f := range cls.Ctors {
+		takes = takes || len(f.Params) == len(args)
+	}
+	if !takes {
+		return ""
+	}
+	return fqName(cls) + "(" + strings.Join(args, ", ") + ")"
 }
 
 // serialNullable returns the serializer of a nullable type t, from ser,
@@ -1608,18 +1664,24 @@ func (c *Checker) classLitArg(arg syntax.AnnotationArg, p syntax.Pos) *types.Cla
 // serializer, as do the file's @UseSerializers and
 // @UseContextualSerialization of a class.
 func (c *Checker) serialSerializerAt(t types.Type, scope serialScope, ctx *serialFileContext, ref *syntax.TypeRef, as []syntax.Annotation) string {
-	if ref != nil && len(ref.Annotations) > 0 {
-		as = append(as[:len(as):len(as)], ref.Annotations...)
+	var ta serialTypeAnnotations
+	if ref != nil && t.K != types.TypeParam {
+		ta = c.serialTypeOf(ref, 0)
+		ref = ta.ref
 	}
 	switch {
 	case t.K == types.TypeParam:
-	case c.findSerialType(as, "Contextual"):
+	case ta.contextual || c.findSerialType(as, "Contextual"):
 		return c.contextualSerializer(t, scope, ctx, ref)
-	case c.findSerialType(as, "Polymorphic"):
+	case ta.polymorphic || c.findSerialType(as, "Polymorphic"):
 		if lit := serialClassLiteral(t, false); lit != "" {
 			return "kotlinx.serialization.PolymorphicSerializer(" + lit + ")"
 		}
 		return ""
+	case ta.withBad:
+		return ""
+	case ta.with != nil:
+		return c.withSerializerOf(ta.with, t, scope, ctx, ref)
 	case ctx != nil && t.K == types.Class:
 		if s := ctx.using[t.C]; s != "" {
 			return s
@@ -1629,6 +1691,100 @@ func (c *Checker) serialSerializerAt(t types.Type, scope serialScope, ctx *seria
 		}
 	}
 	return c.serialSerializerOf(t, scope, ctx, ref)
+}
+
+// serialTypeAnnotations are what the annotations of a type as written say
+// of its serializer, with those of the typealiases it names, as the plugin
+// sees them on the type they expand to.
+type serialTypeAnnotations struct {
+	contextual, polymorphic bool
+	with                    *types.ClassSym // S of @Serializable(with = S::class)
+	withBad                 bool            // set if kc can't find S
+	// ref is the type as written, through the typealiases it names: its
+	// type arguments are those of the type it expands to.
+	ref *syntax.TypeRef
+}
+
+// serialTypeOf returns the serialTypeAnnotations of ref, a type as
+// written in the file: those of typealias SBox<T> = @Serializable(with =
+// BoxSer::class) Box<T> for SBox<String>, whose ref is then Box<String>.
+// A typealias is read in the file that declares it.
+func (c *Checker) serialTypeOf(ref *syntax.TypeRef, depth int) serialTypeAnnotations {
+	r := serialTypeAnnotations{ref: ref}
+	for _, a := range ref.Annotations {
+		if a.Target != "" {
+			continue
+		}
+		switch {
+		case c.serialAnno(a, "Contextual"):
+			r.contextual = true
+		case c.serialAnno(a, "Polymorphic"):
+			r.polymorphic = true
+		case r.with == nil && !r.withBad && c.serialAnno(a, "Serializable"):
+			if toks := withSerializer([]syntax.Annotation{a}); toks != nil {
+				r.with = c.withClass(toks, a.P)
+				r.withBad = r.with == nil
+			}
+		}
+	}
+	if ref.Ret != nil || ref.Name == "" || depth > 16 {
+		return r
+	}
+	al := c.lookupAlias(ref.Name)
+	if al == nil {
+		return r
+	}
+	d, ok := al.Decl.(*syntax.TypeAliasDecl)
+	if !ok || d.Type == nil || len(ref.Args) != len(d.TypeParams) {
+		return r
+	}
+	ac := c.u.aliasFile[al]
+	if ac == nil {
+		ac = c
+	}
+	args := map[string]*syntax.TypeRef{}
+	for i, tp := range d.TypeParams {
+		args[tp.Name] = ref.Args[i].Type
+	}
+	in := ac.serialTypeOf(substTypeRef(d.Type, args), depth+1)
+	r.contextual = r.contextual || in.contextual
+	r.polymorphic = r.polymorphic || in.polymorphic
+	if r.with == nil && !r.withBad {
+		r.with, r.withBad = in.with, in.withBad
+	}
+	r.ref = in.ref
+	return r
+}
+
+// substTypeRef returns ref, the right side of a typealias, with the uses
+// of its type parameters replaced with args, their arguments as written,
+// with the annotations of both: nil for a star projection.
+func substTypeRef(ref *syntax.TypeRef, args map[string]*syntax.TypeRef) *syntax.TypeRef {
+	if ref == nil {
+		return nil
+	}
+	if a, ok := args[ref.Name]; ok && ref.Args == nil && ref.Ret == nil && ref.Outer == nil {
+		if a == nil {
+			return nil
+		}
+		cp := *a
+		cp.Annotations = append(cp.Annotations[:len(cp.Annotations):len(cp.Annotations)], ref.Annotations...)
+		return &cp
+	}
+	if ref.Args == nil {
+		return ref
+	}
+	cp := *ref
+	cp.Args = make([]*syntax.TypeArg, len(ref.Args))
+	for i, a := range ref.Args {
+		na := *a
+		na.Type = substTypeRef(a.Type, args)
+		if a.Type != nil && na.Type == nil {
+			na.Variance = types.Star
+		}
+		cp.Args[i] = &na
+	}
+	return &cp
 }
 
 // findSerialType reports whether as, the annotations of a property or of

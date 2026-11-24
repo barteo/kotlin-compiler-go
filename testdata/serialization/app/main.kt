@@ -175,6 +175,7 @@ fun main() {
     fails("unknownType", Shape.serializer(), """{"type":"nope"}""")
     generics()
     extras()
+    aliases()
     // As kotlinc's, a $serializer class is synthetic.
     println(Prims.serializer().javaClass.isSynthetic)
     println(log)
