@@ -197,6 +197,10 @@ type fileState struct {
 	// classes call, class or top-level properties: 1 for the getter, 2
 	// for the setter.
 	access map[*types.VarSym]uint8
+	// cp records the companion properties whose fields other classes
+	// than the outer class use: 1 for access$getX$cp, 2 for
+	// access$setX$cp.
+	cp map[*types.VarSym]uint8
 	// impls are the DefaultImpls classes of the interfaces compiled
 	// without JVM default methods, by interface.
 	impls map[*types.ClassSym]*cf.Class
@@ -341,7 +345,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	if opts.Cache == nil {
 		opts.Cache = &Cache{}
 	}
-	g := &gen{file: f, shared: &fileState{opts: opts, slots: map[*types.VarSym]int{}, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
+	g := &gen{file: f, shared: &fileState{opts: opts, slots: map[*types.VarSym]int{}, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{}, cp: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
 		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, outers: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
 		stableInits: map[*syntax.ClassDecl]func(){}}}
@@ -372,6 +376,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	}
 	out = g.finishSingletons(out)
 	g.privateAccessors()
+	g.cpAccessors()
 	g.companionAccessors()
 	g.outerAccessors()
 	g.markerConstructors()
@@ -425,7 +430,7 @@ func (g *gen) privateAccessors() {
 			if self != "" {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
-			code.FieldInsn(get, fieldOwner(p), p.Name, d)
+			g.fieldInsn(code, c.Name, get, p)
 			code.Op(returnOp(ft))
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -437,7 +442,7 @@ func (g *gen) privateAccessors() {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
 			code.Local(loadOp(ft), code.AllocLocal(d))
-			code.FieldInsn(put, fieldOwner(p), p.Name, d)
+			g.fieldInsn(code, c.Name, put, p)
 			code.Op(cf.RETURN)
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -979,21 +984,25 @@ func declPos(d any) syntax.Pos {
 	return syntax.Pos{}
 }
 
-// synthetic returns ACC_SYNTHETIC for a declaration that Java code
-// shouldn't see, as kotlinc marks them: one that is
-// @Deprecated(level = HIDDEN) or @JvmSynthetic.
-// accessorSynthetic returns the synthetic flag of a property's default
-// getter or setter, target get or set, if its annotations as have
-// @get:JvmSynthetic or @set:JvmSynthetic.
+// accessorSynthetic returns the synthetic flag of a property's getter or
+// setter, target get or set, if the property's annotations as have
+// @get:JvmSynthetic or @set:JvmSynthetic, or make the property
+// @Deprecated(level = HIDDEN), which kotlinc hides from Java this way.
 func accessorSynthetic(as []syntax.Annotation, target string) uint16 {
 	for _, a := range as {
 		if a.Target == target && a.Is("JvmSynthetic") {
 			return cf.AccSynthetic
 		}
 	}
+	if (&syntax.Modifiers{Annotations: as}).Hidden() {
+		return cf.AccSynthetic
+	}
 	return 0
 }
 
+// synthetic returns ACC_SYNTHETIC for a declaration that Java code
+// shouldn't see, as kotlinc marks them: one that is
+// @Deprecated(level = HIDDEN) or @JvmSynthetic.
 func synthetic(m *syntax.Modifiers) uint16 {
 	if m.Hidden() || m.Find("", "JvmSynthetic") != nil {
 		return cf.AccSynthetic
@@ -1522,7 +1531,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 					g.code.AllocLocal(self)
 				}
 				if p.StaticField() {
-					g.code.FieldInsn(cf.GETSTATIC, p.ConstOwner().Name, p.Name, d)
+					g.staticField(cf.GETSTATIC, p)
 				} else {
 					g.code.Local(cf.ALOAD, 0)
 					g.code.FieldInsn(cf.GETFIELD, cls.Name, p.Name, d)
@@ -1558,7 +1567,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 				}
 				if p.StaticField() {
 					g.code.Local(loadOp(ft), slot)
-					g.code.FieldInsn(cf.PUTSTATIC, p.ConstOwner().Name, p.Name, d)
+					g.staticField(cf.PUTSTATIC, p)
 				} else {
 					g.code.Local(cf.ALOAD, 0)
 					g.code.Local(loadOp(ft), slot)
@@ -2187,7 +2196,7 @@ func (g *gen) staticInits(od *syntax.ClassDecl) {
 			g.line(m.P)
 			g.prefix = m.Name + "$lambda"
 			g.exprAs(m.Init, types.FieldType(m.Sym))
-			g.code.FieldInsn(cf.PUTSTATIC, m.Sym.ConstOwner().Name, m.Name, desc(types.FieldType(m.Sym)))
+			g.staticField(cf.PUTSTATIC, m.Sym)
 		case *syntax.InitBlock:
 			if all {
 				g.prefix = "_init_$lambda"
@@ -2224,11 +2233,6 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 		// As with kotlinc, a lateinit property's field has its
 		// setter's visibility.
 		acc = lateinitAccess(pd)
-	}
-	if acc == cf.AccPrivate && p.StaticField() && p.ConstOwner() != p.Owner {
-		// A companion's, in its outer class, which the companion's
-		// accessors read: package-private.
-		acc = 0
 	}
 	if inClinit && !p.StaticField() && acc == cf.AccPrivate {
 		// The outer class's static initializer sets it: package-private
@@ -2808,7 +2812,7 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		// interface's static initializer reads, as kotlinc's: the
 		// interface can't call its private constructor.
 		d := "L" + cls.Name + ";"
-		g.cls.AddField(cf.AccStatic|cf.AccFinal, "$$INSTANCE", d)
+		g.cls.AddField(cf.AccStatic|cf.AccFinal|cf.AccSynthetic, "$$INSTANCE", d)
 		g.code.New(cls.Name)
 		g.code.Op(cf.DUP)
 		g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", "()V")
@@ -3419,6 +3423,9 @@ func (g *gen) directGet(p *types.VarSym) bool {
 	if p.Lateinit && !p.Private {
 		return false // its getter checks it, as kotlinc calls it
 	}
+	if g.inFieldOwner(p) && p.Getter == nil {
+		return true
+	}
 	if inOuter(p) && !p.Private && !g.companionInits {
 		return false
 	}
@@ -3427,6 +3434,14 @@ func (g *gen) directGet(p *types.VarSym) bool {
 		g.forCopies(p, 1)
 	}
 	return direct
+}
+
+// inFieldOwner reports whether code of the outer class that holds the
+// field of companion property p, other than a public inline function,
+// is being generated: as kotlinc does, it uses the field where the
+// accessor is a default one.
+func (g *gen) inFieldOwner(p *types.VarSym) bool {
+	return inOuter(p) && !p.Lateinit && !g.publicInline && g.cls.Name == p.ConstOwner().Name
 }
 
 // lateinitAccess returns the access flags of a lateinit property's field,
@@ -3449,6 +3464,9 @@ func lateinitAccess(pd *syntax.PropDecl) uint16 {
 }
 
 func (g *gen) directSet(p *types.VarSym) bool {
+	if g.inFieldOwner(p) && p.Setter == nil {
+		return true
+	}
 	if inOuter(p) && !p.Private && !p.SetterPrivate && !g.companionInits {
 		return false
 	}
@@ -3488,7 +3506,7 @@ func (g *gen) backingField(p *types.VarSym, load bool) {
 		g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 		return
 	case load && p.StaticField():
-		g.code.FieldInsn(cf.GETSTATIC, p.ConstOwner().Name, p.Name, d)
+		g.staticField(cf.GETSTATIC, p)
 	case load:
 		g.loadThis()
 		g.code.FieldInsn(cf.GETFIELD, p.Owner.Name, p.Name, d)
@@ -3507,7 +3525,7 @@ func (g *gen) getField(p *types.VarSym) {
 	d := desc(ft)
 	if p.StaticField() {
 		g.code.Op(cf.POP)
-		g.code.FieldInsn(cf.GETSTATIC, p.ConstOwner().Name, p.Name, d)
+		g.staticField(cf.GETSTATIC, p)
 	} else {
 		g.code.FieldInsn(cf.GETFIELD, p.Owner.Name, p.Name, d)
 	}
@@ -3520,7 +3538,7 @@ func (g *gen) putField(p *types.VarSym) {
 	g.toField(p, ft)
 	if p.StaticField() {
 		g.dropUnder(ft)
-		g.code.FieldInsn(cf.PUTSTATIC, p.ConstOwner().Name, p.Name, d)
+		g.staticField(cf.PUTSTATIC, p)
 		return
 	}
 	g.code.FieldInsn(cf.PUTFIELD, p.Owner.Name, p.Name, d)
@@ -3561,6 +3579,88 @@ func (g *gen) inClass(c *types.ClassSym) bool {
 func privateGetter(p *types.VarSym) string { return "access$" + types.GetterName(p.Name) + "$p" }
 func privateSetter(p *types.VarSym) string { return "access$" + types.SetterName(p.Name) + "$p" }
 
+// cpField reports whether p is a companion object's property whose field
+// its outer class holds privately, as kotlinc writes it: other classes
+// use the outer class's access$getX$cp and access$setX$cp.
+func cpField(p *types.VarSym) bool {
+	if p.Kind != types.Prop || !p.StaticField() || p.Owner.CompanionOf == nil || p.JvmField {
+		return false
+	}
+	if p.Lateinit && !p.Private {
+		pd, _ := p.Decl.(*syntax.PropDecl)
+		return lateinitAccess(pd) == cf.AccPrivate
+	}
+	return true
+}
+
+func cpGetter(p *types.VarSym) string { return "access$" + types.GetterName(p.Name) + "$cp" }
+func cpSetter(p *types.VarSym) string { return "access$" + types.SetterName(p.Name) + "$cp" }
+
+// staticField reads, with op GETSTATIC, or writes, with PUTSTATIC, the
+// static field of object property p.
+func (g *gen) staticField(op byte, p *types.VarSym) {
+	g.fieldInsn(g.code, g.cls.Name, op, p)
+}
+
+// fieldInsn reads or writes the field of property p with op in code of
+// class cls: directly, or through the outer class's accessors if
+// cpField(p) and cls isn't the outer class.
+func (g *gen) fieldInsn(code *cf.Code, cls string, op byte, p *types.VarSym) {
+	owner, d := fieldOwner(p), desc(types.FieldType(p))
+	switch {
+	case !cpField(p) || cls == owner:
+		code.FieldInsn(op, owner, p.Name, d)
+	case op == cf.GETSTATIC:
+		g.shared.cp[p] |= 1
+		code.Invoke(cf.INVOKESTATIC, owner, cpGetter(p), "()"+d)
+	default:
+		g.shared.cp[p] |= 2
+		code.Invoke(cf.INVOKESTATIC, owner, cpSetter(p), "("+d+")V")
+	}
+}
+
+// cpAccessors adds the outer classes' access$getX$cp and access$setX$cp
+// of the companion properties whose fields other classes use.
+func (g *gen) cpAccessors() {
+	ps := make([]*types.VarSym, 0, len(g.shared.cp))
+	for p := range g.shared.cp {
+		ps = append(ps, p)
+	}
+	sort.Slice(ps, func(i, j int) bool {
+		if a, b := ps[i].ConstOwner().Name, ps[j].ConstOwner().Name; a != b {
+			return a < b
+		}
+		return ps[i].Name < ps[j].Name
+	})
+	const acc = cf.AccPublic | cf.AccStatic | cf.AccFinal | cf.AccSynthetic
+	for _, p := range ps {
+		owner := p.ConstOwner().Name
+		c := g.shared.classes[owner]
+		if c == nil {
+			continue
+		}
+		ft := types.FieldType(p)
+		d := desc(ft)
+		if g.shared.cp[p]&1 != 0 {
+			code := c.NewMethod(acc, cpGetter(p), "()"+d)
+			code.FieldInsn(cf.GETSTATIC, owner, p.Name, d)
+			code.Op(returnOp(ft))
+			if err := code.Err(); err != nil {
+				panic(err)
+			}
+		}
+		if g.shared.cp[p]&2 != 0 {
+			code := c.NewMethod(acc, cpSetter(p), "("+d+")V")
+			code.Local(loadOp(ft), code.AllocLocal(d))
+			code.FieldInsn(cf.PUTSTATIC, owner, p.Name, d)
+			code.Op(cf.RETURN)
+			if err := code.Err(); err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
 // getProp calls the getter of property p on a receiver of class cls on the
 // stack, or its static accessor if p is private.
 func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
@@ -3582,6 +3682,10 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 		g.code.Op(cf.POP)
 		g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, types.GetterJVM(p), "()"+desc(types.GetterType(p)))
 		g.coerce(types.GetterType(p), p.Type)
+		return
+	}
+	if g.inFieldOwner(p) && p.Getter == nil {
+		g.getField(p)
 		return
 	}
 	if p.Private {
@@ -3652,7 +3756,7 @@ func propAnnotationsAccess(p *types.VarSym) uint16 {
 
 // setProp calls the setter of property p, as getProp the getter.
 func (g *gen) setProp(cls *types.ClassSym, p *types.VarSym) {
-	if p.JvmField {
+	if p.JvmField || g.inFieldOwner(p) && p.Setter == nil {
 		g.putField(p)
 		return
 	}

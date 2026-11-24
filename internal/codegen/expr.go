@@ -466,7 +466,7 @@ func (g *gen) ident(x *syntax.Ident) {
 			break
 		}
 		if sym.StaticField() && g.directGet(sym) {
-			g.code.FieldInsn(cf.GETSTATIC, sym.ConstOwner().Name, sym.Name, desc(types.FieldType(sym)))
+			g.staticField(cf.GETSTATIC, sym)
 			g.lateinit(sym)
 			g.coerce(types.FieldType(sym), sym.Type)
 			break

@@ -1,0 +1,22 @@
+15
+1 15 store 2 lazy-store true
+7 30 store 8 lazy-store true
+store:30:set
+7/true/a
+17/true/a
+12
+19
+late outer private set
+16 28
+names private static final
+count private static
+isReady private static final
+secret private static
+label private static final
+doubled private static
+lazyName$delegate private static final
+late public static
+privateLate private static
+privateSet private static
+shared public static
+[access$getCount$cp, access$getDoubled$cp, access$getLabel$cp, access$getLazyName$delegate$cp, access$getNames$cp, access$getPrivateLate$cp, access$getPrivateSet$cp, access$getSecret$cp, access$isReady$cp, access$setCount$cp, access$setDoubled$cp, access$setPrivateLate$cp, access$setPrivateSet$cp, access$setSecret$cp]
