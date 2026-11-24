@@ -205,6 +205,11 @@ type Call struct {
 	Noinline    []bool `json:"noinline,omitempty"`
 	// ValueInvocation is set on a call of a value of a function type.
 	ValueInvocation bool `json:"valueInvocation,omitempty"`
+	// Substituted is set on a call of a member that the receiver's class
+	// inherits from a supertype whose type arguments change the member's
+	// signature: FIR's call is of the substitution override in that class,
+	// not of the declaration, as get is on an object : ClassValue<Ctor>().
+	Substituted bool `json:"substituted,omitempty"`
 	// Targets are other functions a call may resolve to.
 	Targets []Call `json:"targets,omitempty"`
 }

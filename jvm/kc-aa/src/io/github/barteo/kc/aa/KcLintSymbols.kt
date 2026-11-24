@@ -527,7 +527,9 @@ internal fun lintLibraryCallableId(name: String, owner: String): CallableId {
 internal class KcLintLibraryFunctionSymbol(private val session: KcLint, private val call: KcFCall?, private val sym: KcFSym?) : StubKaNamedFunctionSymbol() {
     override val token get() = session.token
     override val psi: PsiElement? get() = null
-    override val origin get() = lintLibraryOrigin(call?.fromJava == true)
+    // FIR's call of an inherited member under a substituted signature is of
+    // the substitution override, not the declaration.
+    override val origin get() = if (call?.substituted == true) KaSymbolOrigin.SUBSTITUTION_OVERRIDE else lintLibraryOrigin(call?.fromJava == true)
     private val fqName: String get() = call?.name ?: sym?.qualifiedName.orEmpty().ifEmpty { sym?.name.orEmpty() }
     override val name: Name get() = Name.guessByFirstCharacter(fqName.substringAfterLast('.'))
     override val callableId: CallableId?

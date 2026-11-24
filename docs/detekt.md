@@ -14,36 +14,42 @@ detekt-cli 2.0.0-alpha.6 was run with `--analysis-mode full --all-rules` on a
 `--parallel`. "On kc" is `jvm/detekt/run.sh`, which runs the rules with
 `--parallel`. Both used the same inputs, class path and `-opt-in`s.
 
-| Target | Files | Stock, `--parallel` | On kc | Speedup | Findings that match |
-|:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 16.1 s | 2.7 s | 6.0× | 1597 of 1597 (100%) |
-| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 24.8 s | 4.7 s | 5.2× | 2747 of 2778 (98.9%) |
+| Target | Files | Stock, `--parallel` | On kc | Speedup | Findings that match stock | Multiplatform stock |
+|:---|---:|---:|---:|---:|---:|---:|
+| kotlinpoet 2.4.0 (`commonMain`, `jvmMain`) | 39 | 22.2 s | 3.7 s | 5.9× | 1597 of 1597 (100%) | 1601 of 1601 (100%) |
+| kotlinx-coroutines-core 1.11.0 (`common`, `concurrent`, `jvm`) | 169 | 35.8 s | 6.4 s | 5.6× | 2748 of 2778 (98.9%) | 2760 of 2763 (99.9%) |
 
 - Each time is the median of 5 runs, stock's and kc's round robin
   (`bench/detekt-vs-stock.sh`), after a first run of each that writes kc's
   class-data sharing archive.
 - kc's findings are the same in every run, and the same serially and with
   `--parallel`. Stock's are the same in every run too.
-- The ratio depends on the machine's load. These runs were on a lightly
-  loaded cloud machine. Under heavier load on the same machine, stock took
-  32.9 s and 53.5 s, and kc 5.8 s and 10.5 s (5.7× and 5.1×).
+- The ratio depends on the machine's load. On the same cloud machine under
+  less load, stock took 16.1 s and 24.8 s, and kc 2.7 s and 4.7 s (6.0× and
+  5.2×); under more, 32.9 s and 53.5 s, and 5.8 s and 10.5 s (5.7× and 5.1×).
 
 A finding matches when its file, line, column and rule are the same.
 
-- On kotlinpoet, kc reports every finding stock does, and 4 that stock
-  doesn't: `UnnamedParameterUse` on calls in `actual` classes.
-- On kotlinx-coroutines-core, stock has 31 findings that kc lacks, and kc
-  has 13 that stock lacks. Stock analyzes the `common`, `concurrent` and
-  `jvm` sources as one module, where names resolve to `expect` declarations
-  and references in `actual` classes stay unresolved. Most of the
-  differences come from that, and are stock's:
-  - Stock reports `DefaultExecutor`'s private constants, among 20 such
-    properties, as unused, though they are used, and 5 of their `var`s as
-    could-be-`val`.
-  - Stock reports code after calls to the `expect inline fun`
-    `withCoroutineContext` as unreachable.
-  - kc reports `UnnamedParameterUse` and `PropertyUsedBeforeDeclaration` on
-    calls and properties in `actual` classes that stock leaves unresolved.
+detekt-cli analyzes all the source roots as one module. There, an `expect`
+declaration and its `actual` one are redeclarations of each other:
+- much of the bodies of `actual` classes doesn't resolve;
+- calls of an `expect` function with an `actual` one are ambiguous.
+
+So stock reports `DefaultExecutor`'s private constants, which are used, as
+unused, and misses findings in code it leaves unresolved. "Multiplatform
+stock" is stock with a source module per fragment, each depending on the
+fragments it refines, as Gradle's multiplatform compilations have them
+(`STOCK_FRAGMENTS` in `bench/detekt-vs-stock.sh`, which runs
+`bench/detekt-stock-mpp`). Against it:
+- On kotlinpoet, the findings are the same.
+- On kotlinx-coroutines-core, kc reports no finding that it doesn't, and
+  lacks 3 of its findings, for the reasons under [Differences](#differences):
+  2 `UnnamedParameterUse` in common code, and an `UnreachableCode` that
+  kotlinc doesn't report.
+
+Against plain stock, kc has 4 findings more on kotlinpoet, all in `actual`
+classes. On kotlinx-coroutines-core, it lacks 30 of stock's and has 12 that
+stock lacks.
 
 Most of the time stock saves goes into detekt's `ValidateClasspath` step.
 Stock collects diagnostics on every file there, which is full FIR resolution.
@@ -177,20 +183,23 @@ jvm/detekt/build.sh test
 
 These are the known causes of the differences that remain:
 
-- **`expect` and `actual`.** kc checks the sources as kotlinc checks a
-  multiplatform module's platform compilation: an `expect` declaration and
-  its `actual` one are one declaration, and an `actual typealias` is what
-  the name resolves to in bodies. Stock's single-module session doesn't, as
-  above.
+- **Common code.** kc checks every body against the `actual` declarations,
+  as one platform compilation. K2 resolves common code in its own fragment,
+  against the `expect` ones. They differ where an `actual typealias` names
+  a class with other members: `_state.compareAndSet(a, b)` in common code,
+  where `_state` is an `expect class WorkaroundAtomicReference` whose
+  actual is `java.util.concurrent.atomic.AtomicReference`, calls a Kotlin
+  member under K2 and a Java method on kc. `UnnamedParameterUse` skips
+  Java methods, so it misses 2 calls in `StateFlow.kt`.
 - **Warnings.** kc reports no warnings of its own. `directDiagnostics` reports
-  only what the facts tell. K2 reports the right side of
-  `cause?.let { throw it } ?: …` in `MainDispatchers.kt` as unreachable, as
-  the lambda returns `Nothing`. kc's facts don't.
-- **Substitution overrides.** On a call to a member of an anonymous class's
-  generic supertype, such as `cache.get(key)` on an `object :
-  ClassValue<Ctor>()`, stock resolves to a substitution override in the
-  anonymous class, which kc doesn't model. `ExplicitCollectionElementAccessMethod`
-  misses the call on kc.
+  only what the facts tell. The Analysis API reports the right side of
+  `cause?.let { throw it } ?: …` in `MainDispatchers.kt` as unreachable,
+  which kotlinc 2.4.21 doesn't, so neither does kc.
+- **Substitution overrides.** kc gives a call of an inherited library member
+  the origin of FIR's substitution override where the supertype's type
+  arguments change the member's signature, as `cache.get(key)` on an
+  `object : ClassValue<Ctor>()`. A source member called that way stays the
+  declaration.
 - **Unanswered members.** On kotlinpoet, `-Dkc.trace` counts only these:
   - a library property's `isVal`
   - a library parameter's `hasDefaultValue`

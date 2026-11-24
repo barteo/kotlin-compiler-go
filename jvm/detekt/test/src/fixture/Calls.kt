@@ -58,3 +58,19 @@ class Spec(val modifiers: Set<String>, val body: List<Int>?)
 fun safeChain(s: Spec?): Boolean = s?.modifiers?.contains("inline") ?: false
 
 fun safeChainMember(s: Spec?): Boolean = s?.body?.isEmpty() ?: true
+
+// A function type's invoke has no stable parameter names, called as
+// f(a, b) or f.invoke(a, b): no UnnamedParameterUse.
+fun invokes(f: ((a: Any?, b: Any?) -> Unit)?, x: Any?, y: Any?) {
+    f?.invoke(x, y)
+}
+
+// get of a ClassValue<String> object is a substitution override, not
+// ClassValue's Java method: ExplicitCollectionElementAccessMethod.
+private class Cache {
+    private val values = object : ClassValue<String>() {
+        override fun computeValue(type: Class<*>?): String = type.toString()
+    }
+
+    fun of(type: Class<*>): String = values.get(type)
+}

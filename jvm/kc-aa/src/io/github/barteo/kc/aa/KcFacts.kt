@@ -97,6 +97,8 @@ internal class KcFCall(
     val fromJava get() = flags and 16 != 0
     val stableNames get() = flags and 32 != 0
     val valueInvocation get() = flags and 64 != 0
+    /** A member the receiver's class inherits under a substituted signature (analysis.Call.Substituted). */
+    val substituted get() = flags and 128 != 0
     val isConstructor get() = name.endsWith(".<init>")
 
     /** The callee's simple name: <init> for a constructor. */

@@ -11,6 +11,13 @@
 # --all-rules -cp ... --jdk-home ...); compiler options such as -opt-in go
 # last. A first run of each, which writes kc's archive and warms the page
 # cache, is discarded. KC_JAVA_OPTS adds JVM options to kc's runs.
+#
+# STOCK_FRAGMENTS=common=DIR;jvm=DIR:common runs stock with a source module
+# per fragment, each depending on the fragments it refines, as Gradle's
+# multiplatform compilations do (bench/detekt-stock-mpp). Plain detekt-cli
+# puts all the roots in one module, where an expect declaration and its
+# actual one are redeclarations, which leaves much of their code unresolved.
+# KOTLINC compiles the patch (default: kotlinc on PATH).
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 runs=${RUNS:-5}
@@ -20,12 +27,22 @@ shift
 stock=${STOCK_JAR:?STOCK_JAR names detekt-cli-*-all.jar}
 mkdir -p "$out"
 java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}
+stock_cmd=(-jar "$stock")
+if [ -n "${STOCK_FRAGMENTS:-}" ]; then
+	patch=$out/stock-mpp
+	if [ ! -f "$patch/dev/detekt/core/settings/EnvironmentFacade.class" ]; then
+		"${KOTLINC:-kotlinc}" -no-stdlib -no-reflect -cp "$stock" -jvm-target 17 -api-version 2.2 -language-version 2.2 \
+			-opt-in=org.jetbrains.kotlin.analysis.api.KaExperimentalApi -nowarn \
+			-d "$patch" "$root/bench/detekt-stock-mpp/EnvironmentAware.kt"
+	fi
+	stock_cmd=("-Ddetekt.fragments=$STOCK_FRAGMENTS" -cp "$patch:$stock" dev.detekt.cli.Main)
+fi
 
 run() { # name index
 	local log=$out/$1.$2 start end
 	start=$(date +%s%N)
 	if [ "$1" = stock ]; then
-		"$java_home/bin/java" -Xss8m -jar "$stock" --parallel "${args[@]}" -r "checkstyle:$log.xml" >"$log.out" 2>"$log.err" || true
+		"$java_home/bin/java" -Xss8m "${stock_cmd[@]}" --parallel "${args[@]}" -r "checkstyle:$log.xml" >"$log.out" 2>"$log.err" || true
 	else
 		"$root/jvm/detekt/run.sh" "${args[@]}" -r "checkstyle:$log.xml" >"$log.out" 2>"$log.err" || true
 	fi

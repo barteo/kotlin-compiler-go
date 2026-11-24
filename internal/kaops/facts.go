@@ -319,7 +319,7 @@ func (e *encoder) call(c *analysis.Call) {
 	w.String(c.Name)
 	w.String(c.OwnerClassID)
 	e.elem(w, c.Declaration)
-	w.Uint(bits(c.Extension, c.Suspend, c.Inline, c.Operator, c.FromJava, c.StableNames, c.ValueInvocation))
+	w.Uint(bits(c.Extension, c.Suspend, c.Inline, c.Operator, c.FromJava, c.StableNames, c.ValueInvocation, c.Substituted))
 	w.Uint(e.opt(c.DeclaredReceiver))
 	w.Uint(e.opt(c.Receiver))
 	e.elem(w, c.ImplicitReceiver)

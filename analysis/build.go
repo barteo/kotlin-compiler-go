@@ -1114,6 +1114,74 @@ func (b *builder) flow(v *types.VarSym, t types.Type, f *Fact) {
 	}
 }
 
+// substituted reports whether member f, called on a receiver of class
+// cls, is a substitution override in cls, as FIR's member scope has it: cls
+// inherits f from a supertype whose type arguments change a type of f's
+// signature.
+func substituted(cls *types.ClassSym, f *types.FunSym) bool {
+	owner := f.Owner
+	if cls == nil || owner == nil || cls == owner || len(owner.TypeParams) == 0 {
+		return false
+	}
+	seen := map[*types.ClassSym]bool{cls: true}
+	queue := []types.Type{cls.This()}
+	for len(queue) > 0 {
+		t := queue[0]
+		queue = queue[1:]
+		t.C.Ensure()
+		s := types.Subst{}
+		for i, p := range t.C.TypeParams {
+			if i < t.A.Len() {
+				s[p] = t.A.Get(i)
+			}
+		}
+		for _, st := range t.C.Supers {
+			st = s.Apply(st)
+			if st.K != types.Class || st.C == nil || seen[st.C] {
+				continue
+			}
+			if st.C != owner {
+				seen[st.C] = true
+				queue = append(queue, st)
+				continue
+			}
+			// The indexes of owner's type parameters the supertype's
+			// arguments change: a member's types may name copies of
+			// them, of the same owner and index.
+			changed := map[int]bool{}
+			for i := range owner.TypeParams {
+				if i < st.A.Len() {
+					a := st.A.Get(i)
+					if a.V != types.Inv || a.T.K != types.TypeParam {
+						changed[i] = true
+					} else if p := a.T.Param(); p == nil || p.Owner != any(owner) || p.Index != i {
+						changed[i] = true
+					}
+				}
+			}
+			uses := func(t types.Type) bool {
+				return t.Has(func(u types.Type) bool {
+					if u.K != types.TypeParam {
+						return false
+					}
+					p := u.Param()
+					return p != nil && p.Owner == any(owner) && changed[p.Index]
+				})
+			}
+			if uses(f.Ret) || f.Recv.K != types.Invalid && uses(f.Recv) {
+				return true
+			}
+			for _, p := range f.Params {
+				if uses(p.Type) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return false
+}
+
 // callExpr visits a call, and its callee's name.
 func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	f.Call = b.call(x)
@@ -1131,6 +1199,15 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		}
 		f.Call.ImplicitReceiver = b.implicitReceiver(x.Fun, owner, el)
 		f.ImplicitReceiver = copyID(f.Call.ImplicitReceiver)
+		if owner != nil && !x.Sym.Ext {
+			var cls *types.ClassSym
+			if m, ok := x.Fun.(*syntax.Member); ok && m.Static == nil {
+				cls = m.X.Type().C
+			} else if f.Call.ImplicitReceiver != nil {
+				cls = b.classAt[*f.Call.ImplicitReceiver]
+			}
+			f.Call.Substituted = substituted(cls, x.Sym)
+		}
 	}
 	if f.Call != nil && x.Sym != nil && x.Sym.Decl == nil && strings.HasPrefix(f.Call.Name, "kotlin.") {
 		f.Builtin = f.Call.Name
@@ -1524,7 +1601,9 @@ func (b *builder) funCall(f *types.FunSym) Call {
 	}
 	c.Suspend, c.Operator = f.Suspend, f.Operator
 	c.FromJava = f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" && f.Decl == nil
-	c.StableNames = !c.FromJava
+	// A function type's invoke has no stable parameter names (FIR's
+	// FunctionN is synthetic).
+	c.StableNames = !c.FromJava && (f.Owner == nil || !f.Owner.Func)
 	return c
 }
 
@@ -1611,8 +1690,8 @@ func (b *builder) call(x *syntax.Call) *Call {
 	c.Operator = f.Operator
 	c.FromJava = f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" && f.Decl == nil
 	// kotlinc: a function type's invoke has no stable parameter names,
-	// whatever names its type spells.
-	c.StableNames = !c.FromJava && !x.Invoke
+	// whatever names its type spells, called as f(a, b) or f.invoke(a, b).
+	c.StableNames = !c.FromJava && !x.Invoke && (f.Owner == nil || !f.Owner.Func)
 	if !x.Invoke {
 		c.Targets = b.targets(f)
 	}

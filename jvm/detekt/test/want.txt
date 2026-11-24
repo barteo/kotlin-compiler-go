@@ -21,6 +21,11 @@ fixture/Calls.kt:58:36 NullableBooleanCheck
 fixture/Calls.kt:58:36 ReplaceSafeCallChainWithRun
 fixture/Calls.kt:5:30 UnnecessarySafeCall
 fixture/Calls.kt:60:42 NullableBooleanCheck
+fixture/Calls.kt:64:13 CanBeNonNullable
+fixture/Calls.kt:68:1 UnusedPrivateClass
+fixture/Calls.kt:72:62 NullableToStringCall
+fixture/Calls.kt:75:38 ExplicitCollectionElementAccessMethod
+fixture/Calls.kt:75:9 FunctionNameMinLength
 fixture/Calls.kt:7:30 UnnecessaryNotNullOperator
 fixture/Calls.kt:9:43 MapGetWithNotNullAssertionOperator
 fixture/Variables.kt:11:5 VarCouldBeVal

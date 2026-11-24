@@ -966,6 +966,7 @@ fun h(s: String, n: String?, c: Boolean, k: (a: Int) -> Unit, a: Any?) {
     if (c) println(1) else println(2)
     run outer@{ 1 }
     k(1)
+    k.invoke(2)
     when (val x = a as? String) {
         null -> {}
         else -> println(x)
@@ -1005,6 +1006,10 @@ fun h(s: String, n: String?, c: Boolean, k: (a: Int) -> Unit, a: Any?) {
 	}
 	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", "k(1)", 0)); f.Call == nil || f.Call.StableNames {
 		t.Errorf("k(1): %+v", f.Call)
+	}
+	// FIR's FunctionN.invoke has no stable names however it's called.
+	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", "invoke(2)", 0)); f.Call == nil || f.Call.StableNames {
+		t.Errorf("k.invoke(2): %+v", f.Call)
 	}
 	pd := fact(t, r, at(t, s, "PROPERTY", "val x = a as? String", 0))
 	if pd.Role != "declaration" || pd.Symbol == 0 || pd.Symbol != fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 0)).Symbol {
@@ -1350,6 +1355,57 @@ func TestUnsupportedSyntax(t *testing.T) {
 		}
 		if data := r.Data(); len(data.Facts) != 0 {
 			t.Errorf("%q: facts reported with diagnostics: %d", src, len(data.Facts))
+		}
+	}
+}
+
+// TestSubstitutedCalls checks Call.Substituted: a member the receiver's
+// class inherits from a supertype whose type arguments change its
+// signature is FIR's substitution override in that class.
+func TestSubstitutedCalls(t *testing.T) {
+	src := `package p
+
+abstract class Box<T> {
+    fun get(k: Int): T = TODO()
+    fun size(): Int = 0
+}
+class IntBox : Box<Int>() {
+    fun own() = get(1)
+}
+class Same<T> : Box<T>()
+
+// A private property keeps the anonymous object's type; a public one
+// would be a ClassValue<String>, whose get is ClassValue's own.
+private val cache = object : ClassValue<String>() {
+    override fun computeValue(type: Class<*>?): String = ""
+}
+val shared: ClassValue<String> = cache
+
+fun g(b: IntBox, o: Box<String>, s: Same<String>) {
+    b.get(2)
+    b.size()
+    o.get(3)
+    s.get(4)
+    cache.get(String::class.java)
+    shared.get(Int::class.java)
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+	for _, want := range []struct {
+		text string
+		sub  bool
+	}{
+		{"get(1)", true},
+		{"get(2)", true},
+		{"size()", false},
+		{"get(3)", false},
+		{"get(4)", true},
+		{"get(String::class.java)", true},
+		{"get(Int::class.java)", false},
+	} {
+		f := fact(t, r, at(t, s, "CALL_EXPRESSION", want.text, 0))
+		if f.Call == nil || f.Call.Substituted != want.sub {
+			t.Errorf("%s: substituted %v, want %v: %+v", want.text, f.Call != nil && f.Call.Substituted, want.sub, f.Call)
 		}
 	}
 }
