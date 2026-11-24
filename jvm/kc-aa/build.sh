@@ -95,7 +95,7 @@ stubbed=(
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
 	symbols.pointers.KaSymbolPointer
-	symbols.KaLocalVariableSymbol symbols.KaAnonymousFunctionSymbol symbols.KaAnonymousObjectSymbol
+	symbols.KaLocalVariableSymbol symbols.KaAnonymousFunctionSymbol
 	resolution.KaSimpleFunctionCall resolution.KaSimpleVariableAccessCall resolution.KaPartiallyAppliedSymbol
 	resolution.KaSuccessCallInfo resolution.KaExplicitReceiverValue resolution.KaImplicitReceiverValue
 	resolution.KaSmartCastedReceiverValue signatures.KaFunctionSignature signatures.KaVariableSignature
