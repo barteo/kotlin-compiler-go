@@ -193,7 +193,7 @@ func wrapperOf(t types.Type) byte {
 		return 'f'
 	case t.C.Name == mProvider:
 		return 'p'
-	case t.C.KotlinName == "kotlin/Lazy":
+	case t.C.Name == "kotlin/Lazy":
 		return 'l'
 	}
 	return 0
@@ -246,7 +246,7 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 // setup reads the graph's annotation a, its factory, annotated
 // factoryAnn, and its members and contributions, and adds their bindings.
 func (gr *mGraph) setup(a *mAnn, factoryAnn, factoryName string) bool {
-	m, cls := gr.m, gr.g
+	m, cls := gr.m, ensured(gr.g)
 	if len(cls.TypeParams) > 0 {
 		gr.unsupported("Metro graphs with type parameters are not supported")
 		return false
@@ -1717,13 +1717,14 @@ func (gr *mGraph) extensionBinding(r *mReq, cls *types.ClassSym) *mBinding {
 		}
 		impl := child.impl
 		return &mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return impl + "()" }}
-	case find(anns, mGraphExtensionFactory) != nil && cls.Outer != nil && find(gr.m.annsOf(cls.Outer), mGraphExtension) != nil:
-		child := gr.extension(cls.Outer)
+	case find(anns, mGraphExtensionFactory) != nil && gr.m.outer(cls) != nil && find(gr.m.annsOf(gr.m.outer(cls)), mGraphExtension) != nil:
+		ext := gr.m.outer(cls)
+		child := gr.extension(ext)
 		if child == nil {
 			return nil
 		}
 		if child.factory != cls {
-			gr.errorf("%s is not the factory of graph extension %s", cls.DisplayName(), cls.Outer.DisplayName())
+			gr.errorf("%s is not the factory of graph extension %s", cls.DisplayName(), ext.DisplayName())
 			return nil
 		}
 		params, args := createParams(child.create)

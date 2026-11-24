@@ -144,6 +144,10 @@ type Param struct {
 	// InTry is set for the invokes in the range of an exception handler
 	// of any exception whose finally block can't be copied: see Finally.
 	InTry []bool
+	// InMonitor is set if an invoke is between a monitorenter and its
+	// monitorexit, as in synchronized(lock) { f() }: a suspension point
+	// in the lambda inlined there would hold the monitor.
+	InMonitor bool
 }
 
 // Finally is the finally block of a handler of any exception, which a
@@ -443,7 +447,73 @@ func analyze(m *cf.Method, read func(name, desc string) (*cf.Method, error), dep
 			p.InTry = append(p.InTry, !ok)
 		}
 	}
+	if monitors := b.monitors(); monitors != nil {
+		for _, p := range b.Params {
+			for _, inv := range p.Invokes {
+				p.InMonitor = p.InMonitor || monitors[inv] > 0
+			}
+		}
+	}
 	return b, nil
+}
+
+// monitors returns, by instruction index, the number of monitors the
+// body holds where each instruction starts: the monitorenters on the way
+// to it less the monitorexits, the most of any way. It returns nil if
+// the body has no monitorenter.
+func (b *Body) monitors() []int {
+	if !slices.ContainsFunc(b.Insns, func(in cf.Insn) bool { return in.Op == cf.MONITORENTER }) {
+		return nil
+	}
+	depth := make([]int, len(b.Insns))
+	seen := make([]bool, len(b.Insns))
+	var work []int
+	reach := func(off, d int) {
+		i, ok := b.Index[off]
+		if !ok || seen[i] && depth[i] >= d {
+			return
+		}
+		seen[i], depth[i] = true, d
+		work = append(work, i)
+	}
+	reach(0, 0)
+	for len(work) > 0 {
+		i := work[len(work)-1]
+		work = work[:len(work)-1]
+		in := &b.Insns[i]
+		d := depth[i]
+		for _, h := range b.Handlers {
+			if h.Start <= in.Off && in.Off < h.End {
+				reach(h.Handler, d)
+			}
+		}
+		switch in.Op {
+		case cf.MONITORENTER:
+			d = min(d+1, 8) // bounded, for a loop that enters
+		case cf.MONITOREXIT:
+			d = max(d-1, 0)
+		}
+		next := true
+		switch op := in.Op; {
+		case cf.IFEQ <= op && op <= cf.IF_ACMPNE, op == cf.IFNULL, op == cf.IFNONNULL:
+			reach(in.Target, d)
+		case op == cf.GOTO:
+			reach(in.Target, d)
+			next = false
+		case op == cf.TABLESWITCH, op == cf.LOOKUPSWITCH:
+			reach(in.Target, d)
+			for _, t := range in.Targets {
+				reach(t, d)
+			}
+			next = false
+		case cf.IRETURN <= op && op <= cf.RETURN, op == cf.ATHROW:
+			next = false
+		}
+		if next && i+1 < len(b.Insns) {
+			reach(b.Insns[i+1].Off, d)
+		}
+	}
+	return depth
 }
 
 const functionPrefix = "Lkotlin/jvm/functions/Function"

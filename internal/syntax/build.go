@@ -249,6 +249,15 @@ func InlineClass(m *Modifiers, kw Pos) {
 	m.Value, m.JvmInline = true, true
 }
 
+// EnumAnnotation makes m, the modifiers of a class written both enum and
+// annotation, those of an enum class, as kotlinc's class kind is: the
+// modifier checks report annotation on it.
+func EnumAnnotation(m *Modifiers) {
+	if m.Enum && m.Annotation {
+		m.Annotation = false
+	}
+}
+
 // CallableRefLambda returns callable reference ref at pos as a lambda for
 // the checker to fill in.
 func CallableRefLambda(pos Pos, ref *CallableRef) *Lambda {
@@ -359,9 +368,11 @@ func IntLiteralErrors(text string) []string {
 	return msgs
 }
 
-// TokenizeAt lexes src, which starts at pos, as an expression: newlines
-// are never significant. The tokens end with EOF.
-func TokenizeAt(file, src string, pos Pos) ([]Token, []*Error) { return tokenizeAt(file, src, pos) }
+// TokenizeArgAt lexes src, an argument in a call's parentheses starting
+// at pos, where newlines count only in a lambda's braces.
+func TokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) {
+	return tokenizeArgAt(file, src, pos)
+}
 
 // CharValue decodes a character literal's text, quotes included, or
 // returns an error message.
@@ -394,10 +405,20 @@ func (p *parser) Unsupported(pos Pos, feature, format string, args ...any) {
 }
 
 // ParamOnly reports modifiers that only parameters take on another
-// declaration.
+// declaration, which is kept, so that the rest of it is checked.
 func ParamOnly(m Modifiers, r Reporter) {
 	if m.Vararg {
-		r.Fail(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+		r.Later(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+	}
+}
+
+// NoInitModifiers reports the modifiers written on an init block, which
+// takes none, as kotlinc's WRONG_MODIFIER_TARGET.
+func NoInitModifiers(m Modifiers, r Reporter) {
+	for _, w := range m.Written {
+		if w.Name != "vararg" { // which ParamOnly reports
+			r.Later(w.P, "modifier '%s' is not applicable to 'initializer'", w.Name)
+		}
 	}
 }
 
@@ -413,10 +434,7 @@ func NoContexts(m *Modifiers, what string, r Reporter) {
 // CheckLocalFun reports what local function fd, with its modifiers, can't
 // be.
 func CheckLocalFun(fd *FunDecl, r Reporter) {
-	if fd.External {
-		r.Unsupported(fd.ExternalP, "local external function", "local external functions are not supported")
-	}
-	if fd.Body == nil && fd.ExprBody == nil {
+	if fd.Body == nil && fd.ExprBody == nil && !fd.External {
 		r.Fail(fd.P, "a local function must have a body")
 	}
 }
@@ -446,6 +464,8 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	for _, a := range m.Annotations {
 		if a.Target == "" {
 			a.Target, a.Accessor = name, true
+		} else {
+			a.OnAccessor = true
 		}
 		pd.Annotations = append(pd.Annotations, a)
 	}

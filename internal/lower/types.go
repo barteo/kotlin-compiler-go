@@ -26,7 +26,7 @@ func (l *lowerer) recvType(n psi.NodeRef) (*syntax.TypeRef, []syntax.Annotation)
 func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.Annotation) {
 	var (
 		elem      psi.NodeRef
-		quest     bool
+		quest     psi.NodeRef
 		mods      []psi.NodeRef
 		recvAs    []syntax.Annotation
 		leading   = true // still before the type's other annotations
@@ -40,7 +40,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 			psi.KindINTERSECTION_TYPE, psi.KindTYPE_REFERENCE:
 			elem = c
 		case psi.KindQUEST:
-			quest = true
+			quest = c
 		case psi.KindLPAR, psi.KindRPAR:
 		default:
 			l.unexpected(c)
@@ -84,7 +84,15 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		l.fail(n, "expected a type")
 	}
 	t := l.typeElem(elem, recv)
-	if quest {
+	if quest.Valid() {
+		// T?? is a nullable type of a nullable type, outside
+		// parentheses: kotlinc warns of the second ?.
+		switch first := kids(n)[0]; {
+		case t.Quest == syntax.Pos{}:
+			t.Quest = l.pos(quest)
+		case first == elem && elem.NumericKind() == psi.KindNULLABLE_TYPE && t.Redundant == syntax.Pos{}:
+			t.Redundant = l.pos(quest)
+		}
 		t.Nullable = true
 	}
 	if suspendAt.Valid() {
@@ -164,14 +172,17 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 				for _, p := range kids(c) {
 					if p.NumericKind() == psi.KindVALUE_PARAMETER {
 						l.functionTypeParamExtras(p)
+						name := ""
 						if id := child(p, psi.KindIDENTIFIER); id.Valid() {
 							ft.Named = append(ft.Named, l.pos(id))
+							name = ident(id)
 						}
+						ft.Names = append(ft.Names, name)
 						ft.Params = append(ft.Params, l.typeRef(child(p, psi.KindTYPE_REFERENCE)))
 					}
 				}
 				if len(ft.Params) == 0 {
-					ft.Params = nil
+					ft.Params, ft.Names = nil, nil
 				}
 			case psi.KindTYPE_REFERENCE:
 				ft.Ret = l.typeRef(c)
@@ -217,6 +228,7 @@ func (l *lowerer) functionTypeParamExtras(p psi.NodeRef) {
 func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 	type seg struct {
 		name string
+		pos  syntax.Pos
 		args psi.NodeRef
 	}
 	var segs []seg
@@ -231,7 +243,7 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 				if t := first(c); t.Text() != "_" || l.typeArgDepth == 0 {
 					l.underscoreRef(t)
 				}
-				s.name = ident(first(c))
+				s.name, s.pos = ident(first(c)), l.pos(first(c))
 			case psi.KindTYPE_ARGUMENT_LIST:
 				s.args = c
 			case psi.KindDOT:
@@ -242,24 +254,28 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 		segs = append(segs, s)
 	}
 	flatten(n)
-	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name}
+	ref := &syntax.TypeRef{P: l.pos(n), Name: segs[0].name, Parts: []syntax.Pos{segs[0].pos}}
 	i := 0
 	for segs[i].args == (psi.NodeRef{}) && i+1 < len(segs) {
 		i++
 		ref.Name += "." + segs[i].name
+		ref.Parts = append(ref.Parts, segs[i].pos)
 	}
 	if segs[i].args.Valid() {
+		ref.ArgsP = l.pos(segs[i].args)
 		ref.Args = l.typeArgs(segs[i].args)
 	}
 	for ref.Args != nil && i+1 < len(segs) {
 		outer := ref
 		i++
-		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer}
+		ref = &syntax.TypeRef{P: outer.P, Name: outer.Name + "." + segs[i].name, Outer: outer, Parts: []syntax.Pos{segs[i].pos}}
 		for !segs[i].args.Valid() && i+1 < len(segs) {
 			i++
 			ref.Name += "." + segs[i].name
+			ref.Parts = append(ref.Parts, segs[i].pos)
 		}
 		if segs[i].args.Valid() {
+			ref.ArgsP = l.pos(segs[i].args)
 			ref.Args = l.typeArgs(segs[i].args)
 		}
 	}
@@ -357,6 +373,7 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		}
 		if b := child(c, psi.KindTYPE_REFERENCE); b.Valid() {
 			tp.Bounds = []*syntax.TypeRef{l.typeRef(b)}
+			tp.DeclBound = true
 		}
 		ps = append(ps, tp)
 	}
@@ -387,9 +404,12 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 			}
 		}
 		if tp == nil {
-			l.fail(ref, "'%s' does not refer to a type parameter of this declaration", name)
+			// As kotlinc, the declaration is kept, without the bound.
+			l.errorLater(l.pos(ref), "'%s' does not refer to a type parameter of this declaration", name)
+			continue
 		}
 		tp.Bounds = append(tp.Bounds, l.typeRef(child(c, psi.KindTYPE_REFERENCE)))
+		tp.WhereBound = true
 	}
 }
 
@@ -465,12 +485,8 @@ func (l *lowerer) annotationArgs(n psi.NodeRef) []syntax.AnnotationArg {
 		})
 		if start.Valid() {
 			from := l.tokenStart(start)
-			toks, _ := syntax.TokenizeAt(l.path, l.src[from:c.Range().End], l.posAt(from))
-			for _, t := range toks {
-				if t.Kind != syntax.NL && t.Kind != syntax.EOF {
-					arg.Toks = append(arg.Toks, t)
-				}
-			}
+			toks, _ := syntax.TokenizeArgAt(l.path, l.src[from:c.Range().End], l.posAt(from))
+			arg.Toks = syntax.AnnotationArgToks(toks)
 		}
 		args = append(args, arg)
 	}
@@ -512,8 +528,9 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			}
 			if !m.Set(c.Text(), l.pos(c)) {
 				// in, out or reified, which only type parameters take, as
-				// kotlinc's WRONG_MODIFIER_TARGET.
-				l.fail(c, "modifier '%s' is not applicable here", c.Text())
+				// kotlinc's WRONG_MODIFIER_TARGET. The declaration is kept,
+				// so that its other modifiers and its body are checked.
+				l.errorLater(l.pos(c), "modifier '%s' is not applicable here", c.Text())
 			}
 		}
 	}

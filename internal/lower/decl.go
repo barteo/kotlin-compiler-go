@@ -133,6 +133,8 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 	case psi.KindDESTRUCTURING_DECLARATION:
 		l.newDestructuring(n)
 		l.failAt(l.pos(child(n, psi.KindLPAR)), "Destructuring declarations are only allowed for local variables/values")
+	case psi.KindMODIFIER_LIST:
+		f.Dangling = append(f.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected declaration")
 	}
@@ -301,6 +303,7 @@ func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
 		if a.Target == "" {
 			a.Target = "field"
 		}
+		a.OnField = true
 		pd.Annotations = append(pd.Annotations, a)
 	}
 	if t := child(n, psi.KindTYPE_REFERENCE); t.Valid() {
@@ -421,9 +424,21 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		}
 	}
 	kpos := l.pos(kw)
+	if enumWithoutKeyword(n) {
+		// enum Color { RED }: FIR keeps it as an enum class, with the
+		// missing keyword's syntax error, which recoverable lets through.
+		kpos = l.pos(child(n, psi.KindIDENTIFIER))
+		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
+			pos, msg := l.syntaxMessage(e)
+			l.errorLater(pos, "%s", msg)
+		}
+	}
 	isObject := kw.NumericKind() == psi.KindOBJECT_KEYWORD
 	if m.Inline && kw.NumericKind() == psi.KindCLASS_KEYWORD {
 		syntax.InlineClass(&m, kpos)
+	}
+	if kw.NumericKind() == psi.KindCLASS_KEYWORD || !kw.Valid() {
+		syntax.EnumAnnotation(&m)
 	}
 	cd := record(l, &syntax.ClassDecl{Modifiers: m, P: kpos, Interface: kw.NumericKind() == psi.KindINTERFACE_KEYWORD, Object: isObject}, n)
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() && has(mods, psi.KindFUN_KEYWORD) {
@@ -461,7 +476,7 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
 		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
 		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
-			cd.HasPrimary = true
+			cd.HasPrimary, cd.WrittenPrimary = true, true
 			cd.CtorParams = l.ctorParams(ps)
 		}
 	}
@@ -575,6 +590,7 @@ func (l *lowerer) noCarry() {
 func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 	l.syntaxError(n)
 	var anns []syntax.Annotation
+	var external syntax.Pos
 	if mods := child(n, psi.KindMODIFIER_LIST); mods.Valid() {
 		for _, c := range kids(mods) {
 			switch c.NumericKind() {
@@ -583,6 +599,9 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 			case psi.KindANNOTATION:
 				anns = append(anns, l.bracketAnnotations(c)...)
 			case psi.KindEXTERNAL_KEYWORD:
+				if external == (syntax.Pos{}) {
+					external = l.pos(c)
+				}
 			case psi.KindCONTEXT_PARAMETER_LIST:
 				l.contextParams(c)
 				l.errorLater(l.pos(c), "context parameters on enum entries are unsupported")
@@ -595,7 +614,7 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 		}
 	}
 	name := child(n, psi.KindIDENTIFIER)
-	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns}, n)
+	e := record(l, &syntax.EnumEntry{P: l.pos(name), Name: ident(name), Annotations: anns, External: external}, n)
 	id := &syntax.Ident{Name: cd.Name}
 	id.P = e.P
 	e.Call = &syntax.Call{Fun: id}
@@ -689,6 +708,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		cd.Members = append(cd.Members, l.secondaryCtor(n, m))
 	case psi.KindCLASS_INITIALIZER:
 		syntax.NoContexts(&m, "initializers", l)
+		syntax.NoInitModifiers(m, l)
 		b := child(n, psi.KindBLOCK)
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")
@@ -703,9 +723,22 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 			}
 		}
 		l.unsupported(pos, "companion block", "companion blocks are not supported")
+	case psi.KindMODIFIER_LIST:
+		cd.Dangling = append(cd.Dangling, l.dangling(n)...)
 	default:
 		l.fail(n, "unexpected member declaration")
 	}
+}
+
+// dangling returns the annotations of MODIFIER_LIST n, which no
+// declaration follows, to check as kotlinc does. psi reports the missing
+// declaration in an error element after n; if there is none, n is
+// reported.
+func (l *lowerer) dangling(n psi.NodeRef) []syntax.Annotation {
+	if next(n).NumericKind() != psi.KindERROR_ELEMENT {
+		l.fail(n, "unexpected declaration")
+	}
+	return l.modifiers(n).Annotations
 }
 
 // secondaryCtor lowers a SECONDARY_CONSTRUCTOR with modifiers m.
@@ -732,11 +765,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 // m.
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
 	syntax.NoContexts(&m, "classes", l)
-	switch {
-	case has(n, psi.KindOBJECT_KEYWORD):
-		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
-			ident(child(n, psi.KindIDENTIFIER)))
-	case m.Enum:
+	if m.Enum {
 		l.errorLater(l.pos(child(n, psi.KindCLASS_KEYWORD)), "local enum classes are not allowed")
 	}
 	cd := l.class(n, m)

@@ -29,7 +29,7 @@ func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) 
 		c.errorf(d.P, "modifier 'inner' is not applicable inside an object or an interface")
 		return
 	case d.Interface || d.Object || d.Enum || d.Annotation:
-		c.errorf(d.P, "modifier 'inner' is only applicable to classes")
+		c.errorf(d.PosOf("inner", d.P), "modifier 'inner' is only applicable to classes")
 		return
 	}
 	sym.Inner = true
@@ -259,6 +259,9 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	}
 	if c.refLHS && ref.Outer != nil && !c.segmentsFit(ref) {
 		if t, ok := c.flatInnerType(cls, ref); ok {
+			if t.K != types.Invalid {
+				c.lhsArgsWarning(cls, ref, t)
+			}
 			return t
 		}
 	}
@@ -275,12 +278,13 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	inner := c.refLHS
 	c.refLHS = false
 	defer func() { c.refLHS = inner }()
-	for _, a := range ref.Args {
+	for i, a := range ref.Args {
 		arg := types.Arg{V: a.Variance}
 		if a.Variance != types.Star {
 			if arg.T = c.resolveType(a.Type); arg.T.K == types.Invalid {
 				return arg.T
 			}
+			c.projection(a, cls.TypeParams[i], cls)
 		}
 		args = append(args, arg)
 	}
@@ -323,6 +327,9 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	t := types.GenericType(cls, args)
 	if !c.noBoundChecks {
 		c.checkBoundsOf(t, ref, own+extra)
+	}
+	if inner {
+		c.lhsArgsWarning(cls, ref, t)
 	}
 	return c.nullable(t, ref)
 }

@@ -23,7 +23,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 564 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
+| `LANGUAGE` | 563 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
 | `TARGET_BACKEND: WASM` | 122 | `casts/kt73931.kt`, `casts/wasmCastMessages.kt` |
 | `IGNORE_BACKEND: JVM_IR` | 52 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
 | `TARGET_BACKEND: JS_IR, JS_IR_ES6` | 36 | `builtins/stringTemplateWithValueOf.kt`, `casts/functions/isFunKSmallJS.kt` |
@@ -37,6 +37,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | `ALLOW_KOTLIN_PACKAGE` | 2 | `annotations/intrinsicConstEvaluationInSources.kt`, `package/packageLocalClassNotImportedWithDefaultImport.kt` |
 | `ASSERTIONS_MODE` | 2 | `assert/alwaysDisable.kt`, `assert/alwaysEnable.kt` |
 | `TARGET_BACKEND: WASM_JS` | 1 | `casts/wasmCastMessagesWasmJs.kt` |
+| `needs a JDK before 21` | 1 | `extensionFunctions/kt475.kt` |
 
 ## By directory
 
@@ -52,7 +53,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | controlStructures | 158 | 158 | 0 | 0 | 0 | 0 | 0 |
 | delegatedProperty | 151 | 151 | 0 | 0 | 0 | 0 | 0 |
 | bridges | 140 | 140 | 0 | 0 | 0 | 0 | 0 |
-| inline | 132 | 132 | 0 | 0 | 0 | 0 | 0 |
+| inline | 133 | 133 | 0 | 0 | 0 | 0 | 0 |
 | properties | 124 | 124 | 0 | 0 | 0 | 0 | 0 |
 | classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
 | objects | 116 | 116 | 0 | 0 | 0 | 0 | 0 |
@@ -69,7 +70,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | casts | 68 | 68 | 0 | 0 | 0 | 0 | 0 |
 | diagnostics | 60 | 60 | 0 | 0 | 0 | 0 | 0 |
 | dataClasses | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
-| extensionFunctions | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
+| extensionFunctions | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | annotations | 51 | 51 | 0 | 0 | 0 | 0 | 0 |

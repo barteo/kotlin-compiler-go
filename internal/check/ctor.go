@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -180,6 +182,7 @@ func superCands(cls *types.ClassSym) []callee {
 func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 	cls := d.Sym
 	secs := d.Secondaries()
+	resolved := map[*syntax.SecondaryCtor]bool{} // this(...) calls resolved without errors
 	for _, sc := range secs {
 		if sc.Sym == nil || sc.Serial != nil {
 			continue // reported by resolveSecondaries, or the serialization plugin's
@@ -235,9 +238,23 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			var cands []callee
 			if sc.ToThis {
 				x.Ctor = cls
+				// The class's type parameters are its own in this(...),
+				// not inferred. The constructor itself is a candidate too,
+				// this() in constructor() being a cycle, but not for a call
+				// with a lambda if its parameters' types mention them, as
+				// kc would take the lambda for one: constructor(x: T2) and
+				// this({ x }).
+				lambda := slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { _, ok := a.(*syntax.Lambda); return ok })
+				var own types.Subst
+				if len(cls.TypeParams) > 0 {
+					own = types.Subst{}
+					for _, tp := range cls.TypeParams {
+						own[tp] = types.Arg{T: types.ParamType(tp)}
+					}
+				}
 				for _, f := range userCtors(cls) {
-					if f != sc.Sym {
-						cands = append(cands, callee{f: f})
+					if f != sc.Sym || !lambda || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.HasParams() }) {
+						cands = append(cands, callee{f: f, given: own})
 					}
 				}
 			} else {
@@ -265,7 +282,11 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			if sup, ok := c.asSuper(cls.This(), cls.Super); ok && !sc.ToThis {
 				want = sup
 			}
+			n := len(c.errs)
 			c.resolve(x, cands, want, nil)
+			if sc.ToThis && len(c.errs) == n {
+				resolved[sc] = true
+			}
 			argNarrows = delegationNarrows(c.scope)
 			if !sc.ToThis && cls.Super.Local {
 				c.localConstructed(cls.Super) // the class passes its superclass's captures
@@ -280,16 +301,15 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			c.block(sc.Body, noWant, false)
 		}
 	}
-	// A constructor can't call itself through this(...), directly or not.
+	// A constructor can't call itself through this(...), directly or not,
+	// nor call one that does: kotlinc reports every constructor whose
+	// chain of this(...) calls ends in a cycle.
 	for _, sc := range secs {
 		seen := map[*syntax.SecondaryCtor]bool{}
-		for t := sc; t != nil && t.ToThis && t.Delegation != nil && t.Delegation.Sym != nil; {
-			if seen[t] {
-				break
-			}
+		for t := sc; t != nil && t.ToThis && resolved[t] && t.Delegation != nil && t.Delegation.Sym != nil; {
 			seen[t] = true
 			next, _ := t.Delegation.Sym.Decl.(*syntax.SecondaryCtor)
-			if next == sc {
+			if seen[next] {
 				c.errorf(sc.P, "there's a cycle in the delegation calls chain")
 				break
 			}

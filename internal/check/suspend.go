@@ -17,25 +17,35 @@ import (
 
 // suspendScope returns the innermost lambda whose body is code of its
 // own, or nil for the function being checked, whether that code can
-// suspend, and whether an inlined lambda passed to synchronized is
-// between the two: a suspension point there would hold the monitor.
+// suspend, and whether an inlined lambda passed to synchronized or
+// withLock is between the two: a suspension point there would hold the
+// monitor or lock.
 func (c *Checker) suspendScope() (l *syntax.Lambda, ok, critical bool) {
+	l, ok, critical, _ = c.suspendScope1()
+	return l, ok, critical
+}
+
+// suspendScope1 is suspendScope that also reports whether a library
+// inline function other than synchronized invokes an inlined lambda
+// between the two holding a monitor, which kotlinc's backend finds.
+func (c *Checker) suspendScope1() (l *syntax.Lambda, ok, critical, monitor bool) {
 	for i := len(c.lambdas) - 1; i >= c.base; i-- {
 		l := c.lambdas[i]
 		j := c.jumps[l]
 		switch {
 		case l.Suspend:
-			return l, true, critical
+			return l, true, critical, monitor
 		case l.Inline && !j.crossinline && l.Ref == nil:
 			// Not a reference's, whose function a suspend one isn't
 			// for a function type that isn't suspend: go1(x::id) in a
 			// suspend lambda.
-			critical = critical || j.callee == "synchronized"
+			critical = critical || j.critical
+			monitor = monitor || j.inMonitor && !j.critical
 			continue
 		}
-		return l, false, critical
+		return l, false, critical, monitor
 	}
-	return nil, c.fn != nil && c.fn.Suspend, critical
+	return nil, c.fn != nil && c.fn.Suspend, critical, monitor
 }
 
 // suspendCall checks a call at p of f, if it is a suspend function.
@@ -43,12 +53,31 @@ func (c *Checker) suspendCall(p syntax.Pos, f *types.FunSym) {
 	if f == nil || !f.Suspend {
 		return
 	}
-	_, ok, critical := c.suspendScope()
+	l, ok, critical, monitor := c.suspendScope1()
 	switch {
 	case !ok:
 		c.errorf(p, "suspend function '%s' can only be called from a coroutine or another suspend function", f.Name)
 	case critical:
 		c.errorf(p, "the '%s' suspension point is inside a critical section", f.Name)
+	case monitor:
+		// As kotlinc's backend, at the suspend lambda or function whose
+		// code holds the monitor, once.
+		at := p
+		if l != nil {
+			at = l.P
+		} else if c.fn != nil {
+			if d, ok := c.fn.Decl.(*syntax.FunDecl); ok {
+				at = d.P
+			}
+		}
+		if !c.hasErrorAt(at, "a suspension point is inside a monitor") {
+			c.errorf(at, "a suspension point is inside a monitor")
+		}
+		// And at an inline function the lambda is in, whose copy for
+		// inlining kotlinc's backend checks too.
+		if d := syntax.SourceInline(c.fn); d != nil && l != nil && !c.hasErrorAt(d.P, "a suspension point is inside a monitor") {
+			c.errorf(d.P, "a suspension point is inside a monitor")
+		}
 	}
 }
 

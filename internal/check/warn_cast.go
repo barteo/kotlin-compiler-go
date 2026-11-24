@@ -32,10 +32,7 @@ func (c *Checker) whenIsWarnings(x *syntax.When) {
 			// that always holds makes it exhaustive; with a !is one, the
 			// branches before it must.
 			last := i == len(x.Branches)-1 && len(x.Branches) > 1 && len(br.Conds) == 1
-			if br.Guard != nil || last && cond.NotIs && c.coveredWhens[x] {
-				continue
-			}
-			last = last && cond.Is
+			last = last && (cond.NotIs && c.coveredWhens[x] || cond.Is && br.Guard == nil)
 			c.isWarnings(cond, cond.P, cond.Target, cond.NotIs, last)
 		}
 	}
@@ -48,13 +45,28 @@ func (c *Checker) whenIsWarnings(x *syntax.When) {
 // IMPOSSIBLE_IS_CHECK (see impossibleIs).
 func (c *Checker) isWarnings(n any, p syntax.Pos, t types.Type, not, last bool) {
 	f, ok := c.typeFacts[n]
-	if !ok || !certainCastType(t) || !f.certain() || f.orig.K == types.Nothing || f.orig.K == types.Null {
-		return
-	}
 	useless := func() {
 		if !last {
 			c.warnf(p, "USELESS_IS_CHECK", "check for instance is always '%v'", !not)
 		}
+	}
+	if ok && f.orig.P && certainCastType(t) {
+		// A platform type is judged by its upper bound, T?, and only as
+		// useless: T! is T? always holds.
+		if up := platformUpper(f.orig); certainCastType(up) && c.subtype(up, t) {
+			useless()
+		}
+		return
+	}
+	if !ok || !certainCastType(t) || !f.certain() || f.orig.K == types.Nothing {
+		return
+	}
+	if f.orig.K == types.Null {
+		// null is T? always holds; that null !is Nothing does isn't told.
+		if c.subtype(f.orig, t) {
+			useless()
+		}
+		return
 	}
 	if c.subtype(f.orig, t) {
 		useless()
@@ -191,6 +203,13 @@ func (f typeFacts) mayBeNull() bool {
 // certain reports whether kc knows all of f's types as kotlinc does.
 func (f typeFacts) certain() bool {
 	return !slices.ContainsFunc(f.all(), func(t types.Type) bool { return !certainCastType(t) })
+}
+
+// platformUpper returns the upper bound of the platform type t, T? of
+// T!, which kotlinc judges a platform type's casts and checks by.
+func platformUpper(t types.Type) types.Type {
+	t.P, t.N = false, true
+	return t
 }
 
 // certainCastType reports whether kc knows type t as kotlinc does, for

@@ -1,0 +1,12 @@
+[Long, Long]
+[Integer]
+[Byte, Byte]
+[Integer, String]
+[Short, Short, Long, null]
+[Integer, Double]
+[Integer, Integer]
+[Long, Long]
+[Character, Character]
+true
+true
+[Integer, Integer]

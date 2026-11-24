@@ -99,7 +99,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	u := cls.Underlying
 	ud := desc(u.Type)
 	self := "L" + cls.Name + ";"
-	c := cf.NewClass(cf.AccPublic|cf.AccFinal|cf.AccSuper, cls.Name, "java/lang/Object")
+	c := cf.NewClass(valueAccess, cls.Name, "java/lang/Object")
 	// As for other classes, the Java interfaces of Kotlin's collection
 	// types come first, then their marker, then the other interfaces.
 	for _, i := range cls.Interfaces {

@@ -86,9 +86,8 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	if nothing {
 		t = types.NothingType
 	}
-	if c.u.extraWarnings {
-		c.noteJump(b, jump)
-	}
+	// UNREACHABLE_CODE (with -Wextra) and tailrec's warnings read them.
+	c.noteJump(b, jump)
 	b.T = t
 	return t
 }
@@ -119,7 +118,9 @@ func stmtJumps(s syntax.Stmt) bool {
 	case *syntax.For:
 		return jumps(s.Range)
 	case *syntax.While:
-		return !s.Do && jumps(s.Cond)
+		// A do-while loop whose condition jumps only ends by a break,
+		// which may be the condition's own: do { } while (break).
+		return jumps(s.Cond) && (!s.Do || !hasBreak(s.Body, s) && !hasBreak(s.Cond, s))
 	}
 	return false
 }
@@ -480,7 +481,8 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			s.Body.Stmts = append([]syntax.Stmt{d}, s.Body.Stmts...)
 		}
 		elem := types.IntType
-		if t := c.rangeExpr(s.Range); t.K != types.Range {
+		// A builder's variable is fixed on demand (see fixedStub).
+		if t := c.fixedStub(c.rangeExpr(s.Range)); t.K != types.Range {
 			elem = c.forIterator(s, t)
 		} else {
 			elem = t.RangeElem()
@@ -498,9 +500,9 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			}
 			s.Type = nil
 		}
-		vars, unkeep := c.loopVars(s.Body)
+		vars, aliased, unkeep := c.loopVars(s.Body)
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
 		c.scope.shadow(s.Sym)
 		c.scope.declare(s.Sym)
@@ -523,12 +525,12 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 func (c *Checker) while(s *syntax.While) types.Type {
 	loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
 	// The vars the loop assigns lose their narrowing in it and after it.
-	vars, unkeep := c.loopVars(s.Cond, s.Body)
+	vars, aliased, unkeep := c.loopVars(s.Cond, s.Body)
 	var exits []flowState
 	if s.Do {
 		// The condition sees the body's declarations.
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		c.loops = append(c.loops, loop)
 		s.Body.T = c.stmts(s.Body, noWant, false)
 		if len(loop.flow.continues) > 0 {
@@ -559,7 +561,7 @@ func (c *Checker) while(s *syntax.While) types.Type {
 	} else {
 		pre := c.loopEntry(vars)
 		c.push()
-		c.reset(vars)
+		c.resetEntry(vars, aliased)
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
 		whenTrue, whenFalse := c.narrowing(s.Cond)
@@ -632,6 +634,9 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 }
 
 func (c *Checker) varStmt(s *syntax.VarStmt) {
+	if s.Init != nil {
+		c.jvmFunctionInit(s.Type, s.Init)
+	}
 	saved := c.declName
 	c.declName = s.Name
 	if strings.HasPrefix(s.Name, "<") {
@@ -639,19 +644,28 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	defer func() { c.declName = saved }()
 	if s.Delegate != nil {
+		if s.Lateinit {
+			c.lateinitChecks(s.LateinitP, s.Mutable, false, true, types.InvalidType)
+		}
 		c.localDelegate(s)
 		return
 	}
 	var t types.Type
 	narrowed := types.InvalidType
+	uninferred := false
 	switch {
 	case s.Init == nil:
 		t = c.resolveType(s.Type)
 	case s.Type != nil:
 		t = c.resolveType(s.Type)
-		c.assignable(c.value(s.Init, t), t, s.Init.Pos())
+		c.markRecvParam(s.Init)
+		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
 	default:
+		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
+		nerrs := len(c.errs)
 		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
+		c.elvisFull = nil
+		uninferred = c.uninferredValue(s.Init, t, nerrs)
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.
@@ -659,6 +673,12 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		}
 	}
 	s.Sym = &types.VarSym{Name: s.Name, Type: t, Kind: types.Local, Mutable: s.Mutable, Decl: s, Deferred: s.Init == nil && !s.Lateinit}
+	if uninferred {
+		if c.uninferred == nil {
+			c.uninferred = map[*types.VarSym]bool{}
+		}
+		c.uninferred[s.Sym] = true
+	}
 	if s.Lateinit {
 		c.lateinitChecks(s.LateinitP, s.Mutable, s.Init != nil, false, t)
 		s.Sym.Lateinit = true
@@ -675,9 +695,15 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
 		c.errorf(s.P, "conflicting declarations: %s", s.Name)
+		// And the local it conflicts with, as kotlinc.
+		for _, w := range c.scope.vars {
+			if prev, ok := w.Decl.(*syntax.VarStmt); ok && w.Name == s.Name && !c.hasErrorAt(prev.P, "conflicting declarations") {
+				c.errorf(prev.P, "conflicting declarations: %s", s.Name)
+			}
+		}
 	}
 	if narrowed.K != types.Invalid {
-		c.assignedVar(s.Sym, narrowed)
+		c.assignedVar(s.Sym, narrowed, false)
 	}
 	if s.Init != nil {
 		c.bindValue(s.Sym, s.Init, s.Type != nil)
@@ -727,13 +753,14 @@ func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
 }
 
 // condVal records the smart casts that v, a Boolean val of value x,
-// being true or false implies: x's, of vals.
+// being true or false implies: x's, of vals, and of local vars that are
+// stable, as in K2, until they are assigned (see unalias).
 func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 	whenTrue, whenFalse := c.narrowing(x)
 	stable := func(ns []narrow) []narrow {
 		var out []narrow
 		for _, k := range ns {
-			if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
+			if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) || k.recv == nil && isVar(k.sym) && c.aliasable(k) {
 				out = append(out, k)
 			}
 		}
@@ -792,9 +819,10 @@ func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool
 
 // safeIf checks the receiver of a safe target, a?.b or a?.b[i], into a
 // temporary, val t = a, and returns it with if (t != null) and the
-// target on t, t.b or t.b[i].
+// target on t, t.b or t.b[i]. A variable known to be null is seen with
+// its declared type, as a safe call's receiver (see declaredIfNull).
 func (c *Checker) safeIf(p syntax.Pos, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) (*syntax.VarStmt, *syntax.If, syntax.Expr) {
-	tmp := c.temp(p, "receiver", recv, c.value(recv, noWant))
+	tmp := c.temp(p, "receiver", recv, c.declaredIfNull(recv, c.value(recv, noWant)))
 	target := build(tempRef(tmp, recv.Pos()))
 	null := &syntax.NullLit{}
 	null.P = recv.Pos()
@@ -888,6 +916,56 @@ func (c *Checker) assignsDeferred(v *types.VarSym) bool {
 	return v.Kind == types.Prop && c.state.init && v.Owner == c.state.cls
 }
 
+// castThisAssign checks the assignment of a val of the class, in its
+// constructor's code, to target, of p, while this is smart cast to a
+// subclass that sees p with another type: this as Derived in Base<T>,
+// for a Derived : Base<String>. As kotlinc, the target is then the
+// intersection override of p and Derived's p, typed String & T, which is
+// a val that can't be reassigned and doesn't initialize p.
+func (c *Checker) castThisAssign(target syntax.Expr, p *types.VarSym) (types.Type, bool) {
+	if p.Mutable || !c.assignsDeferred(p) || p.Kind != types.Prop {
+		return types.InvalidType, false
+	}
+	t, ok := c.castThisProp(p)
+	if !ok {
+		return types.InvalidType, false
+	}
+	if c.castThisAssigns == nil {
+		c.castThisAssigns = map[syntax.Expr]bool{}
+	}
+	c.castThisAssigns[target] = true
+	c.errorf(target.Pos(), "val cannot be reassigned")
+	return t, true
+}
+
+// castThisProp returns the type of property p of the class through this
+// smart cast to an intersection whose components see it with different
+// types, the intersection of those, and whether it is one.
+func (c *Checker) castThisProp(p *types.VarSym) (types.Type, bool) {
+	t, ok := c.narrowedThis()
+	if !ok || p.Owner == nil || !t.IsIntersection() {
+		return types.InvalidType, false
+	}
+	var ts []types.Type
+	for _, o := range t.Param().Bounds {
+		if o = o.NonNull(); o.K != types.Class || !c.isSubclass(o, p.Owner) {
+			continue
+		}
+		u := c.memberSubst(o, p.Owner).Apply(p.Type)
+		if u.K == types.Invalid {
+			return types.InvalidType, false
+		}
+		if !slices.ContainsFunc(ts, func(v types.Type) bool { return c.sameType(u, v) }) {
+			ts = append(ts, u)
+		}
+	}
+	if len(ts) < 2 {
+		return types.InvalidType, false
+	}
+	r := c.intersect(ts)
+	return r, r.K != types.Invalid
+}
+
 // lvalue resolves an assignment target and returns its declared type.
 func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	switch x := x.(type) {
@@ -905,6 +983,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		c.checkTopVar(sym, x.P)
 		x.Sym = sym
 		x.T = sym.Type
+		if t, ok := c.castThisAssign(x, sym); ok {
+			return t, false
+		}
 		if !sym.Mutable && !c.assignsDeferred(sym) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return sym.Type, false
@@ -913,6 +994,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.invisibleSetter(x.P, sym)
 			return sym.Type, false
 		}
+		c.companionProtectedSetter(sym, x.P)
 		return sym.Type, true
 	case *syntax.Index:
 		// Compound assignment of an element: a[i] += x, a[i]++.
@@ -939,6 +1021,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		switch {
 		case x.Field != nil && x.Field.Constant == nil && x.Field.Mutable:
+			// Through a projected receiver, the type that can be
+			// written differs from the one read, as a property's.
+			if rt := x.X.Type(); x.Field.Owner != nil && rt.K == types.Class && rt.A != nil {
+				return c.memberSubst(rt.NonNull(), x.Field.Owner).ApplyIn(x.Field.Type), true
+			}
 			return t, true
 		case x.Field != nil:
 			c.errorf(x.P, "val cannot be reassigned")
@@ -952,7 +1039,12 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class:
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.
-			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).Apply(x.Setter.Params[0].Type), true
+			// Through a projected receiver, Nothing where its argument
+			// is projected out, as a property's, and as K2 calls the
+			// setter, its captured type where a star or an in projection
+			// replaces an invariant argument: a Container<in String>'s
+			// setWrapper(Wrapper<E>) takes no Wrapper<Any>.
+			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).ApplyParam(x.Setter.Params[0].Type), true
 		case x.Getter != nil:
 			if c.extSetterProjectedOut(x) {
 				return types.NothingType, true
@@ -965,13 +1057,22 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			}
 			return types.InvalidType, false
 		}
+		if th, ok := x.X.(*syntax.This); ok && th.Recv == nil && th.Label == "" {
+			if t, ok := c.castThisAssign(x, x.Prop); ok {
+				return t, false
+			}
+		}
 		if _, this := x.X.(*syntax.This); !x.Prop.Mutable && !(this && c.assignsDeferred(x.Prop)) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
 		}
-		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
+		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) ||
+			!protectedMember(x.Prop) && x.Prop.Kind == types.Prop && setterVis(x.Prop) == syntax.Protected && !c.protectedSetterVia(x.Prop, x.X) {
 			c.invisibleSetter(x.P, x.Prop)
 			return t, false
+		}
+		if x.Prop.Owner != nil && namesObject(x.X) == x.Prop.Owner {
+			c.companionProtectedSetter(x.Prop, x.P)
 		}
 		// Through a projected receiver, the type that can be written
 		// differs from the one read: Nothing for Box<out T>.
@@ -1010,26 +1111,43 @@ func (c *Checker) extSetterProjectedOut(x *syntax.Member) bool {
 // starWrite reports value type vt that property target can't be set to
 // through a star projected receiver: an invariant argument of the
 // property's type that is the star's capture is one only Nothing fits,
-// t.v = t for var v: Tr<T> of a Tr<*> t.
+// t.v = t for var v: Tr<T> of a Tr<*> t. So for a Java field, and a Java
+// setter's parameter.
 func (c *Checker) starWrite(target syntax.Expr, vt types.Type) {
 	x, ok := target.(*syntax.Member)
-	if !ok || x.Prop == nil || x.X == nil || vt.K == types.Null {
+	if !ok || x.X == nil || vt.K == types.Null {
+		return
+	}
+	var declared types.Type
+	var owner *types.ClassSym
+	switch {
+	case x.Prop != nil:
+		declared, owner = x.Prop.Type, x.Prop.Owner
+	case x.Field != nil:
+		declared, owner = x.Field.Type, x.Field.Owner
+	case x.Getter != nil && x.Setter != nil && !x.Setter.Ext && len(x.Setter.Params) == 1:
+		declared, owner = x.Setter.Params[0].Type, x.Setter.Owner
+	default:
 		return
 	}
 	rt := x.X.Type().NonNull()
-	pt := x.Prop.Type.NonNull()
-	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || x.Prop.Owner == nil {
+	pt := declared.NonNull()
+	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || owner == nil {
 		return
 	}
-	sub := c.memberSubst(rt, x.Prop.Owner)
-	wt := sub.ApplyIn(x.Prop.Type).NonNull()
+	if pt.C.External {
+		pt.C.Ensure()
+	}
+	sub := c.memberSubst(rt, owner)
+	wt := sub.ApplyIn(declared).NonNull()
 	if wt.K != types.Class || wt.C != pt.C || wt.A == nil || wt.A.Len() != pt.A.Len() {
 		return
 	}
 	var args []types.Arg
 	for i, a := range pt.A.List {
 		w := wt.A.List[i]
-		if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
+		// A Java type's E!, but not T?.
+		if a.V == types.Inv && a.T.K == types.TypeParam && (!a.T.N || a.T.P) && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
 			if r, ok := sub[a.T.Param()]; ok && r.V == types.Star {
 				w = types.Arg{V: types.Out, T: types.NothingType}
 			}
@@ -1255,14 +1373,6 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	// What the check writes into an assignment is the check's: one that
-	// stubInference throws away may take another branch than the one
-	// that counts, as y += 1 does for a var y of a builder's E, which
-	// would leave its rewrite in Stmts.
-	if c.trial != nil {
-		stmts, opType, value := s.Stmts, s.OpType, s.Value
-		c.onUndo(func() { s.Stmts, s.OpType, s.Value = stmts, opType, value })
-	}
 	if recv, build, ok := safeTarget(s.Target); ok {
 		c.safeAssign(s, recv, build)
 		return
@@ -1320,10 +1430,23 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if mutable && c.contextWrite(s) {
 		return
 	}
+	// stubTarget is the target's type with a builder's variable, which tt
+	// is what the constraints so far fix to.
+	stubTarget := types.InvalidType
 	if s.Op != syntax.ASSIGN {
 		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
 		// element's type (see fixedStub).
-		tt = c.fixedStub(tt)
+		if ft := c.fixedStub(tt); ft != tt {
+			// What x op= v is, x.opAssign(v) or x = x op v, is decided
+			// here from x's type, which the tree doesn't have yet:
+			// from what it has once the variable is written.
+			stubTarget = tt
+			if tt.P && !ft.P && ft.IsPrimitive() {
+				// A platform type of a primitive: Int!, not Int.
+				ft.N, ft.P = true, true
+			}
+			tt = ft
+		}
 	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {
@@ -1332,15 +1455,31 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if s.Op == syntax.ASSIGN {
 		n := len(c.errs)
 		vt := c.value(s.Value, tt)
-		c.assignable(vt, tt, s.Value.Pos())
+		c.assignable(vt, tt, syntax.StartPos(s.Value))
 		if id, ok := s.Value.(*syntax.Ident); len(c.errs) == n && !(ok && strings.HasPrefix(id.Name, "$p")) {
 			// Not a property reference's set, which is mutable still,
 			// as kotlinc's: Klass<*>::mutableProperty.
 			c.starWrite(s.Target, vt)
 		}
 		if v != nil {
-			c.assignedVar(v, vt)
+			if exactValue(s.Value) {
+				// As K2, x = a ?: b infers the elvis's type from x's, as
+				// a call whose result is @Exact: x is smart cast only to
+				// not null, if b can't be. kc keeps the smart cast to a
+				// platform type, as Java constants are where K2 knows
+				// them not null.
+				_, elvis := unchecked(s.Value).(*syntax.Binary)
+				switch {
+				case elvis && vt.P:
+				case elvis && vt.K != types.Invalid && !types.MayBeNull(vt):
+					vt = v.Type.NonNull()
+				default:
+					vt = v.Type
+				}
+			}
+			c.assignedVar(v, vt, true)
 			c.assignedNested(v, vt)
+			c.assignChecked(s, vt)
 			if slices.Contains(c.scope.vars, v) {
 				// Not in a branch, where another value of v may meet
 				// it, nor in a lambda.
@@ -1351,7 +1490,11 @@ func (c *Checker) assign(s *syntax.Assign) {
 		}
 		return
 	}
-	if rt := c.targetCast(s.Target, tt); mutable && builtinOperand(rt) && !classBound(rt) &&
+	rt := c.targetCast(s.Target, tt)
+	if rt == stubTarget {
+		rt = tt // no smart cast
+	}
+	if mutable && builtinOperand(rt) && !classBound(rt) &&
 		(rt != tt || s.Op == syntax.PLUS_EQ && types.MayBeNull(rt) && !rt.P && rt.NonNull() == types.StringType) {
 		// x op= v on an x that a smart cast narrows, an Int? known to be
 		// an Int, or on a String?, whose + is String?.plus: x = x op v,
@@ -1363,6 +1506,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			b.P = s.P
 			return b
 		})
+		if v != nil {
+			c.assignChecked(s, c.scope.narrowed(v))
+		}
 		if kt, ok := c.loopKept[v]; v != nil && ok && len(c.errs) == n {
 			// A loop around kept v smart cast to kt for its whole body.
 			if t := c.scope.narrowed(v); t != kt {
@@ -1374,6 +1520,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if v != nil {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
+		c.assignChecked(s, v.Type)
 	}
 	if !builtinOperand(tt) || classBound(tt) || c.assignExt(tt, s) {
 		// x += v may call x.plusAssign(v), also on a val or a var whose
@@ -1516,6 +1663,16 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return t
 	}
 	if ix, ok := u.X.(*syntax.Index); ok {
+		xt := c.value(ix.X, noWant)
+		ix.X = checked(ix.X, xt)
+		if c.stub(xt.Flex()) != nil {
+			// As in K2, which doesn't fix a builder's variable for the
+			// element that x[i]++ reads and writes: its get and its set
+			// aren't found.
+			c.errorf(ix.P, "unresolved reference: get")
+			c.errorf(ix.P, "unresolved reference: set")
+			return types.InvalidType
+		}
 		// An element of a list or a map: x.set(i, x.get(i).inc()).
 		inc := func(read syntax.Expr) syntax.Expr {
 			if builtinIncDec(read.Type()) {
@@ -1630,6 +1787,51 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		c.errorf(x.P, "backing field of 'var %s: %s' is not accessible at this point", p.Name, p.Type)
 		return types.InvalidType
 	}
+	if fd, ok := c.fnDecl(); ok && c.inInlineFun && len(c.lambdas) == c.base && (fd.Inline || inlineAccessorDecl(fd)) {
+		// Its copies elsewhere couldn't read the field; a lambda's
+		// can, as kotlinc has it.
+		c.errorf(x.P, "this declaration cannot be used inside an inline function")
+	}
 	x.X, x.Prop, x.Builtin = recv, p, types.IsInitialized
 	return types.BoolType
+}
+
+// fnDecl returns the declaration of the function being checked.
+func (c *Checker) fnDecl() (*syntax.FunDecl, bool) {
+	if c.fn == nil {
+		return nil, false
+	}
+	fd, ok := c.fn.Decl.(*syntax.FunDecl)
+	return fd, ok
+}
+
+// lateinitIntrinsic reports a use of kotlin's isInitialized on a
+// property reference that isn't a literal, this::x, which the compiler
+// replaces with a read of the field.
+func (c *Checker) lateinitIntrinsic(x *syntax.Member) {
+	if g := x.Getter; g != nil && g.Ext && g.Name == "isInitialized" && g.Facade == "kotlin/LateinitKt" {
+		c.errorf(x.P, "this declaration can only be called on a property literal (e.g. 'Foo::bar')")
+	}
+}
+
+// exactValue reports whether value x takes the type it's expected to,
+// not its own, as K2 infers it: an elvis a ?: b, unless b is of type
+// Nothing, or a call of a generic function whose result is annotated
+// @kotlin.internal.Exact.
+func exactValue(x syntax.Expr) bool {
+	switch x := unchecked(x).(type) {
+	case *syntax.Binary:
+		if x.Op != syntax.ELVIS || x.Y == nil {
+			return false
+		}
+		t := x.Y.Type()
+		return t.K != types.Nothing && t.K != types.Invalid
+	case *syntax.Call:
+		if x.Sym == nil || len(x.Sym.TypeParams) == 0 {
+			return false
+		}
+		d, ok := x.Sym.Decl.(*syntax.FunDecl)
+		return ok && d.Ret != nil && d.Ret.Exact
+	}
+	return false
 }

@@ -218,7 +218,7 @@ func commonSkip(t *test) string {
 		return "TARGET_PLATFORM: " + strings.Join(vs, ", ")
 	}
 	for _, f := range t.values("LANGUAGE") {
-		if !defaultFeatures[f] {
+		if !defaultFeatures[f] && !kotlin24Features[f] {
 			return "LANGUAGE"
 		}
 	}
@@ -255,13 +255,10 @@ func hasJava(t *test) bool { return slices.ContainsFunc(t.files(), isJava) }
 // among them.
 var defaultFeatures = map[string]bool{
 	"+AllowAccessToProtectedFieldFromSuperCompanion":       true,
-	"+AllowReifiedTypeInCatchClause":                       true,
 	"+AllowReturnInExpressionBodyWithExplicitType":         true,
 	"+AvoidWrongOptimizationOfTypeOperatorsOnValueClasses": true,
 	"+BreakContinueInInlineLambdas":                        true,
-	"+ContextParameters":                                   true,
 	"+DataFlowBasedExhaustiveness":                         true,
-	"+ExplicitBackingFields":                               true,
 	"-ForbidParenthesizedLhsInAssignments":                 true,
 	"+JvmNullOutSpilledCoroutineLocals":                    true,
 	"+MultiDollarInterpolation":                            true,
@@ -272,7 +269,49 @@ var defaultFeatures = map[string]bool{
 	"+ProperIeee754Comparisons":                            true,
 	"+RefinedVarargConversionRulesForCallableReferences":   true,
 	"+ResolveTopLevelLambdasAsSyntheticCallArgument":       true,
-	"+WhenGuards":                                          true,
+	"+WhenGuards": true,
+}
+
+// kotlin24Features are the LANGUAGE directive's values that turn on the
+// features new in Kotlin 2.4 (sinceVersion KOTLIN_2_4 in kotlinc's
+// LanguageVersionSettings.kt), which are on by default and so change
+// nothing either.
+var kotlin24Features = map[string]bool{
+	"+AllowReifiedTypeInCatchClause":                                true,
+	"+AnnotationAllUseSiteTarget":                                   true,
+	"+AnnotationsInMetadata":                                        true,
+	"+ApproximateLocalTypesInPublicDeclarations":                    true,
+	"+CacheLocalVariableScopes":                                     true,
+	"+ChangedIntersectionWithRecursiveCapturedType":                 true,
+	"+CheckOptInOnPureEnumEntries":                                  true,
+	"+CheckPackageInfoNullnessAnnotations":                          true,
+	"+ContextParameters":                                            true,
+	"+DisableMaxTypeDepthFromInitialConstraints":                    true,
+	"+DiscriminateNothingAsNullabilityConstraintInInference":        true,
+	"+DontCreateSyntheticPropertiesWithoutBaseJavaGetter":           true,
+	"+ExplicitBackingFields":                                        true,
+	"+ForbidClassLiteralWithPotentiallyNullableReifiedLhs":          true,
+	"+ForbidExposingLessVisibleTypesInInline":                       true,
+	"+ForbidGetSetValueWithTooManyParameters":                       true,
+	"+ForbidImplicitTypeAnnotationWithMissingDependency":            true,
+	"+ForbidInitializationBeforeDeclarationInAnonymous":             true,
+	"+ForbidOverriddenDefaultParametersInInline":                    true,
+	"+ForbidPrivateToThisUnboundCallableReferences":                 true,
+	"+ForbidRootIdePackageInCli":                                    true,
+	"+ForbidTypeAliasWithMissingDependencyType":                     true,
+	"+ImprovedExhaustivenessCheckForSubjectVariable24":              true,
+	"+ImprovedResolutionInSecondaryConstructors":                    true,
+	"+IrIntraModuleInlinerBeforeKlibSerialization":                  true,
+	"+JsAllowExportingSuspendFunctions":                             true,
+	"+LexicographicVariableReadinessCalculation":                    true,
+	"+LocalVariableTargetedAnnotationOnDestructuring":               true,
+	"+OverloadResolutionSpecificityForEnhancedJvmPrimitiveWrappers": true,
+	"+ProhibitExtendingAnnotationClasses":                           true,
+	"+ProperExhaustivenessCheckForJavaOpenSealedClass":              true,
+	"+ProperlyCheckUpperBoundsViolationsWhenCreatingFreshVariables": true,
+	"+PropertyParamAnnotationDefaultTargetMode":                     true,
+	"+ResolveEqualsRhsInDependentContextWithCompletion":             true,
+	"+TurnTypeCheckWarningsIntoErrors":                              true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {

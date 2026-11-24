@@ -1,7 +1,8 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
+//	kc [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
 //	kc -serve
+//	kc -version
 //
 // kc -serve compiles again and again, as a tool that runs many small
 // compiles (bench/conformance) asks: see serve.go.
@@ -16,14 +17,26 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/check"
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
 
+// version is the release this kc was built as. The release workflow
+// (.github/workflows/release.yml) sets it with
+// -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "-version" || os.Args[1] == "--version") {
+		printVersion(os.Stdout)
+		return
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "-serve" || os.Args[1] == "--serve") {
 		// The answers go to stdout, where what the compiler wrote would
 		// garble them.
@@ -37,6 +50,34 @@ func main() {
 	}
 	code, _ := compile(os.Args[1:], os.Stderr, nil)
 	os.Exit(code)
+}
+
+// printVersion writes kc's version, the Go release it was built with and
+// its platform. A build that isn't a release's names its commit, if Go
+// recorded one.
+func printVersion(w io.Writer) {
+	v := version
+	if v == "dev" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			var rev, modified string
+			for _, s := range info.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					rev = s.Value
+				case "vcs.modified":
+					modified = s.Value
+				}
+			}
+			if rev != "" {
+				v += " (" + rev
+				if modified == "true" {
+					v += ", modified"
+				}
+				v += ")"
+			}
+		}
+	}
+	fmt.Fprintf(w, "kc %s %s %s/%s\n", v, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 // compile compiles as the command line args say, writing diagnostics to
@@ -85,9 +126,13 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	})
 	// (Keep -Werror and -nowarn above: the flags from here are another
 	// change's.)
+	jvmTarget := flags.String("jvm-target", "1.8", "the JVM version the class files are for, as kotlinc's -jvm-target: 1.8, or 9 to 25. Inline functions of class files built for a higher one can't be inlined")
+	explicitAPI := flags.String("Xexplicit-api", "disable", "kotlinc's explicit API mode: strict (errors) or warning (warnings) where a declaration of the public API doesn't say its visibility or its inferred type, or disable")
+	explicitReturnTypes := flags.String("XXexplicit-return-types", "disable", "as kotlinc's -XXexplicit-return-types: strict (errors) or warning (warnings) where a declaration of the public API doesn't say its inferred type, or disable")
+	multiPlatform := flags.Bool("Xmulti-platform", false, "compile multiplatform sources' expect and actual declarations, as kotlinc's -Xmulti-platform, without which they are errors")
 	jvmDefault := flags.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(stderr, "usage: kc -version | kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] files-or-dirs...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -123,9 +168,23 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 		fmt.Fprintf(stderr, "kc: unsupported -jvm-default=%s: no-compatibility, enable or disable\n", *jvmDefault)
 		return 2, nil
 	}
-	opts := driver.Options{OutDir: *outDir, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
+	apiMode, ok := check.ParseAPIMode(*explicitAPI)
+	if !ok {
+		fmt.Fprintf(stderr, "kc: unsupported -Xexplicit-api=%s: strict, warning or disable\n", *explicitAPI)
+		return 2, nil
+	}
+	returnTypesMode, ok := check.ParseAPIMode(*explicitReturnTypes)
+	if !ok {
+		fmt.Fprintf(stderr, "kc: unsupported -XXexplicit-return-types=%s: strict, warning or disable\n", *explicitReturnTypes)
+		return 2, nil
+	}
+	if _, ok := classfile.TargetMajor(*jvmTarget); !ok {
+		fmt.Fprintf(stderr, "kc: unsupported -jvm-target %s: 1.8, or 9 to 25\n", *jvmTarget)
+		return 2, nil
+	}
+	opts := driver.Options{OutDir: *outDir, JVMTarget: *jvmTarget, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
 		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Metro: *metro, MetroOptions: metroOptions, Debug: *debug, OptIns: optIns,
-		ExtraWarnings: *wextra, ExperimentalWarnings: *experimental,
+		ExtraWarnings: *wextra, ExperimentalWarnings: *experimental, ExplicitAPI: apiMode, ExplicitReturnTypes: returnTypesMode, MultiPlatform: *multiPlatform,
 		Libraries: libs, JavaTypes: true}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)

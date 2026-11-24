@@ -60,12 +60,22 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	if varargs(f) {
 		access |= cf.AccVarargs
 	}
+	if f.External {
+		d := g.localDesc(lf)
+		lf.Desc, lf.This = d, g.thisClass()
+		g.cls.AddAbstractMethod(access|cf.AccNative, name, d)
+		if hasDefaults(fd.Params) {
+			g.localDefaults(lf)
+		}
+		return
+	}
 	lc := &lambdaCtx{slots: map[*types.VarSym]int{}, fun: true}
 	lg := &gen{file: g.file, cls: g.cls, owner: g.owner, shared: g.shared, prefix: name + "$lambda", lam: lc, noLines: g.noLines,
 		publicInline: g.publicInline, lambdaReified: g.reifiedSubst()} // copies of an inline function copy its lambdas
 	d := g.localDesc(lf)
 	lf.Desc, lf.This = d, g.thisClass()
 	lg.code = g.cls.NewMethod(access, name, d)
+	g.signLocal(g.cls.LastMethod(), lf, d)
 	lg.retType = f.Ret
 	for _, p := range f.Contexts {
 		g.setSlot(p, lg.code.AllocLocal(paramDesc(p.Type)))

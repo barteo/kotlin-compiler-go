@@ -77,7 +77,8 @@ func (g *gen) singletonLambda(x *syntax.Lambda) {
 
 // addSingleton adds composable lambda x to the file's ComposableSingletons
 // class s: its field, which the static initializer assigns, and the
-// field's getter, whose name it returns.
+// field's getter, whose name it returns. Both have the generic signature
+// of a val of the lambda's type.
 func (g *gen) addSingleton(s *composeSingletons, x *syntax.Lambda) string {
 	key := strconv.Itoa(int(g.lambdaKey(x)))
 	name := "lambda$" + key
@@ -87,6 +88,11 @@ func (g *gen) addSingleton(s *composeSingletons, x *syntax.Lambda) string {
 	s.names[name] = true
 	fd := "L" + types.ClassName(types.Erase(x.T)) + ";"
 	s.cls.AddField(cf.AccPrivate|cf.AccStatic, name, fd)
+	field := s.cls.LastField()
+	if sig := fieldSig(x.T, nil, fd, false, inParam); sig != "" {
+		field.SetSignature(sig)
+	}
+	field.Annotate(cf.Annotation{Type: notNull}, false)
 
 	// The object, created in the static initializer: the lambda's method
 	// is the class's, kotlinc's lambda_key$lambda$0.
@@ -95,11 +101,12 @@ func (g *gen) addSingleton(s *composeSingletons, x *syntax.Lambda) string {
 	sg.indyLambda(x)
 	s.clinit.FieldInsn(cf.PUTSTATIC, s.cls.Name, name, fd)
 
-	getter := "get" + strings.ToUpper(name[:1]) + name[1:] + "$" + g.shared.opts.Module
+	module := types.ModuleSuffix(g.shared.opts.Module)
+	getter := "get" + strings.ToUpper(name[:1]) + name[1:] + module
 	getters := []string{getter}
 	if g.inlineSingletons {
 		s.compat++
-		getters = append(getters, "getLambda-"+strconv.Itoa(s.compat)+"$"+g.shared.opts.Module)
+		getters = append(getters, "getLambda-"+strconv.Itoa(s.compat)+module)
 	}
 	for _, m := range getters {
 		code := s.cls.NewMethod(cf.AccPublic|cf.AccFinal, m, "()"+fd)
@@ -109,6 +116,11 @@ func (g *gen) addSingleton(s *composeSingletons, x *syntax.Lambda) string {
 		if err := code.Err(); err != nil {
 			panic(err)
 		}
+		mr := s.cls.LastMethod()
+		if sig := methodSig(nil, nil, typedPart(x.T, nil), "()"+fd, 0, inParam); sig != "" {
+			mr.SetSignature(sig)
+		}
+		mr.Annotate(cf.Annotation{Type: notNull}, false)
 	}
 	s.getters[x] = getter
 	return getter
@@ -128,6 +140,7 @@ func (g *gen) composeSingletons() *composeSingletons {
 	c := cf.NewClass(cf.AccPublic|cf.AccFinal|cf.AccSuper, name, "java/lang/Object")
 	c.SourceFile = filepath.Base(g.file.Path)
 	c.AddField(cf.AccPublic|cf.AccStatic|cf.AccFinal, "INSTANCE", "L"+name+";")
+	c.LastField().Annotate(cf.Annotation{Type: notNull}, false)
 	init := c.NewMethod(cf.AccPublic, "<init>", "()V")
 	init.Local(cf.ALOAD, init.AllocLocal("L"+name+";"))
 	init.Invoke(cf.INVOKESPECIAL, "java/lang/Object", "<init>", "()V")

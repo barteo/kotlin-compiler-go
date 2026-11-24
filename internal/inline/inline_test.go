@@ -207,6 +207,14 @@ func TestAnalyze(t *testing.T) {
 		t.Errorf("owner %s", let.Owner(let.Class))
 	}
 
+	if let.Params[1].InMonitor {
+		t.Errorf("let's block is invoked in a monitor")
+	}
+	sync := body("kotlin/StandardKt__SynchronizedKt", "synchronized", "(Ljava/lang/Object;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;")
+	if p := sync.Params[1]; !p.Inlinable || len(p.Invokes) != 1 || !p.InMonitor {
+		t.Errorf("synchronized's block: %+v", p)
+	}
+
 	use := body("kotlin/io/CloseableKt", "use", "(Ljava/io/Closeable;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;")
 	if p := use.Params[1]; !p.Inlinable || len(p.Invokes) != 1 || p.InTry[0] {
 		t.Errorf("use's block: %+v", p)

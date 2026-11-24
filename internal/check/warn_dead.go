@@ -13,7 +13,9 @@ import (
 // completes, as val s = todo(), whose declaration never happens. It
 // follows how kotlinc marks the code, which reports the condition and
 // branch statements of an if or a when that can't run, but only the
-// start of a loop, a try, a lambda or a local declaration.
+// start of a loop, a try, a lambda or a local declaration, and the start
+// of each property delegate in it. A class whose superclass constructor
+// call jumps, class C : B(todo()), has its initializers reported.
 
 // noteJump records that statement jump of block b always jumps, or, if it
 // is -1, that none does: b's check may be repeated.
@@ -31,13 +33,51 @@ func (c *Checker) noteJump(b *syntax.Block, jump int) {
 // unreachableWarnings reports the unreachable code of block b, which
 // isn't in code reported already.
 func (c *Checker) unreachableWarnings(b *syntax.Block) {
-	i, ok := c.blockJumps[b]
-	if !ok || c.deadBlocks[b] || !c.stmtCFGJumps(b.Stmts[i]) {
+	if c.deadBlocks[b] {
+		return
+	}
+	i := c.jumpingStmt(b)
+	if i < 0 {
 		return
 	}
 	c.partlyDead(b.Stmts[i])
 	for _, s := range b.Stmts[i+1:] {
 		c.deadStmt(s)
+	}
+}
+
+// jumpingStmt returns the index of the statement of block b that always
+// jumps in kotlinc's graph, by kc's judgment (stmtJumps) or not: x::f of
+// an x that jumps, an object expression whose superclass's constructor
+// call jumps. A loop is one only if kc found it never ends. It returns -1
+// if there is none.
+func (c *Checker) jumpingStmt(b *syntax.Block) int {
+	n, j := len(b.Stmts), -1
+	if k, ok := c.blockJumps[b]; ok {
+		n, j = k+1, k
+	}
+	return slices.IndexFunc(b.Stmts[:n], func(s syntax.Stmt) bool {
+		_, loop := s.(*syntax.While)
+		return (!loop || j >= 0 && s == b.Stmts[j]) && c.stmtCFGJumps(s)
+	})
+}
+
+// deadDoWhileCond reports the condition of do-while loop s if its body
+// always jumps, but not by a continue of s, which goes to the condition.
+func (c *Checker) deadDoWhileCond(s *syntax.While) {
+	if c.deadBlocks[s.Body] || c.jumpingStmt(s.Body) < 0 {
+		return
+	}
+	cont := false
+	syntax.Inspect(s.Body, func(n any) bool {
+		if j, ok := n.(*syntax.Jump); ok && j.Kind == syntax.CONTINUE && j.Loop == s {
+			cont = true
+		}
+		return !cont
+	})
+	if !cont {
+		c.unreachable(syntax.StartPos(s.Cond))
+		c.markDead(s.Cond)
 	}
 }
 
@@ -72,7 +112,13 @@ func (c *Checker) partlyDead(s syntax.Stmt) {
 		report = c.stmtCFGJumps(s)
 	}
 	if report {
-		c.unreachable(syntax.StmtPos(s))
+		p := syntax.StmtPos(s)
+		if es, ok := s.(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Ref != nil && l.Ref.X != nil {
+				p = syntax.StartPos(l.Ref.X) // x::f, which starts at x
+			}
+		}
+		c.unreachable(p)
 	}
 }
 
@@ -157,8 +203,13 @@ func (c *Checker) cfgJumps(e syntax.Expr, expected bool) bool {
 			}
 		}
 		return true
+	case *syntax.Checked:
+		return c.cfgJumps(e.X, expected)
+	case *syntax.Lambda:
+		return e.Ref != nil && c.operandJumps(e) // x::f, not a lambda
 	case *syntax.Jump, *syntax.Call, *syntax.Member, *syntax.Index, *syntax.Binary, *syntax.Unary, *syntax.Is,
-		*syntax.StringLit:
+		*syntax.StringLit, *syntax.Ident, *syntax.This, *syntax.ObjectExpr:
+		// A variable of type Nothing too: reading it jumps.
 	default:
 		return false // not judged: a lambda, an object expression, ...
 	}
@@ -219,7 +270,10 @@ func (c *Checker) operandJumps(e syntax.Expr) bool {
 	case *syntax.Index:
 		return c.cfgJumps(e.X, false) || !hasSafeCall(e.X) && c.anyCFGJumps(e.Args)
 	case *syntax.Binary:
-		return c.cfgJumps(e.X, false) || e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS && c.cfgJumps(e.Y, false)
+		// true && y and false || y always evaluate y.
+		l, lit := unchecked(e.X).(*syntax.BoolLit)
+		always := e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS || lit && l.Val == (e.Op == syntax.AND)
+		return c.cfgJumps(e.X, false) || always && c.cfgJumps(e.Y, false)
 	case *syntax.Unary:
 		return c.cfgJumps(e.X, false)
 	case *syntax.As:
@@ -234,8 +288,29 @@ func (c *Checker) operandJumps(e syntax.Expr) bool {
 				return true
 			}
 		}
+	case *syntax.Checked:
+		return c.operandJumps(e.X)
+	case *syntax.Lambda:
+		// (break)::toString: the receiver is evaluated first.
+		if r := e.Ref; r != nil {
+			return r.X != nil && c.cfgJumps(r.X, false) || r.BoundExpr != nil && c.cfgJumps(r.BoundExpr, false)
+		}
+	case *syntax.ObjectExpr:
+		// object : Foo(todo()) {}: the superclass's constructor call.
+		return e.Decl != nil && c.superCallJumps(e.Decl) != nil
 	}
 	return false
+}
+
+// superCallJumps returns the call of class d's superclass's constructor
+// in its header, B(x), if an argument of it always jumps, or nil.
+func (c *Checker) superCallJumps(d *syntax.ClassDecl) *syntax.Call {
+	for _, st := range d.Supers {
+		if st.Call != nil && c.operandJumps(st.Call) {
+			return st.Call
+		}
+	}
+	return nil
 }
 
 // deadStmt reports statement s, which can't run.
@@ -264,6 +339,60 @@ func (c *Checker) deadStmt(s syntax.Stmt) {
 	default:
 		c.unreachable(syntax.StmtPos(s))
 	}
+	c.deadDelegates(s)
+}
+
+// deadDelegates reports each property delegate in statement s, which
+// can't run, as kotlinc does, at its start: val x by lazy { }, in a
+// lambda, a local class or function or an object expression too.
+func (c *Checker) deadDelegates(s syntax.Stmt) {
+	seen := map[*syntax.ClassDecl]bool{}
+	var members func(d *syntax.ClassDecl)
+	members = func(d *syntax.ClassDecl) {
+		if d == nil || seen[d] {
+			return
+		}
+		seen[d] = true
+		for _, m := range d.Members {
+			switch m := m.(type) {
+			case *syntax.PropDecl:
+				if m.DelegateOf != nil && m.Init != nil {
+					c.unreachable(syntax.StartPos(m.Init))
+				}
+			case *syntax.ClassDecl:
+				members(m)
+			}
+		}
+	}
+	// walkCode enters the local classes and object expressions in the
+	// code it walks; syntax.Inspect doesn't.
+	see := func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.VarStmt:
+			if n.Delegate != nil {
+				c.unreachable(syntax.StartPos(n.Delegate))
+			}
+		case *syntax.LocalClass:
+			members(n.Decl)
+		case *syntax.ObjectExpr:
+			members(n.Decl)
+		}
+		return true
+	}
+	syntax.Inspect(s, func(n any) bool {
+		see(n)
+		var d *syntax.ClassDecl
+		switch n := n.(type) {
+		case *syntax.LocalClass:
+			d = n.Decl
+		case *syntax.ObjectExpr:
+			d = n.Decl
+		}
+		if d != nil {
+			walkCode([]syntax.Decl{d}, see)
+		}
+		return true
+	})
 }
 
 // deadBranches reports the branches of when x, which can't run.
@@ -298,11 +427,55 @@ func (c *Checker) deadBlock(b *syntax.Block) {
 // markDead marks the blocks in n as unreachable code, reported already.
 func (c *Checker) markDead(n any) {
 	syntax.Inspect(n, func(n any) bool {
-		if b, ok := n.(*syntax.Block); ok {
-			c.markBlockDead(b)
+		switch n := n.(type) {
+		case *syntax.Block:
+			c.markBlockDead(n)
+		case *syntax.Binary:
+			if n.Op == syntax.AND || n.Op == syntax.OR {
+				if c.deadLogic == nil {
+					c.deadLogic = map[*syntax.Binary]bool{}
+				}
+				c.deadLogic[n] = true
+			}
+		case *syntax.ClassDecl:
+			if c.deadClasses == nil {
+				c.deadClasses = map[*syntax.ClassDecl]bool{}
+			}
+			c.deadClasses[n] = true
 		}
 		return true
 	})
+}
+
+// deadWhileBody reports while loop s, at its start, if its condition is
+// false, whose body never runs: as kotlinc, only the literal.
+func (c *Checker) deadWhileBody(s *syntax.While) {
+	if l, ok := unchecked(s.Cond).(*syntax.BoolLit); ok && !l.Val && !c.deadBlocks[s.Body] {
+		c.unreachable(s.P)
+		c.markDead(s.Body)
+	}
+}
+
+// deadLogicOperand reports the right operand of x, true || y or
+// false && y, which never runs: as kotlinc, only of a Boolean literal,
+// not a constant, and each operand of a && or || on that side apart, as
+// its graph has them.
+func (c *Checker) deadLogicOperand(x *syntax.Binary) {
+	l, ok := unchecked(x.X).(*syntax.BoolLit)
+	if c.deadLogic[x] || x.Y == nil || !ok || l.Val != (x.Op == syntax.OR) || x.Op != syntax.OR && x.Op != syntax.AND {
+		return
+	}
+	var leaves func(e syntax.Expr)
+	leaves = func(e syntax.Expr) {
+		if b, ok := e.(*syntax.Binary); ok && (b.Op == syntax.AND || b.Op == syntax.OR) && b.X != nil && b.Y != nil {
+			leaves(b.X)
+			leaves(b.Y)
+			return
+		}
+		c.unreachable(syntax.StartPos(e))
+	}
+	leaves(x.Y)
+	c.markDead(x.Y)
 }
 
 func (c *Checker) markBlockDead(b *syntax.Block) {
@@ -316,4 +489,97 @@ func (c *Checker) unreachable(p syntax.Pos) {
 	if p.Line > 0 {
 		c.warnf(p, "UNREACHABLE_CODE", "unreachable code")
 	}
+}
+
+// classDeadCode reports the code of class d that can't run, and of the
+// classes nested in it, once: the initializers, init blocks and
+// secondary constructors' bodies that its initialization runs after a
+// property's initializer or an init block that always jumps, as with
+// kotlinc, which judges a class's initialization as one graph.
+func (c *Checker) classDeadCode(d *syntax.ClassDecl, done map[*syntax.ClassDecl]bool) {
+	if d == nil || done[d] || d.Generated || d.Synthetic || c.deadClasses[d] {
+		return
+	}
+	done[d] = true
+	dead := false
+	if call := c.superCallJumps(d); call != nil && !d.Anonymous {
+		// class C : B(todo()): the call, then the initializers. An object
+		// expression's is reported with the code it is in.
+		c.unreachable(syntax.StartPos(call))
+		dead = true
+	}
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.ClassDecl:
+			c.classDeadCode(m, done)
+		case *syntax.PropDecl:
+			switch {
+			case m.Init == nil || m.Generated:
+			case dead:
+				c.deadInit(m.Init)
+			case m.DelegateOf != nil:
+				dead = c.cfgJumps(m.Init, false)
+			default:
+				dead = c.cfgJumps(m.Init, m.Type != nil && (m.Sym == nil || m.Sym.Type.K != types.Nothing))
+			}
+		case *syntax.InitBlock:
+			if dead {
+				c.deadBlock(m.Body)
+			} else {
+				dead = c.blockCFGJumps(m.Body)
+			}
+		}
+	}
+	if !dead {
+		return
+	}
+	for _, m := range d.Members {
+		if s, ok := m.(*syntax.SecondaryCtor); ok && s.Serial == nil {
+			// Its body runs after the class's initializers.
+			c.unreachable(s.P)
+			c.deadBlock(s.Body)
+		}
+	}
+}
+
+// deadInit reports the initializer or delegate e of a property, which
+// can't run, where kotlinc does: at its start and, of a lambda or a call
+// with a trailing one, as lazy { }, at the lambda's closing brace; of an
+// object expression, at the closing braces of its properties' lambdas,
+// and a delegate call's start.
+func (c *Checker) deadInit(e syntax.Expr) {
+	c.unreachable(syntax.StartPos(e))
+	if o, ok := e.(*syntax.ObjectExpr); ok && o.Decl != nil {
+		for _, m := range o.Decl.Members {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Init != nil {
+				if l := trailingLambda(pd.Init); l != nil {
+					if _, call := pd.Init.(*syntax.Call); call {
+						c.unreachable(syntax.StartPos(pd.Init))
+					}
+					c.unreachable(l.Body.End)
+				}
+			}
+		}
+	} else if l := trailingLambda(e); l != nil {
+		c.unreachable(l.Body.End)
+	}
+	c.markDead(e)
+}
+
+// trailingLambda returns e if it is a lambda or an anonymous function,
+// or the lambda that call e takes last, or nil.
+func trailingLambda(e syntax.Expr) *syntax.Lambda {
+	switch e := e.(type) {
+	case *syntax.Lambda:
+		if e.Body != nil {
+			return e
+		}
+	case *syntax.Call:
+		if len(e.Args) > 0 {
+			if l, ok := e.Args[len(e.Args)-1].(*syntax.Lambda); ok && l.Body != nil {
+				return l
+			}
+		}
+	}
+	return nil
 }

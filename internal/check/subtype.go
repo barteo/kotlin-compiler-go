@@ -12,6 +12,9 @@ import (
 // flexible: String! is both String and String?, and a Java List is both a
 // MutableList and a List.
 func (c *Checker) subtype(t, u types.Type) bool {
+	if c.pclaSub != nil {
+		t, u = c.pclaSub.Apply(t), c.pclaSub.Apply(u)
+	}
 	if c.subtype1(t, u) {
 		return true
 	}
@@ -23,9 +26,13 @@ func (c *Checker) subtype(t, u types.Type) bool {
 
 // readOnlyView returns a platform mutable collection type as the read-only
 // type: Kotlin sees java.util.List as (Mutable)List, which also takes
-// read-only lists.
+// read-only lists. Not one with a contravariant argument, List<? super T>,
+// which only a mutable collection can be: MutableList<in T>.
 func readOnlyView(u types.Type) (types.Type, bool) {
 	if !u.P || u.K != types.Class || u.C.ReadOnly == nil {
+		return u, false
+	}
+	if u.A != nil && slices.ContainsFunc(u.A.List, func(a types.Arg) bool { return a.V == types.In }) {
 		return u, false
 	}
 	u.C = u.C.ReadOnly
@@ -84,7 +91,7 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		}
 	}
 	if u.IsParam() {
-		return c.reachesParam(t, u.Param())
+		return c.reachesParam(t, u.Param(), u.N || t.D) // E & Any isn't null, whatever bounds E
 	}
 	t, u = t.NonNull(), u.NonNull()
 	if t.IsParam() {
@@ -107,6 +114,13 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	case types.Any:
 		return true
 	case types.Class:
+		if t.K == types.Class && t.C == u.C.ArityOf && len(t.C.TypeParams) == 0 {
+			// A class without type parameters, as one of another
+			// module's of its name with some: K2 compares the arguments
+			// of the class it finds, none, and not those of the
+			// supertypes of a subclass.
+			return true
+		}
 		if u.A == nil {
 			// A non-generic class: no arguments to compare.
 			var tc *types.ClassSym
@@ -128,16 +142,17 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 }
 
 // reachesParam reports whether t is the type parameter p, or a parameter
-// bounded (directly or not) by p, as U is in <T, U : T>.
-func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym) bool {
-	if !t.IsParam() {
+// bounded (directly or not) by p, as U is in <T, U : T>. Unless nullOK, a
+// nullable bound doesn't reach p: W of <Z : F, W : Z?> isn't an F.
+func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym, nullOK bool) bool {
+	if !t.IsParam() || t.N && !nullOK {
 		return false
 	}
 	if t.Param() == p {
 		return true
 	}
 	for _, b := range t.Param().Bounds {
-		if c.reachesParam(b, p) {
+		if c.reachesParam(b, p, nullOK) {
 			return true
 		}
 	}
@@ -310,7 +325,17 @@ func (c *Checker) asSuper1(t types.Type, target *types.ClassSym, depth int) (typ
 		}
 	case types.Int, types.Long, types.Double, types.Bool, types.Char, types.Float, types.Byte, types.Short, types.String:
 		if jc := c.jvmClass(t); jc != nil {
-			return c.asSuper1(types.ClassType(jc), target, depth+1)
+			r, ok := c.asSuper1(types.ClassType(jc), target, depth+1)
+			if ok && r.K == types.Class && (r.C.Name == "kotlin/Comparable" || r.C.Name == "java/lang/Comparable") && r.A.Len() == 1 {
+				// Kotlin declares Int : Comparable<Int>, whose argument,
+				// unlike java.lang.Integer's Comparable<Integer>, isn't
+				// a platform type: Int? isn't within the bound
+				// Comparable<in U!>! of a Java method's U.
+				if a := r.A.List[0]; a.T.P && a.T.NonNull() == t {
+					r = types.GenericType(r.C, []types.Arg{{V: a.V, T: t}})
+				}
+			}
+			return r, ok
 		}
 	}
 	return types.InvalidType, false
@@ -534,6 +559,13 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 		}
 		return a, true
 	}
+	if a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && a.N == b.N && a.P == b.P && c.sameType(a, b) {
+		// Of instances whose arguments differ only in their flexibility,
+		// as K2's common supertype, the first: MutableList<J> of
+		// MutableList<J> and MutableList<J!>, but MutableList<J!> of
+		// MutableList<J!> and MutableList<J>.
+		return a, true
+	}
 	if t, ok := c.stubJoin(a, b); ok {
 		return t, true
 	}
@@ -578,7 +610,8 @@ func joinNull(t, a, b types.Type) types.Type {
 // joinBranch joins the type of a branch of an if, when or try, bt, with
 // the result of the branches before it. Where they are different value
 // types, as Int and String, and the expected type is one of them, the
-// branch is reported, as kotlinc checks each branch against it.
+// mismatch is reported at p, the start of the if, when or try, where
+// kotlinc reports the whole expression's type not fitting it.
 func (c *Checker) joinBranch(result, bt, want types.Type, p syntax.Pos) (types.Type, bool) {
 	if want.K != types.Invalid && !want.HasVars() && isBuiltin(result) && isBuiltin(bt) && result.NonNull() != bt.NonNull() &&
 		!c.subtype(types.AnyType, want.NonNull()) {
@@ -674,6 +707,15 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		sb, ok := c.asSuper(b, s.C)
 		if !ok {
 			continue
+		}
+		if isBuiltin(a) {
+			// A built-in's supertype as subtyping sees it, Comparable<String>
+			// and not java.lang.String's Comparable<String!>: the join with
+			// a Java class's Comparable<Date!> is Comparable<String & Date>,
+			// which a String is, not Comparable<(String & Date)?>.
+			if sa, ok := c.asSuper(a, s.C); ok {
+				s = sa
+			}
 		}
 		r := c.joinArgs(s, sb, depth)
 		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0

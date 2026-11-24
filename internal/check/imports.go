@@ -169,6 +169,11 @@ func (c *Checker) importedMember(x *syntax.Ident) (types.Type, bool) {
 func (c *Checker) checkImportedRef(m *syntax.Member, mi memberImport) types.Type {
 	var t types.Type
 	if id, ok := m.X.(*syntax.Ident); ok && id.Object == nil {
+		if o := mi.owner; c.inPrivateClass(o) {
+			// An enum entry or static of a class the code can't
+			// see, as the entry of a private nested enum.
+			c.invisibleMember(m.P, mi.name, o)
+		}
 		t = c.staticField(m, c.fieldOwner(mi.owner, mi.name))
 	} else {
 		t = c.member(m)
@@ -223,7 +228,12 @@ func (c *Checker) checkClassImport(ci memberImport) {
 	}
 	cls.Ensure()
 	switch {
-	case cls.Missing || !cls.Private:
+	case cls.Missing:
+	case !cls.Private:
+		if o := c.invisibleJavaOuter(cls); o != nil {
+			// import p.Foo.Nested of a package-private p.Foo.
+			c.errorf(ci.p, "cannot access '%s': it is package-private in '%s'", o.DisplayName(), o.DisplayName())
+		}
 	case cls.Internal:
 		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
 	case ci.path != c.file.Package:

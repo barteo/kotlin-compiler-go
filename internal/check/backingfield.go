@@ -41,7 +41,7 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 	case d.Const:
 		c.errorf(bf.P, "a const property cannot have an explicit backing field")
 	case len(d.Contexts) > 0:
-		c.errorf(bf.P, "a property with context parameters cannot have a backing field")
+		c.contextsWithField(d)
 	case d.Open || d.Override && !d.Final && owner != nil && !owner.Final:
 		c.errorf(bf.P, "a property with an explicit backing field must be final")
 	}
@@ -64,13 +64,17 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.Lateinit {
 		c.errorf(d.P, "'lateinit' modifier is not allowed on properties with an explicit backing field")
 	}
-	if d.Find("", "JvmField") != nil {
-		c.errorf(d.P, "@JvmField cannot be applied to a property with an explicit backing field")
+	if a := d.Find("", "JvmField"); a != nil {
+		c.errorf(a.P, "@JvmField cannot be applied to a property with an explicit backing field")
 	}
 	if bf.Type == nil && bf.Init == nil {
+		// Of no type, which kotlinc reports as not one of the property's.
+		c.errorf(d.P, "the type of the backing field must be a subtype of the property's type")
 		c.errorf(bf.P, "an explicit backing field must have a type or an initializer")
 	}
-	if bf.Init == nil && owner == nil {
+	if bf.Init == nil && d.Init == nil && (owner == nil || !owner.Interface && (d.Getter != nil || d.Setter != nil)) {
+		// A class's is checked by definite assignment, but for one with
+		// accessors, which the constructors can't assign.
 		c.errorf(bf.P, "an explicit backing field must be initialized")
 	}
 	bf.Allowed = len(c.errs) == n
@@ -84,7 +88,11 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 // checked first.
 func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 	bf, sym := d.BackingField, d.Sym
-	if bf == nil || !bf.Allowed || !sym.Resolved {
+	if bf == nil || !sym.Resolved {
+		return
+	}
+	if !bf.Allowed {
+		c.disallowedFieldType(d, owner)
 		return
 	}
 	if bf.Type == nil {
@@ -94,14 +102,44 @@ func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 		return
 	}
 	ft := c.resolveType(bf.Type)
-	if !c.fieldNarrows(ft, sym.Type, bf.P) {
+	bf.Redundant = c.sameFieldType(ft, sym.Type)
+	if !c.fieldNarrows(ft, sym.Type, d.P) {
+		if ft.K != types.Invalid && ft != sym.Type {
+			// Reported: its initializer is still checked with the type
+			// written, as kotlinc does.
+			sym.FieldT = &ft
+		}
 		return
 	}
 	sym.FieldT = &ft
 }
 
+// disallowedFieldType reports an explicit backing field reported for
+// what else property d has, as accessors, whose type isn't a subtype of
+// the property's written type, as kotlinc does too. Its initializer is
+// checked here unless it is checked as the property's.
+func (c *Checker) disallowedFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
+	bf, sym := d.BackingField, d.Sym
+	if d.Type == nil || d.Field != nil || d.Recv != nil || sym.Type.K == types.Invalid {
+		return
+	}
+	var ft types.Type
+	switch {
+	case bf.Type != nil:
+		ft = c.resolveType(bf.Type)
+	case bf.Init != nil && d.Init != bf.Init && !c.done[d]:
+		saved := c.state
+		ft = c.fieldInit(d, owner, sym.Type, false)
+		c.state = saved
+	default:
+		return
+	}
+	c.fieldNarrows(ft, sym.Type, d.P)
+}
+
 // fieldNarrows reports whether a backing field of type ft narrows a
 // property of type t, and reports it if it can't hold t's values.
+// It is reported at p, the property, as kotlinc does.
 func (c *Checker) fieldNarrows(ft, t types.Type, p syntax.Pos) bool {
 	switch {
 	case ft.K == types.Invalid || t.K == types.Invalid:
@@ -113,6 +151,39 @@ func (c *Checker) fieldNarrows(ft, t types.Type, p syntax.Pos) bool {
 	return ft != t // a field of the property's type is redundant
 }
 
+// sameFieldType reports whether a backing field of type ft is of t, the
+// property's type, as kotlinc's REDUNDANT_EXPLICIT_BACKING_FIELD judges
+// it: each a subtype of the other, so that a field of (Int) -> Unit is
+// one of Int.() -> Unit.
+func (c *Checker) sameFieldType(ft, t types.Type) bool {
+	if ft.K == types.Invalid || t.K == types.Invalid || ft.P || t.P || ft.HasVars() || t.HasVars() {
+		return false
+	}
+	return ft == t || c.subtype(ft, t) && c.subtype(t, ft)
+}
+
+// redundantBackingFields reports the explicit backing fields of the
+// file's properties that are of the property's type: kotlinc's
+// REDUNDANT_EXPLICIT_BACKING_FIELD.
+func (c *Checker) redundantBackingFields() {
+	var visit func(ds []syntax.Decl)
+	visit = func(ds []syntax.Decl) {
+		for _, d := range ds {
+			switch d := d.(type) {
+			case *syntax.PropDecl:
+				if bf := d.BackingField; bf != nil && bf.Allowed && bf.Redundant {
+					c.warnf(bf.P, "REDUNDANT_EXPLICIT_BACKING_FIELD", "explicit backing field declaration is unnecessary if it has the same type as the property")
+				}
+			case *syntax.ClassDecl:
+				if !d.Generated && !d.Synthetic {
+					visit(d.Members)
+				}
+			}
+		}
+	}
+	visit(c.file.Decls)
+}
+
 // inferBackingField checks the initializer of property d's backing field,
 // which gives its type, as inferProp does an omitted type's.
 func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
@@ -121,12 +192,12 @@ func (c *Checker) inferBackingField(d *syntax.PropDecl, owner *types.ClassSym) {
 		return // read in its own initializer: as the property's type
 	}
 	sym.InProgress = true
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(owner)
-	t := c.fieldInit(d, owner, sym.Type)
-	c.state, c.trial = saved, trial
+	saved := c.state
+	t := c.fieldInit(d, owner, sym.Type, false)
+	c.state = saved
 	sym.InProgress, sym.Resolved = false, true
-	if c.fieldNarrows(t, sym.Type, d.BackingField.P) {
+	d.BackingField.Redundant = c.sameFieldType(t, sym.Type)
+	if c.fieldNarrows(t, sym.Type, d.P) {
 		sym.FieldT = &t
 	}
 }
@@ -141,14 +212,15 @@ func (c *Checker) checkBackingField(d *syntax.PropDecl, cls *types.ClassSym) {
 	if ft := d.Sym.FieldT; ft != nil {
 		want = *ft
 	}
-	c.fieldInit(d, cls, want)
+	c.fieldInit(d, cls, want, true)
 }
 
 // fieldInit checks the initializer of property d's backing field, which
-// has the type want if known, and returns its type.
-func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.Type) types.Type {
+// has the type want if known, and returns its type. Unless assign, its
+// type isn't checked against want: an inferred field's type that the
+// property's doesn't take is reported as such (fieldNarrows).
+func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.Type, assign bool) types.Type {
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
 	c.state = state{scope: &scope{}, cls: cls, this: newThis(cls), init: cls != nil, declName: d.Name}
 	if cls != nil {
 		c.scope = c.ctorScope(cls)
@@ -157,7 +229,9 @@ func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.
 	c.inAnon(cls)
 	init := d.BackingField.Init
 	t := c.value(init, want)
-	c.assignable(t, want, init.Pos())
+	if assign {
+		c.assignable(t, want, init.Pos())
+	}
 	if cls == nil {
 		c.uninitializedTop(d, init)
 	}

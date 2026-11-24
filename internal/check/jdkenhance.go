@@ -305,6 +305,16 @@ func mapCollectionMembers(cls *types.ClassSym) {
 		if v, ok := arg('m', 1); ok {
 			retype("containsValue", "(Ljava/lang/Object;)Z", v)
 			retype("remove", "(Ljava/lang/Object;Ljava/lang/Object;)Z", k, v)
+			retype("getOrDefault", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", k, v)
+			for _, f := range cls.Methods["getOrDefault"] {
+				// @PlatformDependent in Kotlin's Map: a subclass's
+				// getOrDefault(K, V) isn't taken as hiding it, as before
+				// it was mapped and as kotlinc's tests on a JDK without
+				// it expect, though kotlinc wants override on a full one.
+				if f.Desc == "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;" {
+					f.Platform = true
+				}
+			}
 		}
 	}
 }

@@ -59,7 +59,7 @@ module=kotlinx-coroutines-core
 optins=$(for o in kotlin.ExperimentalMultiplatform kotlin.experimental.ExperimentalTypeInference kotlinx.coroutines.DelicateCoroutinesApi \
 	kotlinx.coroutines.ExperimentalCoroutinesApi kotlinx.coroutines.ObsoleteCoroutinesApi kotlinx.coroutines.InternalCoroutinesApi \
 	kotlinx.coroutines.FlowPreview; do printf ' -opt-in=%s' "$o"; done)
-opts="-module-name $module -jvm-default=enable$optins"
+opts="-module-name $module -jvm-default=enable -Xmulti-platform$optins"
 kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,concurrent,jvm
 	-Xfragment-refines=concurrent:common,jvm:concurrent -Xfragment-sources=$fragments
 	-progressive -Xexplicit-api=strict -Xdont-warn-on-error-suppression -Xno-param-assertions -Xno-call-assertions

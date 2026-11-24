@@ -25,13 +25,21 @@
 //              the directory's loader and KSP API jars and, from the task's own, KSP's
 //              configuration classes, the Kotlin standard library and kotlinx.coroutines. The
 //              processors see those jars only. Unless KC_STRICT=1, a task whose run on kc fails
-//              runs stock KSP in its place, and the build log says so. A daemon's builds must
-//              name one directory with one libkc.so: after an upgrade of kc, restart the daemon.
+//              runs stock KSP in its place, and the build log says so. When the processors'
+//              own errors fail the run on kc, the log has them once: stock KSP's if it fails
+//              too, and otherwise kc's, after a line that says stock KSP reported none. A
+//              daemon's builds must name one directory with one libkc.so: after an upgrade of
+//              kc, restart the daemon.
 //              Checked with the KSP Gradle plugin 2.3.12 and 2.3.13.
-//   KC_KSP_KEEP  1: KSP on kc keeps the processors' classes loaded between the tasks and builds
-//              of a daemon, for as long as the processors' jars stay the same. KSP's Gradle
-//              plugin loads them anew for every task, so every run starts on code the JVM has
-//              not compiled yet. A processor then keeps its static state between runs.
+//   KC_KSP_KEEP  0: KSP on kc loads the processors' classes anew for every task, as KSP's Gradle
+//              plugin does. Otherwise it keeps them loaded between the tasks and builds of a
+//              daemon, for as long as the processors' jars stay the same, so that a run doesn't
+//              start on code the JVM has not compiled yet. A processor then keeps its static
+//              state between runs.
+//   KC_KSP_FORGET  1: KSP on kc keeps nothing of a module in memory for the daemon's next build.
+//              Without it, the modules whose KSP tasks ran last keep their parsed files, models
+//              and class paths, so that a build after an edit reads only what changed: gigabytes
+//              in a large project, for a second or less of such a build.
 //   KC_JDK_HOME  JDK to compile against, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:
@@ -135,6 +143,31 @@ if (gradle.parent == null) {
           .firstNotNullOfOrNull { (it as? String)?.removePrefix("-jvm-default=")?.takeIf { v -> v != it } }
         ?: "enable"
       args += listOf("-jvm-default", jvmDefault)
+      // Explicit API mode, as kotlinc's -Xexplicit-api: kotlin { explicitApi() } sets the task's
+      // explicitApiMode (an internal property, whose getter's name is mangled), and a module's
+      // free compiler arguments may give it, or -XXexplicit-return-types, too.
+      val freeArgs = (option("getFreeCompilerArgs") as List<*>?).orEmpty().filterIsInstance<String>()
+      val explicitApi = freeArgs.lastOrNull { it.startsWith("-Xexplicit-api=") }?.substringAfter('=')
+        ?: runCatching {
+          val mode = (callPrefixed(task, "getExplicitApiMode") as org.gradle.api.provider.Provider<*>?)?.orNull
+          when (mode?.toString()?.lowercase()) {
+            "strict" -> "strict"
+            "warning" -> "warning"
+            else -> null
+          }
+        }.getOrNull()
+      if (explicitApi != null) args += "-Xexplicit-api=$explicitApi"
+      freeArgs.lastOrNull { it.startsWith("-XXexplicit-return-types=") }?.let { args += it }
+      // A multiplatform module's JVM compilation has expect and actual declarations, which are
+      // errors without -Xmulti-platform, as with kotlinc: the task's multiPlatformEnabled (an
+      // internal property, whose getter's name is mangled) says so, or its free arguments do.
+      val multiPlatform = "-Xmulti-platform" in freeArgs || runCatching {
+        (callPrefixed(task, "getMultiPlatformEnabled") as org.gradle.api.provider.Provider<*>?)?.orNull == true
+      }.getOrDefault(false)
+      if (multiPlatform) args += "-Xmulti-platform"
+      // The JVM version the class files are for, the module's jvmTarget, as kotlinc's -jvm-target:
+      // a library's inline functions built for a higher one are errors, as with kotlinc.
+      option("getJvmTarget")?.let { call(it, "getTarget") as String }?.let { args += listOf("-jvm-target", it) }
       if (libraries.isNotEmpty()) args += listOf("-cp", libraries.joinToString(File.pathSeparator))
       if (friends.isNotEmpty()) args += listOf("-friend-paths", friends.joinToString(File.pathSeparator))
       for (jar in plugins) {

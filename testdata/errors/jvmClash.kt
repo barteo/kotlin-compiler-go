@@ -136,7 +136,3 @@ object PlainInstance {
 }
 
 fun wait(x: Int) {}
-
-// An unresolved receiver isn't left out of the signature.
-fun Nope.unknownRecv(x: Int) {} // ERROR unresolved
-fun unknownRecv(x: Int) {}

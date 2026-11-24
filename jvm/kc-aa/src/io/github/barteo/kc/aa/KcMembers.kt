@@ -459,6 +459,15 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             else -> s // Java fields keep their declared types.
         }
 
+    /** The members of [c] that [d], declared in a subclass without a symbol (an enum entry's initializer), overrides. */
+    fun overriddenBy(d: KaCallableSymbol): List<KaCallableSymbol> {
+        val dc = Candidate(d, rel.empty)
+        val key = signatureKey(d)
+        return round.members(c).callables.filter {
+            it.visibility != KaSymbolVisibility.PRIVATE && signatureKey(it) == key && matches(dc, Candidate(it, rel.empty))
+        }.flatMap(::declaredOriginals).distinct()
+    }
+
     /** What two members [matches] must share: kind, name, and the counts it compares. */
     private data class SignatureKey(val kind: Int, val name: Name, val params: Int, val typeParams: Int, val receiver: Boolean)
 

@@ -8,7 +8,8 @@ import (
 
 // serialCtor generates the synthetic constructor that the kotlinx.serialization
 // plugin gives class cd, sc, as kotlinc writes it. It takes a bit for each
-// property that was read, in seen0, the properties and a marker. It checks
+// property that was read, in seen0 and on, an Int for each 32 properties,
+// the properties and a marker. It checks
 // that the properties without default values were read, those of the
 // superclasses too, then calls the superclass's synthetic constructor, if
 // it is @Serializable too, or else its constructor without arguments. It
@@ -35,39 +36,93 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.named(p)
 	}
 	g.line(cd.P)
-	seen := g.slot(f.Params[0])
-	props := f.Params[1 : len(f.Params)-1] // those of all, in order
-	marker := g.slot(f.Params[len(f.Params)-1])
 	all := serial.All()
+	// A mask for each 32 properties, seen0 and on, then the properties.
+	masks := len(f.Params) - len(all) - 1
+	seen := make([]int, masks)
+	for i := range seen {
+		seen[i] = g.slot(f.Params[i])
+	}
+	props := f.Params[masks : len(f.Params)-1] // those of all, in order
+	marker := g.slot(f.Params[len(f.Params)-1])
 	if s := cls.Nested["$serializer"]; s != nil {
-		var mask int32
+		golden := make([]int32, masks)
+		required := false
 		for i, p := range all {
 			if !p.Optional {
-				mask |= 1 << i
+				golden[i/32] |= int32(uint32(1) << (i % 32))
+				required = true
 			}
 		}
-		if mask != 0 {
-			read := cf.NewLabel()
-			g.code.Iconst(mask)
-			g.code.Iconst(mask)
-			g.code.Local(cf.ILOAD, seen)
-			g.code.Op(cf.IAND)
-			g.code.Jump(cf.IF_ICMPEQ, read)
-			g.code.Local(cf.ILOAD, seen)
-			g.code.Iconst(mask)
-			g.code.FieldInsn(cf.GETSTATIC, s.Name, "INSTANCE", "L"+s.Name+";")
-			g.code.Invoke(cf.INVOKEVIRTUAL, s.Name, "getDescriptor", "()Lkotlinx/serialization/descriptors/SerialDescriptor;")
-			g.code.Invoke(cf.INVOKESTATIC, "kotlinx/serialization/internal/PluginExceptionsKt", "throwMissingFieldException",
-				"(IILkotlinx/serialization/descriptors/SerialDescriptor;)V")
+		if required {
+			read, missing := cf.NewLabel(), cf.NewLabel()
+			if masks > 1 {
+				for i, m := range golden {
+					if m == 0 {
+						continue
+					}
+					g.code.Iconst(m)
+					g.code.Local(cf.ILOAD, seen[i])
+					g.code.Op(cf.IAND)
+					g.code.Iconst(m)
+					g.code.Jump(cf.IF_ICMPNE, missing)
+				}
+				g.code.Jump(cf.GOTO, read)
+				g.code.Place(missing)
+				// As kotlinc: the masks and the golden masks as arrays.
+				ints := func(n int, elem func(i int)) {
+					g.code.Iconst(int32(n))
+					g.code.NewArray(cf.TInt)
+					for i := range n {
+						g.code.Op(cf.DUP)
+						g.code.Iconst(int32(i))
+						elem(i)
+						g.code.Op(cf.IASTORE)
+					}
+				}
+				ints(masks, func(i int) { g.code.Local(cf.ILOAD, seen[i]) })
+				ints(masks, func(i int) { g.code.Iconst(golden[i]) })
+			} else {
+				g.code.Iconst(golden[0])
+				g.code.Iconst(golden[0])
+				g.code.Local(cf.ILOAD, seen[0])
+				g.code.Op(cf.IAND)
+				g.code.Jump(cf.IF_ICMPEQ, read)
+				g.code.Local(cf.ILOAD, seen[0])
+				g.code.Iconst(golden[0])
+			}
+			if s.Object {
+				g.code.FieldInsn(cf.GETSTATIC, s.Name, "INSTANCE", "L"+s.Name+";")
+				g.code.Invoke(cf.INVOKEVIRTUAL, s.Name, "getDescriptor", "()Lkotlinx/serialization/descriptors/SerialDescriptor;")
+			} else {
+				// A generic class's serializer is made of its type
+				// arguments': the class keeps a descriptor of its own.
+				g.code.FieldInsn(cf.GETSTATIC, cls.Name, "$cachedDescriptor", "Lkotlinx/serialization/descriptors/SerialDescriptor;")
+			}
+			if masks > 1 {
+				g.code.Invoke(cf.INVOKESTATIC, "kotlinx/serialization/internal/PluginExceptionsKt", "throwArrayMissingFieldException",
+					"([I[ILkotlinx/serialization/descriptors/SerialDescriptor;)V")
+			} else {
+				g.code.Invoke(cf.INVOKESTATIC, "kotlinx/serialization/internal/PluginExceptionsKt", "throwMissingFieldException",
+					"(IILkotlinx/serialization/descriptors/SerialDescriptor;)V")
+			}
 			g.code.Place(read)
 		}
 	}
 	g.code.Local(cf.ALOAD, 0)
 	if sd := serial.Super; sd != nil {
+		// The superclass's masks, of its properties, which come first.
 		sf := sd.Serial.Ctor.Sym
-		g.code.Local(cf.ILOAD, seen)
-		for _, p := range props[:len(sf.Params)-2] {
+		superAll := sd.Serial.All()
+		superMasks := len(sf.Params) - len(superAll) - 1
+		for _, m := range seen[:superMasks] {
+			g.code.Local(cf.ILOAD, m)
+		}
+		for i, p := range props[:len(superAll)] {
 			g.code.Local(loadOp(p.Type), g.slot(p))
+			// A generic superclass's property, of the type argument the
+			// class gives it: an Int is boxed for its T.
+			g.coerce(p.Type, sf.Params[superMasks+i].Type)
 		}
 		g.code.Local(cf.ALOAD, marker)
 		d := ctorJVMDesc(sf)
@@ -108,18 +163,22 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		}
 	}
 	set := func(decl any, p *types.VarSym, def syntax.Expr) {
-		put := func() { g.code.FieldInsn(cf.PUTFIELD, cls.Name, p.Name, desc(p.Type)) }
+		// A Unit property's field holds the kotlin.Unit object.
+		ft := types.FieldType(p)
+		put := func() { g.code.FieldInsn(cf.PUTFIELD, cls.Name, p.Name, desc(ft)) }
 		i, ok := elems[decl]
 		if !ok {
 			g.code.Local(cf.ALOAD, 0)
-			g.exprAs(def, p.Type)
+			g.exprAs(def, ft)
 			put()
 			return
 		}
 		param := props[i]
 		load := func() {
 			g.code.Local(loadOp(param.Type), g.slot(param))
-			g.coerce(param.Type, p.Type) // a value class's box to its value
+			if p.Type.K != types.Unit {
+				g.coerce(param.Type, p.Type) // a value class's box to its value
+			}
 		}
 		if !all[i].Optional {
 			g.code.Local(cf.ALOAD, 0)
@@ -128,12 +187,12 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 			return
 		}
 		read, done := cf.NewLabel(), cf.NewLabel()
-		g.code.Local(cf.ILOAD, seen)
-		g.code.Iconst(int32(1) << i)
+		g.code.Local(cf.ILOAD, seen[i/32])
+		g.code.Iconst(int32(uint32(1) << (i % 32)))
 		g.code.Op(cf.IAND)
 		g.code.Jump(cf.IFNE, read)
 		g.code.Local(cf.ALOAD, 0)
-		g.exprAs(def, p.Type)
+		g.exprAs(def, ft)
 		put()
 		g.code.Jump(cf.GOTO, done)
 		g.code.Place(read)
@@ -148,8 +207,11 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	for _, m := range cd.Members {
 		switch m := m.(type) {
 		case *syntax.PropDecl:
-			if m.Init == nil || m.Sym.Const || m.Sym.StaticField() {
+			if m.Sym.Const || m.Sym.StaticField() {
 				continue
+			}
+			if _, read := elems[m]; m.Init == nil && !(m.Lateinit && read) {
+				continue // a lateinit property's is read, as it is required
 			}
 			g.line(m.P)
 			g.prefix = m.Name + "$lambda"

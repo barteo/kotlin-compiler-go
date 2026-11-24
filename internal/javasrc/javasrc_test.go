@@ -345,3 +345,57 @@ interface K {
 	}
 	t.Error("no method f")
 }
+
+// TestDocDeprecated checks that a doc comment's @deprecated tag
+// deprecates a class, a method, a field and an enum constant, as
+// @Deprecated does, and that the word elsewhere in a comment doesn't.
+func TestDocDeprecated(t *testing.T) {
+	src := `package p;
+/**
+ * Old.
+ * @deprecated use New
+ */
+public class K {
+	/** @deprecated */
+	public void f() {}
+	/** Not {@code @deprecated}: see @deprecated below. */
+	public void g() {}
+	/**/
+	public void h() {}
+	/** @deprecated */
+	public int x;
+	public enum E { A, /** @deprecated */ B, @Deprecated C }
+}
+`
+	f, err := Parse("p/K.java", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSet([]*File{f})
+	s.Outside = kotlinOutside{map[string]bool{"java/lang/Deprecated": true}}
+	info, err := s.Info("p/K")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Deprecated == nil {
+		t.Error("K: not deprecated")
+	}
+	got := map[string]bool{}
+	for _, m := range append(info.Methods, info.Fields...) {
+		got[m.Name] = m.Deprecated != nil
+	}
+	if !got["f"] || got["g"] || got["h"] || !got["x"] {
+		t.Errorf("K's members deprecated: %v", got)
+	}
+	e, err := s.Info("p/K$E")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = map[string]bool{}
+	for _, m := range e.Fields {
+		got[m.Name] = m.Deprecated != nil
+	}
+	if got["A"] || !got["B"] || !got["C"] {
+		t.Errorf("E's entries deprecated: %v", got)
+	}
+}

@@ -29,16 +29,24 @@ key and detail. Flags after the mode go to the harness:
   (the first field of a TSV line; `#` starts a comment).
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
-  file and line, and the message.
+  file and line, and the message. It leaves out errors of a kind the
+  test's `DIAGNOSTICS` directive switches off, where `kc`'s message names
+  the kind (`check.IsNamed`).
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
   diagnostic and its severity, and `hit` if `kc` reported on its line an
   error, for an error, or the same warning, for a warning, or `miss`,
-  followed for a missed error by its cause.
+  followed for a missed error or warning by its cause.
 - `-warnings FILE` (diagnostics) writes `kc`'s warnings on lines where
   the markup doesn't expect them, other than those a test's `DIAGNOSTICS`
   directive switches off, to a TSV file: the test, its category, the
-  file and line, the warning and its message.
+  file and line, the warning and its message. Warnings in the shared
+  helper files, which the markup doesn't cover, aren't counted, nor
+  `ERROR_SUPPRESSION` in a test with `DONT_WARN_ON_ERROR_SUPPRESSION`.
+  `UNUSED_EXPRESSION` and `UNUSED_LAMBDA_EXPRESSION` count as switched
+  off unless the test asks for them, with `WITH_EXTRA_CHECKERS`,
+  `DIAGNOSTICS: +NAME` or a mark of the warning: kotlinc reports them by
+  default, but the markup of the other tests never expects them.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -54,6 +62,13 @@ key and detail. Flags after the mode go to the harness:
   fails if `kc` misses an error it reported on its line before. Tests
   that weren't type-checked in either run, such as unsupported ones,
   are left out.
+- `-missed-warnings FILE` and `-missed-warnings-baseline FILE`
+  (diagnostics) do the same for the expected warnings `kc` doesn't report
+  on their lines, by their names.
+  `bench/kotlin-tests.sh diagnostics` writes them to
+  [bench/results/diagnostics-missed-warnings.tsv](../bench/results/diagnostics-missed-warnings.tsv),
+  the backlog of missed warnings. A warning's cause is *syntax-error*,
+  *module-not-compiled* or *missing-check*.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -115,12 +130,15 @@ infrastructure does, it puts the JetBrains annotations
 the class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
-a module's `JVM_DEFAULT_MODE` (or the test's, before its first
-module) into `-jvm-default`, removes
+a module's `JVM_DEFAULT_MODE` and `JVM_TARGET` (or the test's, before
+its first module) into `-jvm-default` and `-jvm-target`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
-Java sources, or modules with `dependsOn`. A `LANGUAGE` that
+Java sources, or modules with `dependsOn`, and the one test that
+compiles only against a JDK before 21 (`extensionFunctions/kt475`:
+there `array.last = "5"` assigns the synthetic `val` of JDK 21's
+`ArrayList.getLast()`, which `kotlinc` rejects too). A `LANGUAGE` that
 only sets features as Kotlin 2.4 has them by default, or as `kc`
 follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+AllowReifiedTypeInCatchClause`,
@@ -134,8 +152,9 @@ follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+PCLAEnhancementsIn21`, `+PrioritizedEnumEntries`,
 `+ProperIeee754Comparisons`,
 `+RefinedVarargConversionRulesForCallableReferences`,
-`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`)
-doesn't count.
+`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`,
+and the features new in Kotlin 2.4, which `kotlin24Features` in
+`bench/conformance/testfile.go` lists) doesn't count.
 
 | Category | What happened |
 |:---|:---|
@@ -201,10 +220,16 @@ Four things differ from the test infrastructure:
   outside the infrastructure. A test that adds them stops in the
   frontend even when valid, so only its marks count.
 - **Directory options.** Directories whose test classes give `kotlinc`
-  options (the return value checker in `crv/`, explicit API mode, header
-  mode, strict equality) are skipped, as are tests
+  options are compiled with them where `kc` has them (explicit API mode in
+  `testsWithExplicitApi/`, explicit return types in
+  `testsWithExplicitReturnTypes/`, as for the `EXPLICIT_API_MODE`
+  directive), and skipped where it doesn't (the return value checker in
+  `crv/`, header mode, strict equality), as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
-  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`. So are `IDE_MODE`
+  tests that mark the error form of a diagnostic (such as
+  `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR`), which
+  `kotlinc` reports only in the IDE.
 - **Switched-off backend errors.** A test that switches off
   `CONFLICTING_JVM_DECLARATIONS`, `CONFLICTING_INHERITED_JVM_DECLARATIONS`
   or `ACCIDENTAL_OVERRIDE` with the `DIAGNOSTICS` directive still runs
@@ -215,9 +240,10 @@ Four things differ from the test infrastructure:
 `kotlinc`'s extra and experimental checkers report only with `-Wextra`
 and `-Xuse-fir-experimental-checkers`. The infrastructure runs the extra
 ones for tests with `WITH_EXTRA_CHECKERS` and those of
-`controlFlowAnalysis/deadCode/`, and the experimental ones for tests with
-`WITH_EXPERIMENTAL_CHECKERS`; the harness passes `kc` the flags for the
-same tests.
+`controlFlowAnalysis/deadCode/` and `extraCheckers/`, and the experimental ones for tests with
+`WITH_EXPERIMENTAL_CHECKERS` and those of `extraCheckers/` (whose
+`EMPTY_RANGE` is an experimental checker's); the harness passes `kc` the
+flags for the same tests.
 
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. Like
@@ -229,7 +255,9 @@ sources of a module that later modules depend on are then compiled with
 `javac` against its Kotlin classes, as the test infrastructure does, and
 those of the last module are only read.
 
-Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
+Some *accepts invalid* tests are out of `kc`'s reach, and stay so.
+`kotlinc` compiles them under the harness too (see the self-check
+below), except for the FIR2IR tests:
 
 - **A class path without the standard library**: the two
   `unsignedLiteralsWithoutArtifactOnClasspath` tests, and
@@ -238,26 +266,43 @@ Some *accepts invalid* tests are out of `kc`'s reach, and stay so:
   `j+k/collectionOverrides/containsAll` and the library's `containsAll`
   extension, and for `typealias/starProjection`, whose index of a
   `Map<*, *>` the library's `get` extension resolves.
-- **Directives `kc` doesn't model**: `PROGRESSIVE_MODE`
-  (`dataClassInternalConstructorUsageWillBecomeInaccessible`) and
-  `JVM_TARGET` (`wrongInlineTarget`).
-- **The backend's analysis of inlined library bodies**:
-  `suspensionPointInMonitor`, and the calls in `jvm/typeOf/suspendType`
-  that reach `typeOf` through another reified function.
-- **Two classes with the same name in two modules**: the three
-  `multimodule/duplicate*` tests and
-  `missingTypeOfParameterInFakeOverride_2`. `kc` identifies a class by
-  its name alone.
+- **A directive `kc` doesn't model**: `PROGRESSIVE_MODE`
+  (`dataClassInternalConstructorUsageWillBecomeInaccessible`).
 - **Java source roots**: `j+k/differentFilename` and
   `problems/multipleJavaClassesInOneFile`. They expect a Java file's
   classes other than the one it is named after to be unresolved. That
   is `kotlinc`'s view of a source root directory. Given the `.java`
   files themselves, as Gradle and `kc` take them, `kotlinc` resolves
   them too.
-- **Quirks**: `syntax/complicatedLTGT`, of `kotlinc`'s parser, and
-  `kjkimplicitTypesCrash` and
-  `platformTypes/comparingWithWrongNullabilityWithoutWrtHack`, of an
-  older language version (their `latestLV` variants expect no error).
+- **An error of the test pipeline only**:
+  `testsWithStdLib/typealias/upperBoundViolated` and
+  `upperBoundViolated2` expect, besides the deprecation warning of a
+  typealias constructor call whose expansion breaks a bound, an
+  `OTHER_ERROR_WITH_REASON` ("Unknown error: Inapplicable"). Neither
+  `kotlinc` 2.4.21's command line nor its analysis API (the tests'
+  `.ll.diag.txt`) reports it: both give only the warning, as `kc` does.
+- **The FIR2IR tests that mark no error**:
+  `nullableTypes/nullAssertOnTypeWithNullableUpperBound` and
+  `safeCallOnTypeWithNullableUpperBound` are valid to the frontend, and
+  `kotlinc`'s JVM backend crashes on them, which is why they stop at
+  `FIR2IR`.
+- **A dependency's dependency off the class path**:
+  `j+k/missingTypeOfParameterInFakeOverride_1` marks no error, and
+  `kotlinc` stops it at the frontend only because its backend can't
+  generate the fake override whose parameter type is missing. The
+  harness puts only the modules a module names on its class path, not
+  their dependencies, as the test does, and the frontend accepts it.
+  (Its sibling `_2`, where the missing type keeps a Java method from
+  being implemented, `kc` rejects.)
+- **A JDK class declared again in a library**:
+  `jvm/classpath/classFromJdkInLibrary` declares `java.util.Date` in a
+  Java library, which `javac` compiles with `--patch-module`, and
+  expects its new method to be unresolved. Given the library's class
+  files on the class path, `kotlinc` resolves it too, as `kc` does.
+
+The other one is `kc`'s own: `regressions/kt334` expects
+`java.lang.Comparable` to be a type of its own, which `kc` takes as
+`kotlin.Comparable` (see [unsupported](unsupported.md)).
 
 ## Checking the harness
 
@@ -283,41 +328,38 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 8,532 | |
-| rejects invalid | 4,366 | 51.2% |
-| accepts valid | 4,127 | 48.4% |
-| accepts invalid | 38 | 0.4% |
+| run (of 10,827) | 8,613 | |
+| rejects invalid | 4,448 | 51.6% |
+| accepts valid | 4,150 | 48.2% |
+| accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | |
 | parse/unsupported | 0 | |
 | crash | 0 | |
-| harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-20,205 of the 21,714 expected errors (93%) on their lines, and 1,490 of
-the 3,652 expected warnings (41%), with 8 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 13 of the 38
+21,745 of the 22,025 expected errors (98.7%) on their lines, and 3,550 of
+the 3,667 expected warnings (96.8%), with 18 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 9), unresolved names
-  (`UNRESOLVED_REFERENCE` 6), and callable references whose types
-  can't be inferred (`CANNOT_INFER_PARAMETER_TYPE` 2). Some are out of
-  reach (see above).
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 3) and unresolved names
+  (`UNRESOLVED_REFERENCE` 3); no other error is expected by more than
+  two. All but one are out of reach (see above).
 - **Rejects valid**: none, and no box test is rejected.
-- **Crashes**: none. The harness error is a test that declares
-  `java.util.Date`, which `javac` compiles only with `--patch-module`.
+- **Crashes**: none, and no harness errors.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
 CI's *Conformance* job (`.github/workflows/pr-checks.yml`) runs both
 suites against them on every pull request and push to `main`, and fails
 if a test that passes there stopped passing, or, for the diagnostics
-tests, if an expected error `kc` reported on its line is now missed. The
-job's summary has each suite's counts. A test that started passing, or
-an error newly reported, is a warning: running `bench/kotlin-tests.sh
+tests, if an expected error or warning `kc` reported on its line is now
+missed. The job's summary has each suite's counts. A test that started
+passing, or an error or warning newly reported, is a warning: running `bench/kotlin-tests.sh
 box` or `diagnostics` writes the new baselines to commit with the change.
 
 The diagnostics report sorts the missed errors by cause (*Missed errors

@@ -23,3 +23,38 @@ fun test() {
     fun Test5(x: Int) = x // ERROR conflicting overloads: Test5
     fun Test5(x: String) = x
 }
+
+class Props {
+    val a = 1 // ERROR conflicting declarations: a
+    val a = "" // ERROR conflicting declarations: a
+}
+
+enum class F {
+    BAR; // ERROR redeclaration: BAR
+
+    val BAR = 1 // ERROR redeclaration: BAR
+}
+
+val top = 1 // ERROR conflicting declarations: top
+val top = "" // ERROR conflicting declarations: top
+
+fun locals() {
+    val x = 1 // ERROR conflicting declarations: x
+    val x = "" // ERROR conflicting declarations: x
+}
+
+fun params(p: Int, p: String) {} // ERROR conflicting declarations: p
+
+context(c: CtxA) // ERROR conflicting declarations: c
+fun ctxAndParam(c: Int) {} // ERROR conflicting declarations: c
+
+interface Sus {
+    suspend fun s() // ERROR conflicting overloads: s
+    fun s() // ERROR conflicting overloads: s
+}
+
+open class Base(x: Int)
+
+class NoPrimary : Base(1) { // ERROR supertype initialization is impossible without a primary constructor
+    constructor() : super(2) // ERROR conflicting overloads: constructor NoPrimary()
+}

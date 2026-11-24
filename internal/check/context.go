@@ -63,18 +63,36 @@ func (c *Checker) reservedContextError(p syntax.Pos) {
 	c.errorf(p, "context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use")
 }
 
+// paramClashes reports the context parameters ctxs and the value
+// parameters ps of a declaration that have the same name, at each, as
+// kotlinc: context(x: A, x: B), context(x: A) fun f(x: B), f(x: A, x: B).
+// Context parameters named _ don't clash.
+func (c *Checker) paramClashes(ctxs, ps []*syntax.Param) {
+	seen := map[string]syntax.Pos{}
+	report := func(p syntax.Pos, name string) {
+		if !c.hasErrorAt(p, "conflicting declarations") {
+			c.errorf(p, "conflicting declarations: %s", name)
+		}
+	}
+	for i, p := range slices.Concat(ctxs, ps) {
+		if i < len(ctxs) && p.Name == "_" {
+			continue
+		}
+		if q, ok := seen[p.Name]; ok {
+			report(q, p.Name)
+			report(p.P, p.Name)
+			continue
+		}
+		seen[p.Name] = p.P
+	}
+}
+
 // contextSyms resolves the types of context parameters ps and returns
 // their symbols.
 func (c *Checker) contextSyms(ps []*syntax.Param) []*types.VarSym {
 	var out []*types.VarSym
-	seen := map[string]bool{}
+	c.paramClashes(ps, nil)
 	for _, p := range ps {
-		if p.Name != "_" {
-			if seen[p.Name] {
-				c.errorf(p.P, "conflicting declarations: %s", p.Name)
-			}
-			seen[p.Name] = true
-		}
 		name := p.Name
 		if name == "_" {
 			// As kotlinc names its local: $context-Logger.
@@ -107,19 +125,27 @@ func noInfer(t *syntax.TypeRef) bool {
 
 // propContexts declares the context parameters of property d, of symbol
 // sym, which its accessors take, and declare in their bodies. A property
-// with them has no field: it needs accessors unless abstract.
+// with them has no field: it needs accessors unless abstract, and one
+// without them is reported at its context parameters, as kotlinc's
+// CONTEXT_PARAMETERS_WITH_BACKING_FIELD.
 func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 	if len(d.Contexts) == 0 {
 		return
 	}
 	switch {
-	case d.Recv != nil, d.Init != nil:
-		// Reported as an extension property's, or as an initializer
-		// without a field.
+	case d.Recv != nil, d.BackingField != nil:
+		// Reported as an extension property's, or with the explicit
+		// backing field.
+	case d.Lateinit:
+		c.errorf(d.PosOf("lateinit", d.P), "'lateinit' modifier is not allowed on properties with context receivers")
 	case !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil):
-		c.errorf(d.P, "a property with context parameters must have accessors or be abstract")
+		c.contextsWithField(d)
 	}
 	sym.Contexts = c.contextSyms(d.Contexts)
+	if d.Setter != nil && len(d.Setter.Params) == 1 && d.Setter.Params[0].P != d.Setter.P {
+		// A written setter's parameter, not the value of one kc makes.
+		c.paramClashes(d.Contexts, d.Setter.Params)
+	}
 	if d.Inline || d.InlineGetter || d.InlineSetter {
 		c.noinlineContexts(d.Contexts)
 	}
@@ -516,8 +542,8 @@ func (c *Checker) contextAccess(x syntax.Expr, f *types.FunSym, m *syntax.Member
 // altProp reports whether property d can be declared beside prev, the
 // property of its name and owner declared before, and those of the name
 // declared beside it (see VarSym.Alt): if the sets of their context
-// parameters' types differ, as written, or, if one is hidden, their
-// order, and so their accessors' JVM descriptors.
+// parameters' types differ, as written, or one is hidden, as kotlinc's
+// frontend lets it be (their accessors may still clash on the JVM).
 func altProp(prev *types.VarSym, d *syntax.PropDecl) bool {
 	ctx := contextTypes(d)
 	for q := range altProps(prev) {
@@ -527,7 +553,7 @@ func altProp(prev *types.VarSym, d *syntax.PropDecl) bool {
 			// Not a constructor's, which has none.
 			qctx, hidden = contextTypes(pd), hidden || pd.Hidden()
 		}
-		if slices.Equal(qctx, ctx) || !hidden && slices.Equal(sorted(qctx), sorted(ctx)) {
+		if !hidden && slices.Equal(sorted(qctx), sorted(ctx)) {
 			return false
 		}
 	}
@@ -592,6 +618,10 @@ func typeKey(b *strings.Builder, t *syntax.TypeRef) {
 	}
 	if t.Nullable {
 		b.WriteByte('?')
+	}
+	if t.And != nil {
+		b.WriteString("&")
+		typeKey(b, t.And)
 	}
 }
 
@@ -969,4 +999,14 @@ func (c *Checker) fitsRecv(t, rt types.Type) bool {
 		return cls != nil && rc != nil && cls.IsSubclassOf(rc)
 	}
 	return c.subtype(t, rt)
+}
+
+// contextsWithField reports property d, which has context parameters, as
+// one that would need a backing field, at its context parameters.
+func (c *Checker) contextsWithField(d *syntax.PropDecl) {
+	p := d.ContextP
+	if p.Line == 0 {
+		p = d.P
+	}
+	c.errorf(p, "property with context parameters cannot be initialized because it has no backing field")
 }

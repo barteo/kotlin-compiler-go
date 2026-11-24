@@ -718,7 +718,11 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if cls == nil {
 		return types.InvalidType, false
 	}
-	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
+	raw := kt.Raw || kt.Upper != nil && kt.Upper.Raw
+	if !raw {
+		cls = t.arityMismatch(cls, kt)
+	}
+	if len(kt.Args) == 0 || raw {
 		// A non-generic class, or a raw Java type.
 		return nullable(types.ClassType(cls)), true
 	}
@@ -757,6 +761,123 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		r = r.WithContexts(kt.Contexts)
 	}
 	return nullable(r), true
+}
+
+// arityMismatch returns cls, the class kt names, or a stand-in of its name
+// if kt gives it another number of type arguments than it has: kt is of a
+// class file of another module that has a class of that name, which the
+// class path's first one hides (see classpath.Duplicated). K2 finds one
+// class of a name too, and a type of it with the other module's arguments
+// is a subtype of neither its types nor others: A<Int> isn't A. But a type
+// of a class without type parameters is one of its own name with any
+// arguments (see subtype1).
+func (t *classTable) arityMismatch(cls *types.ClassSym, kt *kmeta.Type) *types.ClassSym {
+	if t.cp == nil || cls.Missing || !t.cp.Duplicated(cls.Name) {
+		return cls
+	}
+	n := len(kt.Args)
+	for o := kt.Outer; o != nil; o = o.Outer {
+		n += len(o.Args)
+	}
+	a, ok := t.arity(cls.Name, 0)
+	if !ok || a.n == n {
+		return cls
+	}
+	key := "mismatch:" + cls.Name + "/" + strconv.Itoa(n)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if c, ok := t.m[key]; ok {
+		return c
+	}
+	c := types.NewExternal(cls.Name, func(*types.ClassSym) {})
+	c.Ensure()
+	c.Interface, c.ArityOf = a.iface, cls
+	for i := range n {
+		c.TypeParams = append(c.TypeParams, &types.TypeParamSym{Name: "T" + strconv.Itoa(i), Index: i, Owner: c, Library: true})
+	}
+	t.m[key] = c
+	return c
+}
+
+// classArity is a class's number of type parameters, its outer classes'
+// included, and whether it is an interface.
+type classArity struct {
+	n     int
+	iface bool
+}
+
+// arity returns the arity of the class of the class path named name, as
+// load gives it, from its class file alone. arityMismatch can't load the
+// class: a type in a class's own signatures can name it, and its loading
+// would then wait for itself.
+func (t *classTable) arity(name string, depth int) (classArity, bool) {
+	if t.cp == nil || depth > 8 {
+		return classArity{}, false
+	}
+	type key struct {
+		cp   *classpath.Path
+		name string
+	}
+	k := key{t.cp, name}
+	if v, ok := t.arities.Load(k); ok {
+		return v.(classArity), true
+	}
+	info, err := t.cp.Load(name)
+	if err != nil {
+		return classArity{}, false
+	}
+	a := classArity{iface: info.Access&classfile.AccInterface != 0}
+	outer := ""
+	fromKotlin := false
+	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
+		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+			fromKotlin = true
+			a.n = len(kc.TypeParams)
+			if kc.IsInner() && info.Inner != nil {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if !fromKotlin {
+		a.n = sigArity(info.Sig)
+		if info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+			info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
+			if oi, err := t.cp.Load(info.Inner.Outer); err == nil && oi.Access&classfile.AccInterface == 0 {
+				outer = info.Inner.Outer
+			}
+		}
+	}
+	if outer != "" {
+		o, ok := t.arity(outer, depth+1)
+		if !ok {
+			return classArity{}, false
+		}
+		a.n += o.n
+	}
+	t.arities.Store(k, a)
+	return a, true
+}
+
+// sigArity returns the number of the type parameters a class's generic
+// signature declares.
+func sigArity(sig string) int {
+	p := &sigParser{s: sig, ok: true}
+	if p.peek() != '<' {
+		return 0
+	}
+	p.i++
+	n := 0
+	for p.ok && p.peek() != '>' {
+		p.ident(":")
+		n++
+		for p.ok && p.peek() == ':' {
+			p.i++
+			if p.isTypeStart() {
+				p.skipRef()
+			}
+		}
+	}
+	return n
 }
 
 // suspendType maps a suspend function type, which metadata writes as the
@@ -942,7 +1063,13 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	sym.Params, ok = t.kparams(f.Params, scope, ok)
 	ret, rok := t.ktype(f.Ret, scope)
 	sym.Ret = ret
-	sym.NoInferRet = f.Ret != nil && f.Ret.NoInfer
+	sym.NoInferRet = kNoInfer(f.Ret)
+	sym.MissingAnno = t.missingTypeAnno(f.Ret)
+	for _, p := range f.Params {
+		if a := t.missingTypeAnno(p.Type); a != "" && sym.ParamMissingAnno == "" {
+			sym.ParamMissingAnno = a
+		}
+	}
 	if f.Recv != nil {
 		sym.Ext = true
 		recv, recvOK := t.ktype(f.Recv, scope)
@@ -970,6 +1097,12 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 				sym.AtLeastOnce = make([]bool, len(f.Params))
 			}
 			sym.AtLeastOnce[ip.Param] = true
+		}
+		if ip.Kind == kmeta.AtMostOnce {
+			if sym.AtMostOnce == nil {
+				sym.AtMostOnce = make([]bool, len(f.Params))
+			}
+			sym.AtMostOnce[ip.Param] = true
 		}
 	}
 	for _, im := range f.Implies {
@@ -1328,6 +1461,7 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	abstract := p.Flags.Modality() == kmeta.Abstract
 	kp := &types.KProp{Getter: &types.FunSym{Name: g.Name, Owner: owner, Ret: pt, Desc: g.Desc, Resolved: true, Abstract: abstract,
 		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
+	kp.Getter.Declared = inlineAccessor(p.GetterFlags)
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
 	if friend && !p.IsVar() && p.Flags.Modality() == kmeta.Final && p.GetterFlags&kmeta.AccessorNotDefault == 0 && p.Flags&kmeta.PropDelegated == 0 {
@@ -1335,7 +1469,8 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	}
 	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0)) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
-			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx,
+			Declared: inlineAccessor(p.SetterFlags)}
 		matchJVM(kp.Setter)
 	}
 	return kp
@@ -1364,6 +1499,25 @@ func (t *classTable) friend(class string) bool {
 		(strings.HasPrefix(class, "kotlinx/serialization/internal/") || class == "kotlinx/serialization/UnknownFieldException"))
 }
 
+// inlineAccessor returns the Declared of a property accessor of the class
+// path with flags: set if it is inline. inlineIn sets its Class.
+func inlineAccessor(flags kmeta.Flags) *types.InlineFlags {
+	if flags>>8&1 == 0 {
+		return nil
+	}
+	return &types.InlineFlags{}
+}
+
+// inlineIn sets the Declared.Class of the inline functions and accessors
+// among fs, which the metadata of class file class declares.
+func inlineIn(class string, fs ...*types.FunSym) {
+	for _, f := range fs {
+		if f != nil && f.Declared != nil {
+			f.Declared.Class = class
+		}
+	}
+}
+
 // memberExtProp returns the getter of an extension property declared in
 // a class of the class path, as Duration.Companion's Int.milliseconds,
 // or nil. It is a method of the class that takes the extension receiver.
@@ -1378,7 +1532,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 		return nil
 	}
 	sym := &types.FunSym{Name: g.Name, Owner: owner, Desc: g.Desc, Ext: true, Resolved: true,
-		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected}
+		Abstract: p.Flags.Modality() == kmeta.Abstract, Protected: p.GetterFlags.Visibility() == kmeta.Protected, Declared: inlineAccessor(p.GetterFlags)}
 	if inlineOnly {
 		sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
 	}
@@ -1396,10 +1550,13 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	}
 	matchJVM(sym)
 	composeShape(sym, true)
-	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) {
+	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasSetter(p, methods) {
 		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
-			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx, Declared: inlineAccessor(p.SetterFlags)}
+		if inlineOnlySetter(p, methods) {
+			set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: owner.Name, Load: t.loadInline(owner.Name)}
+		}
 		if owner.Value {
 			set.Impl, set.Facade = true, owner.Name
 		}
@@ -1586,7 +1743,7 @@ func neverMarker(desc string) bool {
 // and @Deprecated its metadata keeps.
 func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 	var d *types.Deprecation
-	since := "" // the level @DeprecatedSinceKotlin gives
+	since, notYet := "", false // the level @DeprecatedSinceKotlin gives
 	for _, an := range a.Annotations {
 		s.Annotations = append(s.Annotations, "L"+internalName(an.Class)+";")
 		switch an.Class {
@@ -1603,6 +1760,9 @@ func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 		case "kotlin/DeprecatedSinceKotlin":
 			for _, arg := range an.Args {
 				switch {
+				case classfile.LaterThanAPI(arg.Value.Str):
+					// A version the API version hasn't reached.
+					notYet = notYet || arg.Name == "warningSince"
 				case arg.Name == "hiddenSince":
 					since = "HIDDEN"
 				case arg.Name == "errorSince" && since == "":
@@ -1610,6 +1770,9 @@ func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
 				}
 			}
 		}
+	}
+	if notYet {
+		d = nil
 	}
 	if d != nil && (since == "HIDDEN" || since == "ERROR" && d.Level == "WARNING") {
 		d.Level = since
@@ -1657,6 +1820,23 @@ func publicMethods(info *classfile.Info) map[string]bool {
 func hasMethod(methods map[string]bool, sig string, inline bool) bool {
 	v, ok := methods[sig]
 	return v || ok && !inline
+}
+
+// hasSetter reports whether a call can set var extension property p,
+// whose methods are these: through its setter's method, or a copy of its
+// body, an inline setter's whose method is synthetic or private, as one
+// with reified type parameters.
+func hasSetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	return hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) || inlineOnlySetter(p, methods)
+}
+
+// inlineOnlySetter reports whether a set of p copies its inline setter's
+// body, as its method can't be called.
+func inlineOnlySetter(p *kmeta.Property, methods map[string]bool) bool {
+	s := p.Setter
+	inline := p.SetterFlags>>8&1 != 0
+	return inline && !hasMethod(methods, s.Name+s.Desc, inline)
 }
 
 const markerSuffix = "Lkotlin/jvm/internal/DefaultConstructorMarker;)V"
@@ -1832,7 +2012,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		for _, fd := range info.Fields {
 			if fd.Access&classfile.AccEnum != 0 {
 				cls.Entries = append(cls.Entries, fd.Name)
-				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true}
+				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: types.ClassType(cls), Kind: types.Static, Owner: cls, Resolved: true,
+					Annotations: fd.Annotations}
 			}
 		}
 		// Its static methods, as for the program's enums.
@@ -1899,7 +2080,16 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			hidden[m.Name+m.Desc] = true
 		}
 	}
+	invisible := func(key string, flags kmeta.Flags) {
+		if cls.InvisibleMembers == nil {
+			cls.InvisibleMembers = map[string]bool{}
+		}
+		cls.InvisibleMembers[key] = flags.Modality() == kmeta.Abstract
+	}
 	for _, f := range kc.Funcs {
+		if f.Flags.Visibility() == kmeta.Internal && !friend && f.Flags.MemberKind() != 1 && f.Recv == nil {
+			invisible(f.Name+"/"+strconv.Itoa(len(f.Params)), f.Flags)
+		}
 		if !visibleOutside(f.Flags.Visibility(), friend) || f.Flags.MemberKind() == 1 /* fake override */ {
 			continue
 		}
@@ -1911,10 +2101,16 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			sym = t.kfun(f, cls, scope, nil)
 			sym.Hidden = true
 		}
+		inlineIn(cls.Name, sym)
 		if cls.Value && f.Flags.MemberKind() != 3 /* synthesized: equals, hashCode */ {
 			// A value class's member is a static method of the class,
-			// which takes the value first; an inline-only one is copied.
+			// which takes the value first; an inline one is copied, as
+			// with kotlinc, so that a lambda passed to it can return from
+			// the caller.
 			sym.Impl, sym.Facade = true, cls.Name
+			if sym.Inline == nil && f.IsInline() && !sym.Unsupported && sym.Builtin == types.NotBuiltin {
+				sym.Inline = inlineInfo(f, false)
+			}
 			if sym.Inline != nil {
 				sym.Inline.Load = t.loadInline(cls.Name)
 				sym.Unsupported, sym.Why = false, ""
@@ -1959,6 +2155,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	for _, p := range kc.Props {
+		if p.Flags.Visibility() == kmeta.Internal && !friend && p.Flags.MemberKind() != 1 && p.Recv == nil {
+			invisible("prop "+p.Name, p.Flags)
+		}
 		if p.Getter == nil && p.Field != nil && p.Recv == nil && public(p.Flags.Visibility(), friend) && instanceFields[p.Field.Name] {
 			// A @JvmField property: a public field and no accessors, as
 			// Buffer.UnsafeCursor's offset.
@@ -1973,6 +2172,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				inlineIn(cls.Name, g, g.ExtSetter)
 				annotateProp(p, annots, g, g.ExtSetter)
 				g.Static = statics[g.JVM()+g.Desc]
 				if g.ExtSetter != nil {
@@ -1986,6 +2186,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			continue
 		}
 		if kp := t.kprop(p, cls, scope, methods, metaGetter, metaSetter); kp != nil {
+			inlineIn(cls.Name, kp.Getter, kp.Setter)
 			annotateProp(p, annots, kp.Getter, kp.Setter)
 			if cls.Value {
 				kp.Getter.Impl, kp.Getter.Facade = true, cls.Name
@@ -2520,6 +2721,7 @@ func (t *classTable) pkgFun(pkg, name string, e *kfunEntry) *types.FunSym {
 	f, part := e.f, e.part
 	sym := t.kfun(f, nil, nil, part.methods)
 	sym.Facade, sym.Pkg = part.facade, part.pkg
+	inlineIn(part.class, sym)
 	sym.LowPriority = part.low[e.key]
 	annotate(sym, part.annots[e.key])
 	if sym.Why != "" && typesOK(sym) {
@@ -2621,7 +2823,7 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
-			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Pkg: part.pkg, Ext: true, Resolved: true}
+			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Pkg: part.pkg, Ext: true, Resolved: true, Declared: inlineAccessor(pr.GetterFlags)}
 			if inlineOnly {
 				sym.Inline = &types.InlineInfo{Name: g.Name, Desc: g.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
 			}
@@ -2638,12 +2840,17 @@ func (t *classTable) pkgExtPropsIn(r *pkgRef, name string) []*types.FunSym {
 			matchJVM(sym)
 			composeShape(sym, false) // WindowInsets.isImeVisible
 			// A var's setter: (receiver, value) on the same facade.
-			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasMethod(part.methods, s.Name+s.Desc, pr.SetterFlags>>8&1 != 0) {
+			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasSetter(pr, part.methods) {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
-					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx,
+					Declared: inlineAccessor(pr.SetterFlags)}
+				if inlineOnlySetter(pr, part.methods) {
+					set.Inline = &types.InlineInfo{Name: s.Name, Desc: s.Desc, Private: true, Class: part.class, Load: t.loadInline(part.class)}
+				}
 				matchJVM(set)
 				sym.ExtSetter = set
 			}
+			inlineIn(part.class, sym, sym.ExtSetter)
 			annotateProp(pr, part.annots, sym, sym.ExtSetter)
 			gs = append(gs, sym)
 		}
@@ -2689,7 +2896,8 @@ func (t *classTable) pkgVarIn(r *pkgRef, name string) *types.VarSym {
 			}
 			prev := v
 			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade, Pkg: part.pkg,
-				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
+				Resolved: true, Const: pr.IsConst(), Contexts: ctx,
+				InlineGetter: pr.GetterFlags>>8&1 != 0, InlineSetter: pr.IsVar() && pr.SetterFlags>>8&1 != 0}
 			if prev != nil && !sameContexts(prev.Contexts, ctx) {
 				// One with other context parameters.
 				addAlt(prev, v)
@@ -2956,4 +3164,18 @@ func (t *classTable) verifyAbsent(name string, cls *types.ClassSym) {
 	if cls != nil {
 		panic("check: the class path filter ruled out " + name)
 	}
+}
+
+// missingTypeAnno returns the name of the class of an annotation of type
+// kt, not of its type arguments, that the class path doesn't have, or "".
+func (t *classTable) missingTypeAnno(kt *kmeta.Type) string {
+	if kt == nil {
+		return ""
+	}
+	for _, an := range kt.Annotations {
+		if c := t.missingClass(an.Class, 0); c != nil {
+			return missingName(c)
+		}
+	}
+	return ""
 }

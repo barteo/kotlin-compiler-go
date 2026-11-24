@@ -181,16 +181,24 @@ internal class KcEnvironment(val key: String, config: KcModuleConfig) {
  * Java sources makes a new environment; a Kotlin source's change only
  * reparses that file. The two environments no session uses that were used
  * last are kept.
+ *
+ * With the environment variable KC_KSP_FORGET set, a run keeps nothing for
+ * the next: no environment here, and no class path in libkc. A daemon then
+ * holds no module's files, models and class path between its builds, and
+ * every run parses and reads them again.
  */
 internal object KcEnvironments {
     private const val KEEP = 2
     private val idle = ArrayList<KcEnvironment>() // least recently used first
     private val enabled = System.getProperty("kc.keepEnvironment") != "false"
 
+    /** Read for each run: a daemon's builds can differ in their environment variables. */
+    private val forget get() = System.getenv("KC_KSP_FORGET") != null
+
     @Synchronized
     fun acquire(config: KcModuleConfig, javaSources: List<String>): KcEnvironment {
         val key = key(config, javaSources)
-        if (enabled) {
+        if (enabled && !forget) {
             val i = idle.indexOfLast { it.key == key }
             if (i >= 0) return idle.removeAt(i)
         }
@@ -201,6 +209,14 @@ internal object KcEnvironments {
     fun release(e: KcEnvironment) {
         e.provider.clear()
         e.kotlinClasses.find(null)
+        if (forget) {
+            e.dispose()
+            idle.forEach { it.dispose() }
+            idle.clear()
+            KcOps.trim()
+            KcTimer().print("environments forgotten")
+            return
+        }
         if (!enabled) {
             e.dispose()
             return

@@ -46,24 +46,33 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
 		c.unsupported(d.P, "compose", "local composable functions are not supported")
 	}
+	if d.External {
+		// A native method of the enclosing class, as kotlinc writes it:
+		// without a body, it captures nothing. An interface can't have
+		// native methods, though kotlinc writes one there, which the JVM
+		// refuses to load.
+		bodyless := d.Body == nil && d.ExprBody == nil
+		if c.cls != nil && c.cls.Interface && c.cls.JVMDefault {
+			c.unsupported(d.ExternalP, "local external function in interface", "local external functions in interfaces are not supported")
+		} else {
+			sym.External = c.external(d, nil, false, d.P) && bodyless
+		}
+	}
 	if c.localCalls == nil {
 		c.localCalls = new([]localCall)
 	}
 	saved := c.state
 	c.suppressLocalInline = suppressInline
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
+	s.Outer = saved.tparams
 	c.tparams = append(slices.Clone(sym.TypeParams), saved.tparams...)
 	c.resolveBounds(d.TypeParams)
 	if d.Recv != nil {
 		c.declareRecv(d) // a local extension function
 	}
 	c.declareContexts(d, sym)
-	names := map[string]bool{}
+	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
-		if names[p.Name] {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
-		}
-		names[p.Name] = true
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}
@@ -87,11 +96,16 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.errorf(d.P, "conflicting overloads: %s", d.Name)
 	} else {
 		c.localCtorConflicts(sym, d, saved.scope)
+		c.localShadowing(saved.scope, sym, d)
 	}
 
 	frame := &syntax.Lambda{}
 	frame.P = d.P
 	s.Frame = frame
+	if c.frameNodes == nil {
+		c.frameNodes = map[*syntax.Lambda]any{}
+	}
+	c.frameNodes[frame] = s
 	c.lambdas = append(c.lambdas[:len(c.lambdas):len(c.lambdas)], frame)
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], &lambdaResult{})
 	c.base = len(c.lambdas)
@@ -126,18 +140,20 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.scope.declare(p.Sym)
 	}
 	switch {
+	case d.Body == nil && d.ExprBody == nil:
+		// external
 	case d.Body != nil:
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
 			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
 		}
 	case sym.Resolved:
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
 	default:
 		sym.InProgress = true
 		rets := []exprRet{}
 		c.exprRets = &rets
-		t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+		t := c.safeUnit(d.ExprBody, types.ApproxFlexNothing(c.expr(d.ExprBody, noWant)))
 		defer c.checkExprReturns(rets, t, d.Name)
 		if t.K == types.Range {
 			c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")

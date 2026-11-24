@@ -2,7 +2,7 @@
 abstract class C {
     @JvmField val a: String by lazy { "A" } // ERROR JvmField cannot be applied to a delegated property
     @JvmField open val b: Int = 3 // ERROR JvmField cannot be applied to a property that overrides some other property or can be overridden
-    @JvmField abstract val c: Int // ERROR this annotation is not applicable to target 'member property without backing field'
+    @JvmField abstract val c: Int // ERROR this annotation is not applicable to target 'member property without backing field or delegate'
     @JvmField // ERROR JvmField cannot be applied to a property with a custom accessor
     val explicitDefaultGetter: String = ""
         get

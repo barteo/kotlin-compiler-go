@@ -85,6 +85,9 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 	if len(parts) == 1 && (kotlinTypes[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
+	if len(parts) == 2 && parts[0] == "kotlin" && kotlinTypes[parts[1]] && !c.isVar("kotlin") {
+		return name, true // kotlin.String::class, the built-in type
+	}
 	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
 }
 
@@ -98,6 +101,10 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	defer func(old bool) { c.starFallback = old }(c.starFallback)
 	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
+		if ref.Nullable && !callable {
+			c.errorf(ref.P, "type in a class literal must not be nullable")
+			return types.InvalidType
+		}
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
 		}
@@ -105,6 +112,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	written := ref.Args != nil || ref.Outer != nil
+	args := ref.Args   // as written, before stars are added
+	starAlias := false // a generic typealias written without arguments, given stars
 	if !written && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
@@ -120,7 +129,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
 			}
 			if n > 0 {
-				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars, Nullable: ref.Nullable}
+				starAlias = c.lookupAlias(ref.Name) != nil
 			}
 		}
 	}
@@ -128,19 +138,54 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	c.refLHS, c.classLitLHS = callable && written, true
 	t := c.resolveType(ref)
 	c.refLHS, c.classLitLHS = old, oldLit
-	if t.K != types.Invalid && !t.IsArray() && !callable {
-		if ref.Outer != nil {
+	if t.K == types.Invalid || callable {
+		return t
+	}
+	if starAlias {
+		c.starAliasBounds(t, ref.P)
+	}
+	if t.N {
+		// A?::class, or a typealias of a nullable type.
+		c.errorf(ref.P, "type in a class literal must not be nullable")
+		return types.InvalidType
+	}
+	if t.IsArray() {
+		// As kotlinc, an array's elements must be known at run time:
+		// Array<Int?> and Array<Array<Any?>?>, not Array<T> or
+		// Array<List<String>>.
+		if args != nil && !classLitArray(t) { // Array::class is fine
 			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
 			return types.InvalidType
 		}
-		for _, a := range ref.Args {
-			if a.Variance != types.Star {
-				c.errorf(a.P, "only classes are allowed on the left hand side of a class literal")
-				return types.InvalidType
-			}
-		}
+		return t
+	}
+	if ref.Outer != nil || len(args) > 0 {
+		// A<*>::class too: only A::class is.
+		c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+		return types.InvalidType
 	}
 	return t
+}
+
+// classLitArray reports whether array type t may be on the left of a class
+// literal: its element type is reified, a class without type arguments,
+// or such an array.
+func classLitArray(t types.Type) bool {
+	if t.A.Len() == 0 {
+		return true // IntArray
+	}
+	a := t.A.Get(0)
+	switch e := a.T; {
+	case a.V == types.Star:
+		return false
+	case e.K == types.TypeParam:
+		return e.Param().Reified
+	case e.IsArray():
+		return classLitArray(e)
+	case e.K == types.Class:
+		return e.A.Len() == 0
+	}
+	return true
 }
 
 // starInner returns an inner class's type with all its type arguments,
@@ -226,7 +271,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	spread := -1 // pass this parameter, an array, to a vararg
 	// call calls fn with the parameters ps[from:].
 	call := func(fn syntax.Expr, ps []types.Type, from int) syntax.Expr {
-		cl := &syntax.Call{Fun: fn, RefArgs: ps[from:]}
+		cl := &syntax.Call{Fun: fn, RefArgs: ps[from:], FromRef: true}
 		cl.P = p
 		for i := from; i < len(ps); i++ {
 			a := ident(refParam(i))
@@ -445,6 +490,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				// Kotlin, if kc can make one, and otherwise a function.
 				n := len(c.errs)
 				if ps, rt, ok := c.kpropLambda(x, propForm(ps), recv != nil); ok && len(c.errs) == n {
+					if c.refFunsToo(r, recvType, static, recv != nil) {
+						// As in K2, without an expected type a property
+						// and a function of the name are ambiguous.
+						c.errorf(p, "overload resolution ambiguity for %s: specify the expected type", refString(r))
+						return nil, types.InvalidType, false
+					}
 					return ps, rt, ok
 				}
 				c.errs, x.KProp = c.errs[:n], nil
@@ -453,10 +504,6 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 		f, ok := c.refTarget(p, r, recvType, static, recv != nil)
 		if !ok {
-			return nil, types.InvalidType, false
-		}
-		if f != nil && f.Ext && f.Owner != nil && !f.Owner.External {
-			c.errorf(p, "%s: a reference to an extension declared in a class is not allowed", refString(r))
 			return nil, types.InvalidType, false
 		}
 		if f != nil {
@@ -484,16 +531,30 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				}
 				sub, _ = c.recvTypeArgs(f, rt)
 			}
+			// A vararg's parameter takes its array, which the call spreads,
+			// as in Kotlin: ::f is a KFunction1<IntArray, R> for
+			// f(vararg xs: Int).
+			vararg := -1
 			for _, q := range f.Params {
 				if q.Vararg {
-					c.unsupported(p, "callable reference", "a reference to a function with a vararg parameter needs an expected function type: %s", refString(r))
-					return nil, types.InvalidType, false
+					vararg = len(fps)
 				}
 				fps = append(fps, sub.ApplyIn(q.Type))
 			}
 			form := funForm(fps)
 			if static != nil && f.Static && !objectStatic(f) {
 				form = staticForm(fps[1:])
+				if vararg >= 0 {
+					vararg--
+				}
+			}
+			if vararg >= 0 {
+				body := form.body
+				form.body = func() syntax.Expr {
+					spread = vararg
+					defer func() { spread = -1 }()
+					return body()
+				}
 			}
 			form.suspend = f.Suspend
 			forms = append(forms, form)
@@ -523,10 +584,13 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		// is, before it is one of its elements: an Array<out Any> for a
 		// vararg of Any; one in another place is an element.
 		last := forms[n-1]
-		pos, known := c.refVarargPos(r)
+		pos, after, known := c.refVararg(r)
 		var spreads []refForm
 		for i := len(w.params) - 1; i >= 0; i-- {
-			if w.params[i].NonNull().IsArray() && (!known || i == pos) {
+			// As in K2, the array is the vararg's whole value: the
+			// parameters after it are the function's after the vararg,
+			// not more of its elements, ::f for (Array<String>, String).
+			if w.params[i].NonNull().IsArray() && (!known || i == pos && len(w.params)-1-i <= after) {
 				spreads = append(spreads, refForm{params: last.params, suspend: last.suspend, body: func() syntax.Expr {
 					spread = i
 					defer func() { spread = -1 }()
@@ -578,13 +642,74 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				sink.merge(tail)
 			}
 			if len(c.errs) == n {
+				if c.memberExtRef(x) {
+					return nil, types.InvalidType, false
+				}
 				c.refContexts(x, p)
+				if ok && w.ret.K == types.Unit {
+					c.unitRefVar(x, p)
+				}
 			}
 			return ps, rt, ok
 		}
 		c.errs = c.errs[:n]
 	}
 	return nil, types.InvalidType, false
+}
+
+// unitRefVar reports, of reference x expected to be a function that
+// returns Unit, a referenced function whose result is one of its type
+// parameters, T or T?, that its parameters give a type other than Unit:
+// kotlinc infers the reference's type parameter from the expected
+// result too, and can't (val f: (Int) -> Unit = ::id for a
+// fun <T> id(x: T): T). A reference passed for a function parameter is
+// adapted to drop the result instead.
+func (c *Checker) unitRefVar(x *syntax.Lambda, p syntax.Pos) {
+	if x == c.adaptedRef {
+		return
+	}
+	call := kfunCall(x)
+	if call == nil || len(call.TypeArgs) > 0 || call.Sym.Ret.K != types.TypeParam || call.Ctor != nil {
+		return
+	}
+	if !slices.ContainsFunc(call.Sym.TypeParams, func(tp *types.TypeParamSym) bool { return tp == call.Sym.Ret.Param() }) {
+		return
+	}
+	if t := call.Type().NonNull(); t.K == types.Unit || t.K == types.Invalid {
+		return
+	}
+	c.errorf(p, "cannot infer type for type parameter '%s'. Specify it explicitly.", call.Sym.Ret.Param().Name)
+}
+
+// memberExtRef reports, if the checked body of reference x calls or reads
+// an extension declared in a class or an object, that a callable
+// reference can't name one, as kotlinc: String::ext for an Obj's
+// String.ext, B::ext and b::ext for a member extension of B's.
+func (c *Checker) memberExtRef(x *syntax.Lambda) bool {
+	if len(x.Body.Stmts) != 1 {
+		return false
+	}
+	s, ok := x.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	inClass := func(f *types.FunSym) bool {
+		return f != nil && f.Ext && f.Owner != nil && !f.Owner.External
+	}
+	var bad bool
+	switch e := s.X.(type) {
+	case *syntax.Call:
+		m, _ := e.Fun.(*syntax.Member)
+		bad = !e.Invoke && (inClass(e.Sym) || m != nil && m.Dispatch != nil)
+	case *syntax.Member:
+		bad = e.Dispatch != nil || inClass(e.Getter)
+	case *syntax.Ident:
+		bad = inClass(e.Getter)
+	}
+	if bad {
+		c.errorf(x.P, "%s: a reference to an extension declared in a class is not allowed", refString(x.Ref))
+	}
+	return bad
 }
 
 // refRecvType returns the receiver type of unbound reference r, C of
@@ -698,6 +823,18 @@ func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool 
 	fs, _ := c.scope.findFuns(r.Name)
 	for _, f := range fs {
 		if f.Ext {
+			return true
+		}
+	}
+	return false
+}
+
+// refFunsToo reports whether reference r, which names a property, may
+// also name a function of the program. A library's, as a Java class's
+// size() of its size property, is left out.
+func (c *Checker) refFunsToo(r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) bool {
+	for _, f := range c.refFuns(r, recvType, static, bound) {
+		if _, src := f.Decl.(*syntax.FunDecl); src && !f.Hidden {
 			return true
 		}
 	}
@@ -1059,7 +1196,7 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 	get := lambdaOf(f.params, &syntax.ExprStmt{X: f.body()})
 	x.Arrow, x.Params, x.Body, x.Captures, x.This = true, get.Params, get.Body, nil, false
 	ps, rt, ok := c.checkLambda1(x, lambdaWant{params: f.params, known: true, ret: noWant})
-	if !ok || rt.K == types.Invalid || c.refContexts(x, p) {
+	if !ok || rt.K == types.Invalid || c.memberExtRef(x) || c.refContexts(x, p) {
 		return ps, rt, false
 	}
 	k := &syntax.KProp{Bound: bound}
@@ -1179,6 +1316,15 @@ func (c *Checker) kfunRef(x *syntax.Lambda, want, fn types.Type) types.Type {
 		return types.InvalidType // already reported
 	}
 	call := kfunCall(x)
+	if call != nil {
+		if adapted, _ := refAdaptation(x, call); adapted {
+			// As kotlinc: a reference that leaves parameters to their
+			// defaults or varargs, ignores a result or converts to a
+			// suspend function isn't a KFunction.
+			c.errorf(x.P, "adapted callable reference cannot be used against a reflection type")
+			return types.InvalidType
+		}
+	}
 	if call == nil {
 		call = builtinKFunCall(x)
 	}
@@ -1199,11 +1345,9 @@ func (c *Checker) setKFun(x *syntax.Lambda, call *syntax.Call) {
 		// is a reference whose invoke calls the function instead.
 		cls := x.Class
 		x.KFunClass, x.Class = cls, ""
-		c.onUndo(func() { x.KFunClass, x.Class = "", cls })
 	}
 	if x.KFunClass == "" {
 		x.KFunClass = c.anonName()
-		c.onUndo(func() { x.KFunClass = "" })
 	}
 }
 
@@ -1302,4 +1446,27 @@ func (c *Checker) variableRef(v *types.VarSym, name string) bool {
 		return len(fs) == 0 && len(c.topFuns(name)) == 0 && (!c.u.ext.kotlin || len(c.kotlinFuns(name, false)) == 0)
 	}
 	return false
+}
+
+// starAliasBounds warns at p if t, the expansion of a typealias written
+// without its type arguments on the left of a class literal, which are
+// stars, has a type argument out of its bounds:
+// UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING of TA::class for
+// typealias TA<T> = C<Int, List<T>> and class C<X, Y : X>.
+func (c *Checker) starAliasBounds(t types.Type, p syntax.Pos) {
+	if t.K != types.Class || t.A == nil || len(t.C.TypeParams) != len(t.A.List) {
+		return
+	}
+	s := classSubst(t)
+	for i, a := range t.A.List {
+		if a.V == types.Star || a.T.K == types.Invalid {
+			continue
+		}
+		for _, b := range t.C.TypeParams[i].Bounds {
+			if b = s.Apply(b); b.K != types.Invalid && !b.HasVars() && !c.subtype(a.T, b) {
+				c.warnf(p, "UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING", "star projected type alias leads to incompatible upper bound: type parameter '%s' must be subtype of '%s', but actual: '%s'. Consider using the expanded class instead", t.C.TypeParams[i].Name, b, a.T)
+				return
+			}
+		}
+	}
 }

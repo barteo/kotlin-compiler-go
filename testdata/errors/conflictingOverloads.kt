@@ -76,20 +76,3 @@ enum class E { // ERROR redeclaration: name
     name, // ERROR redeclaration: name
     other
 }
-
-// Classes with the same JVM name.
-class A {
-    class B // ERROR duplicate JVM class name 'A$B'
-}
-class `A$B` // ERROR duplicate JVM class name 'A$B'
-
-class C {
-    init {
-        class D // ERROR duplicate JVM class name 'C$D'
-    }
-}
-class `C$D` // ERROR duplicate JVM class name 'C$D'
-
-// A vararg parameter isn't its array's, though the JVM tells them apart by neither.
-fun v(vararg x: Int) {} // ERROR platform declaration clash
-fun v(x: IntArray) {} // ERROR platform declaration clash

@@ -88,7 +88,7 @@ func acquire(cfg Config) (*shared, error) {
 		}
 	}
 	libraries.list = append(libraries.list, s)
-	trimLocked()
+	trimLocked(maxIdle)
 	return s, nil
 }
 
@@ -123,12 +123,20 @@ func (s *shared) release() error {
 	if s.key == "" {
 		return s.lib.cp.Close()
 	}
-	return trimLocked()
+	return trimLocked(maxIdle)
+}
+
+// Trim closes the libraries no session or model uses, which are
+// otherwise kept for the next session, with their checks.
+func Trim() error {
+	libraries.mu.Lock()
+	defer libraries.mu.Unlock()
+	return trimLocked(0)
 }
 
 // trimLocked closes the least recently used unused libraries past
-// maxIdle.
-func trimLocked() error {
+// keep.
+func trimLocked(keep int) error {
 	idle := 0
 	for _, s := range libraries.list {
 		if s.refs == 0 {
@@ -137,7 +145,7 @@ func trimLocked() error {
 	}
 	var err error
 	libraries.list = slices.DeleteFunc(libraries.list, func(s *shared) bool {
-		if s.refs > 0 || idle <= maxIdle {
+		if s.refs > 0 || idle <= keep {
 			return false
 		}
 		idle--

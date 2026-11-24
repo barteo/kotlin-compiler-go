@@ -60,9 +60,11 @@ func main() {
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
 	list := flag.String("list", "", "only the tests whose paths, relative to the suite, this file lists, one a line (the first field of a TSV line; # starts a comment)")
 	strayErrs := flag.String("errors", "", "diagnostics mode: the TSV file to write kc's errors on lines without an expected diagnostic to (path, category, file:line, message)")
-	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line, or for a warning that warning (path, category, file:line, name, severity, hit or miss, and a missed error's cause)")
+	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line, or for a warning that warning (path, category, file:line, name, severity, hit or miss, and a missed diagnostic's cause)")
 	missedOut := flag.String("missed", "", "diagnostics mode: the TSV file to write the expected errors kc didn't report on their lines to (path, file:line, name, cause)")
 	missedBase := flag.String("missed-baseline", "", "diagnostics mode: a -missed file of an earlier run to compare with, read before -missed is written; with -baseline, the harness fails if an expected error kc reported on its line is missed")
+	missedWarnsOut := flag.String("missed-warnings", "", "diagnostics mode: the TSV file to write the expected warnings kc didn't report on their lines to (path, file:line, name, cause)")
+	missedWarnsBase := flag.String("missed-warnings-baseline", "", "diagnostics mode: a -missed-warnings file of an earlier run to compare with, read before -missed-warnings is written; with -baseline, the harness fails if an expected warning kc reported on its line is missed")
 	strayWarns := flag.String("warnings", "", "diagnostics mode: the TSV file to write kc's warnings on lines that don't expect them to (path, category, file:line, name, message)")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
@@ -118,6 +120,16 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	var missedWarnsData []byte
+	if *missedWarnsBase != "" {
+		if *baseline == "" {
+			log.Fatal("-missed-warnings-baseline needs -baseline")
+		}
+		var err error
+		if missedWarnsData, err = os.ReadFile(*missedWarnsBase); err != nil {
+			log.Fatal(err)
+		}
+	}
 	start := time.Now()
 
 	var suite string
@@ -157,7 +169,7 @@ func main() {
 
 	var rs []*result
 	var report string
-	var missed []string // diagnostics mode: missedLines
+	var missed, missedWarns []string // diagnostics mode: missedLines, missedWarningLines
 	good := func(cat string) bool { return cat == catPass }
 	switch *mode {
 	case "box":
@@ -187,7 +199,7 @@ func main() {
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}
-		missed = c.missed
+		missed, missedWarns = c.missed, c.missedWarns
 		good = func(cat string) bool { return cat == catRejectsInvalid || cat == catAcceptsValid }
 	}
 	elapsed := time.Since(start).Round(time.Second)
@@ -211,6 +223,12 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if *missedWarnsOut != "" {
+		data := missedHeader + "\n" + strings.Join(missedWarns, "\n") + "\n"
+		if err := os.WriteFile(*missedWarnsOut, []byte(data), 0o644); err != nil {
+			log.Fatal(err)
+		}
+	}
 	var failed []error
 	if *baseline != "" {
 		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
@@ -218,7 +236,12 @@ func main() {
 		}
 	}
 	if *missedBase != "" {
-		if err := compareMissed(*missedBase, missedData, baselineCategories(baselineData), rs, missed); err != nil {
+		if err := compareMissed("errors", *missedBase, missedData, baselineCategories(baselineData), rs, missed); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if *missedWarnsBase != "" {
+		if err := compareMissed("warnings", *missedWarnsBase, missedWarnsData, baselineCategories(baselineData), rs, missedWarns); err != nil {
 			failed = append(failed, err)
 		}
 	}

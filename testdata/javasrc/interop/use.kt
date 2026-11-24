@@ -26,6 +26,7 @@ fun interopDemo() {
     println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
     println(Sources().longer("abc", 2).get() + " " + Sources().longer("a", 2).get() + " " + Sources().longer("", 2).get())
     println(Named().run())
+    println(bundles())
     // A platform value isn't checked for null where a Java method takes
     // it, a parameter that an annotation makes non-null too.
     println(Names.show(Names.none()))
@@ -149,3 +150,57 @@ fun nothingFromJava(v: Nulls.Visitor<Nothing>) {
 fun <T> samOverload(action: () -> T): T = action()
 fun samOverload(action: Runnable): String = "runnable"
 
+
+// T of a Java <T extends Parcel> T get(String), the value of a branch of
+// an if, a when or a try whose other branch is a T!, as Android's
+// Bundle.getParcelable(key) beside its getParcelable(key, T::class.java),
+// is that T, which K2 infers with the branches: not the bound, Parcel.
+class Parcelled(private val n: String) : Bundles.Parcel {
+    override fun name() = n
+}
+
+inline fun <reified T : Bundles.Parcel> Bundles.read(key: String, typed: Boolean, block: (T) -> Unit) {
+    val value = if (typed) {
+        get(key, T::class.java)
+    } else {
+        get(key)
+    }
+    if (value != null) {
+        block(value)
+    }
+}
+
+inline fun <reified T : Bundles.Parcel> Bundles.readWhen(key: String, typed: Boolean): T? {
+    val value = when {
+        typed -> get(key, T::class.java)
+        else -> get(key)
+    }
+    return value
+}
+
+inline fun <reified T : Bundles.Parcel> Bundles.readTry(key: String): T? {
+    val value = try {
+        get(key, T::class.java)
+    } catch (e: ClassCastException) {
+        get(key)
+    }
+    return value
+}
+
+inline fun <reified T : Bundles.Parcel> Bundles.readElvis(key: String): T? {
+    val value = get(key, T::class.java) ?: get(key)
+    return value
+}
+
+fun bundles(): String {
+    val b = Bundles()
+    b.put("p", Parcelled("p"))
+    val got = ArrayList<String>()
+    b.read<Parcelled>("p", true) { got += it.name() }
+    b.read<Parcelled>("p", false) { got += it.name() }
+    b.read<Parcelled>("q", false) { got += it.name() }
+    got += b.readWhen<Parcelled>("p", false)?.name() ?: "none"
+    got += b.readTry<Parcelled>("p")?.name() ?: "none"
+    got += b.readElvis<Parcelled>("p")?.name() ?: "none"
+    return got.joinToString()
+}

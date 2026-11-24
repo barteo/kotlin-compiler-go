@@ -29,10 +29,14 @@ type Universe struct {
 	Pkgs map[string]*Package // by dotted name; "" is the default package
 	// only is Options.Only, and late is set for the parallel phase of a
 	// check of only some files (lazily).
-	only     map[*syntax.File]bool
-	late     *lateInfer
-	prefixes map[string]bool // the packages and their prefixes: a and a.b for a.b
-	ext      *classTable
+	only map[*syntax.File]bool
+	late *lateInfer
+	// reentries counts the references to a declaration whose inference was
+	// in progress that were reported where they are, so that one can tell
+	// whether an inference ran into such a cycle.
+	reentries atomic.Int64
+	prefixes  map[string]bool // the packages and their prefixes: a and a.b for a.b
+	ext       *classTable
 	// local holds what ext's caches would but for the program's symbols,
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
@@ -56,9 +60,24 @@ type Universe struct {
 	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
 	// has it, rather than being an error type as a whole.
 	partial bool
+	// jvmTarget is Options.JVMTarget, set to 52 if it was 0.
+	jvmTarget int
 	// extraWarnings is Options.ExtraWarnings and experimentalWarnings
 	// Options.ExperimentalWarnings.
 	extraWarnings, experimentalWarnings bool
+	// optInValues maps each @OptIn, a *syntax.Annotation, to its checked
+	// arguments, a []syntax.AnnotationValue, which class files don't
+	// keep, for the opt-in pass. The files' checks store them in parallel.
+	optInValues sync.Map
+	// explicitAPI is Options.ExplicitAPI and explicitReturnTypes
+	// Options.ExplicitReturnTypes.
+	explicitAPI, explicitReturnTypes APIMode
+	// notMultiplatform is Options.NotMultiplatform.
+	notMultiplatform bool
+	// noReflection is set if kotlin-reflect isn't on the class path,
+	// whose ReflectionFactoryImpl the standard library's reflection uses
+	// if it is.
+	noReflection bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -83,6 +102,9 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
+	// aliasStack is the typealiases being resolved, innermost last: an
+	// alias that expands to itself is a cycle of all those after it.
+	aliasStack []*types.AliasSym
 	// ctx cancels checking, and rec, if set, receives its facts.
 	ctx context.Context
 	rec Recorder
@@ -159,13 +181,32 @@ type loopCtx struct {
 
 // Checker checks one file. Only one goroutine uses a Checker at a time.
 type Checker struct {
-	u       *Universe
-	file    *syntax.File
-	pkg     *Package                   // the file's package
-	imports map[string]*types.ClassSym // explicitly imported classes by name
+	u *Universe
+	// orderDependent is the property whose type extFuncVar couldn't use
+	// because it is being inferred or its inference ran into a cycle.
+	orderDependent *types.VarSym
+	// inferring is the symbol of the innermost declaration whose omitted
+	// type the checker is inferring, a *types.FunSym or *types.VarSym.
+	inferring any
+	// operator is the operator expression whose operands are being
+	// checked. The type an operand is checked with is a hint, as Int for
+	// x in 0..2, not a type expected of it: the operator is a call, as
+	// (0..2).contains(x) or "a".plus(x) (see tvar.wantUp).
+	operator *syntax.Binary
+	// inferFrom is one more than the count of reentries
+	// (Universe.reentries) when the inference whose declaration the
+	// checker is checking began, or 0 outside one: a reference to a declaration left Cyclic is reported
+	// only in an inference that ran into the cycle too.
+	inferFrom int64
+	file      *syntax.File
+	pkg       *Package                   // the file's package
+	imports   map[string]*types.ClassSym // explicitly imported classes by name
 	// aliasImports are the program's explicitly imported typealiases.
 	aliasImports map[string]*types.AliasSym
-	funImports   map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
+	// conflictingImports are the names that two explicit imports of
+	// classifiers give, which are ambiguous: CONFLICTING_IMPORT.
+	conflictingImports map[string]bool
+	funImports         map[string][]*types.FunSym // explicitly imported Kotlin functions of the class path by name
 	// memberImports are the explicitly imported members of classes and
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
@@ -201,12 +242,19 @@ type Checker struct {
 	// contractAt are the positions of the contracts that dropContracts
 	// took out of the functions' bodies, by body, whose opt-in
 	// optInErrors checks.
-	contractAt  map[*syntax.Block]syntax.Pos
-	classes     []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases     []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps       int                     // temporaries named so far, for unique names
-	inlineCalls []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	contractAt map[*syntax.Block]syntax.Pos
+	// contractSuppress are the ranges of the @Suppress annotations on the
+	// contract { } calls that dropContract removes, and in them.
+	contractSuppress []suppressRange
+	// contractCalls are, by body, the calls of the contract's builder
+	// functions, returns, implies, callsInPlace and the like, which are
+	// @ExperimentalContracts too.
+	contractCalls map[*syntax.Block][]syntax.Pos
+	classes       []*syntax.ClassDecl     // the file's classes, nested ones too
+	aliases       []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps         int                     // temporaries named so far, for unique names
+	inlineCalls   []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls   []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
@@ -244,17 +292,50 @@ type Checker struct {
 	// maybeNull are the x!! and x ?: y whose x some check of them found
 	// may be null: checked again, x may be smart cast by the first check.
 	maybeNull map[syntax.Expr]bool
+	// qualifierSafe are the safe calls on a class without a companion
+	// object or a package: see noteQualifierSafe.
+	qualifierSafe map[*syntax.Member]bool
 	// typeFacts are, for each x is T, x as T and is condition of a when,
 	// what its check knew of x (see noteTypeFacts).
 	typeFacts map[any]typeFacts
+	// identTypes are, for each a == b, a != b, a === b and a !== b, the
+	// types of a and b before smart casts and then after them, for the
+	// warnings about them (see identityWarnings, enumComparisonWarning).
+	identTypes map[*syntax.Binary][4]types.Type
+	// branchJoins are, for each if and when that no expected type gave a
+	// type, the join of its branches' types (see noteBranchJoin).
+	branchJoins map[syntax.Expr]types.Type
 	// coveredWhens are the whens with a subject whose branches cover all
 	// its values, without an else.
 	coveredWhens map[*syntax.When]bool
-	// blockJumps are, with -Wextra, the blocks with a statement that
-	// always jumps, and its index: what follows it is unreachable.
+	// redundantElses are the whens whose else branch is redundant: see
+	// noteRedundantElse.
+	redundantElses map[*syntax.When]bool
+	// nullConds are the null conditions of whens whose subject the
+	// branches before left null alone, as after is Any (true), or ruled
+	// null out, as after null -> (false): see whenNullWarnings.
+	nullConds map[*syntax.WhenCond]bool
+	// blockJumps are the blocks with a statement that always jumps, and
+	// its index: what follows it is unreachable.
 	blockJumps map[*syntax.Block]int
-	// deadBlocks are the blocks in code reported as unreachable.
+	// platformArgs are the calls and property reads, *syntax.Call and
+	// *syntax.Member, with a type argument they infer that is a Java
+	// class that is a Kotlin one, java.lang.Integer of
+	// java.lang.Integer::class.java: the Kotlin class's name.
+	platformArgs map[any]string
+	// emptyInters are the calls with a type argument they infer that is
+	// an intersection that is or may be empty: see
+	// noteEmptyIntersection.
+	emptyInters map[*syntax.Call]emptyInter
+	// deadClasses are the local classes and object expressions in code
+	// reported unreachable, which classDeadCode doesn't judge.
+	deadClasses map[*syntax.ClassDecl]bool
+	// deadBlocks are the blocks in code reported as unreachable, and the
+	// bodies of callable references' lambdas, which aren't written.
 	deadBlocks map[*syntax.Block]bool
+	// deadLogic are the && and || operations in code reported as
+	// unreachable, whose right operands deadLogicOperand doesn't judge.
+	deadLogic map[*syntax.Binary]bool
 	// refLHS is set while the type on a callable reference's left side
 	// is resolved, where an inner class's type arguments may go on to
 	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
@@ -278,10 +359,12 @@ type Checker struct {
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
-	// branchLambdas are the lambdas that are the values of branches of an
-	// if or when, which, as K2's synthetic call's postponed arguments, may
-	// take an expected receiver as their first parameter.
-	branchLambdas map[*syntax.Lambda]bool
+	// recvParamLambdas are the lambdas that may take an expected receiver
+	// as their first parameter, as K2's postponed arguments: the values of
+	// branches of an if or when, initializers of a declared type, and
+	// arguments for a parameter whose type is a type parameter (see
+	// markRecvParam).
+	recvParamLambdas map[*syntax.Lambda]bool
 	// stubDepth is the number of stubInference runs in progress.
 	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
@@ -313,29 +396,31 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
-	// stubHints are the values that stubInference gave the variables of
-	// the calls in a builder's lambda that it inferred with the builder's
-	// (see stubHint).
-	stubHints map[stubHintKey]types.Type
-	// stubCapts are the variables of calls in a builder's lambda that
-	// capture an out projection of one of the builder's variables: see
-	// system.subArgs.
-	stubCapts map[stubHintKey]bool
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
+	// resultChecked is the lambda last checked to choose a call's
+	// candidate by its result (see byLambdaResult).
+	resultChecked *syntax.Lambda
 	// origSAM is set while candidates compare by the fun interfaces
 	// lambdas convert to, not their function types (see funInterfaceView).
 	origSAM bool
-	// trial is set while stubInference checks a lambda, to undo what the
-	// check changes outside the lambda.
-	trial *trial
-	// redeclared are the classes that finished trials declared, which
-	// declareClass declares again.
-	redeclared map[*types.ClassSym]bool
-	sink       *system // set while checking an argument whose inference joins its call's
+	sink    *system // set while checking an argument whose inference joins its call's
 	// noBoundChecks is set while class bounds are resolved, before
 	// all of them are known.
 	noBoundChecks bool
+	// boundDefNotNull holds the T & Any of the bounds being resolved,
+	// whose T's bounds may not be known yet: T : Comparable<T & Any>.
+	boundDefNotNull *[]boundDNN
+	// ctorAliasRef is the typealias use that a constructor call through
+	// it, ctorAliasCall, is expanding, whose bounds only warn where they
+	// aren't of the alias's arguments; aliasDeprecated are the calls
+	// warned of so (see argBounds).
+	ctorAliasRef    *syntax.TypeRef
+	ctorAliasCall   *syntax.Call
+	aliasDeprecated map[*syntax.Call]bool
+	// headerParams are the parameters of the constructor whose
+	// parameters' annotations are checked: their arguments see them.
+	headerParams []*types.VarSym
 	// localClasses are the file's local classes' capture frames.
 	localClasses map[*types.ClassSym]localClassFrame
 	// tailBlock is a branch whose last statement, a call, is checked with
@@ -346,6 +431,13 @@ type Checker struct {
 	branchSink *system
 	unitElvis  syntax.Expr    // see unitBody
 	varTarget  *syntax.Member // see propBound
+	// castThisAssigns are the assignments' targets that assign the
+	// intersection override of a property of this smart cast to a
+	// subclass (see castThisProp), which don't initialize it.
+	castThisAssigns map[syntax.Expr]bool
+	// adaptedRef is the callable reference checked as a call's argument
+	// for a parameter of a function type, which it may be adapted to.
+	adaptedRef *syntax.Lambda
 	// assignTarget is the member an assignment's target is while it is
 	// checked, whose getter isn't called (see protectedGetter).
 	assignTarget *syntax.Member
@@ -361,6 +453,73 @@ type Checker struct {
 	// aliasCtors are the calls of typealiases' constructors, with their
 	// aliases: see ownParamArg.
 	aliasCtors map[*syntax.Call]*types.AliasSym
+	// libAliasCtors are the calls of constructors through a library's
+	// typealias, which resolves to its class: HashSet(c) (see
+	// tvar.strictFlex).
+	libAliasCtors map[*syntax.Call]bool
+	// aliasClassImports are the names of imports of a library's typealias
+	// that imports holds as its class: import kotlin.collections.HashSet.
+	aliasClassImports map[string]bool
+	// aliasTypeArgs are the type arguments of the calls of typealiases'
+	// constructors with explicit ones, rewritten as their classes'.
+	aliasTypeArgs map[*syntax.Call][]*syntax.TypeArg
+	// pclaSub is what the variables of a builder's lambda whose check is
+	// being committed (see pclaCommit) were inferred as, while the
+	// fixups of the systems that finished in it run again.
+	pclaSub types.Subst
+	// pclaMsgs are the errors of the checks that builder inference
+	// keeps whose messages name a type with a variable: how to word
+	// them again once it is inferred.
+	pclaMsgs map[*syntax.Error]pclaMsg
+	// pclaVarErrs are the errors of those checks that a value of a
+	// builder's variable caused, an ambiguous pr(get()): they aren't
+	// reported if the variable isn't inferred. pclaPoisoned are the
+	// calls of extensions on a builder lambda's receiver that such a
+	// check saw, reported at its commit if they are after a call that
+	// failed the shared system (see poisonedRecv).
+	pclaVarErrs  map[*syntax.Error][]*types.TypeParamSym
+	pclaPoisoned map[*syntax.Lambda][]pclaRecvCall
+	// pclaLive are the nodes of that lambda's tree.
+	pclaLive map[any]bool
+	// pclaRuns are the runs of stubInference whose lambdas are being
+	// checked, the innermost last.
+	pclaRuns []*stubRun
+	// pclaKept are the runs that keep the check of a lambda whose turn
+	// to be checked for good hasn't come.
+	pclaKept map[*syntax.Lambda]*stubRun
+	// uninferred are the local variables whose type has a type argument
+	// that their initializer's call couldn't infer (see uninferredArg),
+	// and uninferredRecv the lambdas whose receiver's type is a type
+	// parameter that their call couldn't infer, by its name.
+	uninferred     map[*types.VarSym]bool
+	uninferredCall *syntax.Call // the last call that uninferredArg reported
+	uninferredRecv map[*syntax.Lambda]string
+	// uninferredThis are the errors of this in such a lambda, reported
+	// once it is checked.
+	uninferredThis map[*syntax.Lambda][]*syntax.Error
+	// elvisCall is the call on the left of an elvis being checked, and
+	// elvisWant the type that the right side gives it (see elvisHint).
+	elvisCall *syntax.Call
+	elvisWant types.Type
+	// typeArgWant is the argument being checked against a parameter's
+	// type that its call's explicit type arguments give (see
+	// tvar.typeArgUp).
+	typeArgWant syntax.Expr
+	// typeArgStrict is set with typeArgWant where the explicit type
+	// arguments aren't flexible in the parameter's type (see
+	// tvar.strictArg).
+	typeArgStrict bool
+	// argWant is the argument being checked against its parameter's type,
+	// not one that explicit type arguments give (see tvar.argUp).
+	argWant syntax.Expr
+	// indexCalls are the get and set calls of indexing operators, a[i] and
+	// a[i] = v, whose arguments K2 constrains as an assignment's value:
+	// not as an argument's (see tvar.argUp).
+	indexCalls map[*syntax.Call]bool
+	// elvisFull is the initializer being checked of a local declared
+	// without a type, which nothing else is expected of: an elvis that
+	// is one is completed on its own.
+	elvisFull *syntax.Binary
 	// samArg is the call being checked as an argument for a parameter of
 	// a fun interface type: see ownParamArg.
 	samArg *syntax.Call
@@ -385,6 +544,17 @@ type Checker struct {
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
 	frameAssigns  map[varFrame][]types.Type
+	// classFrames are the frames of object expressions and local
+	// classes, with their declarations, and nullFrames whether such a
+	// class's code assigns null to a var it captures (see varStable).
+	classFrames map[*syntax.Lambda]*syntax.ClassDecl
+	nullFrames  map[varFrame]bool
+	// frameNodes are the local functions of their frames, and assignTypes
+	// the types of the values that the assignments of local vars checked
+	// so far assign (see frameAllows).
+	frameNodes  map[*syntax.Lambda]any
+	assignTypes map[*syntax.Assign]types.Type
+	frameMemo   map[frameName][]*syntax.Assign
 	// siblingAssigns has, for a lambda argument, the names of the locals
 	// the call's other lambda arguments assign, which may run before it.
 	siblingAssigns map[*syntax.Lambda]map[string]bool
@@ -415,6 +585,9 @@ type Checker struct {
 	// serials are the file's classes annotated @Serializable, which the
 	// serialization plugin adds members to: see serialization.go.
 	serials []*serialInfo
+	// serialFile is what the file's @UseSerializers and
+	// @UseContextualSerialization say, or nil.
+	serialFile *serialFileContext
 
 	// typeAnnots are the annotated types to check (typeannot.go).
 	typeAnnots []typeAnnot
@@ -448,8 +621,9 @@ type state struct {
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
 	annotDefault bool
-	// inInlineFun is set in the body of an inline function, and in its
-	// lambdas and local functions, which can't declare local functions.
+	// inInlineFun is set in the body of an inline function or accessor,
+	// and in its lambdas and local functions, which can't declare local
+	// functions or classes.
 	inInlineFun bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
@@ -631,9 +805,9 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 		}
 		f := &types.FunSym{Name: m.Name, Owner: owner, Desc: m.Desc, Operator: true, Resolved: true,
 			Abstract: m.Access&classfile.AccAbstract != 0}
-		ok := t.signature(f, m.Desc)
+		ok := t.signature(f, m.Desc, false)
 		if m.Sig != "" {
-			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
+			ok = t.methodSignature(f, owner, m.Sig, len(f.Params), m.BoundAnnotations)
 		}
 		if !ok {
 			continue
@@ -644,22 +818,6 @@ func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSy
 		out = append(out, f)
 	}
 	return out
-}
-
-// moduleSuffix returns what the JVM names of a module's internal members
-// end with: $ and its name, with the characters that can't be in a Java
-// identifier replaced by _, as kotlinc writes them.
-func moduleSuffix(module string) string {
-	if module == "" {
-		module = "main"
-	}
-	b := []byte(module)
-	for i, r := range b {
-		if !(r == '_' || r == '$' || '0' <= r && r <= '9' || 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z') {
-			b[i] = '_'
-		}
-	}
-	return "$" + string(b)
 }
 
 // internal returns the suffix of the JVM name of a member of a class
@@ -731,6 +889,15 @@ type Options struct {
 	// the diagnostics: Severity tells them apart. Without it, only the
 	// errors are returned.
 	Warnings bool
+	// JVMTarget is the class file major version the program is compiled
+	// for, 52 (Java 8) if 0: a call of an inline function of a class
+	// file of a higher version is an error, as kotlinc's
+	// INLINE_FROM_HIGHER_PLATFORM.
+	JVMTarget uint16
+	// Recovered says that the files are those of a program with syntax
+	// errors, as far as the parser recovered them: of the warnings, only
+	// recoveredWarnings are reported.
+	Recovered bool
 	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
 	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
 	ExtraWarnings bool
@@ -738,6 +905,18 @@ type Options struct {
 	// experimental checkers, which kotlinc reports only with
 	// -Xuse-fir-experimental-checkers, as REDUNDANT_INTERPOLATION_PREFIX.
 	ExperimentalWarnings bool
+	// ExplicitAPI is kotlinc's explicit API mode (-Xexplicit-api): the
+	// declarations of the program's public API must say their
+	// visibility, and their types if they are inferred.
+	ExplicitAPI APIMode
+	// ExplicitReturnTypes is kotlinc's -XXexplicit-return-types: the
+	// declarations of the program's public API must say their types if
+	// they are inferred.
+	ExplicitReturnTypes APIMode
+	// NotMultiplatform is set for a compilation that isn't multiplatform,
+	// as kotlinc's without -Xmulti-platform: the expect and actual
+	// modifiers are errors (NOT_A_MULTIPLATFORM_COMPILATION).
+	NotMultiplatform bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -827,11 +1006,12 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
-		c.exposeBoxedPrivate(c.file.Decls, false)
+		c.exposeBoxed(c.file.Decls, nil, false)
 		for _, d := range c.aliases {
 			c.aliasArrayNothing(d)
 		}
 		c.checkModifiers()
+		c.checkExplicitAPI()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
 		if !opts.Signatures {
@@ -849,10 +1029,33 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = append(errs, c.errs...)
 		warns = append(warns, c.warns...)
 	}
+	errs = dropBackendErrors(errs)
+	if opts.Recovered {
+		warns = slices.DeleteFunc(warns, func(w *syntax.Error) bool { return !recoveredWarnings[w.Name] })
+	}
 	if opts.Warnings {
 		errs = append(errs, warns...)
 	}
 	return errs, nil
+}
+
+// backendErrorPrefixes start the messages of the errors that kotlinc's
+// JVM backend reports (JvmBackendErrors): CONFLICTING_JVM_DECLARATIONS,
+// CONFLICTING_INHERITED_JVM_DECLARATIONS, ACCIDENTAL_OVERRIDE and
+// DUPLICATE_CLASS_NAMES.
+var backendErrorPrefixes = []string{"platform declaration clash", "inherited platform declarations clash", "accidental override", "duplicate JVM class name"}
+
+// dropBackendErrors returns a module's errors without those of kotlinc's
+// JVM backend if there are others: kotlinc doesn't run its backend on a
+// module its frontend reports errors in.
+func dropBackendErrors(errs []*syntax.Error) []*syntax.Error {
+	backend := func(e *syntax.Error) bool {
+		return slices.ContainsFunc(backendErrorPrefixes, func(p string) bool { return strings.HasPrefix(e.Msg, p) })
+	}
+	if !slices.ContainsFunc(errs, func(e *syntax.Error) bool { return e.Severity == syntax.SevError && !backend(e) }) {
+		return errs
+	}
+	return slices.DeleteFunc(errs, backend)
 }
 
 // signatures declares the files' declarations and resolves their
@@ -868,11 +1071,13 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		w.t = lib.t.private()
 		lib = &w
 	}
-	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: types.ModuleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures,
-		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings}
+		extraWarnings: opts.ExtraWarnings, experimentalWarnings: opts.ExperimentalWarnings,
+		explicitAPI: opts.ExplicitAPI, explicitReturnTypes: opts.ExplicitReturnTypes, notMultiplatform: opts.NotMultiplatform, jvmTarget: max(int(opts.JVMTarget), 52)}
 	u.lookups, _ = rec.(LookupRecorder)
+	u.noReflection = u.ext.class("kotlin/reflect/jvm/internal/ReflectionFactoryImpl") == nil
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -1011,7 +1216,11 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	e := &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)}
+	c.errs = append(c.errs, e)
+	if len(c.pclaRuns) > 0 {
+		c.pclaLate(e, format, args)
+	}
 }
 
 // warnf reports a warning, which kotlinc names name. It is for the passes
@@ -1083,6 +1292,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		return *ref.Known
 	}
 	c.noteTypeAnnotations(ref)
+	var a *types.AliasSym // the typealias ref names
+	if ref.And == nil && ref.Ret == nil && ref.Outer == nil && c.lookupTypeParam(ref.Name) == nil {
+		a = c.lookupAlias(ref.Name)
+	}
+	if ref.Redundant != (syntax.Pos{}) && a == nil {
+		// As kotlinc, not A?? of a typealias, whose A? is.
+		c.warnf(ref.Redundant, "REDUNDANT_NULLABLE", "redundant '?'")
+	}
 	if ref.And != nil {
 		return c.defNotNull(ref)
 	}
@@ -1092,10 +1309,10 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Outer != nil {
 		return c.innerType(ref)
 	}
-	if c.lookupTypeParam(ref.Name) == nil {
-		c.starAmbiguity(ref.Name, ref.P)
+	if c.lookupTypeParam(ref.Name) == nil && !c.starAmbiguity(ref.Name, ref.P) && c.conflictingImports[ref.Name] && c.nestedClassifier(ref.Name) == (classifier{}) {
+		c.errorf(ref.P, "overload resolution ambiguity: %s is a classifier of more than one import", ref.Name)
 	}
-	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
+	if a != nil {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
@@ -1103,6 +1320,18 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		t := c.expandAlias(a, ref)
 		if !c.noBoundChecks {
 			c.arrayNothingRef(ref, t)
+		}
+		if ref.Nullable && a.Resolved && a.Type.N && t.K != types.Invalid {
+			// A? of typealias A = B?, which is nullable already.
+			c.warnf(ref.Quest, "REDUNDANT_NULLABLE", "redundant '?'")
+		}
+		if t.K == types.Class && isMissingDep(t.C) {
+			// As K2's ForbidTypeAliasWithMissingDependencyType.
+			name := missingName(t.C)
+			if s := t.String(); strings.IndexAny(s, "<?") >= 0 {
+				name += s[strings.IndexAny(s, "<?"):] // its arguments and ?
+			}
+			c.errorf(ref.P, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", name)
 		}
 		return t
 	}
@@ -1180,6 +1409,39 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 // context parameter is reported: types are resolved more than once.
 type reservedRef struct{ *syntax.TypeRef }
 
+// dupNamesRef keys c.done for a function type whose parameters'
+// names funcTypeNames has checked.
+type dupNamesRef struct{ ref *syntax.TypeRef }
+
+// funcTypeNames reports a function type two of whose parameters have
+// one name: written, (a: A, a: B) -> R, or the first @ParameterName of
+// an unnamed one's type.
+func (c *Checker) funcTypeNames(ref *syntax.TypeRef) {
+	seen := map[string]bool{}
+	for i, p := range ref.Params {
+		name := ""
+		if i < len(ref.Names) {
+			name = ref.Names[i]
+		}
+		if name == "" {
+			for _, a := range p.Annotations {
+				if a.Target == "" && a.Is("ParameterName") {
+					name, _ = a.Str("name")
+					break
+				}
+			}
+		}
+		if name == "" { // _ too, as kotlinc
+			continue
+		}
+		if seen[name] {
+			c.errorf(ref.P, "duplicate parameter name in a function type")
+			return
+		}
+		seen[name] = true
+	}
+}
+
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
 		c.errorf(ref.P, "function types with more than %d parameters are prohibited", types.MaxVarArity)
@@ -1190,6 +1452,10 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		if ps[i] = c.resolveType(p); ps[i].K == types.Invalid {
 			return types.InvalidType
 		}
+	}
+	if !c.done[dupNamesRef{ref}] {
+		c.done[dupNamesRef{ref}] = true
+		c.funcTypeNames(ref)
 	}
 	r := c.resolveType(ref.Ret)
 	if r.K == types.Invalid {
@@ -1316,11 +1582,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
-		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
-			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
-		} else if a.Variance != types.Inv && a.Variance == ps[i].Var {
-			c.redundantProjection(a.P)
-		}
+		c.projection(a, ps[i], cls)
 	}
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
@@ -1434,10 +1696,16 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	// are all set: T : Enum<T> needs T's bound to check Enum<T>.
 	saved := c.noBoundChecks
 	c.noBoundChecks = true
+	var dnn []boundDNN
+	savedDNN := c.boundDefNotNull
+	c.boundDefNotNull = &dnn
 	refs := map[*syntax.TypeParam][]*syntax.TypeRef{} // the TypeRef of each bound in Bounds
 	for _, d := range decls {
 		d.Sym.Bounds = nil
 		for _, ref := range d.Bounds {
+			if ref.Ret != nil && (ref.Recv != nil || ref.Contexts != nil) && !c.hasErrorAt(ref.P, "an extension function type") {
+				c.errorf(ref.P, "an extension function type or a function type with context parameters can't be an upper bound")
+			}
 			if b := c.resolveType(ref); b.K != types.Invalid {
 				d.Sym.Bounds = append(d.Sym.Bounds, b)
 				refs[d] = append(refs[d], ref)
@@ -1463,6 +1731,12 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 		c.errorf(d.P, "type parameter %s has cyclic upper bounds", d.Name)
 		d.Sym.Bounds = nil
 	}
+	c.boundDefNotNull = savedDNN
+	for _, x := range dnn {
+		if !x.p.NullableBound() {
+			c.errorf(x.ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
+		}
+	}
 	c.noBoundChecks = saved
 	if saved {
 		return
@@ -1473,7 +1747,13 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 			continue // a cyclic bound was dropped
 		}
 		for i, b := range d.Sym.Bounds {
-			if ref := refs[d][i]; b.K == types.Class && b.A != nil && len(ref.Args) == len(b.A.List) {
+			if ref := refs[d][i]; b.K == types.Class && b.A != nil {
+				if len(ref.Args) != len(b.A.List) {
+					if c.lookupAlias(ref.Name) != nil {
+						c.refBounds(b.NonNull(), ref, nil, nil) // T : One<Any>
+					}
+					continue
+				}
 				c.checkBounds(b.NonNull(), ref)
 			}
 		}
@@ -1554,11 +1834,8 @@ func (c *Checker) declare() {
 				// The facade's accessors call the part's, which use
 				// its field.
 				sym.Facade, sym.Part = c.file.Facade, c.file.Part
-				switch {
-				case sym.JvmField:
+				if sym.JvmField {
 					c.errorf(d.Find("", "JvmField").P, "JvmField cannot be applied to top level property of a file annotated with JvmMultifileClass")
-				case d.Lateinit:
-					c.unsupported(d.P, "multifile class property", "lateinit properties of multi-file classes (@file:JvmMultifileClass) are only supported if private")
 				}
 			}
 			sym.Private = d.Visibility == syntax.Private && d.Getter == nil && d.Setter == nil && d.Field == nil &&
@@ -1612,24 +1889,13 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	if d.Value {
 		c.valueClass(d)
 	}
-	sym := d.Sym
-	if sym != nil && c.redeclared[sym] {
-		// Declared by a trial check of the lambda the class is in, which
-		// constraints on the lambda's types may mention: the class is
-		// that one, declared again.
-		delete(c.redeclared, sym)
-	} else {
-		sym = new(types.ClassSym)
-	}
+	sym := new(types.ClassSym)
 	*sym = types.ClassSym{Name: name, Methods: map[string][]*types.FunSym{}, Decl: d, Annotation: d.Annotation,
 		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun, Data: d.Data,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
 		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,
 		File: c.file.Class()}
-	if c.trial != nil {
-		c.trial.classes[sym] = true
-	}
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
 		sym.TargetsKnown, sym.TargetsRead = true, true
@@ -1655,7 +1921,15 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			sym.Entries = append(sym.Entries, e.Name)
 		}
 		if d.Interface || d.Object || d.Data || d.Sealed || d.Open || d.Abstract {
-			c.errorf(d.P, "modifier 'enum' is only allowed on final classes")
+			// At the first modifier that makes it not final, as kotlinc.
+			pos := d.P
+			for _, w := range d.Written {
+				if w.Name == "data" || w.Name == "sealed" || w.Name == "open" || w.Name == "abstract" {
+					pos = w.P
+					break
+				}
+			}
+			c.errorf(pos, "modifier 'enum' is only allowed on final classes")
 		}
 		for _, m := range d.Members {
 			// An enum may declare abstract members, which its entries
@@ -1901,6 +2175,33 @@ func (c *Checker) topVarOutside(name string) *types.VarSym {
 	return nil
 }
 
+// starVarAmbiguous reports whether v, a top-level property of the
+// program's packages that one star import gives, is also, as another
+// property, given by another: as in Kotlin, the use is ambiguous. So is
+// the file's private property that another file of its package declares
+// public.
+func (c *Checker) starVarAmbiguous(name string, v *types.VarSym) bool {
+	if v.Kind != types.Global {
+		return false
+	}
+	if w, ok := c.pkg.Vars[name]; ok && w != v && w.Facade != v.Facade && w.Alt == nil && v.Alt == nil && len(w.Contexts) == 0 && len(v.Contexts) == 0 && c.fileVars[name] == v {
+		// The file's private property and another file's public one of
+		// the package, a redeclaration that a use doesn't resolve.
+		return true
+	}
+	mine, others := false, false
+	for _, p := range c.userStars {
+		if w, ok := p.Vars[name]; ok && !c.renamedAway(p.Name, name) && c.propVisible(w) {
+			if w == v {
+				mine = true
+			} else {
+				others = true
+			}
+		}
+	}
+	return mine && others
+}
+
 // libraryVar reports whether v is a top-level property of a library, which
 // a star import gives, rather than of the program.
 func (c *Checker) libraryVar(v *types.VarSym) bool {
@@ -1932,12 +2233,20 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		d.Sym = sym
 	}
 	sym.Throws = c.throws(&d.Modifiers)
+	if d.Plugin {
+		// A plugin's types, as serialization's KSerializer<C<T>> of a
+		// generic class C<T : Any> for a T without the bound, aren't
+		// checked, as kotlinc's plugins write IR.
+		saved := c.noBoundChecks
+		c.noBoundChecks = true
+		defer func() { c.noBoundChecks = saved }()
+	}
 	if d.Annotation {
 		what := "member function"
 		if owner == nil {
 			what = "top level function"
 		}
-		c.errorf(d.P, "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(d.PosOf("annotation", d.P), "modifier 'annotation' is not applicable to '%s'", what)
 	}
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
 	c.tparams = funTypeParams(sym, owner)
@@ -1982,13 +2291,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "an abstract function cannot have a body")
 	case !sym.Abstract && bodyless && !d.Expect:
 		c.errorf(d.P, "function '%s' must have a body", d.Name)
+	case owner != nil && owner.Interface && bodyless && !d.Abstract && d.Visibility == syntax.Private:
+		// Abstract, as it has no body, but no class can implement it.
+		c.errorf(modPos(d.Written, "private", d.P), "private function '%s' in an interface must have a body", d.Name)
 	}
-	seen := map[string]bool{}
+	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
-		if seen[p.Name] {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
-		}
-		seen[p.Name] = true
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}
@@ -2012,6 +2320,16 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			sym.AtLeastOnce[i] = d.AtLeastOnce[p.Name]
 		}
 	}
+	for _, e := range d.Calls {
+		for i, p := range d.Params {
+			if p.Name == e.Param && e.Kind == "AT_MOST_ONCE" {
+				if sym.AtMostOnce == nil {
+					sym.AtMostOnce = make([]bool, len(d.Params))
+				}
+				sym.AtMostOnce[i] = true
+			}
+		}
+	}
 	c.contractEffects(d, sym)
 	if d.Infix {
 		c.checkInfix(d, owner)
@@ -2019,7 +2337,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
-		sym.NoInferRet = d.Ret.NoInfer
+		sym.NoInferRet = noInfer(d.Ret) // In<@NoInfer E> too
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
@@ -2042,9 +2360,9 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
 			// overridden function couldn't pass the type.
 			c.errorf(tp.P, "override by a function with reified type parameter")
-		case owner != nil && (owner.Interface || owner.Value):
-			c.unsupported(tp.P, "reified member type parameter", "reified type parameters of members of interfaces and value classes are not supported")
-		case owner != nil && !isFinal(d.Modifiers, owner):
+		case virtualMember(d.Modifiers, owner):
+			// Reported as a virtual inline member.
+		case owner != nil && !copiedMember(d.Modifiers, owner):
 			c.errorf(tp.P, "only type parameters of inline functions can be reified") // an open member isn't inlined
 		}
 	}
@@ -2143,6 +2461,17 @@ func (c *Checker) externalAccessors(d *syntax.PropDecl, owner *types.ClassSym) {
 	}
 }
 
+// copiedMember reports whether calls of an inline member with these
+// modifiers copy its body, as it can't be overridden: a final member of a
+// class or object, or a private one of an interface (whose other members
+// are open).
+func copiedMember(m syntax.Modifiers, owner *types.ClassSym) bool {
+	if owner.Interface {
+		return m.Visibility == syntax.Private
+	}
+	return isFinal(m, owner)
+}
+
 // isFinal reports whether a member with these modifiers can't be
 // overridden: members are final unless open, abstract, or an override not
 // marked final; interface members never are.
@@ -2172,6 +2501,12 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
+	if g := d.Getter; g != nil && g.Ret != nil && d.Type == g.Ret && d.Init != nil {
+		// val x = init get(): T: the parsers give x the getter's type,
+		// for val x get(): T { ... }, but one with an initializer is
+		// of its initializer's type, which the getter's must be.
+		d.Type = nil
+	}
 	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
@@ -2199,6 +2534,24 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		default:
 			sym.JvmStatic = true
 		}
+	} else if owner == nil || !owner.Object || owner.Anonymous || d.Override && owner.CompanionOf == nil {
+		// @get:JvmStatic, or @JvmStatic on an accessor.
+		as := []*syntax.Annotation{d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")}
+		for _, g := range []*syntax.FunDecl{d.Getter, d.Setter} {
+			if g != nil {
+				as = append(as, g.Find("", "JvmStatic"))
+			}
+		}
+		msg := "only members in named objects and companion objects can be annotated with '@JvmStatic'"
+		if owner != nil && owner.Object && !owner.Anonymous {
+			msg = "override member cannot be '@JvmStatic' in an object"
+		}
+		for _, a := range as {
+			if a != nil {
+				c.errorf(a.P, "%s", msg)
+				break
+			}
+		}
 	}
 	if d.Const && (d.Getter != nil || d.AccessorP.Line != 0) {
 		p := d.AccessorP
@@ -2215,8 +2568,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
-		if sym.JvmField && sym.JvmStatic {
-			c.errorf(d.P, "this annotation is not applicable to this declaration: @JvmStatic on a @JvmField property")
+		// Also through a typealias of JvmStatic.
+		if a := c.findAnnotation(d.Annotations, "", "JvmStatic", "kotlin/jvm/JvmStatic"); a != nil && owner.Object && !owner.Anonymous && (sym.JvmField || d.Const) {
+			c.errorf(a.P, "'@JvmStatic' annotation is useless for const or '@JvmField' properties")
 		}
 
 	}
@@ -2230,7 +2584,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.SetterVis == syntax.Internal && jvmName(&d.Modifiers, "set") == "" {
 		sym.SetterModule = c.internal(&syntax.Modifiers{Visibility: syntax.Internal}, owner, "")
 	}
-	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed) && len(d.Contexts) == 0
+	// A property with context parameters has no field, but one whose
+	// accessors would need one is reported as such (propContexts), and
+	// is checked as if it had one, as kotlinc does.
+	fieldUsed := sym.FieldUsed && len(d.Contexts) == 0 // field is unresolved in the accessors of one with contexts
+	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || fieldUsed)
 	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 	if ext && !sym.Abstract && (owner == nil || !owner.Interface) {
 		// kotlinc gives the property a field, which its external
@@ -2243,8 +2601,16 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
-		c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
+		if sym.Abstract && d.Mutable && d.Field == nil {
+			c.errorf(d.P, "'lateinit' modifier is not allowed on abstract properties")
+		} else {
+			c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
+		}
 		sym.Lateinit = true
+	}
+	if owner != nil && owner.Interface && d.Visibility == syntax.Private && !d.Abstract && d.Init == nil && d.Getter == nil && d.Field == nil {
+		// Abstract, as it has no value, but no class can implement it.
+		c.errorf(modPos(d.Written, "private", d.P), "abstract property in an interface cannot be private")
 	}
 	switch {
 	case d.Abstract && ext:
@@ -2259,7 +2625,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "this property cannot be abstract and delegated")
 	case owner != nil && owner.Interface && hasField:
 		c.errorf(d.P, "property in an interface cannot have a backing field")
-	case d.Init != nil && !hasField && !sym.FieldUsed:
+	case d.Init != nil && !hasField && !fieldUsed:
 		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
 		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
@@ -2269,7 +2635,10 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			p = d.SetterVisP // at the modifier, as kotlinc
 		}
 		c.errorf(p, "private setters are not allowed for open properties")
-	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect:
+	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect && (owner != nil || d.BackingField == nil || len(d.Contexts) > 0):
+		// A top-level explicit backing field without an initializer is
+		// reported as such (backingFieldDecl); a class's, if its
+		// constructors don't assign it (definite assignment).
 		switch {
 		case owner == nil || owner.Interface:
 			c.errorf(d.P, "property must be initialized or be abstract")
@@ -2344,6 +2713,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 		if d.Setter != nil {
 			d.Setter.Sym.Params[0].Type = sym.Type
@@ -2396,17 +2766,23 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		d.Ctor = ctor
 		cls.Ctor = ctor
 	}
+	local := d.Local || d.Anonymous
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
 		if prev := cls.Prop(p.Name); prev != nil {
 			if d, ok := p.Decl.(*syntax.PropDecl); ok && (altProp(prev, d) || hiddenFinalProp(prev, d)) {
 				addAlt(prev, p)
 			} else {
 				c.errorf(pos, "conflicting declarations: %s", p.Name)
+				if pd, ok := prev.Decl.(*syntax.PropDecl); ok && local && !c.hasErrorAt(pd.P, "conflicting declarations") {
+					// And the first, as kotlinc; conflicts does that for
+					// the other classes' (see propRedeclarations).
+					c.errorf(pd.P, "conflicting declarations: %s", p.Name)
+				}
 			}
 		}
 		cls.Props = append(cls.Props, p)
 	}
-	if d.Interface && len(d.CtorParams) > 0 {
+	if d.Interface && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "an interface may not have a constructor")
 	}
 	if d.Object && len(d.CtorParams) > 0 {
@@ -2415,6 +2791,9 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	for _, cp := range d.CtorParams {
 		if cp.Const && cp.IsProp {
 			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+		}
+		if cp.Lateinit && cp.IsProp {
+			c.errorf(modPos(cp.Written, "lateinit", cp.P), "'lateinit' modifier is not allowed on primary constructor parameters")
 		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
@@ -2534,7 +2913,17 @@ func (c *Checker) dataMembers(d *syntax.ClassDecl) {
 		}
 	}
 	if !declaresCopy(cls, len(params)) && len(params) == len(d.CtorParams) {
-		cls.Methods["copy"] = append(cls.Methods["copy"], &types.FunSym{Name: "copy", Owner: cls, Params: params, Ret: cls.This(), Resolved: true, Final: true})
+		copy := &types.FunSym{Name: "copy", Owner: cls, Params: params, Ret: cls.This(), Resolved: true, Final: true}
+		if d.Find("", "ConsistentCopyVisibility") != nil {
+			// With the constructor's visibility: copy$module for an
+			// internal one.
+			copy.Private = d.CtorMods.Visibility == syntax.Private
+			copy.Protected = d.CtorMods.Visibility == syntax.Protected
+			if d.CtorMods.Visibility == syntax.Internal {
+				copy.Module = c.u.module // also for a @PublishedApi constructor's
+			}
+		}
+		cls.Methods["copy"] = append(cls.Methods["copy"], copy)
 	}
 }
 
@@ -2549,6 +2938,12 @@ func declaresCopy(cls *types.ClassSym, n int) bool {
 		}
 	}
 	return false
+}
+
+// boundDNN is a T & Any in a bound, and its T.
+type boundDNN struct {
+	ref *syntax.TypeRef
+	p   *types.TypeParamSym
 }
 
 // defNotNull resolves an intersection type, which Kotlin allows only as
@@ -2567,6 +2962,8 @@ func (c *Checker) defNotNull(ref *syntax.TypeRef) types.Type {
 	case !t.IsParam() || t.N || !t.Param().NullableBound():
 		c.errorf(ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
 		return types.InvalidType
+	case c.boundDefNotNull != nil:
+		*c.boundDefNotNull = append(*c.boundDefNotNull, boundDNN{ref, t.Param()}) // checked again once the bounds are
 	}
 	return t.NonNull() // T & Any
 }
@@ -2605,6 +3002,11 @@ func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
 				c.boundsVariance(m.TypeParams)
 			}
 		case *syntax.FunDecl:
+			if m.SelfStatic {
+				// serialization's write$Self, a static function of its own
+				// type parameters in kotlinc's code.
+				continue
+			}
 			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
 				c.funVariance(m, m.Visibility != syntax.Private)
 			}
@@ -2660,12 +3062,10 @@ func (c *Checker) funVariance(d *syntax.FunDecl, report bool) {
 	for _, p := range d.Params {
 		ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
 	}
-	if !report {
-		// The context parameters, which kotlinc checks only to find the
-		// members private to this.
-		for _, p := range d.Contexts {
-			ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
-		}
+	// The context parameters, in in position as kotlinc 2.4 has them
+	// (KT-77417).
+	for _, p := range d.Contexts {
+		ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
 	}
 	if d.Ret != nil || !report {
 		ok = c.checkVariance(d.Sym.Ret, d.Ret, types.Out, report) && ok
@@ -2969,19 +3369,33 @@ func ensureVar(v *types.VarSym) {
 func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym := d.Sym
 	if sym.InProgress {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
-		sym.Ret, sym.Resolved = types.InvalidType, true
+		// A reference re-entered it: the reference reports it
+		// (recursiveFunRef), or else, at the end, the declaration.
+		sym.Reentered++
+		sym.Ret = types.InvalidType
 		return
 	}
 	sym.InProgress = true
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(sym.Owner)
+	if d.Property == "" {
+		// A getter's inference is its property's.
+		savedInferring := c.inferring
+		c.inferring = sym
+		defer func() { c.inferring = savedInferring }()
+	}
+	before := c.u.reentries.Load()
+	savedFrom := c.inferFrom
+	c.inferFrom = before + 1
+	defer func() { c.inferFrom = savedFrom }()
+	saved := c.state
 	c.checkFun(d, sym.Owner)
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
-	c.state, c.trial = saved, trial
+	c.state = saved
 	sym.InProgress = false
 	sym.Resolved = true
+	if sym.Reentered > 0 && sym.ReentryReported == 0 {
+		c.errorf(d.P, "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
+	}
+	sym.Cyclic = c.u.reentries.Load() > before && sym.Ret.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
 	if d.Operator && d.Ret == nil && !c.hasErrorAt(d.P, "'operator' modifier") {
 		c.operatorReturn(d, sym.Owner)
@@ -3004,13 +3418,20 @@ func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
 func (c *Checker) inferProp(d *syntax.PropDecl) {
 	sym := d.Sym
 	if sym.InProgress {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
-		sym.Type, sym.Resolved = types.InvalidType, true
+		// As in inferFun, recursiveVarRef reports it.
+		sym.Reentered++
+		sym.Type = types.InvalidType
 		return
 	}
 	sym.InProgress = true
-	saved, trial := c.state, c.trial
-	c.trial = c.trialOf(sym.Owner)
+	savedInferring := c.inferring
+	c.inferring = sym
+	defer func() { c.inferring = savedInferring }()
+	before := c.u.reentries.Load()
+	savedFrom := c.inferFrom
+	c.inferFrom = before + 1
+	defer func() { c.inferFrom = savedFrom }()
+	saved := c.state
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
 		restore := getterKeepsAnon(d, sym.Owner)
@@ -3023,6 +3444,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = sym.Type, true
 			unitGetter(d.Getter.Sym)
+			c.getterRetType(d)
 		}
 	}
 	if d.Setter != nil {
@@ -3034,15 +3456,78 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
-	c.onUndo(func() { delete(c.done, d) })
-	c.state, c.trial = saved, trial
+	c.state = saved
 	sym.InProgress = false
 	sym.Resolved = true
+	// A delegate's field, x$delegate, re-entered through x's getter, is
+	// reported as x.
+	if sym.Reentered > 0 && sym.ReentryReported == 0 && (d.DelegateOf == nil || d.DelegateOf.Sym.ReentryReported == 0) {
+		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
+	}
+	sym.RanIntoCycle = c.u.reentries.Load() > before
+	sym.Cyclic = sym.RanIntoCycle && sym.Type.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
+}
+
+// reportsRecursion reports whether a reference at the checker's position
+// to a declaration whose inference is in progress (or, if cyclic, left an
+// error for a cycle) is reported.
+func (c *Checker) reportsRecursion(inProgress, cyclic bool) bool {
+	if inProgress {
+		return true
+	}
+	return cyclic && c.inferFrom > 0 && c.u.reentries.Load() >= c.inferFrom
+}
+
+// recursiveFunRef reports a reference at p to function f, resolved with
+// ensureFun, that re-entered the inference of its return type, or whose
+// return type that inference left an error for a cycle, as kotlinc
+// reports each reference in a cycle of omitted types.
+func (c *Checker) recursiveFunRef(f *types.FunSym, p syntax.Pos) {
+	if c.reportsRecursion(f.InProgress && !f.Resolved, f.Cyclic) {
+		f.ReentryReported++
+		if f.InProgress {
+			c.u.reentries.Add(1)
+		}
+		c.errorf(p, "type checking has run into a recursive problem; specify the return type of '%s'", f.Name)
+	}
+}
+
+// recursiveVarRef is recursiveFunRef for a property. A delegated
+// property's field, read by its getter, is reported as the property.
+func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
+	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Type != nil {
+		return // only its backing field's type is inferred
+	}
+	if d, ok := v.Decl.(*syntax.PropDecl); ok && d.Field != nil && d.Field.DelegateOf == d {
+		// Read in its own delegate, by lazy { x }: reported here, not
+		// at the delegate, as kotlinc reports it.
+		if f := d.Field.Sym; f != nil && f.InProgress && !f.Resolved {
+			f.ReentryReported++
+			v.ReentryReported++
+			c.u.reentries.Add(1)
+			c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+			return
+		}
+	}
+	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
+		v.ReentryReported++
+		if v.InProgress {
+			c.u.reentries.Add(1)
+		}
+		c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+	}
 }
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
+	defer func() {
+		for l, r := range c.pclaKept {
+			if slices.ContainsFunc(r.checks, func(k pclaCheck) bool { return k.l == l }) {
+				c.errorf(l.P, "internal error: the check of a builder's lambda was never committed")
+			}
+		}
+	}()
 	c.allAnnotations()
 	done := c.u.ctx.Done()
 	for _, d := range c.file.Decls {
@@ -3068,8 +3553,29 @@ func (c *Checker) checkBodies() {
 	}
 	c.propRefs()
 	c.inlineFileChecks()
+	c.inlinedLambdaAnnotations()
 	c.typeAnnotations()
 	c.metroIntrinsics()
+}
+
+// inlinedLambdaAnnotations reports the annotations of lambdas passed to
+// inline functions' inline parameters that are kept in class files,
+// where an inlined lambda has none of its own to keep them in.
+func (c *Checker) inlinedLambdaAnnotations() {
+	for n, as := range c.file.Annotated {
+		l, ok := n.(*syntax.Lambda)
+		if !ok || l.Ref != nil || l.Anon || !l.InlineArg {
+			continue
+		}
+		for i := range as {
+			if typeUseAnnotations(as[i:i+1]) == nil {
+				continue // Compose's @Composable, which its plugin reads
+			}
+			if cls := c.lookupClass(as[i].Name); cls != nil && cls.Annotation && cls.Retention != types.RetentionSource {
+				c.errorf(as[i].P, "the lambda expression here is an inlined argument, so this annotation cannot be stored anywhere")
+			}
+		}
+	}
 }
 
 // checkSignatures is checkBodies for Options.Signatures: the annotations
@@ -3179,7 +3685,20 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		if c.pclaRun() != nil && pclaOpenClass(d) {
+			// The bridges its members need are decided from their
+			// types: again once they are inferred. The errors are those
+			// of the types as written, as in K2, which checks an
+			// override before the builder's variables are fixed.
+			c.pclaDefer(func(types.Subst) {
+				n := len(c.errs)
+				pclaResetBridges(d)
+				c.checkInheritance(d)
+				c.errs = c.errs[:n]
+			})
+		}
 		c.classRules(d)
+		c.openMembers(d)
 		if d.Interface {
 			c.methodsOfAny(d)
 		}
@@ -3225,12 +3744,16 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 			case *syntax.PropDecl:
 				c.checkProp(m, d.Sym)
 			case *syntax.InitBlock:
+				if d.Interface {
+					c.errorf(m.P, "anonymous initializers are not allowed in interfaces")
+				}
 				c.state = state{scope: c.ctorScope(d.Sym), cls: d.Sym, this: newThis(d.Sym), tparams: d.Sym.TypeParams, init: true}
 				c.inAnon(d.Sym)
 				c.block(m.Body, noWant, false)
 			}
 		}
 		c.classAssignment(d)
+		c.initBeforeDecl(d)
 	}
 }
 
@@ -3429,8 +3952,39 @@ func (c *Checker) multipleDefaults(fd *syntax.FunDecl) {
 		}
 		if n > 1 {
 			c.errorf(p.P, "more than one overridden descriptor declares a default value for '%s'", p.Name)
+			continue
+		}
+		// kotlinc counts those of all supertypes, and for those it
+		// misses this way warns of what it will report as the error.
+		var bases []*types.FunSym
+		for _, o := range over {
+			if i < len(o.Params) && declaresDefault(o, i) && !slices.Contains(bases, o) {
+				bases = append(bases, o)
+			}
+		}
+		if len(bases) > 1 && i < len(fd.Sym.Params) {
+			var b strings.Builder
+			for _, o := range bases {
+				fmt.Fprintf(&b, "\n    %s, defined in %s", defaultsSignature(o), simpleName(o.Owner))
+			}
+			c.warnf(p.P, "MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING",
+				"more than one function overridden by '%s' declares a default value for '%s: %s': %s\nAs the compiler can not make sure these values agree, this will be prohibited in the future. See: https://youtrack.jetbrains.com/issue/KT-36188. This will become an error in a future release.",
+				fd.Name, p.Name, fd.Sym.Params[i].Type, b.String())
 		}
 	}
+}
+
+// defaultsSignature renders function f as kotlinc's messages about
+// default values do: fun f(x: Int = ...): Unit.
+func defaultsSignature(f *types.FunSym) string {
+	ps := make([]string, len(f.Params))
+	for i, p := range f.Params {
+		ps[i] = p.Name + ": " + p.Type.String()
+		if declaresDefault(f, i) {
+			ps[i] += " = ..."
+		}
+	}
+	return fmt.Sprintf("fun %s(%s): %s", f.Name, strings.Join(ps, ", "), f.Ret)
 }
 
 // directSupertype reports whether class s is a superclass or an interface
@@ -3568,6 +4122,33 @@ func usesField(a *syntax.FunDecl) bool {
 	return found
 }
 
+// noField reports whether field is unresolved in accessor d of property p,
+// as in K2: p has context parameters, which rule out a field, or d is the
+// getter p's type comes from, as p has neither a written type nor an
+// initializer.
+func noField(p *types.VarSym, d *syntax.FunDecl) bool {
+	pd, ok := p.Decl.(*syntax.PropDecl)
+	return ok && (len(pd.Contexts) > 0 || pd.Getter == d && pd.Type == nil && pd.Init == nil)
+}
+
+// getterRetType checks the return type written on property d's getter,
+// get(): T, which must be the property's type, once that is known. One
+// that isn't is kotlinc's WRONG_GETTER_RETURN_TYPE, and the getter's body
+// is then checked with the type written.
+func (c *Checker) getterRetType(d *syntax.PropDecl) {
+	g := d.Getter
+	if g.Ret == nil || g.Ret == d.Type || d.Field != nil || g.Sym == nil {
+		return
+	}
+	t := c.resolveType(g.Ret)
+	pt := d.Sym.Type
+	if t.K == types.Invalid || pt.K == types.Invalid || t == pt || t.HasVars() || pt.HasVars() || c.subtype(t, pt) && c.subtype(pt, t) {
+		return // the same type, or a platform type's other nullability
+	}
+	c.errorf(g.Ret.P, "getter return type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+	g.Sym.Ret = t
+}
+
 // setterParamType checks the type written on a setter's parameter, set(v:
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
@@ -3577,6 +4158,14 @@ func (c *Checker) setterParamType(d *syntax.PropDecl) {
 	}
 	if t := c.resolveType(p.Type); t.K != types.Invalid && t != d.Sym.Type {
 		c.errorf(p.P, "setter parameter type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+		if p.Sym != nil {
+			// In the setter's body, the parameter is of the type
+			// written, as in kotlinc: field = value is a mismatch. Its
+			// callers still pass the property's type.
+			v := *p.Sym
+			v.Type = t
+			p.Sym = &v
+		}
 	}
 }
 
@@ -3608,16 +4197,19 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	sym := d.Sym
 	s := &scope{}
-	if p := d.AccessorOf; p != nil && p.HasField() {
+	if p := d.AccessorOf; p != nil && p.HasField() && !noField(p, d) {
 		// An accessor's field is its property's backing field.
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}
 	declareNamedContexts(s, d)
-	for _, p := range sym.Params {
+	for i, p := range sym.Params {
+		if d.Property != "" && i < len(d.Params) && d.Params[i].Sym != nil {
+			p = d.Params[i].Sym // a setter's, of the type written (setterParamType)
+		}
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin, inInlineFun: d.Inline || inlineAccessorDecl(d)}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -3652,13 +4244,13 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
 	rets := []exprRet{}
 	c.exprRets = &rets
-	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	t := c.safeUnit(d.ExprBody, types.ApproxFlexNothing(c.expr(d.ExprBody, noWant)))
 	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
@@ -3694,8 +4286,12 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		}
 	}
 	sym := d.Sym
+	if d.DelegateOf == nil {
+		c.jvmFunctionInit(d.Type, d.Init)
+	}
 	if sym.Resolved {
-		c.assignable(c.value(d.Init, sym.Type), sym.Type, d.Init.Pos())
+		c.markRecvParam(d.Init)
+		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init))
 		return
 	}
 	var t types.Type
@@ -3721,7 +4317,9 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t = c.provideDelegate(d, p, t, provided)
 	}
 	c.ambiguousAnon(d, cls, t)
-	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
+	if sym.Type = t; d.DelegateOf != nil && !keepsAnon(&d.Modifiers, cls) {
+		sym.Type = approxTop(c.approxIntersections(t))
+	} else if !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}
 	if d.Const && sym.Type.P {
@@ -3755,11 +4353,7 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	if !c.providesDelegate(t, call) {
 		return t
 	}
-	init := d.Init
 	d.Init = call
-	// A builder's lambda that is checked again declares the property
-	// anew: provideDelegate is called on the delegate as written.
-	c.onUndo(func() { d.Init = init })
 	return c.value(call, want)
 }
 
@@ -3998,6 +4592,11 @@ func funTypeParams(f *types.FunSym, cls *types.ClassSym) []*types.TypeParamSym {
 }
 
 func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
+	if c.pclaSub != nil {
+		// A fixup run again with what a builder's variables were inferred
+		// as (see pclaCommit) has the types it was made with.
+		from, to = c.pclaSub.Apply(from), c.pclaSub.Apply(to)
+	}
 	if !c.subtype(from, to) {
 		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
 	}
@@ -4077,4 +4676,24 @@ func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
 	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
 		c.errorf(a.P, jvmStaticNonPublic)
 	}
+}
+
+// inlineAccessorDecl reports whether d is an inline property's accessor, or
+// one declared inline: inline val p get() = ..., val p inline get() = ....
+func inlineAccessorDecl(d *syntax.FunDecl) bool {
+	if d.AccessorOf == nil {
+		return false
+	}
+	pd, ok := d.AccessorOf.Decl.(*syntax.PropDecl)
+	return ok && (pd.Inline || d.Name == "get" && pd.InlineGetter || d.Name == "set" && pd.InlineSetter)
+}
+
+// inlineAccessorBody reports whether the code is in an inline accessor's
+// body (see inlineAccessorDecl).
+func (c *Checker) inlineAccessorBody() bool {
+	if c.fn == nil {
+		return false
+	}
+	d, ok := c.fn.Decl.(*syntax.FunDecl)
+	return ok && inlineAccessorDecl(d)
 }

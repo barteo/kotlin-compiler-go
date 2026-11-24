@@ -21,6 +21,9 @@ type parser struct {
 	// errs, and parsing goes on with the next declaration.
 	recover bool
 	errs    []*Error
+	// ltParen is set on x < (... > ...), a comparison kotlinc's parser
+	// may take for type arguments: see File.AmbiguousLT.
+	ltParen bool
 	// noTrailing is set while parsing a delegate in a class header, where a
 	// brace starts the class body rather than a trailing lambda.
 	noTrailing bool
@@ -81,6 +84,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
 	f.Annotated = p.annotated
+	f.AmbiguousLT = p.ltParen
 	FinishFile(f, path)
 	return f, nil
 }
@@ -538,7 +542,7 @@ func (p *parser) anonFun(label string) *Lambda {
 			l.AnonRecv = p.parseType()
 		}()
 		if p.at(SAFE_DOT) {
-			l.AnonRecv.Nullable = true // ?. is one token
+			p.safeDot(l.AnonRecv, p.i) // ?. is one token
 			p.next()
 		} else {
 			p.expect(DOT)
@@ -550,13 +554,16 @@ func (p *parser) anonFun(label string) *Lambda {
 		m := p.modifiers()
 		NoContexts(&m, "value parameters", p)
 		name := p.ident()
-		lp := &LambdaParam{P: name.Pos, Name: name.Text}
+		lp := &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted, Mods: m.Written, Annotations: m.Annotations}
 		if p.at(COLON) {
 			p.next()
 			lp.Type = p.parseType()
 		}
 		if p.at(ASSIGN) {
-			p.failAt(p.tok().Pos, "anonymous functions can't have default values")
+			// As kotlinc, the function is kept, without the value.
+			p.next()
+			p.errorLater(p.tok().Pos, "anonymous functions can't have default values")
+			p.parseExpr()
 		}
 		l.Params = append(l.Params, lp)
 		if !p.comma() {
@@ -946,7 +953,7 @@ func (p *parser) parseType() *TypeRef {
 	if t.Text != "_" || p.typeArgs == 0 {
 		p.underscoreRef(t)
 	}
-	ref := &TypeRef{P: t.Pos, Name: t.Text}
+	ref := &TypeRef{P: t.Pos, Name: t.Text, Parts: []Pos{t.Pos}}
 	for {
 		if p.typeArgs > 0 && p.at(NL) && p.peekPastNL() == DOT {
 			p.skipNL()
@@ -956,15 +963,16 @@ func (p *parser) parseType() *TypeRef {
 		}
 		p.next()
 		p.skipNL()
-		ref.Name += "." + p.underscoreRef(p.ident()).Text
+		n := p.underscoreRef(p.ident())
+		ref.Name += "." + n.Text
+		ref.Parts = append(ref.Parts, n.Pos)
 	}
 	if p.at(LT) {
+		ref.ArgsP = p.tok().Pos
 		ref.Args = p.parseTypeArgs()
 	}
 	ref = p.innerTypeChain(ref)
-	if p.quests() {
-		ref.Nullable = true
-	}
+	p.quests(ref)
 	if p.at(AMP) && !noIntersection {
 		// A definitely non-nullable type, T & Any, which the checker
 		// checks.
@@ -973,7 +981,7 @@ func (p *parser) parseType() *TypeRef {
 	}
 	if p.at(SAFE_DOT) && p.toks[p.i+1].Kind == LPAREN {
 		// A nullable receiver, R?.(A) -> T: ?. is one token.
-		ref.Nullable = true
+		p.safeDot(ref, p.i)
 		p.toks[p.i].Kind = DOT
 	}
 	if p.at(DOT) && p.toks[p.i+1].Kind == LPAREN {
@@ -989,16 +997,31 @@ func (p *parser) parseType() *TypeRef {
 	return ref
 }
 
-// quests skips the ? after a type, reporting whether there was one. A
-// type can have more, T??, which kotlinc warns are redundant.
-func (p *parser) quests() bool {
-	if !p.at(QUEST) {
-		return false
+// safeDot makes ref nullable by the ? of token i, a ?.: R?.f, or R??.f
+// whose second ? is redundant.
+func (p *parser) safeDot(ref *TypeRef, i int) {
+	switch pos := p.toks[i].Pos; {
+	case ref.Quest == Pos{}:
+		ref.Quest = pos
+	case p.toks[i-1].Kind == QUEST && ref.Redundant == Pos{}:
+		ref.Redundant = pos
 	}
-	for p.at(QUEST) {
+	ref.Nullable = true
+}
+
+// quests skips the ? after type ref, which makes it nullable. A type
+// can have more, T??, which kotlinc warns are redundant.
+func (p *parser) quests(ref *TypeRef) {
+	for n := 0; p.at(QUEST); n++ {
+		switch {
+		case ref.Quest == Pos{}:
+			ref.Quest = p.tok().Pos
+		case n > 0 && ref.Redundant == Pos{}:
+			ref.Redundant = p.tok().Pos
+		}
+		ref.Nullable = true
 		p.next()
 	}
-	return true
 }
 
 // parseParenType parses a function type, (A, B) -> R, or a type in
@@ -1007,15 +1030,19 @@ func (p *parser) parseParenType() *TypeRef {
 	pos := p.expect(LPAREN).Pos
 	var params []*TypeRef
 	var named []Pos
+	var names []string
 	for {
 		p.skipNL()
 		if p.at(RPAREN) {
 			break
 		}
+		name := ""
 		if p.at(IDENT) && p.toks[p.i+1].Kind == COLON {
 			named = append(named, p.toks[p.i].Pos)
+			name = p.toks[p.i].Text
 			p.i += 2
 		}
+		names = append(names, name)
 		params = append(params, p.parseType())
 		p.skipNL()
 		if !p.comma() {
@@ -1025,18 +1052,16 @@ func (p *parser) parseParenType() *TypeRef {
 	p.expect(RPAREN)
 	if p.peekPastNL() == ARROW {
 		p.op()
-		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named}
+		return &TypeRef{P: pos, Params: params, Ret: p.parseType(), Named: named, Names: names}
 	}
 	if len(params) != 1 {
 		p.unexpected("'->'")
 	}
 	t := params[0]
-	if p.quests() {
-		t.Nullable = true
-	}
+	p.quests(t)
 	if p.at(SAFE_DOT) && p.toks[p.i+1].Kind == LPAREN {
 		// A nullable receiver in parentheses, (A)?.(B) -> R.
-		t.Nullable = true
+		p.safeDot(t, p.i)
 		p.toks[p.i].Kind = DOT
 	}
 	if p.at(DOT) && p.toks[p.i+1].Kind == LPAREN {
@@ -1136,6 +1161,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.peekPastNL() == COLON {
 			p.op()
 			tp.Bounds = []*TypeRef{p.parseType()}
+			tp.DeclBound = true
 		}
 		ps = append(ps, tp)
 		p.skipNL()
@@ -1153,12 +1179,16 @@ func (p *parser) innerTypeChain(ref *TypeRef) *TypeRef {
 	for ref.Args != nil && p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 		p.next()
 		outer := ref
-		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + p.ident().Text, Outer: outer}
+		n := p.ident()
+		ref = &TypeRef{P: outer.P, Name: outer.Name + "." + n.Text, Outer: outer, Parts: []Pos{n.Pos}}
 		for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 			p.next()
-			ref.Name += "." + p.ident().Text
+			n := p.ident()
+			ref.Name += "." + n.Text
+			ref.Parts = append(ref.Parts, n.Pos)
 		}
 		if p.at(LT) {
+			ref.ArgsP = p.tok().Pos
 			ref.Args = p.parseTypeArgs()
 		}
 	}
@@ -1210,6 +1240,24 @@ func (p *parser) typeArgsAhead() bool {
 	}
 }
 
+// gtInParens reports whether a > is between the ( at token j and its ).
+func (p *parser) gtInParens(j int) bool {
+	for depth := 0; ; j++ {
+		switch p.toks[j].Kind {
+		case LPAREN:
+			depth++
+		case RPAREN:
+			if depth--; depth == 0 {
+				return false
+			}
+		case GT:
+			return true
+		case EOF:
+			return false
+		}
+	}
+}
+
 // classRefAhead reports whether type arguments and :: follow, as in
 // List<*>::class or Map.Entry<K, V>::key, or an inner class of a generic
 // class, Outer<A>.Inner<B>::foo.
@@ -1232,6 +1280,12 @@ func (p *parser) classRefEnd(j int) (int, bool) {
 				depth++
 			case COLON_COLON:
 				return j, true
+			case QUEST:
+				// A nullable type, List<String>?::class, which the
+				// checker reports.
+				if p.toks[j+1].Kind != QUEST && p.toks[j+1].Kind != COLON_COLON {
+					return 0, false
+				}
 			case DOT:
 				if p.toks[j+1].Kind != IDENT {
 					return 0, false
@@ -1247,7 +1301,7 @@ func (p *parser) classRefEnd(j int) (int, bool) {
 			depth++
 		case GT:
 			depth--
-			if depth == 0 && p.toks[j+1].Kind != COLON_COLON && (p.toks[j+1].Kind != DOT || p.toks[j+2].Kind != IDENT) {
+			if depth == 0 && p.toks[j+1].Kind != COLON_COLON && p.toks[j+1].Kind != QUEST && (p.toks[j+1].Kind != DOT || p.toks[j+2].Kind != IDENT) {
 				return 0, false
 			}
 		case IDENT, DOT, COMMA, QUEST, STAR, IN, LPAREN, RPAREN, ARROW, AMP:
@@ -1432,7 +1486,7 @@ func (p *parser) receiver(fun bool) (*TypeRef, []Annotation) {
 	}
 	p.next()
 	if kind == SAFE_DOT {
-		ref.Nullable = true // ?. is one token
+		p.safeDot(ref, dot) // ?. is one token
 	}
 	return ref, as
 }
@@ -1519,6 +1573,7 @@ func (p *parser) whereClause(tps []*TypeParam) {
 		p.expect(COLON)
 		p.skipNL()
 		tp.Bounds = append(tp.Bounds, p.parseType())
+		tp.WhereBound = true
 		if p.peekPastNL() != COMMA {
 			return
 		}
@@ -1724,6 +1779,7 @@ func (p *parser) backingField(pd *PropDecl) {
 		if a.Target == "" {
 			a.Target = "field"
 		}
+		a.OnField = true
 		pd.Annotations = append(pd.Annotations, a)
 	}
 	if p.at(COLON) {
@@ -1806,6 +1862,9 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		// annotates @JvmInline.
 		InlineClass(&m, kw.Pos)
 	}
+	if kw.Kind == CLASS {
+		EnumAnnotation(&m)
+	}
 	cd := &ClassDecl{Modifiers: m, P: kw.Pos, Interface: kw.Kind == INTERFACE, Object: kw.Kind == OBJECT}
 	defer func() {
 		// A class without secondary constructors has a primary one, if
@@ -1859,7 +1918,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		}
 	}
 	if p.at(LPAREN) {
-		cd.HasPrimary = true
+		cd.HasPrimary, cd.WrittenPrimary = true, true
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()
@@ -1978,10 +2037,13 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 		for t := p.toks[j]; (t.Kind == IN || t.Kind == IDENT && (isModifier(t.Text) || isVisibility(t.Text) || t.Text == "out" || t.Text == "reified")) && p.toks[j+1].Kind == IDENT; t = p.toks[j] {
 			j++
 		}
+		var external Pos
 		if j > p.i && enumEntryEnd(p.toks[j+1].Kind) {
 			for p.i < j {
 				if t := p.next(); t.Text != "external" {
 					p.errorLater(t.Pos, "modifier '%s' is not applicable to 'enum entry'", t.Text)
+				} else if external == (Pos{}) {
+					external = t.Pos
 				}
 			}
 		}
@@ -1989,7 +2051,7 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 			return // a member
 		}
 		name := p.next()
-		e := &EnumEntry{P: name.Pos, Name: name.Text, Annotations: anns}
+		e := &EnumEntry{P: name.Pos, Name: name.Text, Annotations: anns, External: external}
 		id := &Ident{Name: cd.Name}
 		id.P = name.Pos
 		e.Call = &Call{Fun: id}
@@ -2097,6 +2159,7 @@ func (p *parser) member(cd *ClassDecl) {
 		if t.Text == "init" && p.peekAfterNL(p.i+1) == LBRACE {
 			// init is a soft keyword: elsewhere, it is a name.
 			NoContexts(&m, "initializers", p)
+			NoInitModifiers(m, p)
 			p.next()
 			p.skipNL()
 			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
@@ -2145,6 +2208,11 @@ func (p *parser) annotation() Annotation {
 	if p.at(LBRACK) {
 		p.i = p.matching(p.i) + 1
 		return a
+	}
+	if prev := p.toks[p.i-1]; p.tok().Pos != (Pos{prev.Pos.Line, prev.Pos.Col + 1}) {
+		// An entry of a list, @[A B], which the lexer made @A @B: the
+		// annotation is at its name.
+		a.P = p.tok().Pos
 	}
 	last := p.ident()
 	a.Name = last.Text
@@ -2214,16 +2282,27 @@ func (p *parser) annotationArgs(i, end int) []AnnotationArg {
 			}
 			i++
 		}
-		for _, t := range p.toks[start:i] {
-			if t.Kind == NL {
-				continue
-			}
-			arg.Toks = append(arg.Toks, t)
-		}
+		arg.Toks = AnnotationArgToks(p.toks[start:i])
 		args = append(args, arg)
 		i++ // the comma
 	}
 	return args
+}
+
+// AnnotationArgToks returns the tokens of an annotation's argument that
+// ParseAnnotationArg parses, toks without EOF. In the argument's
+// parentheses the lexer keeps only the newlines in the body of a lambda
+// or an anonymous function, which end its statements, as in
+// @A({ val x = 1
+// x }).
+func AnnotationArgToks(toks []Token) []Token {
+	var out []Token
+	for _, t := range toks {
+		if t.Kind != EOF {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // ParseAnnotationArg parses an annotation's argument: an expression, or
@@ -2659,7 +2738,10 @@ func (p *parser) parsePostfix() Expr {
 	if inParens {
 		paren = x
 	}
+	nlLambda := false // the brace is on a new line, after the call
 	for {
+		nl := nlLambda
+		nlLambda = false
 		switch t := p.tok(); t.Kind {
 		case LPAREN:
 			x = p.parseCall(x, nil)
@@ -2669,13 +2751,22 @@ func (p *parser) parsePostfix() Expr {
 				if name, ok := dottedName(x); ok && p.classRefAhead() {
 					// List<*>::class: the type arguments of a class name,
 					// and Outer<A>.Inner<B>::foo, an inner class's.
-					ref := p.innerTypeChain(&TypeRef{P: x.Pos(), Name: name, Args: p.parseTypeArgs()})
+					ref := &TypeRef{P: x.Pos(), Name: name, Parts: dottedParts(x), ArgsP: p.tok().Pos}
+					ref.Args = p.parseTypeArgs()
+					ref = p.innerTypeChain(ref)
+					for p.at(QUEST) {
+						p.next()
+						ref.Nullable = true
+					}
 					x = p.parseColonColon(x, ref)
 					continue
 				}
 				if p.typeArgsAhead() {
 					x = p.parseCall(x, p.parseTypeArgs())
 					continue
+				}
+				if p.toks[p.i+1].Kind == LPAREN && p.gtInParens(p.i+1) {
+					p.ltParen = true
 				}
 			}
 			return x
@@ -2686,10 +2777,12 @@ func (p *parser) parsePostfix() Expr {
 				// As with kotlinc, a lambda on the next line after a
 				// call's arguments is a trailing lambda: Kotlin has no
 				// blocks as statements.
+				nlLambda = true
 			default:
 				return x
 			}
 			p.skipNL()
+			continue
 		case DOT, SAFE_DOT:
 			op := p.next()
 			p.skipNL()
@@ -2791,6 +2884,7 @@ func (p *parser) parsePostfix() Expr {
 			}
 			fn.Args = append(fn.Args, l)
 			fn.trailing = true
+			fn.TrailingNL = nl && ok
 			LabelLambdas(fn)
 		default:
 			return x
@@ -2893,13 +2987,15 @@ func (p *parser) parenTypeRef() Expr {
 	p.expect(RPAREN)
 	for p.at(DOT) && p.toks[p.i+1].Kind == IDENT {
 		p.next()
-		name := p.ident().Text
+		n := p.ident()
 		if ref.Args != nil {
-			ref = &TypeRef{P: ref.P, Name: ref.Name + "." + name, Outer: ref}
+			ref = &TypeRef{P: ref.P, Name: ref.Name + "." + n.Text, Outer: ref}
 		} else {
-			ref.Name += "." + name
+			ref.Name += "." + n.Text
 		}
+		ref.Parts = append(ref.Parts, n.Pos)
 		if p.at(LT) {
+			ref.ArgsP = p.tok().Pos
 			ref.Args = p.parseTypeArgs()
 		}
 	}
@@ -2952,6 +3048,17 @@ func trailableAfterNL(x Expr) bool {
 }
 
 // dottedName returns the name a.b.C that x spells, if it is one.
+// dottedParts returns the positions of the names of x, a dotted name.
+func dottedParts(x Expr) []Pos {
+	switch x := x.(type) {
+	case *Ident:
+		return []Pos{x.P}
+	case *Member:
+		return append(dottedParts(x.X), x.P)
+	}
+	return nil
+}
+
 func dottedName(x Expr) (string, bool) {
 	switch x := x.(type) {
 	case *Ident:
@@ -3145,10 +3252,20 @@ func (p *parser) parsePrimary() Expr {
 			return p.anonFun(t.Text)
 		}
 		// l@ x: a label on any other expression has no effect, as nothing
-		// can jump to it.
+		// can jump to it, but on a lambda in parentheses or with
+		// annotations, l@ ({ ... }), l@ @A { ... }, it is the lambda's.
+		// Of several, l1@ l2@ x, the innermost is, and the others are
+		// errors, as kotlinc's MULTIPLE_LABELS_ARE_FORBIDDEN.
 		p.next()
 		p.skipNL()
-		return p.parsePrefix()
+		if p.at(LABEL) {
+			p.errorLater(t.Pos, "multiple labels are forbidden")
+		}
+		x := p.parsePrefix()
+		if l, ok := x.(*Lambda); ok && l.Label == "" {
+			l.Label = t.Text
+		}
+		return x
 	}
 	p.unexpected("expression")
 	return nil
@@ -3175,7 +3292,7 @@ func (p *parser) parseLambda() *Lambda {
 				lp.Names, lp.Types = p.destructuringNames()
 			} else {
 				name := p.ident()
-				lp = &LambdaParam{P: name.Pos, Name: name.Text}
+				lp = &LambdaParam{P: name.Pos, Name: name.Text, Quoted: name.Quoted}
 			}
 			if p.at(COLON) {
 				p.next()
@@ -3369,7 +3486,7 @@ func (p *parser) parseTry() Expr {
 		}
 		name := p.ident()
 		p.expect(COLON)
-		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType(), Annotations: as}
+		c := &Catch{P: t.Pos, Name: name.Text, Quoted: name.Quoted, Type: p.parseType(), Annotations: as}
 		if p.skipNL(); p.at(COMMA) {
 			p.next() // a trailing comma
 			p.skipNL()
@@ -3458,10 +3575,10 @@ func (p *parser) parseWhen() Expr {
 				var c WhenCond
 				switch p.tok().Kind {
 				case IN:
-					p.next()
+					c.P = p.next().Pos
 					c.In = true
 				case NOT_IN:
-					p.next()
+					c.P = p.next().Pos
 					c.NotIn = true
 				case IS, NOT_IS:
 					c.Is, c.NotIs = p.at(IS), p.at(NOT_IS)
@@ -3512,6 +3629,8 @@ func Parenthesized(x Expr) {
 	case *Call:
 		x.Paren = true
 	case *Index:
+		x.Paren = true
+	case *Binary:
 		x.Paren = true
 	}
 }

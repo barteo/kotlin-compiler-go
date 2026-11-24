@@ -9,7 +9,7 @@ fun f(s: String?, b: Box<Int>) {
     println(s::class.java) // ERROR expression in a class literal has a nullable type
     println(Box<Int>::class.java) // ERROR only classes are allowed on the left hand side of a class literal
     println(b::class.java.name)
-    println(Box<*>::class.java.name)
+    println(Box<*>::class.java.name) // ERROR only classes are allowed on the left hand side of a class literal
     println(Missing::class.java) // ERROR unresolved reference: Missing
 }
 
@@ -26,7 +26,8 @@ fun refs() {
     val c = ::id // ERROR not enough information to infer type arguments of ::id
     val d: (String) -> Int = Person::age // ERROR Person::age needs a receiver of type Person
     val e = pick // ERROR function invocation 'pick()' expected
-    val f = ::many // ERROR a reference to a function with a vararg parameter needs an expected function type
+    val f = ::many
+    val f2: Int = f(intArrayOf(1)) + f(1) // ERROR type mismatch: inferred type is Int but IntArray was expected
     val g: (Int) -> Int = ::pick
     val h: (Int) -> String = ::pick // ERROR type mismatch
 }

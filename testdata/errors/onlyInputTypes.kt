@@ -35,3 +35,24 @@ fun literals(ints: Inv<Int>, longs: Inv<Long>, strings: Inv<String>, numbers: In
     numbers.has(x)
     anys.has(x) // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
 }
+
+// A receiver's type argument annotated @Exact is the receiver's own, not
+// a supertype of it: V is Int for an Out<Int>, which V1 : V? bounds.
+class ExactOut<out T>
+
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+fun <V, V1 : V?> ExactOut<@kotlin.internal.Exact V>.orDefault(defaultValue: V1): V1 = defaultValue
+
+fun exactReceiver(o: ExactOut<Int>) {
+    val r1: Int? = o.orDefault(null)
+    val r2: Int? = o.orDefault(null as Int?)
+    o.orDefault(1)
+    o.orDefault("string") // ERROR argument type mismatch: actual type is String but Int? was expected
+}
+
+// A type parameter in scope is an input as any type: has(1) of an
+// Inv<T> infers Any, neither T nor Int.
+fun <T> params(inv: Inv<T>, t: T) {
+    inv.has(t)
+    inv.has(1) // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
+}

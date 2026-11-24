@@ -7,8 +7,10 @@
 // getAllFunctions and getAllProperties (owner, origin, overridee,
 // asMemberOf) and parameters. In round 1 it generates gen/Zeta.kt,
 // gen/Alpha.kt and gen/Mid.kt, in that order, and from round 2 lists the
-// package gen with getDeclarationsFromPackage. A symbol KSP throws on is
-// written X:Exception.
+// package gen with getDeclarationsFromPackage. Each round also lists what
+// the resolver finds of the expect and actual declarations of package d:
+// the symbols annotated @Platform, the package, and classes, functions and
+// a property by name. A symbol KSP throws on is written X:Exception.
 @file:OptIn(com.google.devtools.ksp.KspExperimental::class)
 
 import com.google.devtools.ksp.getAllSuperTypes
@@ -86,6 +88,11 @@ class Dump(private val env: SymbolProcessorEnvironment) : SymbolProcessor {
         for (arg in a.defaultArguments) safe(depth + 1) { "default ${arg.name?.asString()}=${value(arg.value)}" }
     }
 
+    private fun at(d: KSNode): String {
+        val name = (d as? KSDeclaration)?.let { it.qualifiedName?.asString() ?: it.simpleName.asString() } ?: d.toString()
+        return name + ((d.location as? FileLocation)?.let { "@" + it.filePath.substringAfterLast('/') + ":" + it.lineNumber } ?: "")
+    }
+
     private fun declaration(d: KSDeclaration, depth: Int) {
         val kind = when (d) {
             is KSClassDeclaration -> "class"
@@ -97,7 +104,7 @@ class Dump(private val env: SymbolProcessorEnvironment) : SymbolProcessor {
         safe(depth) {
             "$kind ${d.qualifiedName?.asString() ?: d.simpleName.asString()} [${mods(d.modifiers)}] ${d.getVisibility()} " +
                 "origin=${d.origin} file=${d.containingFile?.fileName} parent=${d.parentDeclaration?.qualifiedName?.asString()} " +
-                "expect=${d.isExpect} actual=${d.isActual}"
+                "expect=${d.isExpect} actual=${d.isActual} expects=${d.findExpects().map(::at).toList()} actuals=${d.findActuals().map(::at).toList()}"
         }
         d.annotations.forEach { annotation(it, depth + 1) }
         d.typeParameters.forEach { tp ->
@@ -153,6 +160,16 @@ class Dump(private val env: SymbolProcessorEnvironment) : SymbolProcessor {
         line(0, "files " + resolver.getAllFiles().map(::name).toList())
         line(0, "new " + resolver.getNewFiles().map(::name).toList())
         line(0, "package gen " + resolver.getDeclarationsFromPackage("gen").map { it.qualifiedName?.asString() }.toList())
+        fun name(s: String) = resolver.getKSNameFromString(s)
+        safe(0) { "annotated d.Platform " + resolver.getSymbolsWithAnnotation("d.Platform").map(::at).toList() }
+        safe(0) { "package d " + resolver.getDeclarationsFromPackage("d").map(::at).toList() }
+        for (n in listOf("d.Paired", "d.Paired.Nested", "d.Port", "d.Hub", "d.Text", "d.Note", "d.Key", "d.Late", "d.Soon", "d.Clock")) {
+            safe(0) { "class $n " + resolver.getClassDeclarationByName(name(n))?.let(::at) }
+        }
+        for (n in listOf("d.paired", "d.over", "d.early", "d.clock")) {
+            safe(0) { "functions $n " + resolver.getFunctionDeclarationsByName(name(n), true).map(::at).toList() }
+        }
+        safe(0) { "property d.lazily " + resolver.getPropertyDeclarationByName(name("d.lazily"), true)?.let(::at) }
         if (round == 1) {
             for (n in listOf("Zeta", "Alpha", "Mid")) {
                 env.codeGenerator.createNewFile(Dependencies(true), "gen", n).use {

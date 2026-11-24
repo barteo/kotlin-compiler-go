@@ -54,7 +54,9 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	}
 	defer cp.Close()
 	rec := newRecorder()
-	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
+	// The errors only: the analysis reports no warnings.
+	mode, _ := check.ParseAPIMode(cfg.ExplicitAPIMode)
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{ExplicitAPI: mode})
 	if err != nil {
 		return nil, err
 	}

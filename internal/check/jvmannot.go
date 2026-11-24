@@ -32,6 +32,13 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		if s, ok := a.Str("name"); ok && site == fileSite {
 			c.jvmPackageName(a, s)
 		}
+		// kc doesn't check the arguments of this internal annotation as
+		// an expression; a package's name isn't one.
+		if arg := a.Arg(0, "name"); arg != nil && len(arg.Toks) == 1 && arg.Toks[0].Kind == syntax.IDENT {
+			if name := arg.Toks[0].Text; !c.isVar(name) && (c.u.isPackage(name) || c.u.ext.hasPackageTree(name)) {
+				c.errorf(arg.Toks[0].Pos, "expression expected, but package name found")
+			}
+		}
 	case "Strictfp":
 		if site.kind == siteClass || site == objectExprSite {
 			c.errorf(a.P, "'@Strictfp' annotation on classes is unsupported yet")
@@ -39,6 +46,18 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 	case "JvmOverloads":
 		if site == localFunSite {
 			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
+		}
+	case "JvmExposeBoxed":
+		if name, pos, named := exposedName(a); named {
+			if site.kind == siteClass || site.kind == siteCtor {
+				c.errorf(pos, "'@JvmExposeBoxed' with name is applicable only to functions, getters and setters")
+			}
+			if name != "" && !validJvmName(name) {
+				c.errorf(pos, "illegal JVM name")
+			}
+		}
+		if site == localFunSite {
+			c.errorf(a.P, "'@JvmExposeBoxed' cannot expose local functions")
 		}
 	case "JvmStatic":
 		if site == localFunSite {
@@ -119,9 +138,13 @@ func overridable(m syntax.Modifiers, owner *types.ClassSym) bool {
 // class owner (nil at top level), that depend on what owner is.
 func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
+	case *syntax.SecondaryCtor:
+		if owner != nil && !owner.Annotation {
+			c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
+		}
 	case *syntax.FunDecl:
-		c.overloads(&d.Modifiers, owner)
-		c.synchronized(&d.Modifiers, owner, "")
+		c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
+		c.synchronized(&d.Modifiers, owner, "", d.Inline)
 		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
 			c.errorf(a.P, inapplicableJvmName)
 		}
@@ -141,13 +164,13 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				}
 			}
 		}
-		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
+		for i, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
-				c.synchronized(&acc.Modifiers, owner, "")
+				c.synchronized(&acc.Modifiers, owner, "", d.Inline || acc.Inline || i == 0 && d.InlineGetter || i == 1 && d.InlineSetter)
 			}
 		}
-		c.synchronized(&d.Modifiers, owner, "get")
-		c.synchronized(&d.Modifiers, owner, "set")
+		c.synchronized(&d.Modifiers, owner, "get", d.Inline || d.InlineGetter)
+		c.synchronized(&d.Modifiers, owner, "set", d.Inline || d.InlineSetter)
 		c.jvmFieldApplicable(d, owner)
 		if d.Field != nil {
 			if a := d.Find("delegate", "JvmSynthetic"); a != nil {
@@ -157,6 +180,8 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.ClassDecl:
 		if a := d.CtorMods.Find("", "JvmOverloads"); a != nil && d.Annotation {
 			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on constructors of annotation classes")
+		} else if a != nil && d.Sym != nil && !localClass(d.Sym) {
+			c.uselessOverloads(a, &d.CtorMods, slices.ContainsFunc(d.CtorParams, func(p *syntax.CtorParam) bool { return p.Default != nil }))
 		}
 		for _, cp := range d.CtorParams {
 			if a := cp.Modifiers.Find("", "JvmStatic"); a != nil && cp.IsProp {
@@ -191,10 +216,12 @@ func (c *Checker) jvmFieldApplicable(d *syntax.PropDecl, owner *types.ClassSym) 
 	switch {
 	case d.Field != nil:
 		inapplicable("cannot be applied to a delegated property")
-	case d.Abstract || owner != nil && owner.Interface:
-		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
-	case d.Sym != nil && !d.Sym.HasField():
-		c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+	case d.Abstract || owner != nil && owner.Interface || d.Sym != nil && !d.Sym.HasField():
+		if a.Target != "" {
+			// Without one, it's reported as any annotation of fields is
+			// on a property without one, by annotationTarget.
+			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+		}
 	case d.Const:
 		inapplicable("cannot be applied to a const property")
 	case d.Lateinit:
@@ -237,28 +264,54 @@ func (c *Checker) valueClassType(t types.Type) bool {
 	return t.K == types.Class && t.C != nil && !t.N && ensured(t.C).Value
 }
 
-// overloads checks the @JvmOverloads of a member function of owner with
-// modifiers m.
-func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym) {
+// overloads checks the @JvmOverloads of a function or a secondary
+// constructor of owner (nil at top level) with modifiers m, one of whose
+// parameters has a default value if defaults is set.
+func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym, defaults bool) {
 	a := m.Find("", "JvmOverloads")
-	if a == nil || owner == nil {
+	if a == nil {
 		return
 	}
 	switch {
+	case owner == nil:
+		c.uselessOverloads(a, m, defaults)
 	case owner.Interface:
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on interface methods")
 	case m.Abstract:
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on abstract methods")
 	case localClass(owner):
 		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
+	default:
+		c.uselessOverloads(a, m, defaults)
+	}
+}
+
+// uselessOverloads warns of @JvmOverloads annotation a, of a declaration
+// with modifiers m, that adds no overloads: a private declaration's, and
+// that of one without default values.
+func (c *Checker) uselessOverloads(a *syntax.Annotation, m *syntax.Modifiers, defaults bool) {
+	switch {
+	case m.Visibility == syntax.Private:
+		c.warnf(a.P, "OVERLOADS_PRIVATE", "'@JvmOverloads' annotation has no effect on private declarations")
+	case !defaults:
+		c.warnf(a.P, "OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS", "'@JvmOverloads' annotation has no effect for methods without default arguments")
 	}
 }
 
 // synchronized checks the @Synchronized, with use-site target target, of
-// a member of owner with modifiers m.
-func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string) {
+// a function or accessor of owner (nil at top level) with modifiers m,
+// inline if it is inline or an inline property's accessor.
+func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string, inline bool) {
 	a := m.Find(target, "Synchronized")
-	if a == nil || owner == nil {
+	if a == nil {
+		return
+	}
+	if inline {
+		// SYNCHRONIZED_ON_INLINE: an inline function's body is copied
+		// into its callers without the lock.
+		c.warnf(a.P, "SYNCHRONIZED_ON_INLINE", "'@Synchronized' annotation has no effect on inline functions")
+	}
+	if owner == nil {
 		return
 	}
 	switch {
@@ -318,10 +371,13 @@ func fileAnnotation(f *syntax.File, name string) *syntax.Annotation {
 	return nil
 }
 
-// exposeBoxedPrivate reports @JvmExposeBoxed on the declarations among ds
-// that are private, or in a private class if outer, as kotlinc's
-// JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE: Java can't call them.
-func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
+// exposeBoxed checks @JvmExposeBoxed on the declarations among ds, in
+// class owner (nil at top level), as kotlinc's FirJvmExposeBoxedChecker
+// does: a private declaration, or one in a private class if outer, can't
+// have it, as Java can't call it; nor can an interface, or an open,
+// abstract, synthetic, suspend or reified function; and a function whose
+// boxed form would clash with it needs a name of its own.
+func (c *Checker) exposeBoxed(ds []syntax.Decl, owner *types.ClassSym, outer bool) {
 	report := func(as []syntax.Annotation, private bool, target string) {
 		if !private {
 			return
@@ -336,7 +392,17 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			report(d.Annotations, outer || d.Visibility == syntax.Private, "")
-			c.exposeBoxedSameName(d)
+			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Sym != nil {
+				f := exposedFun{name: d.Name, owner: owner, mods: &d.Modifiers, ret: d.Sym.Ret, contexts: d.Sym.Contexts,
+					suspend: d.Suspend, reified: slices.ContainsFunc(d.TypeParams, func(tp *syntax.TypeParam) bool { return tp.Reified })}
+				if d.Sym.Ext {
+					f.recv = d.Sym.Recv
+				}
+				for _, p := range d.Sym.Params {
+					f.params = append(f.params, p.Type)
+				}
+				c.exposeBoxedFun(a, f)
+			}
 		case *syntax.PropDecl:
 			private := outer || d.Visibility == syntax.Private
 			getter := false
@@ -347,6 +413,24 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 			}
 			report(d.Annotations, private || getter, "get")
 			report(d.Annotations, private || d.SetterVis == syntax.Private, "set")
+			if d.Sym == nil {
+				continue
+			}
+			for _, target := range [...]string{"get", "set"} {
+				a := d.Find(target, "JvmExposeBoxed")
+				if a == nil {
+					continue
+				}
+				f := exposedFun{target: target, owner: owner, mods: &d.Modifiers, ret: d.Sym.Type, contexts: d.Sym.Contexts,
+					reified: slices.ContainsFunc(d.TypeParams, func(tp *syntax.TypeParam) bool { return tp.Reified })}
+				if d.Recv != nil && d.Recv.Known != nil {
+					f.recv = *d.Recv.Known
+				}
+				if target == "set" {
+					f.params, f.ret = []types.Type{d.Sym.Type}, types.UnitType
+				}
+				c.exposeBoxedFun(a, f)
+			}
 		case *syntax.ClassDecl:
 			private := outer || d.Visibility == syntax.Private
 			report(d.Annotations, private, "")
@@ -354,21 +438,128 @@ func (c *Checker) exposeBoxedPrivate(ds []syntax.Decl, outer bool) {
 			for _, sc := range d.Secondaries() {
 				report(sc.Annotations, private || sc.Visibility == syntax.Private, "")
 			}
-			c.exposeBoxedPrivate(d.Members, private)
+			if a := d.CtorMods.Find("", "JvmExposeBoxed"); a != nil && d.Sym != nil {
+				c.uselessExposeBoxed(a, exposedFun{owner: d.Sym, params: varTypes(d.Sym.CtorParams)})
+			}
+			for _, sc := range d.Secondaries() {
+				if a := sc.Find("", "JvmExposeBoxed"); a != nil && sc.Sym != nil {
+					c.uselessExposeBoxed(a, exposedFun{owner: d.Sym, params: varTypes(sc.Sym.Params)})
+				}
+			}
+			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Interface {
+				c.errorf(a.P, exposeBoxedOpen)
+			}
+			c.exposeBoxed(d.Members, d.Sym, private)
 		}
 	}
 }
 
-// exposeBoxedSameName reports a @JvmExposeBoxed name that is function d's
-// own, as kotlinc's JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME.
-func (c *Checker) exposeBoxedSameName(d *syntax.FunDecl) {
-	for i := range d.Annotations {
-		a := &d.Annotations[i]
-		if !a.Is("JvmExposeBoxed") || a.Target != "" {
-			continue
-		}
-		if name, ok := a.Str("jvmName"); ok && name == d.Name {
-			c.errorf(a.Arg(0, "jvmName").Toks[0].Pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
+const exposeBoxedOpen = "'@JvmExposeBoxed' cannot expose functions which are open or abstract, or member of an interface"
+
+// exposedFun is what kotlinc's rules for @JvmExposeBoxed read of a
+// function, or of a property's accessor.
+type exposedFun struct {
+	name     string // a function's
+	target   string // an accessor's: get or set
+	owner    *types.ClassSym
+	mods     *syntax.Modifiers
+	recv     types.Type
+	contexts []*types.VarSym
+	params   []types.Type
+	ret      types.Type
+	suspend  bool
+	reified  bool // has a reified type parameter
+}
+
+// overloadable reports whether f's boxed form can have f's name: some of
+// its receivers or parameters are of a value class, so that the two
+// differ in parameter types.
+func (f *exposedFun) overloadable() bool {
+	if types.IsValue(f.recv) || f.owner != nil && f.owner.Value {
+		return true
+	}
+	for _, p := range f.contexts {
+		if types.IsValue(p.Type) {
+			return true
 		}
 	}
+	return slices.ContainsFunc(f.params, types.IsValue)
+}
+
+// varTypes returns the types of vs.
+func varTypes(vs []*types.VarSym) []types.Type {
+	ts := make([]types.Type, len(vs))
+	for i, v := range vs {
+		ts[i] = v.Type
+	}
+	return ts
+}
+
+// uselessExposeBoxed warns of annotation a, @JvmExposeBoxed, on f, a
+// function, an accessor or a constructor, that has no boxed form: it
+// isn't a value class's member, and none of its receiver, parameters and
+// result is a value class.
+func (c *Checker) uselessExposeBoxed(a *syntax.Annotation, f exposedFun) {
+	value := func(t types.Type) bool {
+		t = t.Flex()
+		return t.K == types.Class && (t.C == nil || ensured(t.C).Value)
+	}
+	if f.owner != nil && f.owner.Value || value(f.recv) || value(f.ret) ||
+		slices.ContainsFunc(f.params, value) || slices.ContainsFunc(f.contexts, func(p *types.VarSym) bool { return value(p.Type) }) {
+		return
+	}
+	c.warnf(a.P, "USELESS_JVM_EXPOSE_BOXED", "'@JvmExposeBoxed' is useless: the declaration has no value classes in its signature")
+}
+
+// exposeBoxedFun checks annotation a, @JvmExposeBoxed, on f.
+func (c *Checker) exposeBoxedFun(a *syntax.Annotation, f exposedFun) {
+	c.uselessExposeBoxed(a, f)
+	name, pos, named := exposedName(a)
+	overloadable := f.overloadable()
+	if !named && !overloadable && types.IsValue(f.ret) && f.owner == nil {
+		// The boxed form would differ only in its result type.
+		c.errorf(a.P, "this declaration requires a name in the '@JvmExposeBoxed' annotation")
+	}
+	if f.mods.Find(f.target, "JvmSynthetic") != nil {
+		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose synthetic functions")
+	}
+	if overridable(*f.mods, f.owner) {
+		c.errorf(a.P, exposeBoxedOpen)
+	}
+	if named && !overloadable {
+		if jn := f.mods.Find(f.target, "JvmName"); jn != nil {
+			if s, ok := jn.Str("name"); ok && s == name {
+				c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with the one in '@JvmName'")
+			}
+		}
+	}
+	if f.reified {
+		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose inline functions with reified type parameters")
+	}
+	if f.suspend {
+		c.errorf(a.P, "suspend functions cannot be exposed by '@JvmExposeBoxed'")
+	}
+	if named && f.target == "" && name == f.name {
+		c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
+	}
+}
+
+// exposedName returns the name annotation a, @JvmExposeBoxed, gives, a
+// constant string, and where it is written; named is set if a has one.
+func exposedName(a *syntax.Annotation) (name string, pos syntax.Pos, named bool) {
+	arg := a.Arg(0, "jvmName")
+	if arg == nil || len(arg.Toks) == 0 {
+		return "", syntax.Pos{}, false
+	}
+	pos = arg.Toks[0].Pos
+	if s, ok := a.Str("jvmName"); ok {
+		return s, pos, true
+	}
+	for _, v := range a.Values {
+		if v.Name == "jvmName" && len(v.Elems) == 1 && v.Elems[0].X != nil {
+			s, _ := constString(v.Elems[0].X, 0)
+			return s, pos, true
+		}
+	}
+	return "", pos, true
 }

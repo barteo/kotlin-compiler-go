@@ -15,10 +15,23 @@ func (c *Checker) valueClass(d *syntax.ClassDecl) {
 	case d.Object:
 		c.errorf(d.P, "modifier 'value' is not applicable to 'object'")
 		return
+	case d.Local:
+		c.errorf(valueModPos(d), "value class cannot be local or inner")
+		c.errorf(valueModPos(d), "modifier '%s' is not applicable to 'local class'", valueModName(d))
 	case !d.JvmInline:
 		c.errorf(d.P, "value classes without '@JvmInline' annotation are not yet supported")
 	}
+	if d.Inner {
+		c.errorf(valueModPos(d), "value class cannot be local or inner")
+	}
 	if d.Inline {
+		at := d.P
+		for _, m := range d.Written {
+			if m.Name == "inline" {
+				at = m.P
+			}
+		}
+		c.warnf(at, "INLINE_CLASS_DEPRECATED", "'inline' modifier is deprecated. Use 'value' instead.")
 		for _, a := range d.Annotations {
 			if a.Target == "" && a.Is("JvmInline") && !a.Implicit {
 				c.errorf(a.P, "'@JvmInline' annotation is applicable only to value classes")
@@ -56,11 +69,14 @@ func (c *Checker) valueParam(d *syntax.ClassDecl) {
 		return
 	}
 	cp := d.CtorParams[0]
-	if !cp.IsProp || cp.Mutable {
+	if !cp.IsProp || cp.Mutable || cp.Open {
 		c.errorf(cp.P, "value class primary constructor must only have final read-only ('val') property parameters")
 	}
 	if cls.Super != nil && cls.Super.Name != "java/lang/Object" {
 		c.errorf(d.P, "value class cannot extend classes")
+	}
+	if c.isSubclassOf(cls, "java/lang/Cloneable") {
+		c.errorf(valueModPos(d), "value class cannot be 'Cloneable'")
 	}
 	t := cp.Sym.Type
 	switch {
@@ -75,8 +91,75 @@ func (c *Checker) valueParam(d *syntax.ClassDecl) {
 	case cp.PropSym != nil:
 		cls.Underlying = cp.PropSym
 		if types.RecursiveValue(cls) { // through other value classes
+			// The other classes of the cycle, checked before cls, are
+			// recursive too: kotlinc reports each.
+			for o := cls.Underlying.Type.C; o != cls && o != nil && o.Underlying != nil; {
+				next := o.Underlying.Type.C
+				if od, ok := o.Decl.(*syntax.ClassDecl); ok && len(od.CtorParams) == 1 && od.CtorParams[0].Type != nil {
+					c.errorf(od.CtorParams[0].Type.P, "value class cannot be recursive")
+				}
+				o.Value, o.Underlying = false, nil
+				o = next
+			}
 			c.errorf(cp.Type.P, "value class cannot be recursive")
 			cls.Value, cls.Underlying = false, nil
 		}
+	}
+}
+
+// valueModPos returns the position of a value class's 'value' or 'inline'
+// modifier, where kotlinc reports what is wrong with the class as a
+// value class.
+func valueModPos(d *syntax.ClassDecl) syntax.Pos {
+	for _, m := range d.Written {
+		if m.Name == "value" || m.Name == "inline" {
+			return m.P
+		}
+	}
+	return d.P
+}
+
+// valueModName returns the modifier that makes d a value class.
+func valueModName(d *syntax.ClassDecl) string {
+	for _, m := range d.Written {
+		if m.Name == "value" || m.Name == "inline" {
+			return m.Name
+		}
+	}
+	return "value"
+}
+
+// valueReservedNames are the names of functions that value classes may
+// get in future releases, which kotlinc 2.4 (without the language
+// feature CustomEqualsInValueClasses) forbids them to declare or inherit
+// with a body.
+var valueReservedNames = []string{"box", "unbox", "equals", "hashCode"}
+
+// reservedValueMembers reports the functions of a value class with a
+// reserved name: its own, and those it inherits with a body from an
+// interface, as K2's value class checker does.
+func (c *Checker) reservedValueMembers(d *syntax.ClassDecl) {
+	cls := d.Sym
+	this := cls.This()
+	for _, name := range valueReservedNames {
+		for _, m := range d.Members {
+			if fd, ok := m.(*syntax.FunDecl); ok && fd.Name == name && fd.Recv == nil && !fd.Abstract {
+				c.errorf(fd.P, "member name '%s' is reserved for future releases", name)
+			}
+		}
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == cls || !s.Interface {
+				return true
+			}
+			for _, g := range s.Methods[name] {
+				if g.Abstract || g.Static || g.Private || g.Ext {
+					continue
+				}
+				if c.implementation(cls, this, g) == nil {
+					c.errorf(d.P, "member name '%s' is reserved for future releases but is implemented in supertype '%s'", name, simpleName(s))
+				}
+			}
+			return true
+		})
 	}
 }

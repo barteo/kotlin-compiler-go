@@ -206,6 +206,11 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
+	// JavaNotNull is set on a Java type parameter whose only bound is
+	// annotated not-null, T extends @NotNull Object: its bound isn't a
+	// platform type and nor are its uses in its class's or method's
+	// members, as in K2.
+	JavaNotNull bool
 	// OnlyInput is set on a parameter annotated @kotlin.internal.OnlyInputTypes,
 	// as T of contains(element: T): what a call infers for it must be the
 	// type of one of its inputs.
@@ -221,6 +226,11 @@ type TypeParamSym struct {
 	// intersection type, A & B, a value that is each of its Bounds: see
 	// Intersect. It has no Owner, and erases as a parameter does.
 	Intersection bool
+	// Captured is set on the parameter that stands for K2's captured type
+	// of a receiver's out projection in the result of a lambda's function
+	// type (see check.capturedSubst), bounded by the projection's type.
+	// It has no Owner either.
+	Captured bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to
@@ -426,8 +436,29 @@ func (s Subst) ApplyArg(t Type) Type {
 	return r
 }
 
+// ApplyParam is ApplyIn for the type of a parameter that a call passes an
+// argument to, where an invariant argument that a star or an in
+// projection replaces is the receiver's captured type, which takes no
+// argument of another type: KC<*>.set(w: Wrapper<E>) takes no
+// Wrapper<String>. An assignment and a property reference's setter,
+// which K2 types with the projection approximated (KT-51045 and
+// MUTABLE_PROPERTY_WITH_CAPTURED_TYPE), take ApplyIn's.
+func (s Subst) ApplyParam(t Type) Type {
+	t, _ = s.applyA(t, In, substParam)
+	return t
+}
+
+// A substMode says how a substitution approximates projections.
+type substMode uint8
+
+const (
+	substApprox substMode = iota // as a type read or written to
+	substExact                   // not at all, as a type alias's arguments
+	substParam                   // as a call's parameter (ApplyParam)
+)
+
 func (s Subst) apply(t Type, pos Variance) Type {
-	t, _ = s.applyA(t, pos, false)
+	t, _ = s.applyA(t, pos, substApprox)
 	return t
 }
 
@@ -435,7 +466,7 @@ func (s Subst) apply(t Type, pos Variance) Type {
 // alias's arguments are: Array2D<out Number> for Array<Array<T>> is
 // Array<Array<out Number>>.
 func (s Subst) ApplyExact(t Type) Type {
-	t, _ = s.applyA(t, Out, true)
+	t, _ = s.applyA(t, Out, substExact)
 	return t
 }
 
@@ -444,7 +475,7 @@ func (s Subst) ApplyExact(t Type) Type {
 // read, an invariant argument that holds one is then out projected, as
 // Kotlin approximates Array<Array<C>> for C, the capture of out Int, by
 // Array<out Array<out Int>>.
-func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
+func (s Subst) applyA(t Type, pos Variance, mode substMode) (Type, bool) {
 	if len(s) == 0 {
 		return t, false
 	}
@@ -536,8 +567,8 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				v = declaredVar(t.C, i)
 			}
 			var ax bool
-			args[i], ax = s.applyArgA(a, pos, v, exact)
-			if ax && a.V == Inv && !exact {
+			args[i], ax = s.applyArgA(a, pos, v, mode)
+			if ax && a.V == Inv && mode != substExact {
 				switch dv := declaredVar(t.C, i); {
 				case args[i].V == Inv && dv == Inv && pos == Out:
 					args[i].V = Out
@@ -615,7 +646,7 @@ func declaredVar(c *ClassSym, i int) Variance {
 // In a type written to, as a parameter's, an out projection is a type
 // only Nothing is a subtype of, as Kotlin's captured type is: nothing but
 // Box<Nothing> can be passed for a Box<T> or a Box<out T> then.
-func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
+func (s Subst) applyArgA(a Arg, pos, v Variance, mode substMode) (Arg, bool) {
 	if a.V == Star {
 		return a, false
 	}
@@ -630,7 +661,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				if v == In {
 					pos = Out + In - pos
 				}
-				t, _ := s.applyA(a.T, pos, exact)
+				t, _ := s.applyA(a.T, pos, mode)
 				return Arg{T: t}, true
 			}
 			switch {
@@ -667,6 +698,13 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					return Arg{V: In, T: withFlags(p.Bounds[0], a.T)}, true
 				}
 				return Arg{V: a.V, T: withFlags(r.T, a.T)}, true
+			case mode == substParam && pos == In && a.V == Inv && v == Inv && (r.V == Star || r.V == In):
+				// Passed to a parameter, an invariant argument replaced by
+				// a star or an in projection is Kotlin's captured type,
+				// which no type but itself is: KC<*>.setW(w: Wrapper<E>)
+				// and KC<in String>'s take no Wrapper<String>. As for an
+				// out projection, only a Wrapper<Nothing> passes.
+				return Arg{V: Out, T: withFlags(NothingType, a.T)}, true
 			case r.V == Star:
 				// Read, a star in an invariant argument is a capture
 				// approximated, which makes the argument out: T of
@@ -691,7 +729,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 	if v == In {
 		pos = Out + In - pos
 	}
-	t, approx := s.applyA(a.T, pos, exact)
+	t, approx := s.applyA(a.T, pos, mode)
 	return Arg{V: a.V, T: t}, approx
 }
 

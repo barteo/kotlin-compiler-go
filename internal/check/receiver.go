@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"path"
 	"slices"
 	"strings"
@@ -65,6 +66,16 @@ func (c *Checker) ambiguousLabel(label string) bool {
 	n := 0
 	if c.cls != nil && simpleName(c.cls) == label {
 		n++
+		// Or an object around it of the same name, whose this the code
+		// can name too: object A { object B { object A { this@A } } }.
+		inner := c.cls.Inner
+		for k := c.cls.Outer; k != nil; k = k.Outer {
+			if simpleName(k) == label && (inner || k.Object) {
+				n++
+				break
+			}
+			inner = inner && k.Inner
+		}
 	}
 	innermost := true
 	for i := len(c.recvs) - 1; i >= 0; i-- {
@@ -84,10 +95,30 @@ func (c *Checker) ambiguousLabel(label string) bool {
 	return n > 1
 }
 
+// lambdaLabels returns the number of lambdas with a receiver around the
+// code that label names.
+func (c *Checker) lambdaLabels(label string) int {
+	n := 0
+	for i := range c.recvs {
+		if r := &c.recvs[i]; r.label == label {
+			if _, lambda := r.owner.(*syntax.Lambda); lambda {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
 	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
 		c.errorf(x.P, "ambiguous label: %s", x.Label)
+	} else if x.Label != "" && !x.Class && x.Recv == nil && c.lambdaLabels(x.Label) > 1 {
+		// this@block in lambdas of nested block { } calls: the
+		// innermost, of which kotlinc warns.
+		p := x.P
+		p.Col += len("this")
+		c.warnf(p, "LABEL_NAME_CLASH", "there is more than one label with such a name in this scope")
 	}
 	r := c.receiverFor(x)
 	if obj := c.headerThis(x, r); obj != nil {
@@ -95,6 +126,20 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		return obj.This()
 	}
 	if r != nil {
+		if l, ok := r.owner.(*syntax.Lambda); ok {
+			// As kotlinc, this of a lambda whose receiver's type its
+			// call couldn't infer is reported too.
+			// Once the lambda is checked (see postponedLambda): an
+			// error here would count against the call this is an
+			// argument of.
+			if name, ok := c.uninferredRecv[l]; ok && !slices.ContainsFunc(c.uninferredThis[l], func(e *syntax.Error) bool { return e.Pos == x.P }) {
+				if c.uninferredThis == nil {
+					c.uninferredThis = map[*syntax.Lambda][]*syntax.Error{}
+				}
+				c.uninferredThis[l] = append(c.uninferredThis[l], &syntax.Error{File: c.file.Path, Pos: x.P,
+					Msg: fmt.Sprintf("cannot infer type for type parameter '%s'. Specify it explicitly.", name)})
+			}
+		}
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)
@@ -201,8 +246,6 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 			continue
 		}
 		c.capture(r.sym, r.depth)
-		old := x.Member
-		c.onUndo(func() { x.Member = old })
 		x.Member = m
 		return t, true
 	}
@@ -303,6 +346,7 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 			}
 		}
 		if !c.extensionsGiveWay(t, id.Name, x) {
+			c.poisonedRecv(r, t, x, id)
 			c.rewriteFun(x, m)
 			return true
 		}
@@ -436,14 +480,9 @@ func (c *Checker) rewriteFun(x *syntax.Call, m syntax.Expr) {
 	c.rewrite(&x.Fun, m)
 }
 
-// rewrite replaces the expression *p of the tree with e. A trial's
-// rewrite is undone: an object expression's receivers, which e may refer
-// to, are declared again after it.
+// rewrite replaces the expression *p of the tree with e.
 func (c *Checker) rewrite(p *syntax.Expr, e syntax.Expr) {
-	if old := *p; old != e {
-		c.onUndo(func() { *p = old })
-		*p = e
-	}
+	*p = e
 }
 
 // hasFun reports whether a receiver of type t has a member or extension
@@ -633,7 +672,8 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 // K2 tries a scope's functions before its extensions of implicit
 // receivers, so run { } in a class is kotlin's run(block), not
 // this.run { }, whose lambda would read the class's properties through
-// its own receiver, without their smart casts.
+// its own receiver, without their smart casts. A function of another
+// package that may take x doesn't count.
 func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSym) bool {
 	pkgs := map[string]bool{}
 	var ts []types.Type
@@ -650,8 +690,19 @@ func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSy
 	if len(pkgs) == 0 {
 		return false
 	}
+	extPkgs := map[string]bool{}
 	for _, f := range fs {
 		if f.Facade == "" || !pkgs[path.Dir(f.Facade)] {
+			return false
+		}
+		extPkgs[path.Dir(f.Facade)] = true
+	}
+	// A function of another scope that may take x, such as the file's
+	// package's run(block), still gives way to the extensions: run { } in
+	// a class doesn't call it, though the top-level functions of its
+	// package come before kotlin's.
+	for p := range pkgs {
+		if !extPkgs[p] {
 			return false
 		}
 	}
@@ -1084,21 +1135,38 @@ func simpleExpr(e syntax.Expr) bool {
 // it with x as the receiver. In an object expression, the classes around
 // it count too: ktor's DelegatingMutableSet calls its convertTo: From.() ->
 // To in an iterator object's next().
+//
+// A property whose type is being inferred, or whose inference runs into
+// a cycle, isn't invoked, and c.orderDependent is set to it: K2 reports
+// x.f() then as IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT, as
+// declared after the call, the property would be invoked if its type
+// allowed. Its inference is otherwise run, in which a cycle is reported
+// at its references, as K2 does.
 func (c *Checker) extFuncVar(name string) (types.Type, bool) {
+	c.orderDependent = nil
 	if _, t, ok := c.scope.lookup(name); ok {
 		return t, t.Flex().IsExtFunc()
 	}
 	prop := func(p *types.VarSym) (types.Type, bool) {
+		d, _ := p.Decl.(*syntax.PropDecl)
 		if p.InProgress {
 			// Being inferred, as aliases in val aliases =
 			// command.aliases(): x.f() calls a function.
+			if d != nil && d.Type == nil && d.DelegateOf == nil && d.Field == nil && c.inferring != any(p) {
+				// Not in its own initializer, a loop of one, which K2
+				// doesn't report: val d = O1.d().
+				c.orderDependent = p
+			}
 			return types.InvalidType, false
 		}
-		if d, ok := p.Decl.(*syntax.PropDecl); ok && d.Field != nil && d.Field.Sym != nil && d.Field.Sym.InProgress {
+		if d != nil && d.Field != nil && d.Field.Sym != nil && d.Field.Sym.InProgress {
 			// So is its delegate: val enabled by lazy { checker.enabled() }.
 			return types.InvalidType, false
 		}
 		ensureVar(p)
+		if p.RanIntoCycle && d != nil && d.Type == nil && d.Field == nil {
+			c.orderDependent = p
+		}
 		return p.Type, p.Type.Flex().IsExtFunc()
 	}
 	// The implicit receivers of lambdas and extensions come first: 5.foo()
@@ -1166,7 +1234,8 @@ func (c *Checker) extRefLocal(name string) bool {
 // whose member function name a call x calls, as boundWith does, but of
 // the bounds with one of n parameters the one whose result is the most
 // specific: B's foo(): String for T : A, T : B, of A's foo(): Any?, as
-// the intersection type's member overrides both.
+// the intersection type's member overrides both, and of a platform type
+// and another, the other.
 func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Type {
 	has := func(cls *types.ClassSym) bool {
 		return len(c.javaMethods(cls, name)) > 0 || !cls.External && c.userProp(cls, name) != nil
@@ -1224,7 +1293,10 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 		if cls := c.classOf(o); cls == nil || !has(cls) {
 			continue
 		}
-		if r, ok := ret(o); ok && !c.subtype(bt, r) && c.subtype(r, bt) {
+		// A Java method's platform result yields to a Kotlin one it
+		// takes, as in K2: foo() of A & B, for A's String foo() and B's
+		// foo(): String?, is a String?, whichever is cast to first.
+		if r, ok := ret(o); ok && (!c.subtype(bt, r) && c.subtype(r, bt) || bt.P && !r.P && c.subtype(r, bt)) {
 			best, bt = o, r
 		}
 	}

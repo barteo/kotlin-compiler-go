@@ -52,6 +52,11 @@ type Options struct {
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
+	// JVMTarget is the JVM version the class files are for, as kotlinc's
+	// -jvm-target names it: "1.8" (also if empty), or "9" to "25". It
+	// sets their version, and inline functions of class files built for a
+	// higher one are errors, as with kotlinc.
+	JVMTarget string
 	// NoJVMDefault compiles interfaces without JVM default methods, their
 	// bodies in DefaultImpls classes, as kotlinc's -jvm-default=disable.
 	NoJVMDefault bool
@@ -87,6 +92,12 @@ type Options struct {
 	// -Wextra, and ExperimentalWarnings those it reports with
 	// -Xuse-fir-experimental-checkers: see check.Options.
 	ExtraWarnings, ExperimentalWarnings bool
+	// ExplicitAPI is kotlinc's -Xexplicit-api and ExplicitReturnTypes
+	// its -XXexplicit-return-types: see check.Options.
+	ExplicitAPI, ExplicitReturnTypes check.APIMode
+	// MultiPlatform is kotlinc's -Xmulti-platform: the sources may have
+	// expect and actual declarations, which are otherwise errors.
+	MultiPlatform bool
 	// Libraries, if set, keeps the class path and library for later
 	// compiles of the same configuration, and gives this compile those
 	// of an earlier one: see Libraries.
@@ -118,6 +129,7 @@ func parallel(n, jobs int, fn func(i int)) {
 // generation, also with -j 1, doesn't wait for the file system: creating
 // thousands of files took a fifth of a large project's code generation.
 type classWriter struct {
+	major uint16 // the class files' major version: see cf.SetMajor
 	jobs  chan classFile
 	wg    sync.WaitGroup
 	mkdir func(dir string) error
@@ -133,8 +145,8 @@ type classFile struct {
 }
 
 // newClassWriter starts the writers. mkdir creates a file's directory.
-func newClassWriter(mkdir func(dir string) error) *classWriter {
-	w := &classWriter{jobs: make(chan classFile, 256), mkdir: mkdir}
+func newClassWriter(mkdir func(dir string) error, major uint16) *classWriter {
+	w := &classWriter{jobs: make(chan classFile, 256), mkdir: mkdir, major: major}
 	for range max(2, min(4, runtime.NumCPU())) {
 		w.wg.Go(func() {
 			for f := range w.jobs {
@@ -158,7 +170,9 @@ func newClassWriter(mkdir func(dir string) error) *classWriter {
 
 // write queues data to be written to path. It blocks only if the
 // writers are far behind.
-func (w *classWriter) write(path string, data []byte) { w.jobs <- classFile{path, data} }
+func (w *classWriter) write(path string, data []byte) {
+	w.jobs <- classFile{path, cf.SetMajor(data, w.major)}
+}
 
 // wait waits for the queued files to be written and returns the errors
 // writing them. No more files may be queued after it.
@@ -228,6 +242,10 @@ func CompileWarnings(paths []string, opts Options) (warnings []*syntax.Error, er
 }
 
 func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
+	major, ok := cf.TargetMajor(opts.JVMTarget)
+	if !ok {
+		return fmt.Errorf("unsupported JVM target %q: 1.8, or 9 to 25", opts.JVMTarget)
+	}
 	var javaPaths []string
 	paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
 		if strings.HasSuffix(p, ".java") {
@@ -384,7 +402,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	start = time.Now()
 
 	if broken {
-		return checkRecovered(files, errLists, softLists, r.lib, opts.Jobs, diags)
+		return checkRecovered(files, errLists, softLists, r.lib, opts, major, diags, warnings)
 	}
 	if opts.Metro && opts.MetroOptions["enabled"] != "false" && slices.ContainsFunc(files, check.UsesMetro) {
 		r.lib.MetroOptions = opts.MetroOptions
@@ -395,7 +413,8 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		phase("metro")
 	}
 	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true,
-		ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings})
+		JVMTarget: major, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings,
+		ExplicitAPI: opts.ExplicitAPI, ExplicitReturnTypes: opts.ExplicitReturnTypes, NotMultiplatform: !opts.MultiPlatform})
 	for _, e := range checked {
 		if e.IsWarning() {
 			*warnings = append(*warnings, e)
@@ -442,7 +461,7 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		for n := range types.MaxArity + 1 {
 			if arities&(1<<n) != 0 {
 				c := codegen.FunctionInterface(n)
-				if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), c.Bytes, 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(opts.OutDir, filepath.FromSlash(c.Name)+".class"), cf.SetMajor(c.Bytes, major), 0o644); err != nil {
 					return err
 				}
 			}
@@ -462,10 +481,10 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		}
 		return err
 	}
-	w := newClassWriter(mkdir)
+	w := newClassWriter(mkdir, major)
 	genOpts := codegen.Options{Stdlib: cp.HasKotlin(), Module: opts.ModuleName,
 		Spilling: cp.Has("kotlin/coroutines/jvm/internal/SpillingKt") && !opts.Debug, Compose: opts.Compose,
-		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}}
+		JVMDefaultCompat: opts.JVMDefaultCompat, JVMTarget: major, Cache: &codegen.Cache{}, Program: codegen.ProgramClasses(files), ClassFile: cp.Load}
 	if opts.Compose {
 		genOpts.ShouldExecute = hasMethod(cp, "androidx/compose/runtime/Composer", "shouldExecute", "(ZI)Z")
 	}
@@ -862,10 +881,13 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 func parse(frontend, path, src string) (f *syntax.File, errs, soft []*syntax.Error) {
 	if frontend != "psi" {
 		f, perrs := syntax.Parse(path, src)
-		if len(perrs) == 0 {
+		if len(perrs) == 0 && !f.AmbiguousLT {
 			return f, nil, nil
 		}
 		s := psi.Parse(path, src)
+		if len(perrs) == 0 && len(s.Diagnostics()) == 0 {
+			return f, nil, nil // a comparison for kotlinc too
+		}
 		f, lerrs := lowerRecovering(s)
 		errs, soft = syntaxErrors(path, src, s, perrs, lerrs)
 		return f, errs, soft
@@ -901,11 +923,13 @@ func lowerRecovering(s *psi.Snapshot) (f *syntax.File, errs []*syntax.Error) {
 // errors, diags, with the checker's errors on the lines without one. A
 // declaration or statement with a syntax error is left out of its file,
 // so the checker's errors on its lines would be about what parsing left.
-// Its warnings are left out, as many are about what isn't used, which a
-// declaration left out may use. The errors of softLists, kc's parser's
-// where kotlinc's parser reports none, are reported only on lines the
-// checker reports no error on: there, the checker's is kotlinc's error.
-func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error, lib *check.Library, jobs int, diags []error) error {
+// Of its warnings, added to warnings, only those are reported that what
+// is left out can't be the reason for (check.Options.Recovered): many
+// are about what isn't used, which a declaration left out may use. The
+// errors of softLists, kc's parser's where kotlinc's parser reports
+// none, are reported only on lines the checker reports no error on:
+// there, the checker's is kotlinc's error.
+func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error, lib *check.Library, opts Options, major uint16, diags []error, warnings *[]*syntax.Error) error {
 	syntaxLines := map[string]map[int]bool{}
 	for i, es := range errLists {
 		for _, e := range es {
@@ -915,10 +939,15 @@ func checkRecovered(files []*syntax.File, errLists, softLists [][]*syntax.Error,
 			syntaxLines[files[i].Path][e.Pos.Line] = true
 		}
 	}
-	checked, _ := check.CheckOptions(context.Background(), files, lib, jobs, nil, check.Options{})
+	checked, _ := check.CheckOptions(context.Background(), files, lib, opts.Jobs, nil, check.Options{JVMTarget: major,
+		Warnings: true, Recovered: true, ExtraWarnings: opts.ExtraWarnings, ExperimentalWarnings: opts.ExperimentalWarnings})
 	checkerLines := map[string]map[int]bool{}
 	for _, e := range checked {
-		if !e.IsWarning() && !syntaxLines[e.File][e.Pos.Line] {
+		if e.IsWarning() {
+			*warnings = append(*warnings, e)
+			continue
+		}
+		if !syntaxLines[e.File][e.Pos.Line] {
 			diags = append(diags, e)
 			if checkerLines[e.File] == nil {
 				checkerLines[e.File] = map[int]bool{}

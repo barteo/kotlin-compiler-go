@@ -59,9 +59,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		call := &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 		null.P, m.P, call.P = s.P, s.P, s.P
 		if c.providesDelegate(dt, call) {
-			del := s.Delegate
 			s.Delegate = call
-			c.onUndo(func() { s.Delegate = del }) // see provideDelegate
 			dt = c.value(call, provided)
 		}
 	}
@@ -121,6 +119,16 @@ func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutab
 	if ps, r, ok := c.delegateOp(s, rt, "provideDelegate", pos); ok {
 		try(owner, ps[0])
 		rt, provided = s.delegateRecv(r), r
+	}
+	if s.isVar(rt) && !s.hasLower(rt) && s.hasUpper(rt) {
+		// As K2's DELEGATE_SPECIAL_FUNCTION_MISSING: a delegate of a
+		// type variable that only a lambda's parameter types bound,
+		// T of foo { x: A -> } for a fun <T> foo(x: (T) -> Unit): T,
+		// has no getValue while it isn't fixed. One that a lambda's
+		// result is yet to give a lower bound, T of keep { boxOf(1) },
+		// does.
+		c.errorf(pos, "property delegate of type %s has no 'getValue' method: its type isn't inferred yet", s.apply(rt))
+		return types.InvalidType, noWant
 	}
 	if ps, r, ok := c.delegateOp(s, rt, "getValue", pos); ok {
 		try(this, ps[0])

@@ -14,12 +14,20 @@ import (
 // supertypes may do with its parameters.
 
 // checkBoundSets checks each of decls's sets of upper bounds, once they
-// are resolved: a bound's class repeated (REPEATED_BOUND), a bound no
+// are resolved: one declared with the parameter beside the where clause's
+// (MISPLACED_TYPE_PARAMETER_CONSTRAINTS), a bound's class repeated (REPEATED_BOUND), a bound no
 // type can be a subtype of with the others (CONFLICTING_UPPER_BOUNDS),
 // and bounds that reach a generic class with different type arguments
 // (INCONSISTENT_TYPE_PARAMETER_BOUNDS).
 func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 	for _, d := range decls {
+		if d.DeclBound && d.WhereBound {
+			at := d.P
+			if len(d.Annotations) > 0 {
+				at = d.Annotations[0].P
+			}
+			c.warnf(at, "MISPLACED_TYPE_PARAMETER_CONSTRAINTS", "If a type parameter has multiple constraints, they all need to be placed in the 'where' clause.")
+		}
 		if d.Sym != nil && slices.ContainsFunc(d.Sym.Bounds, types.Type.IsArray) {
 			// A subtype of an array type is the array type: the type
 			// parameter would be it.
@@ -102,7 +110,7 @@ func (c *Checker) hasSubtypesK1(t types.Type) bool {
 	}
 	cls := t.C
 	cls.Ensure()
-	if !cls.Final || cls.Interface || cls.Abstract || cls.Entries != nil || cls.Func || cls.Array || cls.Sealed {
+	if !cls.Final || cls.Interface || cls.Abstract || cls.Entries != nil || cls.Func || cls.Array && len(cls.TypeParams) > 0 || cls.Sealed {
 		return true
 	}
 	if t.A == nil {
@@ -283,7 +291,13 @@ func (c *Checker) checkClassTypeParams(d *syntax.ClassDecl) {
 			continue
 		}
 		for i, b := range tp.Sym.Bounds {
-			if ref := tp.Bounds[i]; b.K == types.Class && b.A != nil && len(ref.Args) == len(b.A.List) {
+			if ref := tp.Bounds[i]; b.K == types.Class && b.A != nil {
+				if len(ref.Args) != len(b.A.List) {
+					if c.lookupAlias(ref.Name) != nil {
+						c.refBounds(b.NonNull(), ref, nil, nil) // T : One<Any>
+					}
+					continue
+				}
 				c.checkBounds(b.NonNull(), ref)
 			}
 		}

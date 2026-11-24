@@ -80,7 +80,7 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member function")
 	case d.Name == "equals" && d.Params[0].Sym != nil && d.Params[0].Sym.Type != types.AnyType.Nullable():
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
-	case (d.Name == "getValue" || d.Name == "setValue") && !c.takesKProperty(d.Params[1]):
+	case (d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate") && !c.takesKProperty(d.Params[1]):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
 	case d.Sym.Resolved:
 		c.operatorReturn(d, owner)
@@ -292,10 +292,6 @@ func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (t
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}
 	m.P = x.Fun.Pos()
-	// A trial's check, as a builder lambda's with its variables unfixed,
-	// checks the call afresh: x's type is the trial's.
-	fun, op := x.Fun, x.Operator
-	c.onUndo(func() { x.Fun, x.Operator = fun, op })
 	x.Fun, x.Operator = m, true
 	return c.call(x, want, sink), true
 }
@@ -376,6 +372,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	read := elem()
 	et := c.value(read, noWant)
 	if et.K == types.Invalid {
+		c.unresolvedArg(arg)
 		return stmts, elem, true
 	}
 	if r := c.stub(et.Flex()); r != nil {
@@ -392,6 +389,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		probe := &syntax.Call{Args: []syntax.Expr{arg}}
 		if c.hasFun(et.NonNull(), opName, probe) && c.setFits(xt, len(idx), et, opName, probe) {
 			c.errorf(p, "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
+			c.unresolvedArg(arg)
 			return stmts, elem, true
 		}
 		call, t := c.opCall(p, checked(read, et), assignOp, []syntax.Expr{arg}, noWant)
@@ -531,6 +529,20 @@ func (c *Checker) setFits(xt types.Type, n int, et types.Type, opName string, pr
 	return false
 }
 
+// unresolvedArg checks the value v of an operator call that is ambiguous,
+// or that has no operator to call, once, as kotlinc checks an unresolved
+// call's arguments: the errors in a lambda's body are reported, even in
+// nested x[i] += { x[i] += { } }, whose check stays linear.
+func (c *Checker) unresolvedArg(v syntax.Expr) {
+	if v == nil {
+		return
+	}
+	if _, done := v.(*syntax.Checked); done {
+		return
+	}
+	c.args(&syntax.Call{Args: []syntax.Expr{v}}, nil)
+}
+
 func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 	if t.K != types.Invalid && t.K != types.Unit {
 		c.errorf(p, "function '%s' should return Unit", name)
@@ -555,6 +567,7 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 	switch {
 	case fits:
 		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
+		c.unresolvedArg(s.Value)
 		return
 	case hasAssign:
 		call, t := c.opCall(s.P, checked(s.Target, tt), assignName, []syntax.Expr{s.Value}, noWant)

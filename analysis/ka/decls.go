@@ -34,6 +34,9 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		// parameter's.
 		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
 		md.Params = b.params(d.Params)
+		if d.Actual || owner != nil && owner.Actual {
+			b.declaredDefaults(d.Params, md.Params)
+		}
 		md.Contexts = b.params(d.Contexts)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
@@ -100,10 +103,26 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations),
 			Flags: commonFlags(&d.Modifiers)}
 		md.Params = b.params(d.Params)
+		if d.Actual || owner != nil && owner.Actual {
+			b.declaredDefaults(d.Params, md.Params)
+		}
 		md.Locals = b.locals(d.Body)
 		return md
 	}
 	return nil
+}
+
+// declaredDefaults clears FlagHasDefault of the models mps of the
+// parameters ps of an actual declaration that have their default values
+// from its expect declaration (expects.defaults): an actual declaration's
+// parameter declares none.
+func (b *fileBuilder) declaredDefaults(ps []*syntax.Param, mps []*Decl) {
+	for i, p := range ps {
+		if b.inherited[p.Default] {
+			mps[i].Flags &^= FlagHasDefault
+			mps[i].Default = nil
+		}
+	}
 }
 
 // locals returns the models of the local declarations written directly
@@ -227,6 +246,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			if d.Object || d.Enum {
 				ctor.Visibility = Private // always private (enum) or implicit (object)
 			}
+			if d.Actual && (d.Annotation || d.Value) {
+				ctor.Flags |= FlagActual // implicitly, as in FIR
+			}
 			for _, p := range d.CtorParams {
 				mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
 				if p.IsProp {
@@ -236,6 +258,13 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 					mp.Default = b.defaultValue(p.Sym.Type, p.Default, 0)
 				}
 				ctor.Params = append(ctor.Params, mp)
+			}
+			if d.Actual {
+				ps := make([]*syntax.Param, len(d.CtorParams))
+				for i, p := range d.CtorParams {
+					ps[i] = &p.Param
+				}
+				b.declaredDefaults(ps, ctor.Params)
 			}
 			md.Members = append(md.Members, ctor)
 		}
@@ -263,12 +292,26 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		}()
 	}
 	for _, e := range d.Entries {
-		md.Members = append(md.Members, &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
+		ed := &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
 			ClassID: md.ClassID + "." + e.Name, Annotations: b.annotations(e.Annotations),
-			Type: &Type{Kind: TypeClass, ClassID: md.ClassID}})
+			Type: &Type{Kind: TypeClass, ClassID: md.ClassID}}
+		if b.entryInitializer(d, e, ed.Node) {
+			// The declarations of its initializer, an anonymous object
+			// (KaEnumEntrySymbol.enumEntryInitializer): its body's, and
+			// the constructor FIR gives it.
+			if e.Body != nil {
+				for _, bm := range e.Body.Members {
+					if mm := b.decl(bm, e.Body, ed.ClassID+"."); mm != nil {
+						ed.Members = append(ed.Members, mm)
+					}
+				}
+			}
+			ed.Members = append(ed.Members, &Decl{Kind: KindConstructor, Name: "<init>", Flags: FlagPrimary})
+		}
+		md.Members = append(md.Members, ed)
 	}
 	if md.Kind == KindEnumClass {
-		md.Members = append(md.Members, enumMembers(md.ClassID, d.EntriesList, FlagStatic)...)
+		md.Members = append(md.Members, enumMembers(md.ClassID, d.EntriesList, FlagStatic|md.Flags&FlagExpect)...)
 	}
 	for _, m := range d.Members {
 		if c, ok := m.(*syntax.ClassDecl); ok && c.EnumEntry {
@@ -279,6 +322,29 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		}
 	}
 	return md
+}
+
+// entryInitializer reports whether entry e of enum class d, at node, has
+// an initializer in FIR: one with arguments, annotations or a body has,
+// and so has any entry of an enum class that can't be constructed without
+// arguments.
+func (b *fileBuilder) entryInitializer(d *syntax.ClassDecl, e *syntax.EnumEntry, node psi.NodeID) bool {
+	if e.Body != nil || len(e.Annotations) > 0 || b.snap.Node(node).ChildKind(psi.KindINITIALIZER_LIST).Valid() {
+		return true
+	}
+	if b.snap.Node(b.prov.Node(d)).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).Valid() {
+		return len(d.CtorParams) > 0
+	}
+	secondary := false
+	for _, m := range d.Members {
+		if c, ok := m.(*syntax.SecondaryCtor); ok {
+			if len(c.Params) == 0 {
+				return false
+			}
+			secondary = true
+		}
+	}
+	return secondary
 }
 
 // supertypes returns the direct supertypes of class d as Kotlin sees

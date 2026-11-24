@@ -29,8 +29,25 @@ const missingKey = "\x00missing:"
 // nil if the class path has the class or there is none. The class is
 // Missing, and has no supertypes or members.
 func (t *classTable) missingClass(id string, n int) *types.ClassSym {
+	return t.missing(id, internalName(id), n)
+}
+
+// javaMissingClass returns the class that stands for a class a Java
+// class file's descriptor names, by its internal name, that the class
+// path doesn't have, or nil. As in K2, which can't tell a nested class
+// from a top-level one by a name with a $ whose outer class it lacks,
+// that is a top-level class of the name: a/b/C$Some isn't the class
+// a/b/C.Some that Kotlin metadata names, so a Kotlin override that
+// takes the nested class doesn't implement a Java method that takes it.
+func (t *classTable) javaMissingClass(name string) *types.ClassSym {
+	return t.missing(name, name, 0)
+}
+
+// missing returns the stand-in for the class of Kotlin class id id and
+// internal name name, with n type parameters; stand-ins of different
+// ids are different classes, even of one internal name.
+func (t *classTable) missing(id, name string, n int) *types.ClassSym {
 	t = t.root()
-	name := internalName(id)
 	// Object, Any to Kotlin, is a builtin: never a missing dependency,
 	// even on a class path without the JDK's classes.
 	if t.cp == nil || name == "" || name == "java/lang/Object" || strings.HasPrefix(name, "kotlin/") || t.cp.Has(name) {
@@ -39,7 +56,7 @@ func (t *classTable) missingClass(id string, n int) *types.ClassSym {
 	if src := t.sources.Load(); src != nil && (*src)(name) != nil {
 		return nil
 	}
-	key := missingKey + name + "/" + strconv.Itoa(n)
+	key := missingKey + id + "/" + strconv.Itoa(n)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if c, ok := t.m[key]; ok {
@@ -253,11 +270,41 @@ func (c *Checker) missingDependencies() {
 		access(p, expr, g.Ret, recv, nil)
 		superclass(p, dispatch, g.Owner, ext)
 	}
+	// inferredAnno reports at p the type annotation class name of an
+	// inferred type that the class path doesn't have.
+	inferredAnno := func(p syntax.Pos, name string) {
+		if reported[p] {
+			return
+		}
+		reported[p] = true
+		c.errorf(p, "type annotation class '%s' of the inferred type is inaccessible. Check the module classpath for missing or conflicting dependencies", name[strings.LastIndexByte(name, '.')+1:])
+	}
+	// inferred checks the expression e whose type a declaration without
+	// a declared type has.
+	inferred := func(e syntax.Expr) {
+		if call, ok := e.(*syntax.Call); ok && call.Sym != nil && call.Sym.MissingAnno != "" && !call.Invoke && call.Ctor == nil {
+			p := call.P
+			if call.Fun != nil {
+				p = call.Fun.Pos()
+				if m, ok := call.Fun.(*syntax.Member); ok {
+					p = m.P
+				}
+			}
+			inferredAnno(p, call.Sym.MissingAnno)
+		}
+	}
 	var decl func(d syntax.Decl)
 	var visit func(n any) bool
 	visit = func(n any) bool {
 		switch x := n.(type) {
 		case *syntax.Call:
+			if x.SAM && len(x.Args) == 1 && x.T.K == types.Class {
+				// Sam { }: the lambda's parameters are of the types of the
+				// interface's method's.
+				if m := c.sam(x.T.C); m != nil && m.ParamMissingAnno != "" {
+					inferredAnno(x.Args[0].Pos(), m.ParamMissingAnno)
+				}
+			}
 			f := x.Sym
 			if f == nil || x.Ctor != nil || x.Invoke || f.Name == "<init>" {
 				return true
@@ -363,13 +410,22 @@ func (c *Checker) missingDependencies() {
 	decl = func(d syntax.Decl) {
 		switch x := d.(type) {
 		case *syntax.FunDecl:
+			if x.Ret == nil && x.ExprBody != nil {
+				inferred(x.ExprBody)
+			}
 			fun(x)
 		case *syntax.PropDecl:
 			for _, tp := range x.TypeParams {
 				typeParamBounds(tp, superclass)
 			}
 			if x.Init != nil {
+				if x.Type == nil {
+					inferred(x.Init)
+				}
 				inspect(x.Init)
+			}
+			if g := x.Getter; g != nil && x.Type == nil && g.Ret == nil && g.ExprBody != nil {
+				inferred(g.ExprBody)
 			}
 			fun(x.Getter)
 			fun(x.Setter)

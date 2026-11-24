@@ -264,12 +264,36 @@ func kotlincFlags(path string) []string {
 	return strings.Fields(flags)
 }
 
+// moduleDeps returns the output directories of the modules that a first
+// line "// deps: <modules>" of the file at path names, from outs, or
+// def if it has none.
+func moduleDeps(path string, outs map[string]string, def []string) []string {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return def
+	}
+	first, _, _ := strings.Cut(string(src), "\n")
+	deps, ok := strings.CutPrefix(first, "// deps: ")
+	if !ok {
+		return def
+	}
+	var dirs []string
+	for _, m := range strings.Fields(deps) {
+		dirs = append(dirs, outs[m])
+	}
+	return dirs
+}
+
 // flagOptions sets the options for kotlinc's flags -jvm-default,
-// -Xdebug and -opt-in=<marker> among flags.
+// -Xdebug, -Xmulti-platform and -opt-in=<marker> among flags.
 func flagOptions(opts *Options, flags []string) {
+	opts.MultiPlatform = slices.Contains(flags, "-Xmulti-platform")
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
+	if i := slices.Index(flags, "-jvm-target"); i >= 0 && i+1 < len(flags) {
+		opts.JVMTarget = flags[i+1]
+	}
 	for _, f := range flags {
 		if m, ok := strings.CutPrefix(f, "-opt-in="); ok {
 			opts.OptIns = append(opts.OptIns, m)
@@ -534,7 +558,8 @@ var errorComment = regexp.MustCompile(`// ERROR (.+)$`)
 // TestErrors checks diagnostics. Each line of testdata/errors/X.kt that
 // should produce an error ends with "// ERROR <substring of message>". A
 // directory testdata/errors/X/ is one module of several files. Files
-// named stdlib* are compiled with the Kotlin standard library.
+// named stdlib* are compiled with the Kotlin standard library. A first
+// line "// kotlinc: <flags>" gives kotlinc's flags (see flagOptions).
 func TestErrors(t *testing.T) {
 	files, _ := filepath.Glob("../../testdata/errors/*.kt")
 	dirs, _ := filepath.Glob("../../testdata/errors/*/*.kt")
@@ -559,6 +584,7 @@ func TestErrors(t *testing.T) {
 				javas, _ := filepath.Glob(filepath.Join(f, "*.java")) // the module's Java sources
 				srcs = append(srcs, javas...)
 			}
+			flagOptions(&opts, kotlincFlags(srcs[0]))
 			skipPSIGrammar(t, srcs...)
 			checkErrors(t, srcs, Compile(srcs, opts))
 		})
@@ -617,9 +643,14 @@ func checkErrors(t *testing.T, srcs []string, err error) {
 
 // TestLibraryErrors checks diagnostics about a library's declarations,
 // which kc reads from class files: testdata/liberrors/X/lib/ is compiled
-// first (its Java files by javac), then X/use/ against it, with
+// first (its Java files by javac), and X/lib2/, if there is one, as a
+// second library module after it, then X/use/ against them, with
 // "// ERROR <substring>" comments as in TestErrors. A first line
-// "// kotlinc: <flags>" of either's first file gives its flags.
+// "// kotlinc: <flags>" of either's first file gives its flags. lib2 is
+// compiled against the standard library alone, and use against every
+// module, unless the first line of its first file is "// deps: <modules>",
+// which names the modules on its class path: a module that a dependency
+// depends on is then missing from it.
 func TestLibraryErrors(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -628,26 +659,38 @@ func TestLibraryErrors(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/liberrors/*")
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			libOut := t.TempDir()
-			libSrcs, _ := filepath.Glob(filepath.Join(dir, "lib", "*.kt"))
-			javas, _ := filepath.Glob(filepath.Join(dir, "lib", "*.java"))
-			libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: "lib"}
-			flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
-			if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
-				t.Fatalf("compile library: %v", err)
-			}
-			if len(javas) > 0 {
-				javac, err := exec.LookPath("javac")
-				if err != nil {
-					t.Skip("javac not found on PATH")
+			cp := []string{lib}
+			outs := map[string]string{}
+			for _, name := range []string{"lib", "lib2"} {
+				libSrcs, _ := filepath.Glob(filepath.Join(dir, name, "*.kt"))
+				if len(libSrcs) == 0 && name != "lib" {
+					continue
 				}
-				args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
-				if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
-					t.Fatalf("javac: %v\n%s", err, out)
+				libOut := t.TempDir()
+				javas, _ := filepath.Glob(filepath.Join(dir, name, "*.java"))
+				libCP := append([]string{lib}, moduleDeps(libSrcs[0], outs, nil)...)
+				libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: libCP, ModuleName: name}
+				flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
+				if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
+					t.Fatalf("compile %s: %v", name, err)
 				}
+				if len(javas) > 0 {
+					javac, err := exec.LookPath("javac")
+					if err != nil {
+						t.Skip("javac not found on PATH")
+					}
+					javaCP := strings.Join(append([]string{libOut}, libCP...), string(os.PathListSeparator))
+					args := append([]string{"-nowarn", "-cp", javaCP, "-d", libOut}, javas...)
+					if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+						t.Fatalf("javac: %v\n%s", err, out)
+					}
+				}
+				outs[name] = libOut
+				cp = append(cp, libOut)
 			}
 			srcs, _ := filepath.Glob(filepath.Join(dir, "use", "*.kt"))
-			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: []string{lib, libOut}}
+			cp = append([]string{lib}, moduleDeps(srcs[0], outs, cp[1:])...)
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: cp}
 			flagOptions(&opts, kotlincFlags(srcs[0]))
 			checkErrors(t, srcs, Compile(srcs, opts))
 		})
@@ -777,6 +820,98 @@ func TestSameModuleName(t *testing.T) {
 	}
 	if string(out) != "hello world\n" {
 		t.Errorf("output %q, want %q", out, "hello world\n")
+	}
+}
+
+// TestJVMTarget compiles a library for JVM 11: its class files have
+// version 55, and its inline function and inline property accessors are
+// errors in a program compiled for 1.8, as kotlinc's
+// INLINE_FROM_HIGHER_PLATFORM, and are inlined in one compiled for 11.
+func TestJVMTarget(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	write := func(name, src string) string {
+		path := filepath.Join(tmp, name)
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	libSrc := write("lib.kt", `package a
+
+inline fun twice(f: () -> String) = f() + f()
+
+@PublishedApi internal var stored = 0
+
+var count: Int
+    inline get() = stored + 1
+    set(v) { stored = v }
+
+class C {
+    inline val name: String get() = "c"
+}
+`)
+	libOut := filepath.Join(tmp, "lib")
+	if err := Compile([]string{libSrc}, Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, JVMTarget: "11"}); err != nil {
+		t.Fatalf("compile library: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(libOut, "a", "LibKt.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if major := classfile.Major(data); major != 55 {
+		t.Errorf("library class version %d, want 55", major)
+	}
+	app := write("main.kt", `import a.*
+
+fun main() {
+    count = 1 // the setter isn't inline
+    val x = twice { "x" }
+    val n = count
+    println(x + n + C().name)
+}
+`)
+	cp := []string{lib, libOut}
+	err = Compile([]string{app}, Options{OutDir: filepath.Join(tmp, "app8"), Jobs: 1, ClassPath: cp})
+	if err == nil {
+		t.Fatal("compiled for JVM 1.8, want errors")
+	}
+	var lines []string
+	for _, line := range strings.Split(err.Error(), "\n") {
+		// path:line:col: message
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) < 4 || !strings.Contains(parts[3], "cannot inline bytecode built with JVM target 11 into bytecode that is being built with JVM target 1.8") {
+			t.Errorf("unexpected error %s", line)
+			continue
+		}
+		lines = append(lines, parts[1])
+	}
+	if want := []string{"5", "6", "7"}; !slices.Equal(lines, want) {
+		t.Errorf("errors on lines %v, want %v (twice, count's getter and C.name)", lines, want)
+	}
+	appOut := filepath.Join(tmp, "app11")
+	if err := Compile([]string{app}, Options{OutDir: appOut, Jobs: 1, ClassPath: cp, JVMTarget: "11"}); err != nil {
+		t.Fatalf("compile program for JVM 11: %v", err)
+	}
+	out, err := exec.Command(java, "-cp", strings.Join(append([]string{appOut}, cp...), string(os.PathListSeparator)), "MainKt").Output()
+	if err != nil {
+		t.Fatalf("java: %v", err)
+	}
+	if string(out) != "xx2c\n" {
+		t.Errorf("output %q, want %q", out, "xx2c\n")
+	}
+	if data, err := os.ReadFile(filepath.Join(appOut, "MainKt.class")); err != nil || classfile.Major(data) != 55 {
+		t.Errorf("program class version %d (%v), want 55", classfile.Major(data), err)
+	}
+	if err := Compile([]string{app}, Options{OutDir: appOut, Jobs: 1, ClassPath: cp, JVMTarget: "8"}); err == nil {
+		t.Errorf("JVM target 8 accepted, want an error: kotlinc's is 1.8")
 	}
 }
 
@@ -1052,8 +1187,7 @@ func TestKotlincLibrary(t *testing.T) {
 // with -jvm-default=disable and then both with -jvm-default=enable, whose
 // interfaces have DefaultImpls classes beside their default methods, and
 // compares the generic signatures, the Signature attributes, of the
-// members both builds have that Java sees: those of classes, fields and
-// methods that aren't synthetic.
+// classes, fields and methods both builds have.
 func TestSignatures(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1099,9 +1233,7 @@ func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string,
 			}
 			sigs[info.Name] = info.Sig
 			for _, m := range append(info.Fields, info.Methods...) {
-				if m.Access&classfile.AccSynthetic == 0 {
-					sigs[info.Name+" "+m.Name+m.Desc] = m.Sig
-				}
+				sigs[info.Name+" "+m.Name+m.Desc] = m.Sig
 			}
 			return nil
 		})
@@ -1129,6 +1261,221 @@ func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string,
 	}
 	if compared < 200 {
 		t.Errorf("compared only %d members", compared)
+	}
+}
+
+// TestLambdaInvoke compiles testdata/signatures/locals.kt with kotlinc
+// and kc and compares the methods of the classes of the lambdas that are
+// inline functions' default values, which copies of the functions in
+// other modules read: invoke takes and returns the lambda's own types,
+// and a synthetic bridge with the interface method's calls it.
+func TestLambdaInvoke(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	src := "../../testdata/signatures/locals.kt"
+	kotlincOut, kcOut := t.TempDir(), t.TempDir()
+	if out, err := exec.Command(kotlinc, "-nowarn", "-d", kotlincOut, src).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc: %v\n%s", err, out)
+	}
+	if err := Compile([]string{src}, Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib}, OutDir: kcOut}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	methods := func(path string) []string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := classfile.Parse(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ms []string
+		for _, m := range info.Methods {
+			ms = append(ms, fmt.Sprintf("%s%s %#x", m.Name, m.Desc, m.Access))
+		}
+		sort.Strings(ms)
+		return ms
+	}
+	classes, err := filepath.Glob(filepath.Join(kotlincOut, "l", "*$dflt*$1.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(classes) < 10 {
+		t.Fatalf("kotlinc wrote only %d lambda classes", len(classes))
+	}
+	for _, c := range classes {
+		name := filepath.Base(c)
+		want, got := methods(c), methods(filepath.Join(kcOut, "l", name))
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: methods\n%s\nwant kotlinc's\n%s", name, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
+}
+
+// TestInnerClasses compiles testdata/innerclasses/ with kotlinc and kc
+// and compares the InnerClasses attributes of the classes both write: an
+// entry kotlinc writes for a nested class that kc's class file names too
+// must be in kc's, with the same outer class, simple name and access
+// flags. A Kotlin compiler reading the class file needs them to tell a
+// nested class from a top-level one with $ in its name.
+// TestPermittedSubclasses compiles testdata/permitted with kotlinc and kc,
+// for Java 17 and 1.8, and compares the classes' PermittedSubclasses
+// attributes: from Java 17 on, a sealed class's lists its direct
+// subclasses.
+func TestPermittedSubclasses(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	srcs := sources(t, "../../testdata/permitted")
+	read := func(dir string) map[string][]string {
+		permitted := map[string][]string{}
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || !strings.HasSuffix(path, ".class") {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			info, err := classfile.Parse(data)
+			if err != nil {
+				return err
+			}
+			permitted[info.Name] = info.Permitted
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return permitted
+	}
+	for _, target := range []string{"17", "1.8"} {
+		t.Run(target, func(t *testing.T) {
+			kotlincOut, kcOut := t.TempDir(), t.TempDir()
+			args := append([]string{"-nowarn", "-jvm-target", target, "-d", kotlincOut}, srcs...)
+			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+				t.Fatalf("kotlinc: %v\n%s", err, out)
+			}
+			if err := Compile(srcs, Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib}, OutDir: kcOut, JVMTarget: target}); err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			want, got := read(kotlincOut), read(kcOut)
+			sealed := 0
+			for name, w := range want {
+				g, ok := got[name]
+				if !ok {
+					t.Errorf("%s: no class", name)
+					continue
+				}
+				if !slices.Equal(g, w) {
+					t.Errorf("%s: PermittedSubclasses %v, want %v", name, g, w)
+				}
+				if len(w) > 0 {
+					sealed++
+				}
+			}
+			if wantSealed := map[string]int{"17": 6, "1.8": 0}[target]; sealed != wantSealed {
+				t.Errorf("%d classes with PermittedSubclasses, want %d", sealed, wantSealed)
+			}
+		})
+	}
+}
+
+func TestInnerClasses(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	srcs := sources(t, "../../testdata/innerclasses")
+	kotlincOut, kcOut := t.TempDir(), t.TempDir()
+	args := append([]string{"-nowarn", "-d", kotlincOut}, srcs...)
+	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc: %v\n%s", err, out)
+	}
+	if err := Compile(srcs, Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib}, OutDir: kcOut}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	type class struct {
+		data    []byte
+		entries map[string]classfile.InnerClassEntry
+	}
+	read := func(dir string) map[string]class {
+		classes := map[string]class{}
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || !strings.HasSuffix(path, ".class") {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			info, err := classfile.Parse(data)
+			if err != nil {
+				return err
+			}
+			details, err := classfile.ParseDetails(data)
+			if err != nil {
+				return err
+			}
+			c := class{data, map[string]classfile.InnerClassEntry{}}
+			for _, e := range details.InnerClasses {
+				c.entries[e.Inner] = e
+			}
+			classes[info.Name] = c
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return classes
+	}
+	want, got := read(kotlincOut), read(kcOut)
+	var names []string
+	for name := range want {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	compared := 0
+	for _, name := range names {
+		g, ok := got[name]
+		if !ok {
+			continue // a class only kotlinc writes
+		}
+		var inners []string
+		for inner := range want[name].entries {
+			inners = append(inners, inner)
+		}
+		sort.Strings(inners)
+		for _, inner := range inners {
+			w := want[name].entries[inner]
+			if w.Outer == "" || !bytes.Contains(g.data, []byte(inner)) {
+				continue // an anonymous or local class, or one kc's class file doesn't name
+			}
+			compared++
+			if e, ok := g.entries[inner]; !ok {
+				t.Errorf("%s: no InnerClasses entry for %s, kotlinc's is %+v", name, inner, w)
+			} else if e != w {
+				t.Errorf("%s: InnerClasses entry %+v, want kotlinc's %+v", name, e, w)
+			}
+		}
+	}
+	if compared < 20 {
+		t.Errorf("compared only %d entries", compared)
 	}
 }
 
@@ -1414,16 +1761,15 @@ func TestSerialization(t *testing.T) {
 	// Classes that kc doesn't serialize as the plugin does are left to
 	// kotlinc.
 	for name, src := range map[string]string{
-		"generic":      "class A<T>(val x: T)",
-		"Date":         "class A(val x: java.util.Date)",
-		"Any":          "class A(val x: Any)",
-		"array":        "class A(val x: Array<String>)",
-		"IntArray":     "class A(val x: IntArray)",
-		"Contextual":   "class A(@Contextual val x: Int)",
-		"interface":    "interface A",
-		"lateinit":     "class A(val x: Int) { lateinit var y: String }",
-		"local":        "class A(val x: Int)\nfun f() {\n@Serializable class L(val y: Int)\n}",
-		"super module": "class A(val x: Int) : lib.LibBase()",
+		"generic value": "@JvmInline\nvalue class A<T>(val x: T)",
+		"Date":          "class A(val x: java.util.Date)",
+		"Any":           "class A(val x: Any)",
+		"Date list":     "class A(val x: List<java.util.Date>)",
+		"star array":    "class A(val x: Array<*>)",
+		"kept":          "@KeepGeneratedSerializer\nclass A(val x: Int)",
+		"interface":     "interface A",
+		"local":         "class A(val x: Int)\nfun f() {\n@Serializable class L(val y: Int)\n}",
+		"super module":  "class A(val x: Int) : lib.LibBase()",
 	} {
 		t.Run("unsupported "+name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")
@@ -1494,11 +1840,12 @@ func TestMetro(t *testing.T) {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
 	cp := []string{lib, rt, libOut}
-	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true}
+	// For JVM 17, as gen_expected.sh compiles all three.
+	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "mid")), opts); err != nil {
 		t.Fatalf("compile mid: %v", err)
 	}
-	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true}
+	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true, JVMTarget: "17"}
 	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
 		t.Fatalf("compile app: %v", err)
 	}
@@ -1545,7 +1892,7 @@ func TestMetro(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")
 			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
-			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options, JVMTarget: "17"})
 			var se *syntax.Error
 			switch {
 			case err == nil:
@@ -1554,6 +1901,63 @@ func TestMetro(t *testing.T) {
 				t.Errorf("got %v, want an unsupported Metro feature", err)
 			case !strings.Contains(err.Error(), tc.msg):
 				t.Errorf("got %v, want %s", err, tc.msg)
+			}
+		})
+	}
+}
+
+// TestMetroClassPath compiles a library and a program that uses its
+// graphs and injected classes, each with kc's Metro plugin, and runs the
+// program. Each case is a module of its own, so the program's classes
+// leave the library's unloaded until Metro reads them.
+func TestMetroClassPath(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.6.0's runtime not found")
+	}
+	const header = "import dev.zacsweers.metro.*\n\n"
+	for name, tc := range map[string]struct{ lib, app, want string }{
+		"lazy constructor parameter": {
+			lib:  "@Inject class Engine { fun power() = 7 }\n@Inject class Car(private val engine: Lazy<Engine>) { fun describe() = \"car \" + engine.value.power() }",
+			app:  "@DependencyGraph interface G { val car: Car }\nfun main() { println(createGraph<G>().car.describe()) }",
+			want: "car 7\n",
+		},
+		"graph factory": {
+			lib:  "@Inject class Service { fun name() = \"service\" }\n@DependencyGraph interface LibGraph {\nval service: Service\nval tag: String\n@DependencyGraph.Factory interface Factory { fun create(@Provides tag: String): LibGraph }\n}",
+			app:  "fun main() {\nval g = createGraphFactory<LibGraph.Factory>().create(\"t\")\nprintln(g.service.name() + \" \" + g.tag)\n}",
+			want: "service t\n",
+		},
+		"graph extension": {
+			lib:  "abstract class UserScope private constructor()\n@Inject @SingleIn(UserScope::class) class Session { val id = \"session\" }\n@GraphExtension(UserScope::class) interface UserGraph {\nval session: Session\n@ContributesTo(AppScope::class) @GraphExtension.Factory interface Factory { fun createUser(): UserGraph }\n}",
+			app:  "@DependencyGraph(AppScope::class) interface G\nfun main() {\nval u = (createGraph<G>() as UserGraph.Factory).createUser()\nprintln(u.session.id + \" \" + (u.session === u.session))\n}",
+			want: "session true\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			libDir, libOut, appDir, appOut := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+			libFile, appFile := filepath.Join(libDir, "lib.kt"), filepath.Join(appDir, "main.kt")
+			os.WriteFile(libFile, []byte("package lib\n\n"+header+tc.lib+"\n"), 0o644)
+			os.WriteFile(appFile, []byte("package app\n\n"+header+"import lib.*\n\n"+tc.app+"\n"), 0o644)
+			opts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib, rt}, ModuleName: "lib", Metro: true, JVMTarget: "17"}
+			if err := Compile([]string{libFile}, opts); err != nil {
+				t.Fatalf("compile lib: %v", err)
+			}
+			opts = Options{OutDir: appOut, Jobs: 1, ClassPath: []string{lib, rt, libOut}, ModuleName: "app", Metro: true, JVMTarget: "17"}
+			if err := Compile([]string{appFile}, opts); err != nil {
+				t.Fatalf("compile app: %v", err)
+			}
+			cp := strings.Join([]string{appOut, libOut, rt, lib}, string(os.PathListSeparator))
+			out, err := exec.Command(java, "-Xverify:all", "-cp", cp, "app.MainKt").CombinedOutput()
+			if err != nil {
+				t.Fatalf("java: %v\n%s", err, out)
+			}
+			if string(out) != tc.want {
+				t.Errorf("got %q, want %q", out, tc.want)
 			}
 		})
 	}
@@ -1731,7 +2135,7 @@ func TestCompose(t *testing.T) {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
 	cp := append([]string{lib, libOut}, runtimeJars...)
-	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "app", Compose: true}
+	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "compose-app", Compose: true}
 	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
 		t.Fatalf("compile program: %v", err)
 	}
@@ -1756,7 +2160,7 @@ func TestCompose(t *testing.T) {
 		}
 		refOut := t.TempDir()
 		args := kotlincArgs(path(rt, libOut), refOut, sources(t, filepath.Join(dir, "app"))...)
-		if out, err := exec.Command(kotlinc, append([]string{"-module-name", "app"}, args...)...).CombinedOutput(); err != nil {
+		if out, err := exec.Command(kotlinc, append([]string{"-module-name", "compose-app"}, args...)...).CombinedOutput(); err != nil {
 			t.Fatalf("kotlinc app: %v\n%s", err, out)
 		}
 		classes, _ := filepath.Glob(filepath.Join(refOut, "app", "*.class"))
@@ -1785,6 +2189,47 @@ func TestCompose(t *testing.T) {
 					sort.Strings(shape)
 				}
 			}
+			if !slices.Equal(want, got) {
+				t.Errorf("%s: kotlinc's\n\t%s\nkc's\n\t%s", name, strings.Join(want, "\n\t"), strings.Join(got, "\n\t"))
+			}
+		}
+	})
+
+	// The parcelize plugin's Creator has no $stable field, as kotlinc's.
+	t.Run("parcelize", func(t *testing.T) {
+		javap, err := exec.LookPath("javap")
+		if err != nil {
+			t.Skip("javap not found on PATH")
+		}
+		stubs, refOut, kcOut := t.TempDir(), t.TempDir(), t.TempDir()
+		var javas []string
+		filepath.WalkDir("../../testdata/parcelize/java", func(p string, d fs.DirEntry, err error) error {
+			if err == nil && strings.HasSuffix(p, ".java") {
+				javas = append(javas, p)
+			}
+			return err
+		})
+		if out, err := exec.Command(javac, append([]string{"-d", stubs}, javas...)...).CombinedOutput(); err != nil {
+			t.Fatalf("javac: %v\n%s", err, out)
+		}
+		file := filepath.Join(t.TempDir(), "a.kt")
+		os.WriteFile(file, []byte("import android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+
+			"@Parcelize\nclass A(val x: Int) : Parcelable\n\n@Parcelize\nclass B<T : Parcelable>(var x: T) : Parcelable\n\n@Parcelize\nobject C : Parcelable\n"), 0o644)
+		parcelRuntime := filepath.Join(filepath.Dir(lib), "parcelize-runtime.jar")
+		// After Compose's plugin: before it, kotlinc infers the stability
+		// of a class from its CREATOR field too.
+		args := kotlincArgs(path(rt, parcelRuntime, stubs), refOut, file)
+		args = slices.Insert(args, 2, "-Xplugin="+filepath.Join(filepath.Dir(lib), "parcelize-compiler.jar"))
+		if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+			t.Fatalf("kotlinc: %v\n%s", err, out)
+		}
+		opts := Options{OutDir: kcOut, Jobs: 1, ClassPath: append([]string{parcelRuntime, stubs}, cp...), Compose: true, Parcelize: true}
+		if err := Compile([]string{file}, opts); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		for _, name := range []string{"A", "A$Creator", "B", "B$Creator", "C", "C$Creator"} {
+			want := composeShape(t, javap, refOut, name)
+			got := composeShape(t, javap, kcOut, name)
 			if !slices.Equal(want, got) {
 				t.Errorf("%s: kotlinc's\n\t%s\nkc's\n\t%s", name, strings.Join(want, "\n\t"), strings.Join(got, "\n\t"))
 			}
@@ -1854,7 +2299,8 @@ func TestCompose(t *testing.T) {
 // that TestCompose compares with kotlinc's: the methods' and fields' names
 // and descriptors, marked @Composable for composable functions, and the
 // class's @StabilityInferred annotation, but for the lambdas' methods and
-// the static initializer, which kc's composables don't need.
+// the static initializer, which kc's composables don't need. The members
+// of a ComposableSingletons class have their generic signatures too.
 func composeShape(t *testing.T, javap, dir, class string) []string {
 	out, err := exec.Command(javap, "-p", "-v", "-cp", dir, class).Output()
 	if err != nil {
@@ -1884,6 +2330,11 @@ func composeShape(t *testing.T, javap, dir, class string) []string {
 		}
 		if strings.Contains(block, "ACC_VARARGS") {
 			m += " varargs"
+		}
+		if _, sig, ok := strings.Cut(block, "Signature: #"); ok && strings.Contains(class, "ComposableSingletons$") {
+			_, sig, _ = strings.Cut(sig, "// ")
+			sig, _, _ = strings.Cut(sig, "\n")
+			m += " " + sig
 		}
 		shape = append(shape, m)
 	}

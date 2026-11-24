@@ -15,7 +15,7 @@ fun u1_a() {
     }
 }
 fun u1_b(x: Int) {
-    val y = todo() // UNREACHABLE_CODE
+    val y = todo() // UNREACHABLE_CODE UNUSED_VARIABLE
     bar(); bar() // UNREACHABLE_CODE
 }
 fun u1_c(x: Int) {
@@ -63,7 +63,7 @@ fun u2_a6(x: Int?) {
     bar(y)
 }
 fun u2_a7(x: Int) {
-    val s = "a${todo()}" // UNREACHABLE_CODE
+    val s = "a${todo()}" // UNREACHABLE_CODE UNUSED_VARIABLE
 }
 fun u2_a8(x: Int) {
     todo().hashCode() // UNREACHABLE_CODE
@@ -74,8 +74,8 @@ fun u2_a9(x: Int) {
     )
 }
 fun u2_a10(x: Int) {
-    var z = 1
-    z = todo() // UNREACHABLE_CODE
+    var z = 1 // VARIABLE_NEVER_READ
+    z = todo() // UNREACHABLE_CODE ASSIGNED_VALUE_IS_NEVER_READ
 }
 fun u2_a11(x: Int) {
     if (x > 0) {
@@ -127,7 +127,7 @@ fun u2_a16(x: Int) {
         bar() // UNREACHABLE_CODE
     else
         bar() // UNREACHABLE_CODE
-    val l = { // UNREACHABLE_CODE
+    val l = { // UNREACHABLE_CODE UNUSED_VARIABLE
         bar()
     }
     fun loc() { // UNREACHABLE_CODE
@@ -141,24 +141,24 @@ fun u3_foo(x: String) {
     x as Nothing // CAST_NEVER_SUCCEEDS
 }
 fun u3_bar() {
-    val y: Nothing = null!! // UNREACHABLE_CODE
+    val y: Nothing = null!! // UNREACHABLE_CODE UNUSED_VARIABLE
 }
 
-fun u5_a1() { val y: Int = null!! }
-fun u5_a2() { val y = null!! } // UNREACHABLE_CODE
+fun u5_a1() { val y: Int = null!! } // UNUSED_VARIABLE
+fun u5_a2() { val y = null!! } // UNREACHABLE_CODE UNUSED_VARIABLE
 fun u5_a3() { bar2(null!!) } // UNREACHABLE_CODE
 fun u5_a4(x: String) { bar2(x as Nothing) } // CAST_NEVER_SUCCEEDS
-fun u5_a5(x: String) { val z: Int = x as Nothing } // CAST_NEVER_SUCCEEDS
+fun u5_a5(x: String) { val z: Int = x as Nothing } // CAST_NEVER_SUCCEEDS UNUSED_VARIABLE
 fun u5_a6() { baz(null!!) } // UNREACHABLE_CODE
 fun u5_a7() { gen(null!!) } // UNREACHABLE_CODE
-fun u5_a8() { val y: Int = todo() } // UNREACHABLE_CODE
-fun u5_a9(x: String?) { val y: Int = x!! as Nothing } // CAST_NEVER_SUCCEEDS
-fun u5_a10() { val y: String = "a" + null!! } // UNREACHABLE_CODE
-fun u5_a11() { var y = 1; y = null!! }
+fun u5_a8() { val y: Int = todo() } // UNREACHABLE_CODE UNUSED_VARIABLE
+fun u5_a9(x: String?) { val y: Int = x!! as Nothing } // CAST_NEVER_SUCCEEDS UNUSED_VARIABLE
+fun u5_a10() { val y: String = "a" + null!! } // UNREACHABLE_CODE UNUSED_VARIABLE
+fun u5_a11() { var y = 1; y = null!! } // ASSIGNED_VALUE_IS_NEVER_READ VARIABLE_NEVER_READ
 fun u5_a12() { listOf(1)[null!!] } // UNREACHABLE_CODE
 
 fun u6_a1() {
-    val y: Int = null!!
+    val y: Int = null!! // UNUSED_VARIABLE
     bar()
 }
 fun u6_a2(x: String) {
@@ -166,12 +166,12 @@ fun u6_a2(x: String) {
     bar()
 }
 fun u6_a3(x: String) {
-    val y = x as Nothing // CAST_NEVER_SUCCEEDS
+    val y = x as Nothing // CAST_NEVER_SUCCEEDS UNUSED_VARIABLE
     bar()
 }
 fun u6_a4() {
-    var y = 1
-    y = null!!
+    var y = 1 // VARIABLE_NEVER_READ
+    y = null!! // ASSIGNED_VALUE_IS_NEVER_READ
     bar()
 }
 fun u6_a5(): Int {
@@ -179,14 +179,192 @@ fun u6_a5(): Int {
     bar() // UNREACHABLE_CODE
 }
 fun u6_a6(x: String?) {
-    val y: String = x ?: null!!
+    val y: String = x ?: null!! // UNUSED_VARIABLE
     bar()
 }
 fun u6_a7() {
-    val y: Int = if (true) null!! else null!! // UNREACHABLE_CODE
+    val y: Int = if (true) null!! else null!! // UNREACHABLE_CODE UNUSED_VARIABLE
     bar() // UNREACHABLE_CODE
 }
 fun u6_a8() {
     null!!
     bar() // UNREACHABLE_CODE
+}
+fun dw1() {
+    do {
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}
+fun dw2(b: Boolean) {
+    do {
+        if (b) break
+    } while (todo())
+    bar()
+}
+fun dw3(b: Boolean) {
+    do {
+        if (b) continue
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}
+fun dw4(): Int {
+    do { } while (todo())
+}
+fun dw5(b: Boolean) {
+    do {
+        while (b) { break }
+    } while (todo())
+    bar() // UNREACHABLE_CODE
+}
+open class UFoo(i: Int)
+fun u9_a() {
+    todo()
+    val k = { // UNREACHABLE_CODE
+        val x: Int by lazy { 1 } // UNREACHABLE_CODE
+        baz(x)
+    }
+    baz(k) // UNREACHABLE_CODE
+}
+fun u9_b() {
+    todo()
+    class L { // UNREACHABLE_CODE
+        fun f() {
+            val y: Int by lazy { 1 } // UNREACHABLE_CODE
+            baz(y)
+        }
+        val z by lazy { 2 } // UNREACHABLE_CODE
+    }
+}
+fun u9_c(n: Nothing) {
+    n // UNUSED_EXPRESSION
+    baz(1) // UNREACHABLE_CODE
+}
+fun u9_d(n: Nothing) {
+    baz(n) // UNREACHABLE_CODE
+    baz(2) // UNREACHABLE_CODE
+}
+class U9E : UFoo(todo()) { // UNREACHABLE_CODE
+    val p = 1 // UNREACHABLE_CODE
+    init { baz(3) } // UNREACHABLE_CODE
+}
+fun u9_f() {
+    class C : UFoo(todo()) { // UNREACHABLE_CODE
+        val q = 2 // UNREACHABLE_CODE
+    }
+    baz(4)
+}
+fun u9_g(): Int {
+    (if (true) return 1 else return 0)::hashCode // UNREACHABLE_CODE
+    return 0 // UNREACHABLE_CODE
+}
+fun u9_h() {
+    val o = object : UFoo(todo()) {} // UNREACHABLE_CODE
+    baz(o) // UNREACHABLE_CODE
+}
+fun u9_i() {
+    operator fun Nothing.invoke(): Nothing = this
+    todo()() // UNREACHABLE_CODE
+    baz(5) // UNREACHABLE_CODE
+}
+fun u9_j() {
+    todo()
+    val w = object { // UNREACHABLE_CODE
+        fun g() { val v by lazy { 3 }; baz(v) } // UNREACHABLE_CODE
+    }
+    baz(w) // UNREACHABLE_CODE
+}
+fun u9_k() {
+    while (true) {
+        (break)::hashCode // UNREACHABLE_CODE
+        baz(6) // UNREACHABLE_CODE
+    }
+}
+fun u9_m(a: Any?, b: Any?) {}
+fun u9_l() {
+    u9_m( // UNREACHABLE_CODE
+        todo(),
+        ""
+    )
+}
+// A break in a finally block, or in a do-while's condition, leaves the
+// loop.
+fun breakInFinally(): String {
+    while (true) {
+        try {
+            continue
+        } finally {
+            break
+        }
+    }
+    return "OK"
+}
+fun breakInDoWhileCond(): String {
+    var i = 0
+    while (true) {
+        do { ++i } while (break)
+        if (i != 1) return "FAIL1"
+    }
+    return "OK" // UNREACHABLE_CODE
+}
+// A do-while's condition, after a body that always jumps, but not by a
+// continue of the loop.
+fun dwj1(c: Boolean) { do { if (c) continue; return } while (c) }
+fun dwj2(c: Boolean) { do { break } while (c) } // UNREACHABLE_CODE
+fun dwj3(c: Boolean) { do { throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dwj4(c: Boolean) { l@ do { for (i in 0..1) { if (c) continue@l }; return } while (c) }
+fun dwj5(c: Boolean) { do { if (c) return else throw Exception() } while (c) } // UNREACHABLE_CODE
+fun dwj6(c: Boolean) { do { while (true) {} } while (c) } // UNREACHABLE_CODE
+
+// The right operand of true || y and false && y: only of the literal.
+const val ULIT = true
+fun ulit(x: Boolean) {
+    val t = true
+    baz(t || x)
+    baz(ULIT || x)
+    baz((true) || x) // UNREACHABLE_CODE
+    baz(!false || x)
+    baz(true || x) // UNREACHABLE_CODE
+    baz(false && x) // UNREACHABLE_CODE
+    baz(false || x)
+    baz(true && x)
+    baz(x || true || x)
+    baz(true || x && (x || false && x)) // UNREACHABLE_CODE
+    baz((true || x) && x) // UNREACHABLE_CODE
+    if (true || x) bar(1) else bar(2) // UNREACHABLE_CODE
+    while (true || x) { if (x) break } // UNREACHABLE_CODE
+}
+fun ulit2(): Boolean { return true || return false } // UNREACHABLE_CODE
+fun ulit3(): Boolean {
+    return true && return false // UNREACHABLE_CODE
+}
+fun ulit4(): String {
+    while (true) {
+        if (true && break) {
+            return "fail" // UNREACHABLE_CODE
+        }
+    }
+    return "OK"
+}
+fun ulit5(): String {
+    while (true) {
+        if (true || throw Exception()) { // UNREACHABLE_CODE
+            return "OK"
+        }
+    }
+    return "fail" // UNREACHABLE_CODE
+}
+
+// A while loop whose condition is false, at its start: only the literal.
+fun uwf(x: Boolean) {
+    while (false); // UNREACHABLE_CODE
+    while (false) { bar(1) } // UNREACHABLE_CODE
+    while (false) bar(2) // UNREACHABLE_CODE
+    while (false) { // UNREACHABLE_CODE
+        bar(3)
+        bar(4)
+    }
+    while (false && x) { bar(5) } // UNREACHABLE_CODE
+    do { bar(6) } while (false)
+    while ((false)) {} // UNREACHABLE_CODE
+    bar(8)
 }

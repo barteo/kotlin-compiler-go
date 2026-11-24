@@ -296,7 +296,7 @@ if [ -n "$compose" ]; then
 	# shellcheck disable=SC2046
 	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
-	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn -module-name compose-app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$rt:$out/lib:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	kotlin -cp "$out/use:$out/app:$out/lib:$out/java:$rt" UseKt >"$root/compose.out" 2>/dev/null

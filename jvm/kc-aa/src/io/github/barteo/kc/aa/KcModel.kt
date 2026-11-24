@@ -13,7 +13,8 @@ internal object KcOps {
     const val CLOSE = 12
     const val CLASS = 13
     const val PACKAGE = 14
-    const val FACTS = 16
+    const val TRIM = 16
+    const val FACTS = 17
 
     class Config(
         val jdkHome: String?,
@@ -117,6 +118,11 @@ internal object KcOps {
     fun close(handle: Long) {
         KcNative.cancelAtUnload(handle)
         KcNative.call(CLOSE, Wire.Writer().writeInt(handle).message())
+    }
+
+    /** Has libkc close the class paths no session or model uses, which it otherwise keeps for the next session. */
+    fun trim() {
+        KcNative.call(TRIM, Wire.Writer().message())
     }
 
     private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }

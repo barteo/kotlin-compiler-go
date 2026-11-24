@@ -51,8 +51,8 @@ type Config struct {
 	// whole module opts in to, as kotlinc's -opt-in.
 	OptIns []string
 	// ExplicitAPIMode is kotlinc's -Xexplicit-api: "", "disable",
-	// "warning" or "strict". It is validated; kc's checker doesn't
-	// enforce it.
+	// "warning" or "strict". Strict mode reports its errors among the
+	// diagnostics; warning mode's warnings aren't reported.
 	ExplicitAPIMode string
 }
 

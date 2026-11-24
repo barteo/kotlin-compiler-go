@@ -2,24 +2,24 @@
 
 The diagnostics tests of JetBrains/kotlin v2.4.21 for the JVM (`compiler/testData/diagnostics/`: tests/, testsWithStdLib/, testsWithJvmBackend/, testsWithAnyBackend/), each compiled by kc. A test's markup marks the diagnostics kotlinc reports, and its `RUN_PIPELINE_TILL` says whether kotlinc stops with errors in the frontend (`FRONTEND`, `FIR2IR`) or goes on to the backend (`BACKEND`). `bench/kotlin-tests.sh diagnostics` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 10827 test files, 2295 are skipped and 8532 run.
+Of 10827 test files, 2214 are skipped and 8613 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4366 | 51.2% |
-| accepts valid | 4127 | 48.4% |
-| accepts invalid | 38 | 0.4% |
+| rejects invalid | 4448 | 51.6% |
+| accepts valid | 4150 | 48.2% |
+| accepts invalid | 15 | 0.2% |
 | rejects valid | 0 | 0.0% |
 | parse/unsupported | 0 | 0.0% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4366 tests both reject, kc reports an error on the line of an expected one in 4284.
+Of the 4448 tests both reject, kc reports an error on the line of an expected one in 4423.
 
-A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
+A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 115 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
-The names without a severity: `DEBUG_INFO_EXPRESSION_TYPE` (742), `DEBUG_INFO_CSR_MIGHT_BE_USED` (44), `DEBUG_INFO_CALL` (28), `DEBUG_INFO_CSR_MIGHT_BE_USED_INSTEAD_OF_IMPORT` (16), `DEBUG_INFO_CALLABLE_OWNER` (6).
+The names without a severity: `DEBUG_INFO_EXPRESSION_TYPE` (746), `DEBUG_INFO_CSR_MIGHT_BE_USED` (44), `DEBUG_INFO_CALL` (28), `DEBUG_INFO_CSR_MIGHT_BE_USED_INSTEAD_OF_IMPORT` (16), `DEBUG_INFO_CALLABLE_OWNER` (6).
 
 ## Skipped
 
@@ -27,19 +27,19 @@ Tests for other platforms, that need language features off by default or compile
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 1579 | `tests/BacktickNames.kt`, `tests/BacktickNamesOld.kt` |
-| `modules with dependsOn` | 357 | `tests/multiplatform/abstractEnumInIr.kt`, `tests/multiplatform/actualAnnotationsNotMatchExpect/actualInnerClassMissingMember.kt` |
+| `LANGUAGE` | 1517 | `tests/BacktickNames.kt`, `tests/BacktickNamesOld.kt` |
+| `modules with dependsOn` | 358 | `tests/multiplatform/abstractEnumInIr.kt`, `tests/multiplatform/actualAnnotationsNotMatchExpect/actualInnerClassMissingMember.kt` |
 | `LANGUAGE_FEATURE_TOGGLED` | 93 | `tests/annotatedPackageQualifiers.kt`, `tests/annotationUsedAsAnnotationArgument.kt` |
 | `return value checker (crv/, crvFull/)` | 83 | `tests/crv/assignments.kt`, `tests/crv/basicJInterop.kt` |
 | `API_VERSION` | 53 | `tests/deprecated/deprecatedSinceKotlin/error.kt`, `tests/deprecated/deprecatedSinceKotlin/hidden.kt` |
 | `ALLOW_KOTLIN_PACKAGE` | 47 | `tests/annotations/requireKotlin.kt`, `tests/crvDisabled/oldMustUse.kt` |
 | `JDK_KIND` | 27 | `tests/errorProneAtomicArrayPrimitivesAllJavaMethods.kt`, `tests/identityComparisonOnJavaValueBasedClassesWarning.kt` |
-| `explicit API mode` | 21 | `tests/testsWithExplicitApi/annotations.kt`, `tests/testsWithExplicitApi/classes.kt` |
 | `IGNORE_FIR_DIAGNOSTICS` | 18 | `tests/jvm/contextParameters/kt59590WithContextParameters.kt`, `tests/jvm/duplicateJvmSignature/accidentalOverrides/overridesNothing.kt` |
 | `header mode` | 9 | `tests/headerMode/anonymousObjects.kt`, `tests/headerMode/classDeclaration.kt` |
 | `multiplatform` | 3 | `tests/multiplatform/errorProneAtomicArrayArgumentsInKMP.kt`, `tests/multiplatform/errorProneAtomicReferenceArgumentsInKMP.kt` |
 | `TARGET_BACKEND: NATIVE, JS_IR, WASM` | 2 | `testsWithAnyBackend/inlineOverrideDefaultWarning.kt`, `testsWithAnyBackend/inlineOverrideDefaultWarningWithInlinedFunInKlib.kt` |
 | `strict equality` | 2 | `tests/strictEquals/enabled/simple.kt`, `tests/strictEquals/enabled/wrongElementsAnnotated.kt` |
+| `IDE_MODE error` | 1 | `tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt` |
 | `TARGET_BACKEND: NATIVE, JS_IR` | 1 | `testsWithAnyBackend/crossFileInlineCycle.kt` |
 
 ## Accepts invalid
@@ -48,34 +48,14 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 9 | 8 | `tests/collectionLiterals/kt82964.kt`, `tests/j+k/collectionOverrides/containsAll.kt` |
-| `UNRESOLVED_REFERENCE` | 6 | 4 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/inference/kt68570.kt` |
 | `(no error marked)` | 3 | 3 | `tests/j+k/missingTypeOfParameterInFakeOverride_1.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
-| `CANNOT_INFER_PARAMETER_TYPE` | 2 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 2 | 1 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `testsWithStdLib/functionX.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 3 | 3 | `tests/j+k/collectionOverrides/containsAll.kt`, `tests/nullableTypes/nullableArgumentForIn.kt` |
+| `UNRESOLVED_REFERENCE` | 3 | 2 | `tests/j+k/differentFilename.kt`, `tests/jvm/classpath/classFromJdkInLibrary.kt` |
+| `OTHER_ERROR_WITH_REASON` | 2 | 2 | `testsWithStdLib/typealias/upperBoundViolated.kt`, `testsWithStdLib/typealias/upperBoundViolated2.kt` |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
-| `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
-| `ACCIDENTAL_OVERRIDE` | 1 | 1 | `tests/j+k/kjkimplicitTypesCrash.kt` |
-| `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 1 | 0 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt` |
-| `ASSIGNMENT_TYPE_MISMATCH` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
-| `CONDITION_TYPE_MISMATCH` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 1 | 1 | `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 1 | `tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt` |
-| `DELEGATE_SPECIAL_FUNCTION_MISSING` | 1 | 1 | `tests/delegatedProperty/inference/provideDelegateReturningOuterTypeVariable.kt` |
-| `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `ILLEGAL_SUSPEND_FUNCTION_CALL` | 1 | 1 | `tests/callResolution/eagerLambdaAnalysis/suspendFunctionTypeVsRunnable.kt` |
-| `INLINE_FROM_HIGHER_PLATFORM` | 1 | 1 | `tests/jvm/inline/wrongInlineTarget.kt` |
 | `MEMBER_PROJECTED_OUT` | 1 | 1 | `tests/typealias/starProjection.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 1 | 0 | `tests/j+k/differentFilename.kt` |
-| `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
-| `NOTHING_TO_OVERRIDE` | 1 | 1 | `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
-| `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 1 | 1 | `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
-| `SUSPENSION_POINT_INSIDE_MONITOR` | 1 | 1 | `tests/jvm/suspensionPointInMonitor.kt` |
-| `SYNTAX` | 1 | 0 | `tests/syntax/complicatedLTGT.kt` |
-| `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 1 | 1 | `tests/j+k/syntheticPropertyOverridden2.kt` |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 1 | 1 | `tests/platformTypes/commonSupertype/withNothing.kt` |
-| `UPPER_BOUND_VIOLATED` | 1 | 0 | `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
-| `VAL_REASSIGNMENT` | 1 | 0 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
 
 ## Rejects valid
 
@@ -85,71 +65,71 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 20205 of 21714 expected errors (93.1%) on their lines.
+kc reports 21765 of 22025 expected errors (98.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2511 | 2321 | 190 |
-| `ARGUMENT_TYPE_MISMATCH` | 1486 | 1356 | 130 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 167 | 83 |
-| `RETURN_TYPE_MISMATCH` | 418 | 362 | 56 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 633 | 582 | 51 |
-| `WRONG_MODIFIER_TARGET` | 375 | 330 | 45 |
-| `INVISIBLE_REFERENCE` | 523 | 484 | 39 |
-| `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 53 | 34 |
-| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 89 | 25 |
-| `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 228 | 23 |
-| `SMARTCAST_IMPOSSIBLE` | 183 | 160 | 23 |
-| `REDECLARATION` | 196 | 174 | 22 |
-| `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
-| `OPT_IN_USAGE_ERROR` | 96 | 77 | 19 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 411 | 17 |
-| `DSL_SCOPE_VIOLATION` | 108 | 92 | 16 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 143 | 16 |
-| `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 20 | 15 |
-| `NO_EXPLICIT_VISIBILITY_IN_API_MODE` | 16 | 1 | 15 |
-| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 210 | 14 |
-| `VAL_REASSIGNMENT` | 231 | 217 | 14 |
-| `CAPTURED_VAL_INITIALIZATION` | 34 | 21 | 13 |
-| `INAPPLICABLE_CANDIDATE` | 127 | 114 | 13 |
-| `INFIX_MODIFIER_REQUIRED` | 46 | 34 | 12 |
-| `UPPER_BOUND_VIOLATED` | 125 | 113 | 12 |
-| `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 80 | 68 | 12 |
-| `NAME_FOR_AMBIGUOUS_PARAMETER` | 31 | 20 | 11 |
-| `NULL_FOR_NONNULL_TYPE` | 155 | 144 | 11 |
-| `TOO_MANY_ARGUMENTS` | 118 | 108 | 10 |
-| `CONFLICTING_OVERLOADS` | 734 | 725 | 9 |
-| `INAPPLICABLE_FILE_TARGET` | 11 | 2 | 9 |
-| `INCOMPATIBLE_MODIFIERS` | 74 | 65 | 9 |
-| `TYPE_MISMATCH` | 33 | 24 | 9 |
-| `NON_INLINE_MEMBER_VAL_INITIALIZATION` | 9 | 1 | 8 |
-| `NOT_A_MULTIPLATFORM_COMPILATION` | 16 | 8 | 8 |
-| `NO_ELSE_IN_WHEN` | 217 | 209 | 8 |
-| `OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN` | 19 | 11 | 8 |
-| `SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC` | 12 | 4 | 8 |
-| `TYPE_CANT_BE_USED_FOR_CONST_VAL` | 19 | 11 | 8 |
-| `WRONG_ANNOTATION_TARGET` | 382 | 374 | 8 |
-| `CLASS_LITERAL_LHS_NOT_A_CLASS` | 16 | 9 | 7 |
-| `INCONSISTENT_BACKING_FIELD_TYPE` | 18 | 11 | 7 |
-| `NOT_YET_SUPPORTED_IN_INLINE` | 23 | 16 | 7 |
-| `UNINITIALIZED_VARIABLE` | 213 | 206 | 7 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2508 | 45 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1462 | 29 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 611 | 24 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 150 | 9 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 243 | 8 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `EQUALITY_NOT_APPLICABLE` | 27 | 21 | 6 |
-| `EXTENSION_IN_CLASS_REFERENCE_NOT_ALLOWED` | 12 | 6 | 6 |
-| `FORBIDDEN_IDENTITY_EQUALS` | 45 | 39 | 6 |
-| `INAPPLICABLE_TARGET_ON_PROPERTY` | 18 | 12 | 6 |
-| `INVISIBLE_SETTER` | 45 | 39 | 6 |
-| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 90 | 6 |
-| `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` | 9 | 3 | 6 |
-| `SYNTAX` | 886 | 880 | 6 |
-| `UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE` | 8 | 2 | 6 |
-| `WRONG_EXTENSION_FUNCTION_TYPE` | 6 | 0 | 6 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 157 | 6 |
-| `CONFLICTING_JVM_DECLARATIONS` | 996 | 991 | 5 |
-| `CYCLIC_CONSTRUCTOR_DELEGATION_CALL` | 28 | 23 | 5 |
-| `FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES` | 6 | 1 | 5 |
-| `ILLEGAL_JVM_NAME` | 14 | 9 | 5 |
-| *536 more* | | | |
+| `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
+| `INVISIBLE_REFERENCE` | 525 | 520 | 5 |
+| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 56 | 5 |
+| `TYPE_MISMATCH` | 33 | 28 | 5 |
+| `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
+| `UNRESOLVED_IMPORT` | 57 | 52 | 5 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 159 | 4 |
+| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 221 | 3 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 111 | 3 |
+| `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
+| `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
+| `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
+| `USAGE_IS_NOT_INLINABLE` | 180 | 177 | 3 |
+| `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
+| `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
+| `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 43 | 2 |
+| `ILLEGAL_ESCAPE` | 20 | 18 | 2 |
+| `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
+| `INNER_CLASS_CONSTRUCTOR_NO_RECEIVER` | 34 | 32 | 2 |
+| `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 7 | 5 | 2 |
+| `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 35 | 33 | 2 |
+| `MEMBER_PROJECTED_OUT` | 50 | 48 | 2 |
+| `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
+| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 94 | 2 |
+| `NO_ELSE_IN_WHEN` | 217 | 215 | 2 |
+| `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 24 | 2 |
+| `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
+| `REDECLARATION` | 196 | 194 | 2 |
+| `REPEATED_ANNOTATION` | 69 | 67 | 2 |
+| `RETURN_NOT_ALLOWED` | 63 | 61 | 2 |
+| `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 85 | 2 |
+| `TYPEOF_SUSPEND_TYPE` | 4 | 2 | 2 |
+| `TYPE_ARGUMENTS_NOT_ALLOWED` | 11 | 9 | 2 |
+| `UNINITIALIZED_VARIABLE` | 213 | 211 | 2 |
+| `ACCESSOR_FOR_DELEGATED_PROPERTY` | 6 | 5 | 1 |
+| `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 0 | 1 |
+| `AMBIGUOUS_ANNOTATION_ARGUMENT` | 4 | 3 | 1 |
+| `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
+| `COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT` | 5 | 4 | 1 |
+| `COMPILER_REQUIRED_ANNOTATION_AMBIGUITY` | 1 | 0 | 1 |
+| `CONSTRUCTOR_IN_OBJECT` | 13 | 12 | 1 |
+| `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
+| `DEPRECATED_TYPE_PARAMETER_SYNTAX` | 2 | 1 | 1 |
+| `DSL_SCOPE_VIOLATION` | 108 | 107 | 1 |
+| `EMPTY_CHARACTER_LITERAL` | 9 | 8 | 1 |
+| `ERROR_IN_CONTRACT_DESCRIPTION` | 38 | 37 | 1 |
+| `INACCESSIBLE_OUTER_CLASS_RECEIVER` | 40 | 39 | 1 |
+| `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD` | 2 | 1 | 1 |
+| `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE` | 7 | 6 | 1 |
+| `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 13 | 1 |
+| `ITERATOR_MISSING` | 10 | 9 | 1 |
+| `MISSING_DEPENDENCY_SUPERCLASS` | 4 | 3 | 1 |
+| `NON_LOCAL_RETURN_NOT_ALLOWED` | 25 | 24 | 1 |
+| *539 more* | | | |
 
 ### Missed errors by cause
 
@@ -157,38 +137,31 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 97 | 6.4% | `INLINE_FROM_HIGHER_PLATFORM` 21, `ARGUMENT_TYPE_MISMATCH` 16, `UNRESOLVED_REFERENCE` 10, `SYNTAX` 6, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6 |
-| syntax-error | 205 | 13.6% | `WRONG_MODIFIER_TARGET` 42, `UNRESOLVED_REFERENCE` 22, `INCOMPATIBLE_MODIFIERS` 9, `RETURN_TYPE_MISMATCH` 8, `NULLABLE_TYPE_IN_CLASS_LITERAL_LHS` 6 |
+| accepted | 26 | 10.0% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 71 | 27.3% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 177 | 11.7% | `RETURN_TYPE_MISMATCH` 29, `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 26, `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` 10, `INITIALIZER_TYPE_MISMATCH` 8 |
-| missing-check | 1030 | 68.3% | `UNRESOLVED_REFERENCE` 131, `ARGUMENT_TYPE_MISMATCH` 87, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 78, `CANNOT_INFER_PARAMETER_TYPE` 37, `INVISIBLE_REFERENCE` 36 |
+| nearby | 21 | 8.1% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 142 | 54.6% | `UNRESOLVED_REFERENCE` 27, `ARGUMENT_TYPE_MISMATCH` 19, `CANNOT_INFER_PARAMETER_TYPE` 19, `OVERLOAD_RESOLUTION_AMBIGUITY` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 6 |
 
 ## Errors kotlinc doesn't report
 
-kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
+kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 209 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 185 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 181 |
-| `type mismatch: inferred type is _ but _ was expected` | 178 |
-| `class '_' is not abstract and does not implement abstract member '_'` | 57 |
-| `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
+| `unresolved reference: _` | 195 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
+| `type mismatch: inferred type is _ but _ was expected` | 120 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 76 |
 | `unresolved or unsupported type: _` | 29 |
-| `no function '_' takes n arguments` | 22 |
+| `class '_' is not abstract and does not implement abstract member '_'` | 20 |
+| `no function '_' takes n arguments` | 20 |
 | `cannot use '_' as reified type parameter` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
-| `operator '_' cannot be applied to Any?` | 14 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
-| `this lambda must return a value of type _` | 12 |
-| `type checking has run into a recursive problem; specify the return type of '_'` | 12 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
-| `type checking has run into a recursive problem; specify the type of '_'` | 11 |
 | `unresolved import: _` | 11 |
-| `ambiguous call: n candidates for '_' take (_)` | 10 |
-| `expected parameter of type _` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 10 |
@@ -196,10 +169,17 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' modifier is required on '_'` | 8 |
-| `expected n parameter of type _ but n were declared` | 8 |
 | `'_' sub-interface exposes its '_' supertype '_'` | 7 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 7 |
-| *176 more* | |
+| `missing return statement in function '_'` | 7 |
+| `multiple labels are forbidden` | 7 |
+| `operator '_' cannot be applied to Any?` | 7 |
+| `unexpected '_'` | 7 |
+| `ambiguous call: n candidates for '_' take (_)` | 6 |
+| `captured values cannot be initialized because of possible reassignments` | 6 |
+| `names _, __, ___, ... are reserved in Kotlin` | 6 |
+| `this lambda must return a value of type _` | 6 |
+| `val cannot be reassigned` | 6 |
+| *101 more* | |
 
 ## Unsupported features
 
@@ -211,68 +191,148 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 1490 of the 3652 warnings the tests expect (40.8%) on their lines, and 8 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3550 of the 3667 warnings the tests expect (96.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
-| `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 287 | 0 |
-| `DEPRECATION` | 199 | 115 | 3 |
-| `UNREACHABLE_CODE` | 158 | 101 | 0 |
-| `USELESS_IS_CHECK` | 127 | 112 | 0 |
-| `ERROR_SUPPRESSION` | 102 | 7 | 0 |
-| `NOTHING_TO_INLINE` | 95 | 94 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 93 | 85 | 0 |
-| `CAST_NEVER_SUCCEEDS` | 92 | 87 | 0 |
-| `USELESS_CAST` | 91 | 28 | 2 |
-| `SENSELESS_COMPARISON` | 90 | 63 | 1 |
-| `UNNECESSARY_SAFE_CALL` | 90 | 78 | 1 |
-| `UNCHECKED_CAST` | 87 | 39 | 1 |
-| `OPT_IN_USAGE` | 83 | 62 | 0 |
-| `FINAL_UPPER_BOUND` | 69 | 56 | 0 |
-| `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 44 | 0 |
+| `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 355 | 0 |
+| `DEPRECATION` | 203 | 202 | 7 |
+| `UNREACHABLE_CODE` | 158 | 157 | 0 |
+| `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
+| `UNUSED_EXPRESSION` | 136 | 136 | 0 |
+| `USELESS_IS_CHECK` | 127 | 118 | 0 |
+| `ERROR_SUPPRESSION` | 102 | 98 | 0 |
+| `NOTHING_TO_INLINE` | 100 | 100 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
+| `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
+| `SENSELESS_COMPARISON` | 91 | 85 | 1 |
+| `USELESS_CAST` | 91 | 86 | 2 |
+| `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
+| `UNCHECKED_CAST` | 88 | 84 | 1 |
+| `OPT_IN_USAGE` | 83 | 78 | 0 |
+| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 71 | 0 |
+| `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
+| `FINAL_UPPER_BOUND` | 69 | 67 | 0 |
+| `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
+| `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 60 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 42 | 0 |
-| `REDUNDANT_PROJECTION` | 49 | 47 | 0 |
-| `USELESS_ELVIS` | 44 | 27 | 0 |
-| `NO_TAIL_CALLS_FOUND` | 29 | 24 | 0 |
-| `OVERRIDE_BY_INLINE` | 26 | 26 | 0 |
-| `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 4 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 47 | 0 |
+| `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
+| `USELESS_ELVIS` | 44 | 43 | 0 |
+| `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
+| `UNUSED_VARIABLE` | 35 | 35 | 3 |
+| `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
+| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 30 | 0 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 | 27 | 0 |
+| `OVERRIDE_DEPRECATION` | 30 | 30 | 0 |
+| `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
+| `OVERRIDE_BY_INLINE` | 28 | 28 | 0 |
+| `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
+| `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 26 | 0 |
+| `INLINE_CLASS_DEPRECATED` | 26 | 26 | 0 |
+| `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 | 26 | 0 |
+| `REDUNDANT_ELSE_IN_WHEN` | 26 | 24 | 0 |
+| `DIVISION_BY_ZERO` | 25 | 25 | 0 |
+| `LEAKED_IN_PLACE_LAMBDA` | 25 | 25 | 0 |
+| `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 | 22 | 2 |
+| `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 | 22 | 0 |
+| `NON_TAIL_RECURSIVE_CALL` | 22 | 22 | 0 |
+| `PROPERTY_HIDES_JAVA_FIELD` | 22 | 22 | 0 |
+| `REDUNDANT_VISIBILITY_MODIFIER` | 22 | 20 | 0 |
+| `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 | 20 | 0 |
+| `EMPTY_RANGE` | 19 | 19 | 0 |
+| `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 | 18 | 0 |
+| `DEPRECATED_JAVA_ANNOTATION` | 16 | 16 | 0 |
+| `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 | 15 | 0 |
+| `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 | 15 | 0 |
+| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 15 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 | 7 | 0 |
+| `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 15 | 0 |
+| `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
+| `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
+| `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 | 13 | 0 |
+| `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 13 | 0 |
+| `IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT` | 12 | 12 | 0 |
+| `INTEGER_LITERAL_CAST_INSTEAD_OF_TO_CALL` | 12 | 12 | 0 |
+| `TAIL_RECURSION_IN_TRY_IS_NOT_SUPPORTED` | 12 | 12 | 0 |
+| `WRONG_INVOCATION_KIND` | 12 | 10 | 0 |
+| `NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION` | 11 | 11 | 0 |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 | 11 | 0 |
+| `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 | 10 | 0 |
+| `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 | 10 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 | 9 | 0 |
+| `UNUSED_LAMBDA_EXPRESSION` | 10 | 10 | 0 |
+| `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 | 2 | 0 |
+| `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
+| `DUPLICATE_BRANCH_CONDITION_IN_WHEN` | 9 | 9 | 0 |
+| `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` | 9 | 9 | 0 |
+| `REDUNDANT_NULLABLE` | 9 | 9 | 0 |
+| `REDUNDANT_OPEN_IN_INTERFACE` | 9 | 9 | 0 |
+| `TYPEALIAS_EXPANSION_DEPRECATION` | 9 | 9 | 0 |
+| `USELESS_ELVIS_RIGHT_IS_NULL` | 9 | 9 | 0 |
+| `DANGEROUS_CHARACTERS` | 8 | 8 | 0 |
+| `FORBIDDEN_IDENTITY_EQUALS_WARNING` | 8 | 7 | 0 |
+| `REDUNDANT_MODIFIER` | 8 | 8 | 0 |
+| `SENSELESS_NULL_IN_WHEN` | 8 | 8 | 0 |
+| `USELESS_CALL_ON_NOT_NULL` | 8 | 8 | 0 |
+| `JAVA_CLASS_ON_COMPANION` | 7 | 7 | 0 |
+| `NON_FINAL_MEMBER_IN_FINAL_CLASS` | 7 | 7 | 0 |
+| `NON_FINAL_MEMBER_IN_OBJECT` | 7 | 7 | 0 |
+| `REDUNDANT_EXPLICIT_BACKING_FIELD` | 7 | 6 | 0 |
+| `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_ANNOTATION` | 7 | 6 | 0 |
+| `UNNECESSARY_LATEINIT` | 7 | 5 | 0 |
+| `ANNOTATION_TARGETS_ONLY_IN_JAVA` | 6 | 6 | 0 |
+| `DSL_MARKER_APPLIED_TO_WRONG_TARGET` | 6 | 6 | 0 |
+| `INFERRED_INVISIBLE_VARARG_TYPE_ARGUMENT_WARNING` | 6 | 6 | 0 |
+| `UNUSED_ANONYMOUS_PARAMETER` | 6 | 6 | 0 |
+| `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_DEPRECATION_WARNING` | 5 | 5 | 0 |
+| `OPT_IN_OVERRIDE` | 5 | 5 | 0 |
+| `POTENTIALLY_NON_REPORTED_ANNOTATION` | 5 | 5 | 0 |
+| `REDUNDANT_REPEATABLE_ANNOTATION` | 5 | 5 | 0 |
+| `SYNCHRONIZED_ON_INLINE` | 5 | 5 | 0 |
+| `DSL_MARKER_PROPAGATES_TO_MANY` | 4 | 4 | 0 |
+| `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
+| `TRIM_MARGIN_BLANK_PREFIX` | 4 | 4 | 0 |
+| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 | 3 | 0 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 | 2 | 0 |
+| `CAN_BE_VAL` | 3 | 3 | 0 |
+| `DEPRECATED_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
+| `OPERATOR_RENAMED_ON_IMPORT` | 3 | 3 | 0 |
+| `OPT_IN_ARGUMENT_IS_NOT_MARKER` | 3 | 3 | 0 |
+| `OPT_IN_TO_INHERITANCE` | 3 | 3 | 0 |
+| `REDUNDANT_ANNOTATION_TARGET` | 3 | 3 | 0 |
+| `REDUNDANT_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
+| `REDUNDANT_RETURN_UNIT_TYPE` | 3 | 3 | 0 |
+| `TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER` | 3 | 2 | 0 |
+| `UPPER_BOUND_VIOLATED_IN_LHS_OF_CLASS_LITERAL_WARNING` | 3 | 3 | 0 |
+| `USELESS_JVM_EXPOSE_BOXED` | 3 | 2 | 0 |
+| `VARIABLE_NEVER_READ` | 3 | 3 | 0 |
+| `ANNOTATIONS_ON_BLOCK_LEVEL_EXPRESSION_ON_THE_SAME_LINE` | 2 | 2 | 0 |
+| `INCOMPATIBLE_ANNOTATION_TARGETS` | 2 | 2 | 0 |
+| `INCOMPATIBLE_TYPES_WARNING` | 2 | 2 | 0 |
+| `OVERLOADS_WITHOUT_DEFAULT_ARGUMENTS` | 2 | 2 | 0 |
+| `REDUNDANT_SETTER_PARAMETER_TYPE` | 2 | 2 | 0 |
+| `REDUNDANT_SINGLE_EXPRESSION_STRING_TEMPLATE` | 2 | 2 | 0 |
 | `SAFE_CAST_RELYING_ON_NULL` | 2 | 2 | 0 |
+| `CAN_BE_VAL_DELAYED_INITIALIZATION` | 1 | 1 | 0 |
+| `CONFLICT_VERSION_AND_JVM_OVERLOADS_ANNOTATION` | 1 | 1 | 0 |
+| `LABEL_NAME_CLASH` | 1 | 1 | 0 |
+| `NEWER_VERSION_IN_SINCE_KOTLIN` | 1 | 1 | 0 |
+| `OPT_IN_WITHOUT_ARGUMENTS` | 1 | 1 | 0 |
+| `OVERLOADS_PRIVATE` | 1 | 1 | 0 |
 | `UNSAFE_CAST_RELYING_ON_NULL` | 1 | 1 | 0 |
 
 The warnings the tests expect that kc doesn't report, as a backlog.
 
 | Warning | Count |
 |:---|---:|
-| `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 |
-| `UNUSED_EXPRESSION` | 136 |
-| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
-| `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
-| `EXTENSION_SHADOWED_BY_MEMBER` | 67 |
-| `NO_REFLECTION_IN_CLASS_PATH` | 36 |
-| `UNUSED_VARIABLE` | 35 |
-| `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |
-| `ASSIGNED_VALUE_IS_NEVER_READ` | 32 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 |
-| `OVERRIDE_DEPRECATION` | 30 |
-| `DEPRECATED_IDENTITY_EQUALS` | 26 |
-| `INCOMPATIBLE_ENUM_COMPARISON` | 26 |
-| `INLINE_CLASS_DEPRECATED` | 26 |
-| `NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE` | 26 |
-| `REDUNDANT_ELSE_IN_WHEN` | 26 |
-| `DIVISION_BY_ZERO` | 25 |
-| `LEAKED_IN_PLACE_LAMBDA` | 25 |
-| `REDUNDANT_CALL_OF_CONVERSION_METHOD` | 23 |
-| `MISPLACED_TYPE_PARAMETER_CONSTRAINTS` | 22 |
-| `NON_TAIL_RECURSIVE_CALL` | 22 |
-| `PROPERTY_HIDES_JAVA_FIELD` | 22 |
-| `REDUNDANT_VISIBILITY_MODIFIER` | 22 |
-| `INFERRED_INVISIBLE_RETURN_TYPE_WARNING` | 20 |
-| `EMPTY_RANGE` | 19 |
-| `DELEGATED_MEMBER_HIDES_SUPERTYPE_OVERRIDE` | 18 |
-| `DEPRECATED_JAVA_ANNOTATION` | 16 |
-| `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 |
-| `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 |
-| `EQUALITY_NOT_APPLICABLE_WARNING` | 15 |
-| *81 more* | |
+| `MISSING_DEPENDENCY_SUPERCLASS_WARNING` | 3 |
+| `REDUNDANT_RETURN` | 2 |
+| `CANNOT_CHANGE_ACCESS_PRIVILEGE_WARNING` | 1 |
+| `CANNOT_INFER_VISIBILITY_WARNING` | 1 |
+| `EXPANSIVE_INHERITANCE_IN_JAVA` | 1 |
+| `FINITE_BOUNDS_VIOLATION_IN_JAVA` | 1 |
+| `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY` | 1 |
+| `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE` | 1 |
+| `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING` | 1 |
 

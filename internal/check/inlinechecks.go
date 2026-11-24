@@ -16,6 +16,7 @@ import (
 func (c *Checker) inlineBodyChecks(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.inlineUsage(d)
 	c.publicInline(d, cls)
+	c.lessVisibleInline(d, cls)
 	if publicAPIInline(d, cls) {
 		c.inlineAccess(d, protectedAPI(d, cls))
 	}
@@ -95,7 +96,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 	locals := map[string]bool{} // the names of the classes declared in d
 	depth := 0                  // the classes declared in d the code is in
 	protected := func(p syntax.Pos, recv syntax.Expr, owner *types.ClassSym, m *syntax.Modifiers, what, name string) {
-		if protectedAPI || owner == nil || !(m != nil && m.Visibility == syntax.Protected && publicAPIClass(owner) || m == nil && javaProtected(owner)) {
+		if protectedAPI || owner == nil || !(m != nil && (m.Visibility == syntax.Protected || m.Visibility == syntax.Public && inProtectedClass(owner)) && publicAPIClass(owner) || m == nil && javaProtected(owner)) {
 			return
 		}
 		if recv == nil && depth > 0 || recv != nil && localType(recv.Type()) {
@@ -123,6 +124,23 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 			inspectClass(n.Decl, visit)
 			depth--
 			return false
+		case *syntax.Assign:
+			// A property whose setter is protected.
+			var v *types.VarSym
+			var recv syntax.Expr
+			switch t := n.Target.(type) {
+			case *syntax.Ident:
+				if t.Member == nil {
+					v = t.Sym
+				}
+			case *syntax.Member:
+				if _, ok := t.X.(*syntax.Super); !ok {
+					v, recv = t.Prop, t.X
+				}
+			}
+			if v != nil && v.Kind == types.Prop && !protectedProp(v) && setterVis(v) == syntax.Protected {
+				protected(n.Target.Pos(), recv, v.Owner, &syntax.Modifiers{Visibility: syntax.Protected}, "property setter", v.Name)
+			}
 		case *syntax.Super:
 			if n.Label == "" && depth == 0 || n.Label != "" && !locals[n.Label] {
 				c.errorf(n.P, "accessing super members from public-API inline function is prohibited")
@@ -175,6 +193,17 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 	inspectInline(d, visit)
 }
 
+// inProtectedClass reports whether cls is protected, or nested in a
+// protected class: its public members are effectively protected.
+func inProtectedClass(cls *types.ClassSym) bool {
+	for k := cls; k != nil; k = k.Outer {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && cd.Visibility == syntax.Protected {
+			return true
+		}
+	}
+	return false
+}
+
 // inspectInline visits the code of inline function d that its copies
 // have: its body and its parameters' default values.
 func inspectInline(d *syntax.FunDecl, visit func(any) bool) {
@@ -202,6 +231,7 @@ func (c *Checker) inlineAccessorChecks(d *syntax.PropDecl, cls *types.ClassSym) 
 		}
 		f := &syntax.FunDecl{Modifiers: d.Modifiers, Name: a.Name, P: a.P, Body: a.Body, ExprBody: a.ExprBody, Params: a.Params}
 		c.publicInline(f, cls)
+		c.lessVisibleInline(f, cls)
 		if publicAPIInline(f, cls) {
 			c.inlineAccess(f, protectedAPI(f, cls))
 		}
@@ -466,20 +496,28 @@ func (c *Checker) inlineProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if !d.Inline && !d.InlineGetter && !d.InlineSetter {
 		return
 	}
-	if virtualMember(d.Modifiers, owner) {
-		p := d.P
-		switch {
-		case d.Inline:
-		case d.InlineGetter && d.Getter != nil:
-			p = d.Getter.P
-		case d.InlineSetter && d.Setter != nil:
-			p = d.Setter.P
-		}
-		c.errorf(p, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
-	}
+	c.virtualInlineProp(d, owner)
 	if d.Init != nil || d.Field != nil {
 		c.errorf(d.P, "inline property cannot have a backing field")
 	}
+}
+
+// virtualInlineProp reports an inline property of class owner, or one
+// with an inline accessor, that is virtual, and whether it is.
+func (c *Checker) virtualInlineProp(d *syntax.PropDecl, owner *types.ClassSym) bool {
+	if !d.Inline && !d.InlineGetter && !d.InlineSetter || !virtualMember(d.Modifiers, owner) {
+		return false
+	}
+	p := d.P
+	switch {
+	case d.Inline:
+	case d.InlineGetter && d.Getter != nil:
+		p = d.Getter.P
+	case d.InlineSetter && d.Setter != nil:
+		p = d.Setter.P
+	}
+	c.errorf(p, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	return true
 }
 
 // inlineFileChecks checks the file's inline functions after all its code
@@ -777,6 +815,20 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 			}
 		}
 	}
+	if d.Inline {
+		// A context parameter of a function type must be noinline (see
+		// CONTEXT_PARAMETER_MUST_BE_NOINLINE); one of another type can't
+		// be either.
+		for _, p := range d.Contexts {
+			if p.Sym != nil && (p.Noinline || p.Crossinline) && notInlinable(p.Sym.Type) {
+				mod := "noinline"
+				if p.Crossinline {
+					mod = "crossinline"
+				}
+				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
+			}
+		}
+	}
 	for _, p := range d.Params {
 		if p.Sym == nil || p.Vararg {
 			continue
@@ -787,9 +839,7 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 			if p.Crossinline {
 				mod = "crossinline"
 			}
-			notFunc := t.K == types.Unit || t.K >= types.Bool && t.K <= types.Any ||
-				t.K == types.Class && t.C != nil && !t.C.Func && !strings.Contains(t.C.Name, "KFunction") && !strings.Contains(t.C.Name, "KSuspendFunction")
-			if !d.Inline || notFunc {
+			if !d.Inline || notInlinable(t) {
 				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
 			}
 		}
@@ -812,12 +862,19 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 	}
 }
 
+// notInlinable reports whether a parameter of type t can't be noinline
+// or crossinline: it's of no function type.
+func notInlinable(t types.Type) bool {
+	return t.K == types.Unit || t.K >= types.Bool && t.K <= types.Any ||
+		t.K == types.Class && t.C != nil && !t.C.Func && !strings.Contains(t.C.Name, "KFunction") && !strings.Contains(t.C.Name, "KSuspendFunction")
+}
+
 // invalidInlineDefault reports whether x, the default value of an inline
 // functional parameter, isn't a lambda, an anonymous function or a
 // callable reference, which the inliner can't inline.
 func invalidInlineDefault(x syntax.Expr) bool {
 	switch x.(type) {
-	case *syntax.Call, *syntax.Ident, *syntax.Member:
+	case *syntax.Call, *syntax.Ident, *syntax.Member, *syntax.ObjectExpr:
 		return true
 	}
 	return false

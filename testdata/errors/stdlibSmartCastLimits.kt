@@ -61,3 +61,13 @@ fun assignedAgain(start: String?) {
     v = shorten(requireNotNull(v))
     v.length // ERROR only safe (?.) or non-null asserted (!!.) calls are allowed
 }
+
+// A local delegated val's getValue may return anything each time.
+fun delegatedLocal() {
+    val x: Any by lazy { "" }
+    if (x is String) {
+        x.length // ERROR unresolved reference: length
+    }
+    require(x is String)
+    x.length // ERROR unresolved reference: length
+}

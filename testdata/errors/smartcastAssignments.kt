@@ -361,3 +361,31 @@ class PlainParam(x: Int?) {
         if (x != null) x.inc()
     }
 }
+
+// x = a ?: b gives x its declared type, as K2 infers the elvis from it,
+// narrowed only to not null, unless b is of type Nothing.
+interface Foo { fun foo() }
+
+fun elvisAssign(any: Any, a: Foo, maybe: Foo?, s: String?, t: String) {
+    var x = any
+    x = maybe ?: a
+    x.foo() // ERROR unresolved reference: foo
+    x = maybe ?: return
+    x.foo()
+    var y: String? = s
+    y = s ?: t
+    y.length
+}
+
+// Nor of a property of a var a lambda assigns, which may run between the
+// check and the read, as K2 has it whatever the value it assigns.
+class Stable(val x: Any)
+
+fun later(f: () -> Unit) {}
+
+fun propertyOfCapturedVar() {
+    var b = Stable("")
+    later { b = Stable("") }
+    b.x as String
+    b.x.length // ERROR unresolved reference: length
+}

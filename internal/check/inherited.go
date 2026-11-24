@@ -3,6 +3,7 @@ package check
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -49,11 +50,12 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl, jdk bool) [][]*types.F
 		if s == cls || s.Name == "java/lang/Object" {
 			return true
 		}
-		for name, fs := range s.Methods {
+		// By name: the diagnostics' order doesn't depend on the map's.
+		for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
 			if anyMember[name] {
 				continue
 			}
-			for _, g := range fs {
+			for _, g := range s.Methods[name] {
 				if g.Static || g.Private || g.Ext {
 					continue
 				}
@@ -187,6 +189,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 	reported := map[string]bool{}
 	for _, gr := range c.inheritedFunGroups(d, false) {
 		name := gr[0].Name
+		c.supertypeParamNameWarnings(d, gr)
 		if !mixed && slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
 			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
 		}
@@ -244,7 +247,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 		impl := -1
 		for i, g := range gr {
 			ensureFun(g)
-			rets[i] = c.overrideSubst(this, gr[0], g).Apply(g.Ret)
+			rets[i] = c.overrideSubst(this, gr[0], g).Apply(c.inheritedRetNullability(g))
 			if !g.Abstract && impls == 1 {
 				impl = i
 			}
@@ -419,6 +422,10 @@ func (c *Checker) checkInheritedProps(d *syntax.ClassDecl, reported map[string]b
 				}
 				if cmp, ok := compareVisibility(o.vis, q.vis); ok && cmp > 0 {
 					c.errorf(d.P, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.vis), name, q.owner.DisplayName())
+				} else if o.mutable && q.mutable && !q.inheritsSetter && !o.inheritsSetter {
+					if cmp, ok := compareVisibility(o.setterVis, q.setterVis); ok && cmp > 0 {
+						c.warnf(d.P, "CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.setterVis), name, q.owner.DisplayName())
+					}
 				}
 			}
 		}
@@ -486,6 +493,13 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 			for _, g := range c.overridden(cls, f) {
 				conflict = conflict || component && !g.Abstract
 				copies = copies || !component
+				if component && g.Suspend {
+					p := d.P
+					if cp := dataProp(d, name); cp != nil {
+						p = cp.P
+					}
+					c.errorf(p, "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", name, name, g.Owner.DisplayName())
+				}
 			}
 		}
 	}
@@ -497,12 +511,30 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 	}
 }
 
+// dataProp returns the parameter of data class d's primary constructor
+// whose property componentN, name, returns, or nil.
+func dataProp(d *syntax.ClassDecl, name string) *syntax.CtorParam {
+	n, err := strconv.Atoi(strings.TrimPrefix(name, "component"))
+	if err != nil {
+		return nil
+	}
+	for _, cp := range d.CtorParams {
+		if cp.IsProp {
+			if n--; n == 0 {
+				return cp
+			}
+		}
+	}
+	return nil
+}
+
 // checkDelegatedMembers checks the members that class d's delegation
 // implements against the members of its supertypes they override: their
 // types must have one that is a subtype of the others, which the
 // delegated member's must be too, a delegated val can't implement a var,
 // and only one of the direct supertypes may declare a default value.
 func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
+	c.delegationHidesWarnings(d)
 	cls := d.Sym
 	this := cls.This()
 	// fits returns how type t, the delegated member's, fits the others:
@@ -516,12 +548,26 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 		return slices.ContainsFunc(all, subOfAll), subOfAll(t)
 	}
 	reported := map[string]bool{}
+	// A member delegation implements can't override a superclass's final
+	// one (OVERRIDING_FINAL_MEMBER_BY_DELEGATION), reported once.
+	finalReported := false
+	overridesFinal := func(kind, name string) {
+		if !finalReported {
+			finalReported = true
+			c.errorf(d.P, "%s '%s', which delegation implements, overrides a final member of a superclass", kind, name)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
 		for _, f := range cls.Methods[name] {
 			if _, ok := f.Decl.(*syntax.Delegated); !ok || f.Ext || reported[name] {
 				continue
 			}
 			over := c.overridden(cls, f)
+			for _, o := range over {
+				if !o.Owner.Interface && !o.Abstract && o.Final {
+					overridesFinal("fun", name)
+				}
+			}
 			for i := range f.Params {
 				n := 0
 				for _, o := range over {
@@ -564,6 +610,9 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 		var ts []types.Type
 		mutable := false
 		for _, o := range c.overriddenProps(cls, p) {
+			if !o.owner.Interface && !o.abstract && o.final {
+				overridesFinal("property", p.Name)
+			}
 			if o.owner.External {
 				ts = nil
 				break
@@ -586,4 +635,32 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 			c.errorf(d.P, "the type of property '%s', which delegation implements, isn't a subtype of the types of the properties it overrides", p.Name)
 		}
 	}
+}
+
+// inheritedRetNullability returns the result type of function g: as in
+// Kotlin, a Java method's of a platform type is nullable if a Java
+// method it overrides is annotated @Nullable there, JUnknownImpl's foo()
+// of JNullBase's @Nullable foo().
+func (c *Checker) inheritedRetNullability(g *types.FunSym) types.Type {
+	r := g.Ret
+	if !r.P || g.Static || g.Owner == nil || !isJavaClass(g.Owner) {
+		return r
+	}
+	g.Owner.Supertypes(func(s *types.ClassSym) bool {
+		if s == g.Owner || !isJavaClass(s) {
+			return true
+		}
+		for _, h := range s.Methods[g.Name] {
+			if h.Static || h.Private || len(h.Params) != len(g.Params) || jvmDesc(h) != jvmDesc(g) {
+				continue
+			}
+			ensureFun(h)
+			if !h.Ret.P && h.Ret.N && h.Ret.K != types.Invalid {
+				r.P = false
+				return false
+			}
+		}
+		return true
+	})
+	return r
 }

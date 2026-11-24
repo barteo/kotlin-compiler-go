@@ -47,6 +47,22 @@ object Java {
     }
 }
 
+// A candidate without defaults, then one that isn't generic, wins before
+// conversions to Kotlin fun interfaces are counted.
+fun interface SAction { fun accept(s: String) }
+
+object Order {
+    fun bar(name: String = "", x: String.() -> Unit) = "defaults"
+    fun bar(x: SAction) = "SAction"
+    fun <T> baz(x: suspend () -> T) = "generic"
+    fun baz(x: KRunnable) = "plain"
+    fun test() {
+        println(bar {})
+        println(bar("") {})
+        println(baz {})
+    }
+}
+
 object Same {
     fun run(r: KRunnable) = "KRunnable"
     fun run(f: () -> Unit) = "fun"
@@ -75,6 +91,7 @@ fun main() {
     Kotlin.test {}
     Java.test {}
     Same.test {}
+    Order.test()
     println(Flow(1).debounce { 0 })
     println(Flow(1).debounce { "s" })
 }

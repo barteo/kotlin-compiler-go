@@ -14,6 +14,14 @@ defaults: {"r":"req"}
   back: Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500) false
   defaults: {"a":5,"b":10,"r":"req","renamed":"n","body":"body5"}
   list: [5, 10, req, n, body5] -> Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500)
+literals: {}
+  back: Literals(l=0, s=1, b=-2, n=3, u=4, d=5.0) true
+  defaults: {"l":0,"s":1,"b":-2,"n":3,"u":4,"d":5.0}
+  list: [0, 1, -2, !, 3, 4, 5.0] -> Literals(l=0, s=1, b=-2, n=3, u=4, d=5.0)
+literals2: {"l":1,"s":2,"b":3,"n":null,"u":5,"d":6.0}
+  back: Literals(l=1, s=2, b=3, n=null, u=5, d=6.0) true
+  defaults: {"l":1,"s":2,"b":3,"n":null,"u":5,"d":6.0}
+  list: [1, 2, 3, null, 5, 6.0] -> Literals(l=1, s=2, b=3, n=null, u=5, d=6.0)
 defaults2: {"a":1,"r":"r","renamed":"m"}
   back: Defaults(a=1, b=2, r=r, n=m, body=body1, t=3, computed=2, lazyV=100) false
   defaults: {"a":1,"b":2,"r":"r","renamed":"m","body":"body1"}
@@ -217,6 +225,129 @@ missing: MissingFieldException: Fields [l, s, b, c, f, d, z, str] are required f
 missingBase: MissingFieldException: Field 'id' is required for type with serial name 'app.Derived', but it was missing at path: $
 unknown: JsonDecodingException: Encountered an unknown key 'x' at offset 9 at path: $
 unknownType: JsonDecodingException: Unexpected JSON token at offset 0: Serializer for subclass 'nope' is not found in the polymorphic scope of 'Shape' at path: $
+gbox: {"value":1}
+  back: GBox(value=1) true
+  defaults: {"value":1}
+  list: [1] -> GBox(value=1)
+gbox nullable: {"value":null}
+  back: GBox(value=null) true
+  defaults: {"value":null}
+  list: [null] -> GBox(value=null)
+gpage: {"items":["a","b"]}
+  back: GPage(items=[a, b], next=null) true
+  defaults: {"items":["a","b"],"next":null}
+  list: [2, a, b, null] -> GPage(items=[a, b], next=null)
+gpage2: {"items":[1],"next":2}
+  back: GPage(items=[1], next=2) true
+  defaults: {"items":[1],"next":2}
+  list: [1, 1, !, 2] -> GPage(items=[1], next=2)
+gtwo: {"a":1,"m":{"k":"v"},"b":null}
+  back: GTwo(a=1, m={k=v}, b=null) true
+  defaults: {"a":1,"m":{"k":"v"},"b":null}
+  list: [1, 1, k, v, null] -> GTwo(a=1, m={k=v}, b=null)
+gbase: {"t":"s"}
+  back: GBase(s) true
+  defaults: {"t":"s"}
+  list: [s] -> GBase(s)
+gintbase: {"t":1,"x":2}
+  back: GIntBase(1, 2) true
+  defaults: {"t":1,"x":2}
+  list: [1, 2] -> GIntBase(1, 2)
+gsub: {"t":[3],"u":3}
+  back: GSub([3], 3) true
+  defaults: {"t":[3],"u":3}
+  list: [1, 3, 3] -> GSub([3], 3)
+app.GNull(t: kotlin.Nothing?, x: kotlin.Int)
+gres ok: {"type":"app.GRes.Ok","v":"v"}
+  back: Ok(v=v) true
+  defaults: {"type":"app.GRes.Ok","v":"v"}
+  list: [app.GRes.Ok, v] -> Ok(v=v)
+gres loading: {"type":"app.GRes.Loading"}
+  back: Loading true
+  defaults: {"type":"app.GRes.Loading"}
+  list: [app.GRes.Loading] -> Loading
+gres err: {"type":"app.GRes.Err","msg":"e"}
+  back: Err(msg=e) true
+  defaults: {"type":"app.GRes.Err","msg":"e"}
+  list: [app.GRes.Err, e] -> Err(msg=e)
+gres ok int: {"type":"app.GRes.Ok","v":5}
+  back: Ok(v=5) true
+  defaults: {"type":"app.GRes.Ok","v":5}
+gshape: {"type":"app.GShape.Circle","r":6}
+  back: Circle(r=6) true
+  defaults: {"type":"app.GShape.Circle","r":6}
+  list: [app.GShape.Circle, 6] -> Circle(r=6)
+gshape empty: {"type":"app.GShape.Empty"}
+  back: Empty true
+  defaults: {"type":"app.GShape.Empty"}
+  list: [app.GShape.Empty] -> Empty
+gtree: {"value":1,"children":[{"value":2},{"value":3,"children":[{"value":4}]}]}
+  back: GTree(value=1, children=[GTree(value=2, children=[]), GTree(value=3, children=[GTree(value=4, children=[])])]) true
+  defaults: {"value":1,"children":[{"value":2,"children":[]},{"value":3,"children":[{"value":4,"children":[]}]}]}
+  list: [1, 2, 2, 0, 3, 1, 4, 0] -> GTree(value=1, children=[GTree(value=2, children=[]), GTree(value=3, children=[GTree(value=4, children=[])])])
+gcmp: {"v":"a","list":["b"]}
+  back: GCmp(v=a, list=[b]) true
+  defaults: {"v":"a","list":["b"]}
+  list: [a, 1, b] -> GCmp(v=a, list=[b])
+gwhere: {"t":"w"}
+  back: GWhere(w) true
+  defaults: {"t":"w"}
+  list: [w] -> GWhere(w)
+ginner: {"map":{"x":1},"box":{"value":[5]}}
+  back: Inner(map={x=1}, t=7, box=GBox(value=[5])) true
+  defaults: {"map":{"x":1},"box":{"value":[5]}}
+  list: [1, x, 1, !, 1, 5] -> Inner(map={x=1}, t=7, box=GBox(value=[5]))
+libbox: {"v":1}
+  back: LibBox(v=1, tag=) true
+  defaults: {"v":1,"tag":""}
+  list: [1, ] -> LibBox(v=1, tag=)
+gholder: {"m":{"k":[1,null]},"p":{"first":2,"second":3}}
+  back: GHolder(m={k=[1, null]}, p=(2, 3)) true
+  defaults: {"m":{"k":[1,null]},"p":{"first":2,"second":3}}
+  list: [1, k, 2, !, 1, null, 2, 3] -> GHolder(m={k=[1, null]}, p=(2, 3))
+guser: {"b":{"value":"b"},"n":{"value":null},"l":[{"value":1}],"r":{"type":"app.GRes.Ok","v":"r"},"two":{"a":1,"m":{"k":"v"},"b":"b"},"s":{"type":"app.GShape.Circle","r":2},"lib":{"v":3,"tag":"t"},"nested":{"value":{"v":"n"}}}
+  back: GUser(b=GBox(value=b), n=GBox(value=null), l=[GBox(value=1)], r=Ok(v=r), two=GTwo(a=1, m={k=v}, b=b), s=Circle(r=2), lib=LibBox(v=3, tag=t), nested=GBox(value=LibBox(v=n, tag=)), kotlin=[1]) true
+  defaults: {"b":{"value":"b"},"n":{"value":null},"l":[{"value":1}],"r":{"type":"app.GRes.Ok","v":"r"},"two":{"a":1,"m":{"k":"v"},"b":"b"},"s":{"type":"app.GShape.Circle","r":2},"lib":{"v":3,"tag":"t"},"nested":{"value":{"v":"n","tag":""}},"kotlin":[1]}
+  list: [b, !, null, 1, 1, app.GRes.Ok, r, 1, 1, k, v, !, b, app.GShape.Circle, 2, 3, t, n, , 1, 1] -> GUser(b=GBox(value=b), n=GBox(value=null), l=[GBox(value=1)], r=Ok(v=r), two=GTwo(a=1, m={k=v}, b=b), s=Circle(r=2), lib=LibBox(v=3, tag=t), nested=GBox(value=LibBox(v=n, tag=)), kotlin=[1])
+app.GBox(value: kotlin.Int)
+app.GPage(items: kotlin.collections.ArrayList, next: kotlin.String?)
+app.GSub(t: kotlin.collections.ArrayList, u: kotlin.Int)
+app.GUser(b: app.GBox, n: app.GBox?, l: kotlin.collections.ArrayList, r: app.GRes, two: app.GTwo, s: app.GShape, lib: lib.LibBox, nested: app.GBox, kotlin: kotlin.collections.ArrayList)
+app.GRes
+kotlinx.serialization.Polymorphic<GAbs> OPEN
+app.GBox(value: kotlin.String)
+app.GBox(value: kotlin.Int)
+app.GBox(value: kotlin.Int)
+app.GTree {"value":[1]} {"v":{"value":2}}
+GPage(items=[x], next=null)
+gmissing: MissingFieldException: Field 'value' is required for type with serial name 'app.GBox', but it was missing at path: $
+gmissingBase: MissingFieldException: Field 't' is required for type with serial name 'app.GSub', but it was missing at path: $
+gmissingTwo: MissingFieldException: Fields [m, b] are required for type with serial name 'app.GTwo', but they were missing at path: $
+true
+big: {"p0":1,"p31":"x","p32":7,"p34":2}
+  back: Big(1, 1, 30, x, 7, 33, 2, b1) true
+Big(3, 1, 30, y, 32, 33, 4, z)
+bigMissing: MissingFieldException: Fields [p31, p34] are required for type with serial name 'app.Big', but they were missing at path: $
+bigMissing2: MissingFieldException: Field 'p34' is required for type with serial name 'app.Big', but it was missing at path: $
+bigger: {"p0":0,"p31":"s","p34":9,"q0":5}
+  back: Bigger(Big(0, 1, 30, s, 32, 33, 9, b0), 5, q1) true
+Bigger(Big(1, 1, 30, a, 32, 33, 2, b1), 3, q1)
+biggerMissing: MissingFieldException: Field 'p34' is required for type with serial name 'app.Bigger', but it was missing at path: $
+arrays: {"i":[1,2],"l":[3],"s":[4],"b":[5],"c":["c"],"f":[1.5],"d":[2.5],"z":[true],"ui":[7],"ul":[8],"us":[9],"ub":[10],"strs":["x","y"],"nullable":[null,"n"],"cells":[{"n":1}],"nested":[[1],[]],"boxed":[4,5],"lists":[["a"]],"inList":[[6]]}
+  back: Arrays([1, 2], [7], [x, y], [[1], []], [4, 5], null, 1m 30s, 550e8400-e29b-41d4-a716-446655440000, 2023-11-14T22:13:20Z, kotlin.Unit) true
+Arrays([9], [4294967295], [q], [[1, 2]], [1], [1], 2m, 550e8400-e29b-41d4-a716-446655440000, 2023-11-14T22:13:20Z, kotlin.Unit)
+kotlin.Array(PrimitiveDescriptor(kotlin.String))
+kotlin.time.Duration
+late: {"id":3,"s":"q","after":"a3","list":[1]}
+  back: Late(3, q, a33, [1], false) false
+Late(0, z, a0, [], false)
+lateMissing: MissingFieldException: Fields [s, list] are required for type with serial name 'app.Late', but they were missing at path: $
+lateUnset: lateinit property s has not been initialized
+wallet: {"m":5,"l":[1],"mm":{"k":null},"d":1000,"dl":[2],"box":"<q>","u":"00000000-0000-0001-0000-000000000002","t":{"tag":"y"},"a":{"type":"cat","lives":9},"sh":{"type":"sq","side":3},"ci":7,"ct":{"tag":"z"}}
+  back: Wallet(5, [1], 1000, q, 00000000-0000-0001-0000-000000000002, Tagged(tag=y), Kitty(lives=9), Square(side=3), 7, Tagged(tag=z)) true
+CONTEXTUAL
+kotlinx.serialization.Polymorphic<Critter>?
+noModule: Serializer for class 'Money' is not found.
 true
 [init 5 10 body5 11, init 5 10 body5 11, init 5 10 body5 11, init 1 2 body1 3, init 1 2 body1 3, init 1 2 body1 3, init 3 6 b 7]
 use: {"p":{"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"},"c":"vert","s":{"type":"app.Shape.Rect","w":2,"h":3},"e":{"type":"app.Event.Key","id":2,"code":"k"},"w":{"v":1},"inner":{"q":2},"r":{"type":"app.Page","n":3}}
@@ -229,3 +360,13 @@ matted: Matted(Margin(percent=1), 7)
 gallery: {"items":[{"fg":"#7","name":"G"}]} -> Gallery(items=[Painted(fg=Rgb(packed=7), bg=Rgb(packed=255), accent=null, rating=3, bonus=null, name=g)])
 pets: [{"type":"app.Pet.Cat","lives":1},{"type":"app.Pet.Wild.Fox","tail":2}] -> [Cat(lives=1), Fox(tail=2)]
 app.Prims
+gbox: {"value":1}
+gpage: {"items":[1],"next":2} GPage(items=[3], next=null)
+ghold: {"b":{"value":"s"},"p":{"items":[{"value":1}]},"r":{"type":"app.GRes.Ok","v":2}} -> true
+gusesub: {"t":"s","more":4} -> GUseSub(s, 4)
+gusesub2: {"t":5,"v":5} -> GUseSub2(5, 5)
+app.GBox(value: kotlin.String)
+bigsub: {"p0":2,"p31":"t","p34":3,"z":8} -> BigSub(Big(2, 1, 30, t, 32, 33, 3, b2), 8)
+bigsub: BigSub(Big(1, 1, 30, a, 32, 33, 2, b1), 3)
+arrays: true
+late: Late(0, u, a0, [2], false)

@@ -176,8 +176,11 @@ func (c *Checker) inside(cls *types.ClassSym) bool {
 // program's by its visibility, a protected one of the class path's in
 // subclasses of its class.
 func (c *Checker) funVisible(f *types.FunSym) bool {
-	if o := f.Owner; o != nil && o.CompanionOf != nil && !o.External && !c.classVisible(o) {
-		// A member of a private companion object, outside its class.
+	if o := f.Owner; c.inPrivateClass(o) || o != nil && o.CompanionOf != nil && !o.External && !c.classVisible(o) {
+		// A member of a private companion object, outside its class,
+		// or of a private class of the program the code can't see, as
+		// bar of another file's private class A, through a value of its
+		// type that a function exposes.
 		return false
 	}
 	if f.PackagePrivate {
@@ -233,6 +236,9 @@ func propNotInherited(p *types.VarSym, on *types.ClassSym) bool {
 
 // propVisible reports whether the code may read property p.
 func (c *Checker) propVisible(p *types.VarSym) bool {
+	if c.inPrivateClass(p.Owner) {
+		return false // see funVisible
+	}
 	if p.PackagePrivate {
 		// A Java field of package visibility, which its subclasses in
 		// other packages don't see either.
@@ -261,7 +267,7 @@ func (c *Checker) setterVisible(p *types.VarSym) bool {
 		return false
 	}
 	v := setterVis(p)
-	return v == syntax.Public || c.canSee(v, p.Owner, p.Facade)
+	return v == syntax.Public || c.canSee(v, p.Owner, p.FieldClass())
 }
 
 // setterVis returns the visibility of the setter of a property of the
@@ -342,11 +348,19 @@ func (c *Checker) invisibleFun(p syntax.Pos, f *types.FunSym) {
 		c.errorf(p, "cannot access '%s': it is a member of a private companion object of '%s'", f.Name, o.CompanionOf.DisplayName())
 		return
 	}
+	if c.inPrivateClass(f.Owner) {
+		c.invisibleMember(p, f.Name, f.Owner)
+		return
+	}
 	c.errorf(p, "cannot access '%s': it is %s", f.Name, visibilityOf(memberVisibility(f), f.Owner))
 }
 
 // invisibleProp reports a use of a property the code can't see.
 func (c *Checker) invisibleProp(p syntax.Pos, v *types.VarSym) {
+	if c.inPrivateClass(v.Owner) {
+		c.invisibleMember(p, v.Name, v.Owner)
+		return
+	}
 	vis, ok := propVisibility(v)
 	if !ok {
 		vis = syntax.Protected
@@ -468,14 +482,35 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 	return lookup
 }
 
+// annotationStatics returns the class whose companion members the
+// arguments of annotations on site in class owner see. As with K2, a
+// class's own annotations are outside it: they see its outer class's, and a
+// companion's annotations not its own members.
+func annotationStatics(owner *types.ClassSym, site annotSite) *types.ClassSym {
+	if owner == nil || site.kind != siteClass {
+		return owner
+	}
+	if o := owner.Outer; o != nil && o.Companion == owner {
+		return o.Outer
+	}
+	return owner.Outer
+}
+
 // annotationThis returns the class whose instance is this in the
 // arguments of annotations on site in class owner, or nil: as with
-// kotlinc, those of a member, a parameter or a constructor see the
-// class's instance members, and those of an inner class its outer
-// class's, as do those of its supertypes. Those of other types are left
-// out: owner is only the class the type was first resolved in.
+// kotlinc, those of a member or its parameters see the class's instance
+// members, and those of an inner class its outer class's, as do those of
+// its supertypes and its constructors' header (the constructor and its
+// parameters), which don't see the class's own. Those of other types are
+// left out: owner is only the class the type was first resolved in.
 func annotationThis(owner *types.ClassSym, site annotSite) *types.ClassSym {
 	if owner == nil {
+		return nil
+	}
+	if site.header {
+		if owner.Inner {
+			return owner.Outer
+		}
 		return nil
 	}
 	switch site.kind {
@@ -539,19 +574,72 @@ func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax
 			return true
 		}
 		rc := c.classOf(t.NonNull())
-		if rc == nil {
+		// As in K2, an override of a member the code sees is visible on
+		// the override's class only through a smart cast from a type
+		// whose member the code sees, which K2 falls back to:
+		// other.kind() of other: Shape smart-cast to Square, in Shape's
+		// code, but not x.kind() of x: Square, nor of x: Any smart-cast
+		// to Square. Java's rule is by package, not by the override.
+		via := c.castFromClass(x)
+		if isJavaClass(owner) {
+			via = rc
+		}
+		return c.protectedViaClass(owner, f, rc, via)
+	}
+}
+
+// castFromClass returns, for a variable x whose smart cast changes its
+// class, the class of its declared type, and nil otherwise.
+func (c *Checker) castFromClass(x syntax.Expr) *types.ClassSym {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		if x.Cast && x.Sym != nil {
+			return c.classOf(x.Sym.Type.NonNull())
+		}
+	case *syntax.Member:
+		if x.Cast && x.Prop != nil {
+			return c.classOf(x.Prop.Type.NonNull())
+		}
+	}
+	return nil
+}
+
+// protectedViaClass is protectedVia1 for a receiver of class rc, nil if
+// it isn't known. A member of owner that overrides one the code sees is
+// visible too if the receiver's class is also via, nil for none: the
+// class of the type a smart cast is from.
+func (c *Checker) protectedViaClass(owner *types.ClassSym, f *types.FunSym, rc, via *types.ClassSym) bool {
+	if rc == nil {
+		return true
+	}
+	for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
+		if (k == owner || k.IsSubclassOf(owner) || via != nil && (via == k || via.IsSubclassOf(k)) && owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
 			return true
 		}
-		for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
-			if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
-				return true
-			}
-			if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
-				return true
-			}
+		if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
+			return true
 		}
+	}
+	return false
+}
+
+// protectedSetterVia reports whether the code may assign property p,
+// whose setter is protected, on receiver x, by the rule of protectedVia.
+// As kotlinc's, it goes by the declared type of a smart cast x, if it's
+// not nullable: x.y = 1 in if (x is Derived) is an error for x: Base,
+// but not for x: Base?.
+func (c *Checker) protectedSetterVia(p *types.VarSym, x syntax.Expr) bool {
+	if !c.protectedVia(p.Owner, x) {
 		return false
 	}
+	if x == nil {
+		return true
+	}
+	if d, ok := c.smartCastFrom(x, x.Type()); ok && !d.N && p.Owner != nil && p.Owner.CompanionOf == nil && !p.Owner.Object && !c.javaPackage(p.Owner) {
+		dc := c.classOf(d.NonNull())
+		return c.protectedViaClass(p.Owner, nil, dc, dc)
+	}
+	return true
 }
 
 // strictProtectedVia reports whether the code may use a protected member
@@ -655,6 +743,15 @@ func (c *Checker) companionProtectedProp(v *types.VarSym, p syntax.Pos) {
 	c.companionProtected(v.Owner, v.Name, v.JvmStatic || v.JvmField || v.Const, p)
 }
 
+// companionProtectedSetter is companionProtected for an assignment of
+// property v, whose setter is protected.
+func (c *Checker) companionProtectedSetter(v *types.VarSym, p syntax.Pos) {
+	if v.Owner == nil || v.Owner.CompanionOf == nil || v.Kind != types.Prop || protectedProp(v) || setterVis(v) != syntax.Protected {
+		return // a protected property's use is reported as such
+	}
+	c.companionProtected(v.Owner, v.Name, v.JvmStatic || v.JvmField, p)
+}
+
 // declaresOverridden reports whether class k declares a member that f, a
 // member of a subclass of k, overrides: A's code may call b.f() on b: B
 // for B's override of A's protected f, but not that of a member A
@@ -694,4 +791,31 @@ func (c *Checker) shadowedField(cls *types.ClassSym, f *types.VarSym, p syntax.P
 	if shadow != nil {
 		c.errorf(p, "the Java field '%s' is shadowed by the Kotlin property of '%s', which is invisible here", f.Name, shadow.Owner.Name)
 	}
+}
+
+// invisibleMember reports a use of member name of class owner, which the
+// code can't see, or a class it is nested in.
+func (c *Checker) invisibleMember(p syntax.Pos, name string, owner *types.ClassSym) {
+	k := c.invisibleOuter(owner)
+	v, _ := declVisibility(k.Decl)
+	c.errorf(p, "cannot access '%s': it is a member of '%s', which is %s", name, owner.DisplayName(), visibilityOf(v, k.Outer))
+}
+
+// inPrivateClass reports whether cls is a class of the program that the
+// code can't see, or a class it is nested in: a private companion
+// object's, another file's private class's, or a protected nested class
+// outside its outer class's subclasses, except in a subclass of cls,
+// which inherits the member, as K2 has it.
+func (c *Checker) inPrivateClass(cls *types.ClassSym) bool {
+	if cls == nil || cls.External {
+		return false
+	}
+	k := c.invisibleOuter(cls)
+	if k == nil {
+		return false
+	}
+	if v, _ := declVisibility(k.Decl); v == syntax.Protected {
+		return !c.seesProtected(cls)
+	}
+	return true
 }

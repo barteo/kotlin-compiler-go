@@ -24,6 +24,10 @@ func (c *Checker) isExpr(x *syntax.Is) types.Type {
 		orig = declared // kotlinc checks the type before smart casts
 	}
 	c.impossibleIs(x.P, orig, st, x.Target, x.Not)
+	if orig.HasVars() || st.HasVars() {
+		// Of a builder's variable: checked again once it is inferred.
+		c.pclaDefer(func(sub types.Subst) { c.impossibleIs(x.P, sub.Apply(orig), sub.Apply(st), x.Target, x.Not) })
+	}
 	c.noteTypeFacts(x, x.X, st)
 	return types.BoolType
 }
@@ -38,10 +42,19 @@ func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Ty
 		}
 	}
 	c.impossibleIs(cond.P, orig, st, cond.Target, cond.NotIs)
+	if orig.HasVars() || st.HasVars() {
+		c.pclaDefer(func(sub types.Subst) { c.impossibleIs(cond.P, sub.Apply(orig), sub.Apply(st), cond.Target, cond.NotIs) })
+	}
 	if x.SubjVar == "" {
 		c.noteTypeFacts(cond, x.Subject, st)
 	} else {
 		c.noteTypeFacts(cond, nil, st)
+		if nt := c.scope.narrowedMember(nil, x.SubjSym, st); x.SubjSym != nil && nt != st && nt.K != types.Invalid {
+			// What the branches before made of the subject's variable.
+			f := c.typeFacts[cond]
+			f.casts = append(f.casts, nt)
+			c.typeFacts[cond] = f
+		}
 	}
 }
 
@@ -169,8 +182,27 @@ type castTypeInfo struct {
 var mappedClasses = map[string]bool{
 	"java/lang/Object": true, "java/lang/String": true, "java/lang/Integer": true, "java/lang/Long": true,
 	"java/lang/Short": true, "java/lang/Byte": true, "java/lang/Character": true, "java/lang/Boolean": true,
-	"java/lang/Float": true, "java/lang/Double": true, "java/lang/Void": true, "java/lang/Number": true,
+	"java/lang/Float": true, "java/lang/Double": true, "java/lang/Void": true,
 	"kotlin/Unit": true, "kotlin/Nothing": true,
+}
+
+// javaMappedKind returns the kind of the Kotlin type that kotlinc maps
+// Java class name to, if kc's types tell them apart, and else Invalid.
+func javaMappedKind(name string) types.Kind {
+	switch name {
+	case "java/lang/Object":
+		return types.Any
+	case "java/lang/String":
+		return types.String
+	}
+	if boxedPlatform[name] {
+		for _, k := range types.PrimKinds {
+			if types.PrimOf(k).Box == name {
+				return k
+			}
+		}
+	}
+	return types.Invalid
 }
 
 // castInfo returns t's castTypeInfo. It reports false for a type that
@@ -186,6 +218,14 @@ func (c *Checker) castInfo(t types.Type, depth int) (castTypeInfo, bool) {
 	case types.Class:
 		cls := t.C
 		cls.Ensure()
+		// kotlinc judges a Java class it maps to a Kotlin one as that:
+		// java.lang.Integer as Int.
+		if k := javaMappedKind(cls.Name); k != types.Invalid {
+			return c.castInfo(types.Type{K: k}, depth+1)
+		}
+		if cls.Name == "kotlin/Unit" {
+			return c.castInfo(types.UnitType, depth+1) // the object's class, of is Unit
+		}
 		if cls.Missing || mappedClasses[cls.Name] || cls.Anonymous {
 			return castTypeInfo{}, false
 		}
@@ -247,6 +287,10 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 		// x is a T from here on: in (x as T).f(x), (x as T) + x.
 		c.scope.narrows = append(c.scope.narrows, k)
 	}
+	if !types.MayBeNull(t) {
+		// a?.b as T, for a T that isn't nullable: a isn't null.
+		c.scope.narrows = append(c.scope.narrows, c.safeReceivers(x.X)...)
+	}
 	if t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
 		return types.UnitType // x as Unit, a cast to kotlin.Unit
 	}
@@ -283,6 +327,7 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 	c.bareRef, c.bareSubject = ref, subject
 	t := c.resolveType(ref)
 	c.bareRef = nil
+	subject = c.bareSubject // with a builder's variable fixed (see bareType)
 	switch {
 	case t.K == types.Invalid:
 		return t
@@ -361,6 +406,12 @@ func (c *Checker) argsInBounds(t types.Type) bool {
 // with the arguments that follow from the subject's type, x is List for
 // an x: Collection<String> giving List<String>, and * for the others.
 func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) types.Type {
+	if ref == c.bareRef && ref != nil {
+		// A builder's variable is fixed for the arguments, as K2 fixes
+		// it on demand: OTv of provide() is GenericScopeOwnerSubtype.
+		subject = c.fixedStub(subject)
+		c.bareSubject = subject
+	}
 	t, known, _ := c.bareArgs(cls, ref, subject)
 	if !known && ref == c.bareRef && ref != nil && subject.K != types.Invalid && !subject.IsParam() {
 		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",
@@ -437,6 +488,31 @@ func allStar(t types.Type) bool {
 	return true
 }
 
+// starImplied reports whether t's type arguments are all ones its star
+// projection implies, which need no check, as kotlinc's: *, out Any? or
+// Any? for a parameter declared out, in Nothing or Nothing for one
+// declared in, as in Map<out Any?, Any?>, whose V is out.
+func starImplied(t types.Type) bool {
+	if t.A == nil || t.C == nil {
+		return false
+	}
+	ps := t.C.TypeParams
+	if len(ps) != len(t.A.List) {
+		return false
+	}
+	for i, a := range t.A.List {
+		p := ps[i]
+		switch {
+		case a.V == types.Star:
+		case (a.V == types.Out || a.V == types.Inv && p.Var == types.Out) && len(p.Bounds) == 0 && a.T.K == types.Any && a.T.N:
+		case (a.V == types.In || a.V == types.Inv && p.Var == types.In) && a.T.K == types.Nothing && !a.T.N:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // argsKnown reports whether the type arguments of t, written as ref,
 // follow from the subject's type: a Collection<String> that is a List is
 // a List<String>. As with kotlinc, they do if the type with the arguments
@@ -446,6 +522,9 @@ func allStar(t types.Type) bool {
 func (c *Checker) argsKnown(t, subject types.Type, ref *syntax.TypeRef) bool {
 	s := subject.NonNull()
 	if c.subtype(s, t) {
+		return true
+	}
+	if starImplied(t) {
 		return true
 	}
 	if s.K != types.Class {
@@ -480,7 +559,11 @@ func (c *Checker) stable(v *types.VarSym) bool {
 			return c.stableOn(cp.PropSym, c.thisType())
 		}
 		return true
-	case types.Local, types.BackingField:
+	case types.Local:
+		// A local delegated val's getValue may return anything each
+		// time: K2 never smart casts it.
+		return v.Delegate == nil
+	case types.BackingField:
 		return true
 	case types.Prop:
 		return c.stableOn(v, c.thisType())

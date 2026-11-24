@@ -122,6 +122,47 @@ func (c *Checker) platformClass(p syntax.Pos, k string) {
 	c.warnf(p, "PLATFORM_CLASS_MAPPED_TO_KOTLIN", "this class is not recommended for use in Kotlin. Use '%s' instead", k)
 }
 
+// boxedPlatform are the Java classes of platformMapped that kc's types
+// tell from the Kotlin ones: java.lang.Integer, which only code that
+// names it gives a value, as java.lang.Integer::class, isn't Int.
+var boxedPlatform = map[string]bool{
+	"java/lang/Integer": true, "java/lang/Long": true, "java/lang/Short": true, "java/lang/Byte": true,
+	"java/lang/Character": true, "java/lang/Boolean": true, "java/lang/Float": true, "java/lang/Double": true,
+}
+
+// notePlatformArgs records call or property read n if a type argument it
+// infers, of type parameters tps with substitution sub in system s, is
+// a Java class that is a Kotlin one, as T of java.lang.Integer::class.java,
+// which kotlinc warns of at the callee. Not one in a type argument, as
+// KClass<java.lang.Integer> of listOf(java.lang.Integer::class).
+func (c *Checker) notePlatformArgs(n any, tps []*types.TypeParamSym, sub types.Subst, s *system) {
+	for _, tp := range tps {
+		if t := s.final(sub.Apply(types.ParamType(tp))); t.K == types.Class && boxedPlatform[t.C.Name] {
+			if c.platformArgs == nil {
+				c.platformArgs = map[any]string{}
+			}
+			c.platformArgs[n] = platformMapped[t.C.Name]
+			return
+		}
+	}
+	delete(c.platformArgs, n)
+}
+
+// platformArgWarning warns of call or property read n if notePlatformArgs
+// recorded it.
+func (c *Checker) platformArgWarning(n any) {
+	k, ok := c.platformArgs[n]
+	if !ok {
+		return
+	}
+	switch n := n.(type) {
+	case *syntax.Call:
+		c.platformClass(calleePos(n), k)
+	case *syntax.Member:
+		c.platformClass(n.P, k)
+	}
+}
+
 // platformClassImports warns of the file's imports of Java classes that
 // are Kotlin ones, as kotlinc's PlatformClassMappedToKotlinImportsChecker
 // does: in their order, up to the first import of a class's member or
@@ -141,4 +182,35 @@ func (c *Checker) platformClassImports() {
 			c.platformClass(imp.PathP, k)
 		}
 	}
+}
+
+// jvmFunctionInit reports a lambda, an anonymous function or a callable
+// reference init that initializes a declaration of type ref written as
+// one of the classes kotlin.jvm.functions.FunctionN, by its qualified
+// name or an explicit import: K2 takes that for the class, not the
+// function type, which a function value isn't (INITIALIZER_TYPE_MISMATCH).
+// kc's function types are those classes, so only the name as written
+// tells, here only of a property's or a variable's initializer.
+func (c *Checker) jvmFunctionInit(ref *syntax.TypeRef, init syntax.Expr) {
+	if ref == nil || ref.Known != nil {
+		return
+	}
+	switch init.(type) {
+	case *syntax.Lambda: // and a callable reference, a Lambda with Ref
+	default:
+		return
+	}
+	name := ref.Name
+	first, rest, _ := strings.Cut(name, ".")
+	if path, ok := c.explicitImport(first); ok {
+		name = path
+		if rest != "" {
+			name += "." + rest
+		}
+	}
+	n, ok := strings.CutPrefix(name, "kotlin.jvm.functions.Function")
+	if !ok || n == "" || strings.Trim(n, "0123456789") != "" {
+		return
+	}
+	c.errorf(init.Pos(), "type mismatch: a function value isn't a %s, which names the class: use a function type", ref.Name)
 }

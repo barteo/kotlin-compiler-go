@@ -1,7 +1,9 @@
 package check
 
 import (
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -61,13 +63,34 @@ func join(states ...*daState) *daState {
 		}
 	}
 	if out == nil {
-		out = newDAState()
-		out.dead = true
+		// No path reaches the point: what all the dead ones assign is
+		// assigned, as K2's analysis of dead code has it.
 		for _, s := range states {
+			if out == nil {
+				out = s.clone()
+				continue
+			}
+			for v := range out.def {
+				if !s.def[v] {
+					delete(out.def, v)
+				}
+			}
 			out.mergeMaybe(s)
 		}
+		if out == nil {
+			out = newDAState()
+		}
+		out.dead = true
 	}
 	return out
+}
+
+// deadCopy returns a copy of s that no path reaches, for a join: the
+// state at the end of a loop that only a break leaves.
+func deadCopy(s *daState) *daState {
+	c := s.clone()
+	c.dead = true
+	return c
 }
 
 // assignment checks the definite assignment of a function body or of a
@@ -77,7 +100,11 @@ type assignment struct {
 	cls     *types.ClassSym       // the class whose properties are tracked, if any
 	depth   map[*types.VarSym]int // tracked variables, by the lambda depth they are declared at
 	lambdas int                   // the lambdas and local functions the code is in
-	quiet   int                   // >0 while a loop's body is walked the first time
+	// foreign > 0 while the walk is in code that its own walk checks:
+	// the members of a local class or an object expression, walked only
+	// for the captured local vals they assign (see foreignMembers).
+	foreign int
+	quiet   int // >0 while a loop's body is walked the first time
 	// reported are the reads reported as before assignment: each is, as
 	// in kotlinc, but once, though the code may be walked again.
 	reported map[syntax.Pos]bool
@@ -97,6 +124,11 @@ type assignment struct {
 	// inPlaceLambdas are those of the lambdas the code is in that a
 	// contract says are called in place, though maybe not once.
 	inPlaceLambdas int
+	// concurrent counts, for the vals that more than one lambda of a
+	// call assigns, each called once, the walks of those lambdas the
+	// code is in: as K2 has it, they may run in either order, so each
+	// assignment may be a reassignment (KT-59669).
+	concurrent map[*types.VarSym]int
 	// lastLambda is the state at the end of the lambda last walked.
 	lastLambda *daState
 	// libOnce counts the lambdas called once by functions of the class
@@ -116,6 +148,15 @@ type assignment struct {
 	// inlined counts the lambdas walked that are passed to inline
 	// functions, which run where they are for the entries' check.
 	inlined int
+	// tries are the variables assigned in the bodies of the try
+	// expressions the code is in, innermost last, on any path: maybe
+	// assigned in their catch blocks.
+	tries []map[*types.VarSym]bool
+	// lateinit are the class's lateinit properties, tracked to warn of
+	// those its constructor code needn't defer (UNNECESSARY_LATEINIT):
+	// lateRead are those it may read before assigning them, and
+	// lateOther those it assigns in a lambda or a local class.
+	lateinit, lateRead, lateOther map[*types.VarSym]bool
 }
 
 // daOnce records the states at the returns from a lambda that its
@@ -181,6 +222,63 @@ func (a *assignment) inPlace(x *syntax.Call, l *syntax.Lambda, s *daState) {
 	*s = *join(append(o.returns, s)...)
 }
 
+// concurrentVals returns the tracked vals that two or more of the
+// lambdas that call x calls exactly once assign.
+func (a *assignment) concurrentVals(x *syntax.Call) []*types.VarSym {
+	var ls []*syntax.Lambda
+	for k, arg := range x.Args {
+		if l, ok := arg.(*syntax.Lambda); ok && calledOnce(x, k) && l.Body != nil {
+			ls = append(ls, l)
+		}
+	}
+	if len(ls) < 2 {
+		return nil
+	}
+	count := map[*types.VarSym]int{}
+	var out []*types.VarSym
+	for _, l := range ls {
+		seen := map[*types.VarSym]bool{}
+		syntax.Inspect(l.Body, func(n any) bool {
+			st, ok := n.(*syntax.Assign)
+			if !ok {
+				return true
+			}
+			var v *types.VarSym
+			switch t := st.Target.(type) {
+			case *syntax.Ident:
+				v = t.Sym
+			case *syntax.Member:
+				if _, this := t.X.(*syntax.This); this {
+					v = t.Prop
+				}
+			}
+			if v != nil && !v.Mutable && a.tracked(v) && !a.inited[v] && !seen[v] {
+				seen[v] = true
+				if count[v]++; count[v] == 2 {
+					out = append(out, v)
+				}
+			}
+			return true
+		})
+	}
+	if out != nil && a.concurrent == nil {
+		a.concurrent = map[*types.VarSym]int{}
+	}
+	return out
+}
+
+// notInlined reports whether one of the lambdas called once that the
+// code is in isn't inlined: passed to a function that isn't inline, or
+// for a noinline or crossinline parameter.
+func (a *assignment) notInlined() bool {
+	for _, o := range a.once {
+		if !o.l.Inline || o.l.Crossinline {
+			return true
+		}
+	}
+	return false
+}
+
 // daLoop records the states at a loop's breaks and continues.
 type daLoop struct {
 	node          syntax.Stmt
@@ -218,6 +316,23 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 			a.depth[pd.Sym] = 0
 		}
 	}
+	var lates []*syntax.PropDecl
+	if !d.Interface {
+		for _, m := range d.Members {
+			// Not a lateinit kotlinc rejects: a val, one with a value,
+			// or of a nullable or primitive type.
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Sym.Lateinit && pd.Recv == nil && pd.Field == nil &&
+				pd.Mutable && pd.Init == nil && pd.Getter == nil && !pd.Sym.Type.N && !pd.Sym.Type.IsPrimitive() &&
+				pd.Sym.Type.K != types.Invalid && pd.Sym.Type.K != types.TypeParam && !pd.Expect && !transient(pd) {
+				if a.lateinit == nil {
+					a.lateinit, a.lateRead, a.lateOther = map[*types.VarSym]bool{}, map[*types.VarSym]bool{}, map[*types.VarSym]bool{}
+				}
+				lates = append(lates, pd)
+				a.lateinit[pd.Sym] = true
+				a.depth[pd.Sym] = 0
+			}
+		}
+	}
 	a.trackInits(d.Members)
 	s := newDAState()
 	switch {
@@ -233,7 +348,7 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	a.entries = nil
 	missing := map[*syntax.PropDecl]bool{}
 	check := func(end *daState) {
-		for _, pd := range props {
+		for _, pd := range slices.Concat(props, lates) {
 			if !end.def[pd.Sym] {
 				missing[pd] = true
 			}
@@ -241,18 +356,51 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	}
 	secs := d.Secondaries()
 	if !d.HasPrimary {
-		for _, sc := range secs {
-			if sc.ToThis || sc.Body == nil {
-				continue
+		// The state at the end of each constructor: one that calls
+		// this(...) starts where the one it calls ends, so a val both
+		// assign is assigned again.
+		ends := map[*syntax.SecondaryCtor]*daState{}
+		var walk func(sc *syntax.SecondaryCtor) *daState
+		walk = func(sc *syntax.SecondaryCtor) *daState {
+			if end, ok := ends[sc]; ok {
+				return end // nil while it is walked
 			}
-			end := s.clone()
-			a.rets = []*daState{}
-			a.block(sc.Body, end)
+			ends[sc] = nil
+			start := s.clone()
+			if sc.ToThis {
+				i := slices.IndexFunc(secs, func(o *syntax.SecondaryCtor) bool { return sc.Delegation != nil && o.Sym == sc.Delegation.Sym })
+				if i < 0 || !delegatesToSuper(sc, secs) {
+					return nil
+				}
+				t := walk(secs[i])
+				if t == nil || t.dead {
+					return t
+				}
+				start = t.clone()
+			}
+			if sc.Body != nil {
+				a.rets = []*daState{}
+				a.block(sc.Body, start)
+				start = join(append(a.rets, start)...)
+				a.rets = nil
+			}
+			ends[sc] = start
+			return start
+		}
+		for _, sc := range secs {
+			if !sc.ToThis && sc.Body == nil || sc.ToThis && !delegatesToSuper(sc, secs) {
+				// constructor() assigns nothing, and kotlinc doesn't
+				// judge constructors whose this(...) calls loop or don't
+				// resolve.
+				for _, pd := range lates {
+					missing[pd] = true
+				}
+			}
+			end := walk(sc)
 			// A constructor that always throws needn't assign.
-			if end := join(append(a.rets, end)...); !end.dead {
+			if !sc.ToThis && sc.Body != nil && end != nil && !end.dead {
 				check(end)
 			}
-			a.rets = nil
 		}
 	} else {
 		// Code after an initializer or an init block that never ends
@@ -268,9 +416,52 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 	}
 	for _, pd := range props {
 		if missing[pd] && !c.mustInit[pd.Sym] && !pd.Expect {
+			if bf := pd.BackingField; bf != nil && len(pd.Contexts) == 0 {
+				// kotlinc's EXPLICIT_FIELD_MUST_BE_INITIALIZED, at the
+				// field, unless it has an initializer that what else
+				// the property has keeps from being its own.
+				if bf.Init == nil && pd.Getter == nil && pd.Setter == nil {
+					c.errorf(bf.P, "an explicit backing field must be initialized")
+				}
+				continue
+			}
 			c.errorf(pd.P, "property must be initialized or be abstract")
 		}
 	}
+	for _, pd := range lates {
+		if !missing[pd] && !a.lateRead[pd.Sym] && !a.lateOther[pd.Sym] {
+			c.warnf(pd.PosOf("lateinit", pd.P), "UNNECESSARY_LATEINIT", "'lateinit' is unnecessary: definitely initialized in constructors.")
+		}
+	}
+}
+
+// delegatesToSuper reports whether secondary constructor sc, which calls
+// this(...), reaches through secs one that calls the superclass's.
+func delegatesToSuper(sc *syntax.SecondaryCtor, secs []*syntax.SecondaryCtor) bool {
+	seen := map[*syntax.SecondaryCtor]bool{}
+	for sc.ToThis {
+		if seen[sc] || sc.Delegation == nil || sc.Delegation.Sym == nil {
+			return false
+		}
+		seen[sc] = true
+		i := slices.IndexFunc(secs, func(o *syntax.SecondaryCtor) bool { return o.Sym == sc.Delegation.Sym })
+		if i < 0 {
+			return false
+		}
+		sc = secs[i]
+	}
+	return true
+}
+
+// transient reports whether property pd is annotated @Transient, whose
+// lateinit kotlinc doesn't judge.
+func transient(pd *syntax.PropDecl) bool {
+	for _, a := range pd.Annotations {
+		if n := a.Name; n == "Transient" || strings.HasSuffix(n, ".Transient") {
+			return true
+		}
+	}
+	return false
 }
 
 // fileAssignment checks that a file's top-level properties aren't read
@@ -360,8 +551,16 @@ func (a *assignment) tracked(v *types.VarSym) bool {
 
 // read checks a read of v.
 func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
-	if v == nil || !a.tracked(v) || s.def[v] || s.dead || a.quiet > 0 || a.reported[p] {
+	if v != nil && a.lateinit[v] {
+		// A read in a lambda that may run later doesn't count, as in
+		// kotlinc; in one that runs in place, or a local class, it does.
+		if !s.def[v] && !s.dead && (a.lambdas == 0 || a.inPlaceLambdas > 0 || len(a.once) > 0 || a.foreign > 0) {
+			a.lateRead[v] = true
+		}
 		return
+	}
+	if v == nil || !a.tracked(v) || s.def[v] || a.quiet > 0 || a.reported[p] || a.foreign > 0 {
+		return // in dead code too, as kotlinc
 	}
 	if (v.Kind == types.Prop || v.Kind == types.Global) && a.lambdas > 0 {
 		return // a lambda may run once the property is assigned
@@ -381,10 +580,32 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	if a.inited[v] {
 		return // assigned by its initializer, as other checks report
 	}
+	if a.lateinit[v] && (a.lambdas > 0 || a.foreign > 0 || a.inPlaceLambdas > 0 || len(a.once) > 0 || a.inlined > 0) {
+		a.lateOther[v] = true
+	}
+	if a.foreign > 0 {
+		if !v.Mutable && v.Kind == types.Local && a.lambdas > a.depth[v] && a.quiet == 0 && !s.dead {
+			a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+		}
+		return
+	}
 	switch {
-	case a.quiet > 0 || s.dead:
+	case a.quiet > 0:
+	case s.dead:
+		// Code no path reaches, which kotlinc checks too.
+		if !v.Mutable && s.maybe[v] && a.lambdas <= a.depth[v] {
+			a.c.errorf(p, "val cannot be reassigned")
+		}
+	case !v.Mutable && a.concurrent[v] > 0 && v.Kind == types.Prop:
+		a.c.errorf(p, "initialization of captured member values is prohibited because of possible reassignments")
+	case !v.Mutable && a.concurrent[v] > 0:
+		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && a.lambdas > a.depth[v]:
 		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+	case !v.Mutable && v.Kind == types.Prop && a.notInlined():
+		// The lambda's contract says it runs once, but in its own
+		// method, which can't assign the class's final field.
+		a.c.errorf(p, "initialization of captured member values must be inlined")
 	case !v.Mutable && s.maybe[v]:
 		a.c.errorf(p, "val cannot be reassigned")
 	}
@@ -399,6 +620,9 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 		s.def[v] = true
 	}
 	s.maybe[v] = true
+	for _, t := range a.tries {
+		t[v] = true
+	}
 }
 
 func (a *assignment) block(b *syntax.Block, s *daState) {
@@ -423,6 +647,9 @@ func (a *assignment) stmt(st syntax.Stmt, s *daState) {
 		if st.Delegate != nil {
 			a.expr(st.Delegate, s)
 		}
+		if a.foreign > 0 {
+			break // tracked by the member's own walk
+		}
 		if v := st.Sym; v != nil && v.Deferred {
 			a.depth[v] = a.lambdas
 			delete(s.def, v)
@@ -436,6 +663,8 @@ func (a *assignment) stmt(st syntax.Stmt, s *daState) {
 		}
 	case *syntax.Assign:
 		a.assignStmt(st, s)
+	case *syntax.LocalClass:
+		a.foreignMembers(st.Decl, s, true)
 	case *syntax.LocalFun:
 		a.lambdas++
 		fs := s.clone()
@@ -482,7 +711,7 @@ func (a *assignment) loop(node syntax.Stmt, body *syntax.Block, s *daState, fore
 	a.loops = a.loops[:len(a.loops)-1]
 	breaks := l.breaks
 	if forever {
-		*s = *join(breaks...)
+		*s = *join(append(breaks, deadCopy(s))...)
 		return
 	}
 	s.mergeMaybe(second)
@@ -530,7 +759,7 @@ func (a *assignment) doLoop(st *syntax.While, s *daState) {
 	second.mergeMaybe(first)
 	end, l := pass(second)
 	if isTrue(st.Cond) {
-		*s = *join(l.breaks...)
+		*s = *join(append(l.breaks, deadCopy(end))...)
 		return
 	}
 	*s = *join(append([]*daState{end}, l.breaks...)...)
@@ -546,10 +775,14 @@ func (a *assignment) assignStmt(st *syntax.Assign, s *daState) {
 	var v *types.VarSym
 	switch t := st.Target.(type) {
 	case *syntax.Ident:
-		v = t.Sym
+		if !a.c.castThisAssigns[t] {
+			v = t.Sym
+		}
 	case *syntax.Member:
 		if _, this := t.X.(*syntax.This); this {
-			v = t.Prop
+			if !a.c.castThisAssigns[t] {
+				v = t.Prop
+			}
 		} else {
 			a.expr(t.X, s)
 		}
@@ -655,9 +888,37 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
 			as = s.clone() // the arguments don't run on null
 		}
+		concurrent := a.concurrentVals(x)
+		// What one of the lambdas called once assigns isn't assigned in
+		// the others, which may run first.
+		var assigned []*types.VarSym
 		for k, arg := range x.Args {
 			if l, ok := arg.(*syntax.Lambda); ok && calledOnce(x, k) {
+				for _, v := range concurrent {
+					a.concurrent[v]++
+				}
+				var hidden []*types.VarSym
+				for _, v := range assigned {
+					if as.def[v] {
+						delete(as.def, v)
+						hidden = append(hidden, v)
+					}
+				}
+				before := maps.Clone(as.def)
 				a.inPlace(x, l, as)
+				for v := range as.def {
+					if !before[v] {
+						assigned = append(assigned, v)
+					}
+				}
+				if !as.dead {
+					for _, v := range hidden {
+						as.def[v] = true
+					}
+				}
+				for _, v := range concurrent {
+					a.concurrent[v]--
+				}
 				continue
 			}
 			if l, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
@@ -712,11 +973,19 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 	case *syntax.Try:
 		entry := s.clone()
 		body := s.clone()
+		assigned := map[*types.VarSym]bool{}
+		a.tries = append(a.tries, assigned)
 		a.block(x.Body, body)
+		a.tries = a.tries[:len(a.tries)-1]
 		outs := []*daState{body}
 		for _, c := range x.Catches {
 			cs := entry.clone()
 			cs.mergeMaybe(body)
+			for v := range assigned {
+				// Assigned before the body throws, also on a path that
+				// then jumps out of it.
+				cs.maybe[v] = true
+			}
 			a.block(c.Body, cs)
 			outs = append(outs, cs)
 		}
@@ -770,6 +1039,12 @@ func (a *assignment) when(x *syntax.When, s *daState) {
 			a.expr(c.X, s)
 		}
 		body := s.clone()
+		if b.Guard != nil {
+			// The guard runs after the conditions match: the body runs
+			// after it, and the branches after it may run after it too.
+			a.expr(b.Guard, body)
+			s.mergeMaybe(body)
+		}
 		a.block(b.Body, body)
 		outs = append(outs, body)
 		els = els || b.Else
@@ -809,6 +1084,55 @@ func (a *assignment) objectExpr(d *syntax.ClassDecl, s *daState) {
 			a.block(m.Body, s)
 		}
 	}
+	a.foreignMembers(d, s, false)
+}
+
+// foreignMembers walks the members of a local class or object expression
+// d that run later, as a lambda's body, for the captured local vals they
+// assign, which kotlinc reports (CAPTURED_VAL_INITIALIZATION): its
+// functions and accessors, and with all, as for a local class, its
+// initializers, init blocks and constructors too. Their own walks check
+// the rest. An object's initializers and init blocks run in place: see
+// objectExpr.
+func (a *assignment) foreignMembers(d *syntax.ClassDecl, s *daState, all bool) {
+	if d == nil {
+		return
+	}
+	a.lambdas++
+	a.foreign++
+	fun := func(f *syntax.FunDecl) {
+		if f == nil {
+			return
+		}
+		fs := s.clone()
+		if f.Body != nil {
+			a.block(f.Body, fs)
+		} else if f.ExprBody != nil {
+			a.expr(f.ExprBody, fs)
+		}
+	}
+	for _, m := range d.Members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			fun(m)
+		case *syntax.PropDecl:
+			fun(m.Getter)
+			fun(m.Setter)
+			if all && m.Init != nil {
+				a.expr(m.Init, s.clone())
+			}
+		case *syntax.InitBlock:
+			if all {
+				a.block(m.Body, s.clone())
+			}
+		case *syntax.SecondaryCtor:
+			if all {
+				a.block(m.Body, s.clone())
+			}
+		}
+	}
+	a.foreign--
+	a.lambdas--
 }
 
 // supers walks a class's superclass constructor call and the objects its

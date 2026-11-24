@@ -18,8 +18,12 @@ import (
 func (c *Checker) repeatableContainer(d *syntax.ClassDecl) {
 	cls := d.Sym
 	javaRepeatable := false
+	var kotlin *syntax.Annotation // its first @kotlin.annotation.Repeatable
 	for i := range d.Annotations {
 		a := &d.Annotations[i]
+		if a.Target == "" && a.Class != nil && a.Class.Name == "kotlin/annotation/Repeatable" && kotlin == nil {
+			kotlin = a
+		}
 		if a.Target != "" || a.Class == nil || strings.ReplaceAll(a.Class.Name, "/", ".") != "java.lang.annotation.Repeatable" {
 			continue
 		}
@@ -36,6 +40,9 @@ func (c *Checker) repeatableContainer(d *syntax.ClassDecl) {
 		}
 	}
 	if javaRepeatable {
+		if kotlin != nil {
+			c.warnf(kotlin.P, "REDUNDANT_REPEATABLE_ANNOTATION", "remove the '@kotlin.annotation.Repeatable' annotation, as it is redundant in presence of '@java.lang.annotation.Repeatable'")
+		}
 		return
 	}
 	for _, m := range d.Members {

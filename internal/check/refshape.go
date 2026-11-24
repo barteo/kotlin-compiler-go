@@ -533,33 +533,40 @@ func (c *Checker) varargShape(l *syntax.Lambda, n int) (types.Type, bool) {
 // function a reference ::f names, if it is the only top-level function
 // of the name and has a vararg.
 func (c *Checker) refVarargPos(r *syntax.CallableRef) (int, bool) {
+	i, _, ok := c.refVararg(r)
+	return i, ok
+}
+
+// refVararg is refVarargPos, with the number of the function's parameters
+// after the vararg.
+func (c *Checker) refVararg(r *syntax.CallableRef) (int, int, bool) {
 	if r == nil || r.X != nil || r.Type != nil || r.Bound != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	name := r.Name
 	if c.lookupClass(name) != nil || c.cls != nil && c.hasCallable(c.cls, name) || c.topVar(name) != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	if _, _, ok := c.scope.lookup(name); ok {
-		return 0, false
+		return 0, 0, false
 	}
 	fs, _ := c.scope.findFuns(name)
 	if len(fs) == 0 {
 		fs = c.topFuns(name)
 	}
 	if len(fs) != 1 {
-		return 0, false
+		return 0, 0, false
 	}
 	ensureFun(fs[0])
 	if fs[0].Ext {
-		return 0, false
+		return 0, 0, false
 	}
 	for i, q := range fs[0].Params {
 		if q.Vararg {
-			return i, true
+			return i, len(fs[0].Params) - 1 - i, true
 		}
 	}
-	return 0, false
+	return 0, 0, false
 }
 
 // refArgFit returns system s with the type of reference l, for parameter

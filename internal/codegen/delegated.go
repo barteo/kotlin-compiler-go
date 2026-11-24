@@ -41,6 +41,7 @@ func (g *gen) kprops(refs []*syntax.PropRef) {
 		acc |= cf.AccPublic // an interface's fields are public
 	}
 	g.cls.AddField(acc, "$$delegatedProperties", kpropsDesc)
+	g.cls.LastField().SetSignature("[Lkotlin/reflect/KProperty<Ljava/lang/Object;>;") // as kotlinc's
 	c := g.code
 	c.Iconst(int32(len(refs)))
 	c.ANewArray("kotlin/reflect/KProperty")

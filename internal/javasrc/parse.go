@@ -42,6 +42,9 @@ type Modifiers struct {
 	Default     bool   // an interface's default method
 	Sealed      bool   // a sealed class or interface, not a non-sealed one
 	Annotations []*Annotation
+	// DocDeprecated is set when a doc comment's @deprecated tag
+	// deprecates the declaration.
+	DocDeprecated bool
 }
 
 // Annotation is an annotation, with its arguments' tokens only as names:
@@ -66,6 +69,8 @@ type Class struct {
 	Fields     []*Field
 	Methods    []*Method
 	Constants  []string // an enum's
+	// ConstantMods are the annotations of Constants, by index.
+	ConstantMods []Modifiers
 	// ConstantBodies is set on an enum whose constants have class bodies,
 	// which subclass it.
 	ConstantBodies bool
@@ -86,6 +91,10 @@ type Type struct {
 	Prim string
 	Segs []Seg
 	Dims int
+	// Annotations are the type annotations of the type's class or
+	// primitive, before it or its last segment: @NotNull Object or
+	// java.lang.@NotNull Object, not those of its array dimensions.
+	Annotations []*Annotation
 }
 
 // Seg is a segment of a class type's name: Map or Entry<K, V> of
@@ -293,6 +302,7 @@ var modifierFlags = map[string]uint16{
 // follows has.
 func (p *parser) modifiers() Modifiers {
 	var m Modifiers
+	m.DocDeprecated = p.tok().docDeprecated
 	for {
 		t := p.tok()
 		switch {
@@ -469,14 +479,15 @@ var primitives = map[string]bool{
 
 // typ parses a type, with its array dimensions but not a varargs ....
 func (p *parser) typ() *Type {
-	p.modifiers() // type annotations
-	t := &Type{}
+	t := &Type{Annotations: p.modifiers().Annotations}
 	if name := p.tok().text; p.tok().kind == tIdent && primitives[name] {
 		p.next()
 		t.Prim = name
 	} else {
-		for {
-			p.modifiers()
+		for i := 0; ; i++ {
+			if as := p.modifiers().Annotations; i > 0 && len(as) > 0 {
+				t.Annotations = as // java.lang.@NotNull Object
+			}
 			seg := Seg{Name: p.ident()}
 			if p.is("<") {
 				seg.Args = p.typeArgs()
@@ -546,11 +557,12 @@ func (p *parser) classBody(c *Class) {
 	p.expect("{")
 	if c.Kind == KindEnum {
 		for {
-			p.modifiers()
+			mods := p.modifiers()
 			if p.tok().kind != tIdent {
 				break
 			}
 			c.Constants = append(c.Constants, p.ident())
+			c.ConstantMods = append(c.ConstantMods, mods)
 			if p.is("(") {
 				p.skipBalanced()
 			}

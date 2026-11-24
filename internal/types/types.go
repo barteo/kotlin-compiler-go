@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
@@ -252,6 +253,9 @@ type VarSym struct {
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
 	Pkg      string    // Global: Kotlin package, as FunSym.Pkg
+	// InlineGetter and InlineSetter are set on a Global of the class path
+	// whose accessors are declared inline.
+	InlineGetter, InlineSetter bool
 	// Annotations are the descriptors of the annotations of a top-level
 	// property of the class path, and Deprecated its deprecation: what
 	// the opt-in and deprecation checks know of it.
@@ -266,6 +270,17 @@ type VarSym struct {
 	Infer      func()
 	Resolved   bool
 	InProgress bool
+	// Reentered counts the references that reached the declaration while
+	// its type was being inferred, and ReentryReported the references to
+	// it the checker reported for such a cycle where they are; Cyclic is set when its inference
+	// ran into such a cycle and its type is an error, which each
+	// reference to it is reported for, as kotlinc reports a reference
+	// whose type is its recursive implicit type.
+	Reentered, ReentryReported int
+	Cyclic                     bool
+	// RanIntoCycle is set when its inference ran into a cycle of omitted
+	// types, whatever its type.
+	RanIntoCycle bool
 
 	// FieldT is the type of a final property's explicit backing field,
 	// val x: List<T> field = mutableListOf(), if it has one: what x reads
@@ -347,9 +362,15 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// ConstBad is set by the checker on a const val whose type or
+	// initializer isn't constant: reading it isn't constant either.
+	ConstBad bool
 	// MaybeConst is set on a static final field of a Java source with no
 	// Constant only because it reads a Kotlin class's const val.
 	MaybeConst bool
+	// ConstReads are, with MaybeConst, the Kotlin classes' fields it
+	// reads, as Class.field of the class's internal name.
+	ConstReads []string
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
@@ -525,6 +546,12 @@ type FunSym struct {
 	Operator bool   // can be called by an operator, as get by x[i]: Java methods and Kotlin operator funs
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
+	// MissingAnno is set on a function of the class path whose result
+	// type has a type annotation of a class the class path doesn't have,
+	// and ParamMissingAnno on one with such a parameter type: the
+	// annotation class's name, for kotlinc's
+	// MISSING_DEPENDENCY_IN_INFERRED_TYPE_ANNOTATION_ERROR.
+	MissingAnno, ParamMissingAnno string
 	// NoInferRet is set when the result type is annotated
 	// @kotlin.internal.NoInfer: the expected type doesn't constrain the
 	// call's variables.
@@ -589,6 +616,14 @@ type FunSym struct {
 	Infer      func()
 	Resolved   bool
 	InProgress bool
+	// Reentered counts the references that reached the declaration while
+	// its type was being inferred, and ReentryReported the references to
+	// it the checker reported for such a cycle where they are; Cyclic is set when its inference
+	// ran into such a cycle and its type is an error, which each
+	// reference to it is reported for, as kotlinc reports a reference
+	// whose type is its recursive implicit type.
+	Reentered, ReentryReported int
+	Cyclic                     bool
 
 	// Inheritance.
 	Final     bool // can't be overridden
@@ -662,6 +697,9 @@ type FunSym struct {
 	// once, callsInPlace(f, AT_LEAST_ONCE): what the lambda's body surely
 	// assigns is assigned after the call.
 	AtLeastOnce []bool
+	// AtMostOnce marks those it calls at most once, callsInPlace(f,
+	// AT_MOST_ONCE).
+	AtMostOnce []bool
 
 	// Implies are the effects of the function's contract that say what a
 	// parameter is if it returns: returns(false) implies (this != null)
@@ -677,7 +715,8 @@ type FunSym struct {
 	// kc can copy into its callers.
 	Inline *InlineInfo
 	// Declared is set on every inline function of the class path, one
-	// kc calls as an intrinsic too, with its parameters' flags.
+	// kc calls as an intrinsic too, with its parameters' flags, and on
+	// every inline property accessor of the class path.
 	Declared *InlineFlags
 	// Platform is set on a member of a Kotlin collection type that only
 	// its Java interface declares, such as forEach(Consumer). As in
@@ -756,6 +795,21 @@ func (i *InlineInfo) Defaults(n int) (*inline.Body, error) {
 	return i.defaults.get(load, i.Name+"$default", "(L"+i.Owner+";"+desc[1:])
 }
 
+// ModuleSuffix returns what the JVM names of a module's internal members
+// end with: $ and its name, with the characters that aren't letters or
+// ASCII digits replaced by _, as kotlinc writes them.
+func ModuleSuffix(module string) string {
+	if module == "" {
+		module = "main"
+	}
+	return "$" + strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || '0' <= r && r <= '9' {
+			return r
+		}
+		return '_'
+	}, module)
+}
+
 // JVM returns the name of the method on the JVM. The program's functions
 // that take or, as members, return values of value classes have mangled
 // names, as kotlinc gives them: see Mangle.
@@ -825,13 +879,23 @@ type ClassSym struct {
 	// FromKotlin is set on a class of the class path that Kotlin
 	// compiled, read from its metadata.
 	FromKotlin bool
+	// ArityOf is set on a stand-in for the class path's class of its
+	// name, ArityOf, in a type of another module's class file that gives
+	// that name another number of type arguments: a class of neither's
+	// types.
+	ArityOf *ClassSym
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
 	Interface         bool
 	Abstract          bool // an abstract class or an interface: it can't be instantiated
-	Final             bool // can't be subclassed
-	Private           bool // not public
+	// InvisibleMembers are the internal members of a class of another
+	// module, which code can't see but subclasses inherit: by function
+	// name and parameter count, or "prop " and a property's name, whether
+	// the class declares them abstract.
+	InvisibleMembers map[string]bool
+	Final            bool // can't be subclassed
+	Private          bool // not public
 	// PackagePrivate is set, with Private, on a Java class of package
 	// visibility, which only code in its package sees, as its
 	// package-private members.
@@ -839,6 +903,9 @@ type ClassSym struct {
 	// ProtectedNested is set on a protected nested Java class, which
 	// only its package and the subclasses of the class it is in see.
 	ProtectedNested bool
+	// JavaOuter is set on a protected or private nested Java class that
+	// isn't inner, whose Outer isn't: the class it is nested in.
+	JavaOuter *ClassSym
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool
@@ -1571,6 +1638,10 @@ type Deprecation struct {
 // parameter of an inline function.
 type InlineFlags struct {
 	Crossinline, Noinline []bool
+	// Class is the class file whose metadata declares the inline function
+	// or accessor, and which holds its body: the class, or the file
+	// facade's part. It is empty for a member of a built-in type.
+	Class string
 }
 
 // JavaHidden are the members of a Java source class that Kotlin can't use:

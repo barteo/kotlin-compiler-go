@@ -70,7 +70,19 @@ func boxSkip(t *test) string {
 	if boxFile(t) == nil {
 		return "no box()"
 	}
+	if beforeJDK21[t.path] {
+		return "needs a JDK before 21"
+	}
 	return ""
+}
+
+// beforeJDK21 are the box tests that compile only against a JDK before
+// 21, which the harness doesn't run on: kotlinc rejects them on a later
+// one too. In kt475, array.last = "5" assigns the synthetic val of JDK
+// 21's ArrayList.getLast(), which takes precedence over the test's
+// extension var (as testsWithJava21/newListMethods.kt expects).
+var beforeJDK21 = map[string]bool{
+	"extensionFunctions/kt475.kt": true,
 }
 
 // boxFile returns the file that declares box(), looking at the last

@@ -86,6 +86,10 @@ type Info struct {
 	// RecordComponents are the names of a Java record's components, from
 	// its Record attribute.
 	RecordComponents []string
+	// BoundAnnotations are the descriptors of the type annotations on the
+	// class's type parameters' bounds, at the top of a bound's type, by
+	// type parameter, or nil if there are none: T extends @NotNull Object.
+	BoundAnnotations [][]string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -130,6 +134,10 @@ type Member struct {
 	// source without a Constant only because its initializer reads a
 	// Kotlin class's field: kotlinc may find it constant.
 	MaybeConstant bool
+	// KotlinReads are, with MaybeConstant, the Kotlin classes' fields
+	// that the initializer reads, as Class.field of the class's internal
+	// name.
+	KotlinReads []string
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
 	// Annotations are the descriptors of the member's annotations, kept
@@ -145,6 +153,10 @@ type Member struct {
 	// since is its @DeprecatedSinceKotlin, which raises Deprecated by the
 	// class's metadata version, read after the members.
 	since sinceKotlin
+	// BoundAnnotations are, for a generic method, as Info's for a class,
+	// the descriptors of the type annotations on its type parameters'
+	// bounds.
+	BoundAnnotations [][]string
 }
 
 // Deprecation is the deprecation of a class or member: the message and
@@ -167,37 +179,31 @@ func javaDeprecation(d *Deprecation) *Deprecation {
 }
 
 // sinceKotlin is a @DeprecatedSinceKotlin: the Kotlin versions since
-// which a deprecation is an error and hidden, "" if never, and whether
-// the annotation is there.
+// which a declaration is deprecated, an error and hidden, "" if never, and
+// whether the annotation is there.
 type sinceKotlin struct {
-	set           bool
-	error, hidden string
+	set                    bool
+	warning, error, hidden string
 }
 
 // level returns the level the versions give: HIDDEN with hiddenSince,
-// ERROR with errorSince, or "", of those that API version api reaches. kc
-// takes the API version as kotlinc does, as new as the class path: as the
-// standard library's, the only one that declares @DeprecatedSinceKotlin,
-// which is its classes' metadata version mv. Without one, each version
-// is reached.
-func (s sinceKotlin) level(api []int) string {
-	reached := func(v string) bool {
-		if v == "" {
-			return false
+// ERROR with errorSince, or "", of those that the API version reaches;
+// NONE if it doesn't reach warningSince, before which the declaration
+// isn't deprecated. kc takes the API version as kotlinc does: APIVersion,
+// but no newer than the class path, as the standard library's, the only
+// one that declares @DeprecatedSinceKotlin, which is its classes'
+// metadata version mv.
+func (s sinceKotlin) level(mv []int) string {
+	api := APIVersion
+	if len(mv) >= 2 {
+		if v := strconv.Itoa(mv[0]) + "." + strconv.Itoa(mv[1]); !laterThan(v, api) {
+			api = v
 		}
-		if len(api) < 2 {
-			return true
-		}
-		maj, rest, _ := strings.Cut(v, ".")
-		mnr, _, _ := strings.Cut(rest, ".")
-		a, err1 := strconv.Atoi(maj)
-		b, err2 := strconv.Atoi(mnr)
-		if err1 != nil || err2 != nil {
-			return true
-		}
-		return a < api[0] || a == api[0] && b <= api[1]
 	}
+	reached := func(v string) bool { return v != "" && !laterThan(v, api) }
 	switch {
+	case s.warning != "" && !reached(s.warning):
+		return "NONE"
 	case reached(s.hidden):
 		return "HIDDEN"
 	case reached(s.error):
@@ -218,6 +224,8 @@ func deprecationPairs(r *reader, p *pool, d *Deprecation) sinceKotlin {
 			continue
 		}
 		switch tag := r.u1(); {
+		case d == nil && tag == 's' && name == "warningSince":
+			since.warning, _ = p.utf8(r.u2())
 		case d == nil && tag == 's' && name == "hiddenSince":
 			since.hidden, _ = p.utf8(r.u2())
 		case d == nil && tag == 's' && name == "errorSince":
@@ -241,6 +249,9 @@ func sinceDeprecation(d *Deprecation, since string) *Deprecation {
 	if since == "" || d == nil || d.Java {
 		return d
 	}
+	if since == "NONE" {
+		return nil
+	}
 	if since == "HIDDEN" || d.Level == "WARNING" {
 		d.Level = since
 	}
@@ -248,6 +259,36 @@ func sinceDeprecation(d *Deprecation, since string) *Deprecation {
 }
 
 var errTruncated = errors.New("truncated class file")
+
+// APIVersion is the API version kotlinc 2.4 compiles against by default,
+// against which @DeprecatedSinceKotlin's versions are judged.
+const APIVersion = "2.4"
+
+// LaterThanAPI reports whether version v, major.minor or
+// major.minor.patch, is later than APIVersion, as 2.4.1 is: its parts
+// compare as numbers.
+func LaterThanAPI(v string) bool { return laterThan(v, APIVersion) }
+
+// laterThan reports whether version v is later than version than, as
+// LaterThanAPI.
+func laterThan(v, than string) bool {
+	parts := strings.Split(v, ".")
+	api := strings.Split(than, ".")
+	for len(api) < len(parts) {
+		api = append(api, "0")
+	}
+	for i, p := range parts {
+		p = strings.TrimLeft(p, "0")
+		q := strings.TrimLeft(api[i], "0")
+		if len(p) != len(q) {
+			return len(p) > len(q)
+		}
+		if p != q {
+			return p > q
+		}
+	}
+	return false
+}
 
 type reader struct {
 	b   []byte
@@ -439,6 +480,10 @@ func Parse(data []byte) (*Info, error) {
 					size = 0
 				case name == "Deprecated":
 					m.Deprecated = javaDeprecation(m.Deprecated)
+				case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+					end := min(r.pos+size, len(r.b))
+					m.BoundAnnotations = boundAnnotations(m.BoundAnnotations, readTypeAnnotations(r, p), TargetTypeParamBound)
+					r.pos, size = end, 0
 				case name == "RuntimeInvisibleParameterAnnotations", name == "RuntimeVisibleParameterAnnotations":
 					end := r.pos + size
 					n := int(r.u1())
@@ -507,6 +552,10 @@ func Parse(data []byte) (*Info, error) {
 		case name == "Signature" && size == 2:
 			info.Sig = must(p.utf8(r.u2()))
 			size = 0
+		case name == "RuntimeVisibleTypeAnnotations", name == "RuntimeInvisibleTypeAnnotations":
+			end := min(r.pos+size, len(r.b))
+			info.BoundAnnotations = boundAnnotations(info.BoundAnnotations, readTypeAnnotations(r, p), TargetClassTypeParamBound)
+			r.pos, size = end, 0
 		case name == "InnerClasses":
 			for range r.u2() {
 				inner, outer := r.u2(), r.u2()

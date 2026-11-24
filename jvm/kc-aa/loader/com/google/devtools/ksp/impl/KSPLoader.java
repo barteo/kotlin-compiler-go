@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -13,9 +14,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -46,22 +49,31 @@ import java.util.stream.Stream;
  * lives, and the caller's thread is the build tool's to keep.
  *
  * <p>The plugin makes the processors' class loader anew for every task of every build, so each
- * run loads the processors' classes and runs them before the JVM has compiled them. With the
- * environment variable {@code KC_KSP_KEEP} set, the processors of a run come from a class
- * loader this class keeps for their class path, for as long as the jars stay the same, and
- * every task and build with that class path shares it. A processor then keeps its static
- * state from one run to the next, which is why the variable has to ask for it.
+ * run loads the processors' classes and runs them before the JVM has compiled them. The
+ * processors of a run come instead from a class loader this class keeps for their class path,
+ * for as long as the jars stay the same, and every task and build with that class path shares
+ * it, so they run on code the JVM has compiled. A processor then keeps its static state from one
+ * run to the next. The environment variable {@code KC_KSP_KEEP} set to {@code 0} turns this
+ * off, for a processor whose static state from one run breaks the next.
  *
  * <p>The system property {@code kc.ksp.stock:CLASSPATH}, where CLASSPATH is this class
  * loader's class path, gives the class path of stock KSP for this one. When it is set and
  * the run on kc fails, stock KSP runs in its place, over new class loaders for itself and for
  * the processors.
+ *
+ * <p>A run fails for kc's reasons or for the processors', which report errors or throw. Stock
+ * KSP runs after either, as a wrong answer of kc's can be what a processor complains about. The
+ * processors' errors on kc are held back until stock KSP has run: when it fails too, its
+ * messages are the only ones printed, and when it passes, kc's follow a line that says the
+ * processors reported them on kc alone. Without the property, the errors are printed as they
+ * are reported.
  */
 public final class KSPLoader {
   /** The property's prefix; the paths of both class paths are joined by {@link File#pathSeparator}. */
   public static final String STOCK = "kc.ksp.stock:";
 
   private static final String NAME = KSPLoader.class.getName();
+  private static final String KC = "io.github.barteo.kc.aa.KcRun";
   private static final String PROVIDER = "com.google.devtools.ksp.processing.SymbolProcessorProvider";
 
   private static ClassLoader backend;
@@ -69,21 +81,35 @@ public final class KSPLoader {
   /** A kept class loader of processors, with the sizes and times of its jars when it was made. */
   private record Kept(String jars, URLClassLoader loader) {}
 
-  private static final Map<List<URL>, Kept> KEPT = new HashMap<>();
+  /** The kept class loaders of processors, at most this many, the least recently used dropped. */
+  private static final int MAX_KEPT = 16;
+
+  private static final Map<List<URL>, Kept> KEPT =
+      new LinkedHashMap<>(MAX_KEPT, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<List<URL>, Kept> eldest) {
+          return size() > MAX_KEPT;
+        }
+      };
 
   private KSPLoader() {}
 
   public static int loadAndRunKSP(byte[] config, List<?> providers, int logLevel) throws Throwable {
     String module = config(config).getModuleName();
     long start = System.nanoTime();
+    String stock = System.getProperty(STOCK + classPath((URLClassLoader) KSPLoader.class.getClassLoader()));
+    ClassLoader processors = providers.isEmpty() ? null : providers.get(0).getClass().getClassLoader();
+    // The lines of the errors that fail the run on kc, when stock KSP can run after it.
+    List<String> held =
+        stock != null && processors instanceof URLClassLoader ? Collections.synchronizedList(new ArrayList<>()) : null;
     Object failure;
     try {
       ClassLoader context = Thread.currentThread().getContextClassLoader();
-      List<?> own = System.getenv("KC_KSP_KEEP") == null ? providers : kept(providers);
+      List<?> own = "0".equals(System.getenv("KC_KSP_KEEP")) ? providers : kept(providers);
       if (own != providers && context == providers.get(0).getClass().getClassLoader()) {
         context = own.get(0).getClass().getClassLoader();
       }
-      FutureTask<Integer> run = new FutureTask<>(() -> run(backend(), config, own, logLevel));
+      FutureTask<Integer> run = new FutureTask<>(() -> onKc(config, own, logLevel, held));
       Thread thread = new Thread(run, "kc-ksp " + module);
       thread.setContextClassLoader(context);
       thread.start();
@@ -106,17 +132,46 @@ public final class KSPLoader {
     } catch (Throwable e) {
       failure = e;
     }
-    String stock = System.getProperty(STOCK + classPath((URLClassLoader) KSPLoader.class.getClassLoader()));
-    ClassLoader processors = providers.isEmpty() ? null : providers.get(0).getClass().getClassLoader();
-    if (stock == null || !(processors instanceof URLClassLoader)) {
+    if (held == null) {
       if (failure instanceof Throwable) {
         throw (Throwable) failure;
       }
       return (Integer) failure;
     }
-    System.out.println("kc: KSP on " + module + " failed, so stock KSP processes it: "
-        + (failure instanceof Throwable ? failure : "exit code " + failure));
-    return onStock(stock, (URLClassLoader) processors, config, providers, logLevel);
+    boolean reported = failure instanceof Integer;
+    if (!reported && thrownByProcessor((Throwable) failure, processors)) {
+      held.add("e: [ksp] " + failure);
+      reported = true;
+    }
+    if (!reported) {
+      System.out.println("kc: KSP on " + module + " failed, so stock KSP processes it: " + failure);
+    }
+    int code = onStock(stock, (URLClassLoader) processors, config, providers, logLevel);
+    if (code == 0 && reported) {
+      System.out.println("kc: KSP on " + module + ": the processors reported errors on kc and none on stock KSP, which"
+          + " processed it. That is a bug in kc, worth reporting. The errors on kc:");
+      for (String line : held) {
+        System.out.println("  " + line);
+      }
+    }
+    return code;
+  }
+
+  /**
+   * Whether {@code e} comes from a processor and not from kc: of its frames outside the classes
+   * a processor shares with KSP and the JDK's, the innermost is a processor's.
+   */
+  private static boolean thrownByProcessor(Throwable e, ClassLoader processors) {
+    for (StackTraceElement frame : e.getStackTrace()) {
+      try {
+        if (Class.forName(frame.getClassName(), false, processors).getClassLoader() == processors) {
+          return true;
+        }
+      } catch (ClassNotFoundException | LinkageError notShared) {
+        return false;
+      }
+    }
+    return false;
   }
 
   /**
@@ -176,14 +231,20 @@ public final class KSPLoader {
           stockProviders.add(p);
         }
       }
-      return run(ksp, config, stockProviders, logLevel);
+      Method run = ksp.loadClass(NAME).getMethod("loadAndRunKSP", byte[].class, List.class, int.class);
+      return call(run, config, stockProviders, logLevel);
     }
   }
 
-  private static int run(ClassLoader ksp, byte[] config, List<?> providers, int logLevel) throws Exception {
+  /** Runs KSP on kc; the errors that fail the run go to {@code held} when it isn't null. */
+  private static int onKc(byte[] config, List<?> providers, int logLevel, List<String> held) throws Exception {
+    Method run = backend().loadClass(KC).getMethod("run", byte[].class, List.class, int.class, List.class);
+    return call(run, config, providers, logLevel, held);
+  }
+
+  private static int call(Method run, Object... arguments) throws Exception {
     try {
-      return (Integer) ksp.loadClass(NAME).getMethod("loadAndRunKSP", byte[].class, List.class, int.class)
-          .invoke(null, config, providers, logLevel);
+      return (Integer) run.invoke(null, arguments);
     } catch (InvocationTargetException e) {
       if (e.getCause() instanceof Error) {
         throw (Error) e.getCause();
@@ -205,7 +266,7 @@ public final class KSPLoader {
       for (int i = 0; i < jars.length; i++) {
         paths[i] = jars[i].getPath();
       }
-      ClassLoader loader = new Backend(urls(paths), KSPLoader.class.getClassLoader());
+      ClassLoader loader = new URLClassLoader(urls(paths), KSPLoader.class.getClassLoader());
       // KcNative reads the property when it initializes. A string literal is one object in a
       // JVM, so class loaders with different homes don't read each other's.
       synchronized ("kc.lib") {
@@ -215,30 +276,6 @@ public final class KSPLoader {
       backend = loader;
     }
     return backend;
-  }
-
-  /** Loads the KSP fork's class of this class's name itself, and every other class parent first. */
-  private static final class Backend extends URLClassLoader {
-    Backend(URL[] urls, ClassLoader parent) {
-      super(urls, parent);
-    }
-
-    @Override
-    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-      if (!name.equals(NAME) && !name.startsWith(NAME + "$")) {
-        return super.loadClass(name, resolve);
-      }
-      synchronized (getClassLoadingLock(name)) {
-        Class<?> c = findLoadedClass(name);
-        if (c == null) {
-          c = findClass(name);
-        }
-        if (resolve) {
-          resolveClass(c);
-        }
-        return c;
-      }
-    }
   }
 
   private static KSPConfig config(byte[] config) throws IOException, ClassNotFoundException {

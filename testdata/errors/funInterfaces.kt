@@ -5,17 +5,17 @@ fun interface TwoMethods { // ERROR fun interfaces must have exactly one abstrac
     fun b()
 }
 
-fun interface WithProperty { // ERROR fun interfaces cannot have abstract properties
-    val x: Int
+fun interface WithProperty {
+    val x: Int // ERROR fun interfaces cannot have abstract properties
     fun a()
 }
 
-fun interface Generic { // ERROR single abstract member cannot declare type parameters
-    fun <T> a(x: T)
+fun interface Generic {
+    fun <T> a(x: T) // ERROR single abstract member cannot declare type parameters
 }
 
-fun interface WithDefault { // ERROR single abstract member cannot declare default values
-    fun a(x: Int = 1)
+fun interface WithDefault {
+    fun a(x: Int = 1) // ERROR single abstract member cannot declare default values
 }
 
 interface Plain {

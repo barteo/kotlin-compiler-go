@@ -39,13 +39,46 @@ func TestCompareMissed(t *testing.T) {
 	// One of the two Y errors is reported now, X is still missed (with
 	// another cause), and t2's errors weren't checked in the baseline.
 	now := []string{"t1.kt\tt1.kt:3\tX\tmissing-check", "t1.kt\tt1.kt:5\tY\tmissing-check", "t2.kt\tt2.kt:1\tZ\tnearby"}
-	if err := compareMissed("base", []byte(base), cats, rs, now); err != nil {
+	if err := compareMissed("errors", "base", []byte(base), cats, rs, now); err != nil {
 		t.Errorf("no regression: %v", err)
 	}
 
 	now = append(now, "t1.kt\tt1.kt:7\tW\tnearby")
-	err := compareMissed("base", []byte(base), cats, rs, now)
+	err := compareMissed("errors", "base", []byte(base), cats, rs, now)
 	if err == nil || !strings.Contains(err.Error(), "1 expected errors") {
 		t.Errorf("one regression: got %v", err)
+	}
+	err = compareMissed("warnings", "base", []byte(base), cats, rs, now)
+	if err == nil || !strings.Contains(err.Error(), "1 expected warnings") {
+		t.Errorf("one regression in warnings: got %v", err)
+	}
+}
+
+func TestMissedWarningLines(t *testing.T) {
+	sev := map[string]string{"W": sevWarning, "E": sevError}
+	w := func(file string, line int) mark { return mark{file, expected{"W", line}} }
+	rs := []*result{
+		{path: "hit.kt", category: catAcceptsValid},
+		{path: "broken.kt", category: catRejectsInvalid},
+		{path: "modules.kt", category: catRejectsInvalid},
+		{path: "crash.kt", category: catCrash},
+	}
+	dts := []*diagTest{
+		// One of two warnings on their lines, an error mark, and a
+		// warning of another name on the missed one's line.
+		{marks: []mark{w("a.kt", 1), w("a.kt", 2), {"a.kt", expected{"E", 3}}},
+			kcWarns: []diag{{file: "a.kt", line: 1, name: "W"}, {file: "a.kt", line: 2, name: "V"}}},
+		{marks: []mark{w("b.kt", 4)}, parseErrs: true},
+		{marks: []mark{w("c.kt", 5), w("d.kt", 6)}, tried: map[string]bool{"c.kt": true}},
+		{marks: []mark{w("e.kt", 7)}},
+	}
+	want := []string{
+		"broken.kt\tb.kt:4\tW\t" + causeParse,
+		"hit.kt\ta.kt:2\tW\t" + causeMissingCheck,
+		"modules.kt\tc.kt:5\tW\t" + causeMissingCheck,
+		"modules.kt\td.kt:6\tW\t" + causeModule,
+	}
+	if got := missedWarningLines(sev, rs, dts); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("missedWarningLines:\ngot  %q\nwant %q", got, want)
 	}
 }
