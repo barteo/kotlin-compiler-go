@@ -304,5 +304,11 @@
       }
     ],
     "titles": []
+  },
+  "formatting": {
+    "nestedCalls": "package sample\n\nfun sum(\n    left: Int,\n    right: Int,\n): Int {\n    return listOf(\n        left,\n        listOf(\n            right,\n            1,\n        ).sum(),\n    ).sum()\n}\n",
+    "chainAndLambda": "package sample\n\nfun edit(xs: List<Int>?) {\n    xs\n        ?.map { n -> n + 1 }\n        ?.filter { n ->\n            n > 0\n        }\n        .orEmpty()\n        .map { it * 2 }\n}\n",
+    "argumentRange": "package sample\n\nfun edit() {\nval numbers= listOf(\n    1,\n    2,\n)\nval after=0\n}\n",
+    "expressionBody": "package sample\n\nfun sizes(xs: List<String>) =\n    xs\n        .map { it.length }\n        .filter {\n            it > 0\n        }\n\nfun nested() = listOf(\n    listOf(\n        1,\n        2,\n    ), 3\n)\n"
   }
 }

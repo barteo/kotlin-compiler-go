@@ -147,4 +147,18 @@ def record_cases(request, notify, buffer, fixture, legend):
                          "text": buffer.text, "after": after}
             if case.endswith("Argument"):
                 out[case]["title"] = action["title"]
+    formatting = {}
+    for name, case in json.loads((fixture / "formatting.json").read_text()).items():
+        buffer.change(case["text"], notify)
+        params = {"textDocument": doc, "options": case["options"]}
+        method = "formatting"
+        if "range" in case:
+            method = "rangeFormatting"
+            params["range"] = case["range"]
+        edits = request("textDocument/" + method, params)
+        if not isinstance(edits, list):
+            raise RuntimeError(f"{name}: expected formatting edits, received {edits}")
+        buffer.apply({"changes": {buffer.uri: edits}}, notify)
+        formatting[name] = buffer.text
+    out["formatting"] = formatting
     return out

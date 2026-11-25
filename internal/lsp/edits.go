@@ -546,63 +546,6 @@ func organize(s *psi.Snapshot, idx *index) []edit {
 	return []edit{{span{rng(first).Start, rng(last).End}, text}}
 }
 
-// Format edits whitespace between PSI leaves. Contents of literals and
-// comments stay byte-identical, including multiline raw strings.
-func format(s *psi.Snapshot, p parameters, limited bool) []edit {
-	out := []edit{}
-	if len(s.Diagnostics()) > 0 {
-		return out
-	}
-	size := p.Options.TabSize
-	if size < 1 || size > 16 {
-		size = 4
-	}
-	unit := "\t"
-	if p.Options.InsertSpaces {
-		unit = strings.Repeat(" ", size)
-	}
-	depth := 0
-	var prev psi.NodeRef
-	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
-		if !n.IsLeaf() && n.NumericKind() != psi.KindKDOC {
-			return true
-		}
-		if n.NumericKind() == psi.KindWHITE_SPACE {
-			return true
-		}
-		if n.NumericKind() == psi.KindRBRACE {
-			depth = max(0, depth-1)
-		}
-		if prev.Valid() {
-			a, b := prev.Range().End, n.Range().Start
-			old := s.Source()[a:b]
-			want := old
-			if j := strings.LastIndexByte(old, '\n'); j >= 0 {
-				want = old[:j+1] + strings.Repeat(unit, depth)
-			} else if ancestor(n, psi.KindSTRING_TEMPLATE).Valid() && ancestor(n, psi.KindSTRING_TEMPLATE) == ancestor(prev, psi.KindSTRING_TEMPLATE) {
-				want = old
-			} else if prev.NumericKind() == psi.KindCOMMA || prev.NumericKind() == psi.KindCOLON || prev.NumericKind() == psi.KindEQ || n.NumericKind() == psi.KindEQ || n.NumericKind() == psi.KindLBRACE || binaryOp(n) || binaryOp(prev) {
-				want = " "
-			} else if n.NumericKind() == psi.KindCOMMA || n.NumericKind() == psi.KindCOLON || n.NumericKind() == psi.KindRPAR || prev.NumericKind() == psi.KindLPAR {
-				want = ""
-			}
-			r := span{pos(s, a), pos(s, b)}
-			if old != want && (!limited || !before(r.Start, p.Range.Start) && !before(p.Range.End, r.End)) {
-				out = append(out, edit{r, want})
-			}
-		}
-		if n.NumericKind() == psi.KindLBRACE {
-			depth++
-		}
-		prev = n
-		return false
-	})
-	return out
-}
-func binaryOp(n psi.NodeRef) bool {
-	return n.Parent().NumericKind() == psi.KindOPERATION_REFERENCE && n.Parent().Parent().NumericKind() == psi.KindBINARY_EXPRESSION
-}
-
 func literal(n psi.NodeRef) bool {
 	switch n.NumericKind() {
 	case psi.KindINTEGER_CONSTANT, psi.KindBOOLEAN_CONSTANT, psi.KindFLOAT_CONSTANT, psi.KindCHARACTER_CONSTANT, psi.KindNULL:
