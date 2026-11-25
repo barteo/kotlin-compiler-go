@@ -33,16 +33,16 @@ type client struct {
 
 func start(t *testing.T, root string) *client {
 	t.Helper()
-	return startClient(t, root, completionOptions{})
+	return startClient(t, root, completionOptions{}, false)
 }
-func startClient(t *testing.T, root string, opts completionOptions) *client {
+func startClient(t *testing.T, root string, opts completionOptions, definitionLinks bool) *client {
 	t.Helper()
 	r, w := io.Pipe()
 	rr, ww := io.Pipe()
 	done := make(chan error, 1)
 	go func() { err := Serve(r, ww); ww.Close(); done <- err }()
 	c := &client{t: t, req: w, resp: bufio.NewReader(rr)}
-	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": true}}}})
+	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"definition": object{"linkSupport": definitionLinks}, "completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": true}}}})
 	c.notify("initialized", object{})
 	t.Cleanup(func() {
 		if !t.Failed() {
@@ -339,10 +339,12 @@ func TestNativeClasspathAndDiagnostics(t *testing.T) {
 	put(t, filepath.Join(root, "lib", "Secret.kt"), "package demo\ninternal fun secret() = 1\n")
 	put(t, java, "package demo;\npublic class Greeter { public int number() { return 1; } }\n")
 	put(t, path, "package demo\nfun use(g: Greeter): Int = g.number() + secret()\n")
-	c := start(t, root)
-	if got := c.call("textDocument/definition", params(path, position{1, 30})); !bytes.Contains(got, []byte(uri(java))) {
-		t.Fatalf("Java definition %s", got)
-	}
+	c := startClient(t, root, completionOptions{}, true)
+	got := c.call("textDocument/definition", params(path, position{1, 30}))
+	target := span{position{1, 34}, position{1, 40}}
+	want, _ := json.Marshal([]object{{"targetUri": uri(java), "targetRange": target, "targetSelectionRange": target,
+		"originSelectionRange": span{position{1, 29}, position{1, 35}}}})
+	checkJSON(t, got, want)
 	if got := c.call("textDocument/diagnostic", params(path, position{})); !bytes.Contains(got, []byte("INVISIBLE_REFERENCE")) {
 		t.Fatalf("module visibility %s", got)
 	}

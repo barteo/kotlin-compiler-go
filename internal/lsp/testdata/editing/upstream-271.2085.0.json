@@ -143,5 +143,166 @@
     ],
     "text": "package sample\n\nimport editinglib.EditingPacket\n\nfun edit() = EditingPacket()\n",
     "after": []
+  },
+  "definition": [
+    {
+      "originSelectionRange": {
+        "start": {
+          "line": 1,
+          "character": 20
+        },
+        "end": {
+          "line": 1,
+          "character": 33
+        }
+      },
+      "targetUri": "file:///workspace/Scopes.kt",
+      "targetRange": {
+        "start": {
+          "line": 4,
+          "character": 4
+        },
+        "end": {
+          "line": 4,
+          "character": 17
+        }
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 4,
+          "character": 4
+        },
+        "end": {
+          "line": 4,
+          "character": 17
+        }
+      }
+    }
+  ],
+  "labels": {
+    "full": [
+      {
+        "line": 3,
+        "character": 8,
+        "length": 5,
+        "modifiers": []
+      },
+      {
+        "line": 3,
+        "character": 34,
+        "length": 5,
+        "modifiers": []
+      },
+      {
+        "line": 4,
+        "character": 12,
+        "length": 6,
+        "modifiers": []
+      },
+      {
+        "line": 4,
+        "character": 27,
+        "length": 6,
+        "modifiers": []
+      },
+      {
+        "line": 5,
+        "character": 12,
+        "length": 2,
+        "modifiers": []
+      }
+    ],
+    "range": [
+      {
+        "line": 4,
+        "character": 12,
+        "length": 6,
+        "modifiers": []
+      },
+      {
+        "line": 4,
+        "character": 27,
+        "length": 6,
+        "modifiers": []
+      }
+    ]
+  },
+  "extraArgument": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 8
+          },
+          "end": {
+            "line": 2,
+            "character": 9
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "text": "package sample\nannotation class Tag(val x: Int)\n@Tag(1) class C\n",
+    "after": [],
+    "title": "Remove argument"
+  },
+  "soleArgument": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 5
+          },
+          "end": {
+            "line": 3,
+            "character": 8
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "text": "@file:Suppress(\"RemoveEmptyParenthesesFromAnnotationEntry\")\npackage sample\nannotation class Tag\n@Tag() class C\n",
+    "after": [],
+    "title": "Remove argument"
+  },
+  "trailingArgument": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 4
+          },
+          "end": {
+            "line": 4,
+            "character": 5
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "text": "package sample\nannotation class Tag(val x: Int)\n@Tag(\n    1,\n) class C\n",
+    "after": [],
+    "title": "Remove argument"
+  },
+  "unknownArgument": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 8
+          },
+          "end": {
+            "line": 2,
+            "character": 13
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "titles": []
   }
 }

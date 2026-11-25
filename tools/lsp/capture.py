@@ -71,6 +71,12 @@ def capture(process, messages, root, state, project):
     caps = {"workspace": {"configuration": True, "workspaceFolders": True},
             "textDocument": {"documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
                              "foldingRange": {}, "hover": {"contentFormat": ["markdown"]}}}
+    if project == "editing":
+        caps["textDocument"]["definition"] = {"linkSupport": True}
+        caps["textDocument"]["semanticTokens"] = {
+            "requests": {"full": True, "range": True}, "formats": ["relative"],
+            "tokenTypes": ["label"], "tokenModifiers": ["declaration", "definition"],
+        }
     init = request("initialize", {"processId": os.getpid(), "rootUri": root.as_uri(),
                                   "workspaceFolders": [{"uri": root.as_uri(), "name": "project"}],
                                   "initializationOptions": {"indexDir": str(state / "index")},
@@ -103,7 +109,7 @@ def capture(process, messages, root, state, project):
         deadline = time.monotonic() + 150
         while True:
             definition = request("textDocument/definition", at_use)
-            if isinstance(definition, list) and any(item.get("uri") == file.as_uri() for item in definition):
+            if isinstance(definition, list) and any(item.get("uri", item.get("targetUri")) == file.as_uri() for item in definition):
                 break
             if time.monotonic() > deadline:
                 raise RuntimeError(f"{project} import never resolved the cross-file call to Example.kt")
@@ -116,7 +122,9 @@ def capture(process, messages, root, state, project):
                       **declaration, "context": {"includeDeclaration": True}}),
                   "rename": request("textDocument/rename", {**declaration, "newName": "resultOf"})}
     if project == "editing":
-        record = {"release": record["release"], **editing.record_cases(request, notify, buffer, FIXTURES / "editing")}
+        legend = init["capabilities"]["semanticTokensProvider"]["legend"]
+        cases = editing.record_cases(request, notify, buffer, FIXTURES / "editing", legend)
+        record = {"release": record["release"], **cases}
     request("shutdown", None)
     send(process, method="exit", params=None)
     experimental = init["capabilities"]["experimental"]
@@ -126,6 +134,8 @@ def capture(process, messages, root, state, project):
     text = json.dumps(record, indent=2).replace(doc["uri"], "file:///workspace/Example.kt")
     if project:
         text = text.replace(consumer.as_uri(), "file:///workspace/Consumer.kt")
+    if project == "editing":
+        text = text.replace(file.with_name("Scopes.kt").as_uri(), "file:///workspace/Scopes.kt")
     return text + "\n"
 
 

@@ -3,6 +3,7 @@ package lsp
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -29,7 +30,7 @@ func editingWorkspace(t *testing.T) (*client, string) {
 	}
 	put(t, filepath.Join(root, "kc-lsp.json"), `{"version":1,"modules":[{"name":"library","sourceRoots":["library"]},{"name":"app","sourceRoots":["src"],"dependencies":["library"],"classPath":["classes"]}]}`)
 	put(t, filepath.Join(root, "library", "Scopes.kt"), string(input(t, "testdata/editing/Scopes.kt")))
-	return start(t, root), filepath.Join(root, "src", "Editing.kt")
+	return startClient(t, root, completionOptions{}, true), filepath.Join(root, "src", "Editing.kt")
 }
 func applyText(t *testing.T, text string, edits []edit) string {
 	t.Helper()
@@ -83,11 +84,32 @@ func TestEditingReplay(t *testing.T) {
 		}
 		c.notify("textDocument/didChange", object{"textDocument": doc, "contentChanges": []change{{Text: src}}})
 	}
-	for _, name := range []string{"completion", "signature", "assertion", "safeCall", "elvis", "inner", "import"} {
+	for _, name := range slices.Sorted(maps.Keys(cases)) {
 		t.Run(name, func(t *testing.T) {
 			src, q := markedQuery(t, path, cases[name])
 			change(src)
+			switch name {
+			case "definition":
+				dest := uri(filepath.Join(filepath.Dir(filepath.Dir(path)), "library", "Scopes.kt"))
+				want := bytes.ReplaceAll(ref[name], []byte("file:///workspace/Scopes.kt"), []byte(dest))
+				checkJSON(t, c.call("textDocument/definition", q), want)
+				return
+			case "labels":
+				var want map[string]json.RawMessage
+				if err := json.Unmarshal(ref[name], &want); err != nil {
+					t.Fatal(err)
+				}
+				at := q["position"].(position)
+				q["range"] = span{at, position{Line: at.Line + 1}}
+				for _, method := range []string{"full", "range"} {
+					got := c.call("textDocument/semanticTokens/"+method, q)
+					checkJSON(t, labelTokens(t, got), want[method])
+				}
+				return
+			}
 			var want struct {
+				Title       string
+				Titles      []string
 				Order       []string
 				Text        string
 				After       json.RawMessage
@@ -179,7 +201,22 @@ func TestEditingReplay(t *testing.T) {
 					}
 				}
 				json.Unmarshal(got, &actions)
+				if name == "unknownArgument" {
+					var titles []string
+					for _, a := range actions {
+						if strings.Contains(strings.ToLower(a.Title), "remove") && strings.Contains(strings.ToLower(a.Title), "argument") {
+							titles = append(titles, a.Title)
+						}
+					}
+					if !slices.Equal(titles, want.Titles) {
+						t.Fatalf("removal actions %v, want %v", titles, want.Titles)
+					}
+					return
+				}
 				for _, a := range actions {
+					if want.Title != "" && a.Title != want.Title {
+						continue
+					}
 					if len(a.Edit.DocumentChanges) != 1 {
 						continue
 					}
@@ -205,6 +242,85 @@ func TestEditingReplay(t *testing.T) {
 	}
 }
 
+func TestAnnotationArgumentRemoval(t *testing.T) {
+	root := t.TempDir()
+	c := start(t, root)
+	for _, tc := range []struct {
+		name, marked, want string
+	}{
+		{"middle", "@Tag(1, |2, 3)", "@Tag(1, 3)"},
+		{"lineComment", "@Tag(1, // keep\r\n |2)", "@Tag(1 // keep\r\n )"},
+		{"blockComment", "@Tag(1, /* keep */ |2)", "@Tag(1 /* keep */ )"},
+		{"regularCall", "fun take(x: Int) = x\nfun caller() = take(1, |2)", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(root, tc.name+".kt")
+			// Separate packages keep the annotation definitions independent.
+			prefix := "package " + tc.name + "\nannotation class Tag(val x: Int)\n"
+			suffix := "\nclass C\n"
+			src, q := markedQuery(t, path, prefix+tc.marked+suffix)
+			c.notify("textDocument/didOpen", object{"textDocument": object{"uri": uri(path), "text": src, "version": 1}})
+			at := q["position"].(position)
+			q["range"] = span{at, at}
+			q["context"] = object{"only": []string{"quickfix"}}
+			var actions []struct {
+				Title string
+				Edit  struct{ DocumentChanges []struct{ Edits []edit } }
+			}
+			if err := json.Unmarshal(c.call("textDocument/codeAction", q), &actions); err != nil {
+				t.Fatal(err)
+			}
+			for _, action := range actions {
+				if action.Title != "Remove argument" {
+					continue
+				}
+				if tc.want == "" || len(action.Edit.DocumentChanges) != 1 {
+					t.Fatalf("unexpected removal: %+v", action)
+				}
+				if got := applyText(t, src, action.Edit.DocumentChanges[0].Edits); got != prefix+tc.want+suffix {
+					t.Fatalf("edited text %q", got)
+				}
+				return
+			}
+			if tc.want != "" {
+				t.Fatal("missing Remove argument action")
+			}
+		})
+	}
+}
+
+func labelTokens(t *testing.T, raw json.RawMessage) []byte {
+	t.Helper()
+	var result struct{ Data []int }
+	if err := json.Unmarshal(raw, &result); err != nil || len(result.Data)%5 != 0 {
+		t.Fatalf("invalid semantic tokens: %s", raw)
+	}
+	labels := []object{}
+	line, column := 0, 0
+	for j := 0; j < len(result.Data); j += 5 {
+		v := result.Data[j : j+5]
+		line += v[0]
+		if v[0] != 0 {
+			column = 0
+		}
+		column += v[1]
+		if tokenTypes[v[3]] == "label" {
+			modifiers := []string{}
+			for bit, name := range tokenModifiers {
+				if v[4]&(1<<bit) != 0 {
+					modifiers = append(modifiers, name)
+				}
+			}
+			labels = append(labels, object{"line": line, "character": column, "length": v[2], "modifiers": modifiers})
+		}
+	}
+	b, err := json.Marshal(labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 func TestCompletionEditsAndResolve(t *testing.T) {
 	for _, advanced := range []bool{false, true} {
 		root := t.TempDir()
@@ -214,7 +330,7 @@ func TestCompletionEditsAndResolve(t *testing.T) {
 			opts.ResolveSupport.Properties = []string{"documentation", "detail"}
 			opts.DocumentationFormat = []string{"markdown"}
 		}
-		c := startClient(t, root, opts)
+		c := startClient(t, root, opts, false)
 		src, q := markedQuery(t, path, "/** First overload. */\r\nfun sample(x: Int) = x\r\n/** Second overload. */\r\nfun sample(x: String) = x\r\nfun use() { val s = \"😀\"; sam|old }\r\n")
 		c.notify("textDocument/didOpen", object{"textDocument": object{"uri": uri(path), "text": src, "version": 1}})
 		var items []object

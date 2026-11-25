@@ -224,13 +224,14 @@ func tokenClass(n psi.NodeRef, i *index) (string, int) {
 	if k == psi.KindKDOC {
 		return "comment", 1 << 8
 	}
+	if k == psi.KindLABEL || k == psi.KindLABEL_IDENTIFIER {
+		return "label", 0
+	}
 	if !n.IsLeaf() {
 		return "", 0
 	}
 	kind := n.Kind()
 	switch {
-	case k == psi.KindLABEL_IDENTIFIER || ancestor(n.Parent(), psi.KindLABEL, psi.KindLABEL_QUALIFIER).Valid() && k == psi.KindIDENTIFIER:
-		return "label", 0
 	case k == psi.KindIDENTIFIER:
 		if ancestor(n.Parent(), psi.KindVALUE_ARGUMENT_NAME).Valid() {
 			return "parameter", 1 << 10

@@ -5,5 +5,11 @@
   "safeCall": "package sample\nfun edit(s: String) = s|?.length\n",
   "elvis": "package sample\nfun edit(s: String) = s |?: \"fallback\"\n",
   "inner": "package sample\n|inner class Broken\n",
-  "import": "package sample\nfun edit() = |EditingPacket()\n"
+  "import": "package sample\nfun edit() = |EditingPacket()\n",
+  "definition": "package sample\nfun test() { /*😀*/ edi|tingGlobal }\n",
+  "labels": "package sample\nclass C {\n    fun test() {\n        loop@ while (true) { break@loop }\n        |run block@ { return@block }\n        this@C.test()\n    }\n}\n",
+  "extraArgument": "package sample\nannotation class Tag(val x: Int)\n@Tag(1, |2) class C\n",
+  "soleArgument": "@file:Suppress(\"RemoveEmptyParenthesesFromAnnotationEntry\")\npackage sample\nannotation class Tag\n@Tag(|123) class C\n",
+  "trailingArgument": "package sample\nannotation class Tag(val x: Int)\n@Tag(\n    1,\n    |2,\n) class C\n",
+  "unknownArgument": "package sample\nannotation class Tag(val x: Int)\n@Tag(1, |wrong = 3) class C\n"
 }

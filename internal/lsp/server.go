@@ -57,6 +57,7 @@ type parameters struct {
 	ContentChanges []change `json:"contentChanges"`
 	Capabilities   struct {
 		TextDocument struct {
+			Definition    struct{ LinkSupport bool }
 			Completion    struct{ CompletionItem completionOptions }
 			SignatureHelp struct {
 				SignatureInformation struct {
@@ -76,6 +77,7 @@ type server struct {
 	out                                            io.Writer
 	started, shutdown, versionEdits, registerWatch bool
 	loaded, refreshHints, labelOffsets             bool
+	definitionLinks                                bool
 	completion                                     completionOptions
 	hints                                          hintSettings
 	hintRequest                                    uint64
@@ -296,6 +298,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		s.started = true
 		s.hints = readHintSettings(p.InitializationOptions)
 		s.completion = p.Capabilities.TextDocument.Completion.CompletionItem
+		s.definitionLinks = p.Capabilities.TextDocument.Definition.LinkSupport
 		s.labelOffsets = p.Capabilities.TextDocument.SignatureHelp.SignatureInformation.ParameterInformation.LabelOffsetSupport
 		s.refreshHints = p.Capabilities.Workspace.InlayHint.RefreshSupport
 		s.versionEdits = p.Capabilities.Workspace.WorkspaceEdit.DocumentChanges
@@ -508,10 +511,21 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		}
 		return nil, nil
 	case "textDocument/definition":
+		var dest *location
 		if target.Valid() {
-			return []location{loc(target)}, nil
+			l := loc(target)
+			if !s.definitionLinks {
+				return []location{l}, nil
+			}
+			dest = &l
+		} else {
+			dest = libraryDefinition(&s.w, path, i, n)
 		}
-		return libraryDefinition(&s.w, path, i, n), nil
+		if dest == nil || !s.definitionLinks {
+			return dest, nil
+		}
+		return []object{{"originSelectionRange": rng(n), "targetUri": dest.URI,
+			"targetRange": dest.Range, "targetSelectionRange": dest.Range}}, nil
 	case "textDocument/completion":
 		return i.completion(ctx, d.snap, off, s.completion), nil
 	case "textDocument/signatureHelp":

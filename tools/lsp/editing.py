@@ -37,7 +37,21 @@ class Buffer:
             self.change(text, notify)
 
 
-def record_cases(request, notify, buffer, fixture):
+def labels(result, legend):
+    data = result["data"]
+    matches = []
+    line = column = 0
+    for i in range(0, len(data), 5):
+        delta, start, length, kind, bits = data[i:i + 5]
+        line += delta
+        column = start if delta else column + start
+        if legend["tokenTypes"][kind] == "label":
+            modifiers = [m for j, m in enumerate(legend["tokenModifiers"]) if bits & (1 << j)]
+            matches.append({"line": line, "character": column, "length": length, "modifiers": modifiers})
+    return matches
+
+
+def record_cases(request, notify, buffer, fixture, legend):
     doc = {"uri": buffer.uri}
     out = {}
     for case, marked in json.loads((fixture / "cases.json").read_text()).items():
@@ -58,6 +72,19 @@ def record_cases(request, notify, buffer, fixture):
             if "editingLocal\n" not in buffer.text:
                 raise RuntimeError(f"completion did not apply: {selected} {buffer.text}")
             out[case] = {"order": names, "text": buffer.text}
+        elif case == "definition":
+            links = request("textDocument/definition", params)
+            if not links or "targetUri" not in links[0]:
+                raise RuntimeError(f"Expected a definition link: {links}")
+            out[case] = links
+        elif case == "labels":
+            full = labels(request("textDocument/semanticTokens/full", {"textDocument": doc}), legend)
+            # Select just the labeled lambda line.
+            r = {"start": pos, "end": {"line": pos["line"] + 1, "character": 0}}
+            limited = labels(request("textDocument/semanticTokens/range", {"textDocument": doc, "range": r}), legend)
+            if len(full) != 5 or len(limited) != 2:
+                raise RuntimeError(f"Missing label tokens: {full}, {limited}")
+            out[case] = {"full": full, "range": limited}
         elif case == "signature":
             deadline = time.monotonic() + 15
             while True:
@@ -74,12 +101,27 @@ def record_cases(request, notify, buffer, fixture):
                 ds = request("textDocument/diagnostic", {"textDocument": doc})["items"]
                 actions = request("textDocument/codeAction", {"textDocument": doc, "range": {"start": pos, "end": pos},
                     "context": {"diagnostics": ds, "only": ["quickfix"]}}) or []
+                if case == "unknownArgument":
+                    diag = next((d for d in ds if d["code"] == "NAMED_PARAMETER_NOT_FOUND" and
+                                 d["range"]["start"] == pos), None)
+                    if diag:
+                        out[case] = {"diagnostics": [{"range": diag["range"], "severity": diag["severity"]}],
+                                     "titles": [a["title"] for a in actions if "remove" in a["title"].lower()
+                                                and "argument" in a["title"].lower()]}
+                        break
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(f"Missing named argument diagnostic: {ds}")
+                    time.sleep(0.3)
+                    continue
                 words = {"assertion": ("remove", "!!"), "safeCall": ("replace",), "elvis": ("elvis",),
-                         "inner": ("remove", "inner"), "import": ("import", "editingpacket")}[case]
+                         "soleArgument": ("remove", "argument"), "extraArgument": ("remove", "argument"),
+                         "trailingArgument": ("remove", "argument"), "inner": ("remove", "inner"), "import": ("import", "editingpacket")}[case]
                 action = next((a for a in actions if all(w in a["title"].lower() for w in words)), None)
                 if action: break
                 if time.monotonic() >= deadline: raise RuntimeError(f"{case}: {ds} {actions}")
                 time.sleep(0.3)
+            if case == "unknownArgument":
+                continue
             if "edit" in action: buffer.apply(action["edit"], notify)
             if "command" in action: request("workspace/executeCommand", action["command"])
             if buffer.text == prefix + suffix: raise RuntimeError(f"No edit for {case}: {action}")
@@ -103,4 +145,6 @@ def record_cases(request, notify, buffer, fixture):
             d = relevant[0]
             out[case] = {"diagnostics": [{"range": d["range"], "severity": d["severity"]}],
                          "text": buffer.text, "after": after}
+            if case.endswith("Argument"):
+                out[case]["title"] = action["title"]
     return out

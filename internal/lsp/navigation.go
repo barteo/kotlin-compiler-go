@@ -268,7 +268,7 @@ func sourceRange(path, text string, sym analysis.Symbol, c *analysis.Call) (span
 
 // Extract one matching source under a private temporary directory. The URI
 // is an ordinary file URI that even clients without a jar: provider can open.
-func libraryDefinition(w *workspace, path string, i *index, n psi.NodeRef) any {
+func libraryDefinition(w *workspace, path string, i *index, n psi.NodeRef) *location {
 	sym := i.symbols[n]
 	if sym.Kind == "" {
 		return nil
@@ -279,13 +279,13 @@ func libraryDefinition(w *workspace, path string, i *index, n psi.NodeRef) any {
 	}
 	return resolveLibrary(w, path, sym, c)
 }
-func resolveLibrary(w *workspace, path string, sym analysis.Symbol, c *analysis.Call) any {
+func resolveLibrary(w *workspace, path string, sym analysis.Symbol, c *analysis.Call) *location {
 	m := w.module(path)
 	group := w.p.group(m)
 	for p, t := range w.java {
 		if slices.Contains(group, w.p.owner(p)) {
 			if r, ok := javaRange(t, sym, c); ok {
-				return location{uri(p), r}
+				return &location{uri(p), r}
 			}
 		}
 	}
@@ -299,7 +299,7 @@ func resolveLibrary(w *workspace, path string, sym analysis.Symbol, c *analysis.
 	}
 	for _, src := range sources {
 		if loc, ok := inArchive(w, src, sym, c); ok {
-			return loc
+			return &loc
 		}
 	}
 	return nil

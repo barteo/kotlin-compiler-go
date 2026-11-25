@@ -15,6 +15,16 @@ type quickFix struct {
 	edits []edit
 }
 
+// Only direct arguments of an annotation entry are eligible. A nested call
+// inside an annotation owns its own argument list.
+func annotationArgument(n psi.NodeRef) psi.NodeRef {
+	arg := ancestor(n, psi.KindVALUE_ARGUMENT)
+	if arg.Parent().Parent().NumericKind() == psi.KindANNOTATION_ENTRY {
+		return arg
+	}
+	return psi.NodeRef{}
+}
+
 func diagnosticRange(n psi.NodeRef, d analysis.Diagnostic) span {
 	switch d.Code {
 	case "UNNECESSARY_SAFE_CALL":
@@ -29,6 +39,16 @@ func diagnosticRange(n psi.NodeRef, d analysis.Diagnostic) span {
 			if op.Text() == "?:" {
 				return span{rng(op).Start, rng(expr).End}
 			}
+		}
+	}
+	if strings.HasPrefix(d.Message, "too many arguments for annotation ") {
+		if arg := annotationArgument(n); arg.Valid() {
+			return rng(arg)
+		}
+	}
+	if strings.HasPrefix(d.Message, "cannot find a parameter with this name:") {
+		if name := annotationArgument(n).ChildKind(psi.KindVALUE_ARGUMENT_NAME); name.Valid() {
+			return rng(name)
 		}
 	}
 	if invalidInner(d.Message) {
@@ -79,6 +99,10 @@ func quickFixes(ctx context.Context, s *psi.Snapshot, i *index, d object) []quic
 			})
 			replace("Remove useless Elvis fallback", span{pos(s, start), pos(s, end)}, comments.String())
 		}
+	case strings.HasPrefix(msg, "too many arguments for annotation "):
+		if arg := annotationArgument(n); arg.Valid() {
+			out = append(out, quickFix{"Remove argument", removeArgument(arg)})
+		}
 	case invalidInner(msg) && n.Text() == "inner":
 		end := n.Range().End
 		for end < len(s.Source()) && (s.Source()[end] == ' ' || s.Source()[end] == '\t') {
@@ -125,6 +149,33 @@ func quickFixes(ctx context.Context, s *psi.Snapshot, i *index, d object) []quic
 	}
 	return out
 }
+
+// Prefer the preceding comma so a trailing comma stays with the surviving
+// arguments. When a comment separates the comma and argument, edit each
+// token separately to retain the comment and its terminating newline.
+func removeArgument(arg psi.NodeRef) []edit {
+	prev := arg.PreviousSibling()
+	for prev.IsTrivia() {
+		prev = prev.PreviousSibling()
+	}
+	first, last := prev, arg
+	if prev.NumericKind() != psi.KindCOMMA {
+		next := arg.NextSibling()
+		for next.IsTrivia() {
+			next = next.NextSibling()
+		}
+		if next.NumericKind() != psi.KindCOMMA {
+			return []edit{{rng(arg), ""}}
+		}
+		first, last = arg, next
+	}
+	gap := arg.ContainingFile().Source()[first.Range().End:last.Range().Start]
+	if strings.TrimSpace(gap) != "" {
+		return []edit{{rng(first), ""}, {rng(last), ""}}
+	}
+	return []edit{{span{rng(first).Start, rng(last).End}, ""}}
+}
+
 func suppressionFixes(s *psi.Snapshot, n psi.NodeRef, code string) []quickFix {
 	var out []quickFix
 	stmt := n
