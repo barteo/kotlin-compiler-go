@@ -58,6 +58,43 @@ val hiddenTop: Int = 1
 
 interface WithCompanion {
     companion object {
+        val shared: List<String> = listOf("a")
+        var counter: Int = 0
+        private var hidden: Int = 0
+        var withField: Int = 1
+            get() = field + 1
+            set(v) { field = v * 2 }
+        val lazyName: String by lazy { "x" }
+        lateinit var late: String
+        lateinit var privateSet: String
+            private set
+        @JvmStatic val st: Int = 5
+        const val C = 1
+
+        init {
+            counter = 3
+        }
+
         fun make(): Int = 1
+        fun bump() {
+            hidden++
+            privateSet = "s"
+        }
+    }
+
+    fun read() = shared.size + counter + withField
+}
+
+interface WithJvmFields {
+    companion object {
+        @JvmField val first: String = "f"
+        @JvmField val second: String = first + "s"
+    }
+}
+
+annotation class WithAnnotationCompanion {
+    companion object {
+        val name: String = "n"
+        var count: Int = 0
     }
 }

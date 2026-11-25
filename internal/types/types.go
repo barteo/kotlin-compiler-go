@@ -457,9 +457,9 @@ func (c *ClassSym) KotlinAnnotation() bool {
 // kotlinc writes it: a property of a named object, whose class holds it,
 // or of a class's companion object, whose outer class does (ConstOwner),
 // where kotlin-reflect looks for it. An interface's or an annotation
-// class's companion holds its properties' fields itself, but for an
-// interface's @JvmField ones, as does one whose outer class has a
-// property of the same name.
+// class's companion holds its properties' static fields itself, but for an
+// interface's @JvmField ones. A property whose outer class has a property
+// of the same name has an instance field in the companion.
 func (v *VarSym) StaticField() bool {
 	o := v.Owner
 	if v.Kind != Prop || o == nil || !o.Object || o.Anonymous || o.External || v.Const {
@@ -470,7 +470,7 @@ func (v *VarSym) StaticField() bool {
 	}
 	outer := o.CompanionOf
 	if outer.Interface || outer.Annotation {
-		return false
+		return true
 	}
 	// Where the outer class has a field of the name, kotlinc renames that;
 	// kc leaves the companion's field in the companion instead.
@@ -482,13 +482,17 @@ func (v *VarSym) StaticField() bool {
 	return outer.Fields[v.Name] == nil
 }
 
-// ConstOwner returns the class whose static field holds const property p
-// of an object: the object's class, or a companion's outer class.
+// ConstOwner returns the class whose static field holds property p of an
+// object, a const one or one with StaticField: the object's class, or a
+// companion's outer class. An interface's or an annotation class's
+// companion holds the fields of its properties itself, but for its consts'
+// and its @JvmField ones'.
 func (v *VarSym) ConstOwner() *ClassSym {
-	if c := v.Owner.CompanionOf; c != nil {
-		return c
+	c := v.Owner.CompanionOf
+	if c == nil || (c.Interface || c.Annotation) && !v.Const && !v.JvmField {
+		return v.Owner
 	}
-	return v.Owner
+	return c
 }
 
 // HasField reports whether a class or top-level property has a backing
