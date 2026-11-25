@@ -327,7 +327,8 @@ echo "moshi: ok"
 # test/ic/dirty.txt, and its outputs those of a clean run over the edited
 # sources. On stock KSP (in "stock" mode) the dirty set differs from
 # dirty.txt only as recorded in test/ic/stock.diff (docs/analysis-api.md,
-# step 16).
+# "Incremental lookups"): n/Label.kt, which no processor reads and no
+# processed file names, is clean on both.
 iclibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
 # icrun DIR JAVA... runs the test in DIR with the command JAVA... (a java
 # with its options and class path) and writes DIR/dirty.txt.

@@ -88,6 +88,31 @@ internal class KcRound(
 
     val fileSymbols: List<KcFileSymbol>
 
+    /** Called with each source file the first time it is reached (see [KcFileSymbol.reached]). */
+    @Volatile
+    var reached: ((KcFileSymbol) -> Unit)? = null
+
+    /** Reaches the source file [e] is in. */
+    fun reach(e: PsiElement) {
+        (byPsi[e.containingFile] as? KcFileSymbol)?.reach()
+    }
+
+    private val declared: Map<String, Map<String, List<KcFileSymbol>>> by lazy {
+        val out = HashMap<String, HashMap<String, MutableList<KcFileSymbol>>>()
+        fun walk(ds: List<KcDecl>, scope: String, file: KcFileSymbol) {
+            for (d in ds) {
+                val files = out.getOrPut(scope, ::HashMap).getOrPut(d.name, ::ArrayList)
+                if (files.lastOrNull() !== file) files += file
+                if (d.members.isNotEmpty()) walk(d.members, if (scope.isEmpty()) d.name else scope + "." + d.name, file)
+            }
+        }
+        for (f in fileSymbols) walk(f.file.decls, f.file.packageName, f)
+        out
+    }
+
+    /** The source files that declare [name] in [scope], a package or a class named as a lookup names it (KcLookup). */
+    fun declaring(scope: String, name: String): List<KcFileSymbol> = declared[scope]?.get(name).orEmpty()
+
     /** The classes of [javaFiles] by their model class IDs. */
     private val javaClasses = HashMap<String, PsiClass>().also { m ->
         fun walk(c: PsiClass, id: String) {
@@ -442,8 +467,13 @@ internal class KcRound(
         return members(c).enhanced[s]
     }
 
-    /** The declarations of class [c]: as FIR has them for a Java class (see `KcMemberBuilder.javaDeclared`). */
-    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> = members(c).declared ?: c.members
+    /**
+     * The declarations of class [c]: as FIR has them for a Java class (see
+     * `KcMemberBuilder.javaDeclared`). A Kotlin class's are its own, which
+     * don't take its supertypes.
+     */
+    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> =
+        if (c.info.isJava) members(c).declared ?: c.members else c.members
 
     /** The declarations [s] directly overrides (see `KaSession.directlyOverriddenSymbols`). */
     fun directlyOverridden(s: KaCallableSymbol): List<KaCallableSymbol> = when (s) {
@@ -536,6 +566,7 @@ internal class KcRound(
 
         fun file(file: KcFile, kt: KtFile): KcFileSymbol {
             val fs = KcFileSymbol(this@KcRound, file, kt)
+            types.file = fs
             byKey[fs.key] = fs
             byPsi[kt] = fs
             file.annotations.forEach(::annotation)
@@ -605,7 +636,7 @@ internal class KcRound(
          * class file has no arguments.
          */
         fun classLiteralType(t: KcType, psi: KtElement?): KaType {
-            val type = types.type(t)
+            val type = types.read(t)
             val c = (type as? KcFlexibleType)?.lowerBound ?: type
             if (c !is KcClassType || c.typeArguments.isNotEmpty() || c.isAlias) return c
             val params = (c.symbol as? KaClassSymbol)?.typeParameters.orEmpty()

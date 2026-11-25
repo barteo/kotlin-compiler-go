@@ -43,6 +43,17 @@ class Res
 fun top(): Int = 1
 
 typealias Alias = Res
+
+class Bag
+
+class BagIter {
+    operator fun hasNext(): Boolean = false
+    operator fun next(): Int = 0
+}
+`,
+		"c.kt": `package a
+
+operator fun Bag.iterator() = BagIter()
 `,
 		"b.kt": `package b
 
@@ -56,13 +67,14 @@ class B : a.Base() {
         v.m()
         v.inherited()
         val n: A.Nested? = null
+        for (x in Bag()) {}
         return top() + local
     }
 }
 `,
 	}
 	var files []*syntax.File
-	for _, name := range []string{"a.kt", "b.kt"} {
+	for _, name := range []string{"a.kt", "b.kt", "c.kt"} {
 		f, errs := syntax.Parse(name, srcs[name])
 		if len(errs) > 0 {
 			t.Fatal(errs[0])
@@ -102,6 +114,9 @@ class B : a.Base() {
 		"a|P|top",            // top() by the star import
 		"b|P|top",            // and in the file's package, searched first
 		"a|P|Res",            // the result type of m()
+		"a|P|iterator",       // a for loop's iterator(), an extension by the star import
+		"a.Bag|C|iterator",   // and in the range's class
+		"a.BagIter|C|next",
 	} {
 		if !slices.Contains(got, want) {
 			t.Errorf("b.kt: no lookup %s in\n%s", want, strings.Join(got, "\n"))
