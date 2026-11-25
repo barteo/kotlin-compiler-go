@@ -84,6 +84,9 @@ jobs:
           name=kc_${VERSION}_${GOOS}_${GOARCH}
           mkdir -p "dist/$name"
           go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$name/kc" ./cmd/kc
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$name/kc-lsp" ./cmd/kc-lsp
+          mkdir -p "dist/$name/docs"
+          cp docs/language-server.md "dist/$name/docs/"
           cp README.md LICENSE THIRD_PARTY_NOTICES.md tools/gradle/use-kc.init.gradle.kts "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           echo "ARCHIVE=$name.tar.gz" >> "$GITHUB_ENV"
@@ -135,6 +138,47 @@ jobs:
             "kc $VERSION "*" ${{ matrix.goos }}/${{ matrix.goarch }}") ;;
             *) echo "::error::unexpected version: $out"; exit 1 ;;
           esac
+
+      - name: Open a Kotlin document over stdio without a JVM
+        run: |
+          server="${KC%/*}/kc-lsp"
+          test "$(PATH=/nonexistent "$server" -version)" = "kc-lsp $VERSION"
+          python3 - "$server" <<'PYTHON'
+          import io
+          import json
+          import os
+          import subprocess
+          import sys
+
+          doc = {"uri": "file:///Example.kt"}
+          requests = [
+              {"id": 1, "method": "initialize", "params": {"capabilities": {}}},
+              {"method": "initialized", "params": {}},
+              {"method": "textDocument/didOpen", "params": {"textDocument": {
+                  **doc, "languageId": "kotlin", "version": 1, "text": "val answer: Int = 42"}}},
+              {"id": 2, "method": "textDocument/hover", "params": {
+                  "textDocument": doc, "position": {"line": 0, "character": 6}}},
+              {"id": 3, "method": "shutdown", "params": None},
+              {"method": "exit"},
+          ]
+          frames = bytearray()
+          for request in requests:
+              body = json.dumps({"jsonrpc": "2.0", **request}).encode()
+              frames.extend(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+          env = dict(os.environ, PATH="/nonexistent", JAVA_HOME="", KOTLIN_HOME="")
+          result = subprocess.run([sys.argv[1], "--stdio"], input=frames, stdout=subprocess.PIPE,
+                                  env=env, timeout=30, check=True)
+          stream = io.BytesIO(result.stdout)
+          responses = {}
+          while header := stream.readline():
+              size = int(header.split(b":", 1)[1])
+              assert stream.readline() == b"\r\n"
+              msg = json.loads(stream.read(size))
+              if "id" in msg:
+                  responses[msg["id"]] = msg["result"]
+          assert "answer" in responses[2]["contents"]["value"]
+          assert responses[3] is None
+          PYTHON
 
       - name: Compile and run fizzBuzz
         run: |

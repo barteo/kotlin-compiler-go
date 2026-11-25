@@ -242,3 +242,38 @@ func (s *Snapshot) KindSequenceHash() uint64 {
 	}
 	return h
 }
+
+// ByteOffset returns the byte offset at a 1-based line and UTF-16 column.
+// Columns past the line end clamp to the end, as required by LSP. A
+// position between the two code units of one rune is invalid.
+func (s *Snapshot) ByteOffset(line, column int) (int, error) {
+	if line < 1 || line > len(s.lineStarts) || column < 1 {
+		return 0, fmt.Errorf("invalid position %d:%d", line, column)
+	}
+	start, end := int(s.lineStarts[line-1]), len(s.src)
+	if line < len(s.lineStarts) {
+		end = int(s.lineStarts[line]) - 1
+		if end > start && s.src[end-1] == '\r' {
+			end--
+		}
+	}
+	if s.cpOff == nil {
+		return start + min(column-1, end-start), nil
+	}
+	target := s.utf16At(start)
+	if column-1 >= s.utf16At(end)-target {
+		return end, nil
+	}
+	target += column - 1
+	i := sort.Search(len(s.utf16), func(i int) bool { return int(s.utf16[i]) > target }) - 1
+	off, units := int(s.cpOff[i]), int(s.utf16[i])
+	for units < target {
+		r, size := utf8.DecodeRuneInString(s.src[off:])
+		off += size
+		units += utf16Len(r)
+	}
+	if units != target {
+		return 0, fmt.Errorf("position splits a surrogate pair")
+	}
+	return off, nil
+}

@@ -1,6 +1,7 @@
 package psi
 
 import (
+	"sort"
 	"strings"
 	"time"
 )
@@ -99,4 +100,40 @@ func nesting(kinds []Kind) int {
 		}
 	}
 	return m
+}
+
+// ParseDocument parses the LF-normalized text Kotlin editors give their
+// parser, then maps the tree back to the original bytes. In particular,
+// CRLF is a single line break while text, offsets and edits remain lossless.
+func ParseDocument(path, text string) *Snapshot {
+	if !strings.Contains(text, "\r\n") {
+		return Parse(path, text)
+	}
+	var b strings.Builder
+	b.Grow(len(text))
+	var breaks []int
+	for rest := text; ; {
+		i := strings.Index(rest, "\r\n")
+		if i < 0 {
+			b.WriteString(rest)
+			break
+		}
+		b.WriteString(rest[:i])
+		b.WriteByte('\n')
+		breaks = append(breaks, b.Len())
+		rest = rest[i+2:]
+	}
+	s := Parse(path, b.String())
+	original := func(off int) int { return off + sort.Search(len(breaks), func(i int) bool { return breaks[i] > off }) }
+	for j := range s.nodes {
+		n := &s.nodes[j]
+		n.start = int32(original(int(n.start)))
+		n.end = int32(original(int(n.end)))
+	}
+	for j := range s.diags {
+		r := &s.diags[j].Range
+		r.Start = original(r.Start)
+		r.End = original(r.End)
+	}
+	return newSnapshot(path, text, s.nodes, s.diags)
 }

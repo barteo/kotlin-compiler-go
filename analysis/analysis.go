@@ -68,6 +68,7 @@ type ElementID struct {
 // "unsupported:" and the feature's name. Line and Column are 1-based;
 // columns count bytes.
 type Diagnostic struct {
+	Warning bool   `json:"warning,omitempty"`
 	Path    string `json:"path"`
 	Line    int    `json:"line"`
 	Column  int    `json:"column"`
@@ -110,7 +111,11 @@ type Type struct {
 // Symbol is a declaration: a class, function, constructor, property,
 // local variable or parameter.
 type Symbol struct {
-	ID uint32 `json:"id"`
+	// ExternalOverride is set when an editor observes an overridden member outside the source snapshots.
+	ExternalOverride bool `json:"externalOverride,omitempty"`
+	// Overrides are the source declarations this method overrides in an editor check.
+	Overrides []ElementID `json:"overrides,omitempty"`
+	ID        uint32      `json:"id"`
 	// Kind is "class", "function", "constructor", "property", "local" or
 	// "parameter".
 	Kind string `json:"kind"`
@@ -529,6 +534,7 @@ func copyFact(f Fact) Fact {
 
 func copySymbol(s Symbol) Symbol {
 	s.Type = copyTypeValue(s.Type)
+	s.Overrides = slices.Clone(s.Overrides)
 	s.Declaration = copyID(s.Declaration)
 	s.Supertypes = slices.Clone(s.Supertypes)
 	return s

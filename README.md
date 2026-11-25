@@ -10,6 +10,9 @@ in 99% of its diagnostics tests ([Conformance](docs/conformance.md)).
 It is a prototype: it compiles most of Kotlin but not all of it, and it
 checks less than `kotlinc` does ([What it doesn't do](#what-it-doesnt-do)).
 
+A standalone Go language server, `kc-lsp`, provides Kotlin/JVM editor support.
+See the [setup instructions and feature matrix](docs/language-server.md).
+
 ## Results
 
 `kc` against `kotlinc` 2.4.21 on a Linux x86_64 cloud machine (4 CPUs,
@@ -49,7 +52,7 @@ How each number is measured, and the full tables with CPU time, are in
   calls: 93% of those the diagnostics tests expect.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
-- **Incremental compilation, a Gradle plugin and IDE support.**
+- **Incremental compilation and a Gradle plugin.**
 - **Identical output.** The class files work the same, but differ in
   places. For example, `kc` shares the objects of inline functions where
   `kotlinc` copies them, so it writes 790 classes for

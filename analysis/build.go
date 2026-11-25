@@ -53,7 +53,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+	rec := newRecorder()
 	// The errors only: the analysis reports no warnings.
 	mode, _ := check.ParseAPIMode(cfg.ExplicitAPIMode)
 	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{ExplicitAPI: mode})
@@ -162,6 +162,10 @@ func (r *recorder) Alias(x any, a *types.AliasSym) {
 	r.mu.Unlock()
 }
 
+func newRecorder() *recorder {
+	return &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+}
+
 // aliasFQ returns the fully qualified name of a typealias.
 func aliasFQ(a *types.AliasSym) string {
 	if a.Outer != nil {
@@ -221,13 +225,14 @@ func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.C
 // builder walks the checked AST and writes facts on the psi nodes it was
 // lowered from.
 type builder struct {
-	res   *Result
-	snaps []*psi.Snapshot
-	files []*syntax.File
-	provs []*lower.Provenance
-	rec   *recorder
-	where map[any]ElementID // AST nodes' psi nodes
-	cv    converter
+	editor bool
+	res    *Result
+	snaps  []*psi.Snapshot
+	files  []*syntax.File
+	provs  []*lower.Provenance
+	rec    *recorder
+	where  map[any]ElementID // AST nodes' psi nodes
+	cv     converter
 
 	// names are the fully qualified names of the functions the checker
 	// makes up for the standard library's preconditions.
@@ -1820,6 +1825,15 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 		b.classMembers(s, &sym)
 	case *types.FunSym:
 		sym.Kind = "function"
+		if b.editor && b.rec.overridden != nil && s.Owner != nil && !s.Owner.External {
+			for _, base := range b.rec.overridden(s) {
+				if id := b.decl(base.Decl); id != nil {
+					sym.Overrides = append(sym.Overrides, *id)
+				} else {
+					sym.ExternalOverride = true
+				}
+			}
+		}
 		if s.Name == "<init>" {
 			sym.Kind = "constructor"
 		}

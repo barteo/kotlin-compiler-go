@@ -1,0 +1,173 @@
+{
+  "release": "kotlin-lsp/v271.2085.0",
+  "definition": [
+    {
+      "uri": "file:///workspace/Example.kt",
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 10
+        }
+      }
+    }
+  ],
+  "hover": {
+    "contents": {
+      "kind": "markdown",
+      "value": "Returns the supplied value.\n````kotlin\nfun answer(value: Int): Int\n````\n"
+    },
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 23
+      },
+      "end": {
+        "line": 2,
+        "character": 29
+      }
+    }
+  },
+  "references": [
+    {
+      "uri": "file:///workspace/Example.kt",
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 10
+        }
+      }
+    },
+    {
+      "uri": "file:///workspace/Example.kt",
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 17
+        },
+        "end": {
+          "line": 7,
+          "character": 23
+        }
+      }
+    },
+    {
+      "uri": "file:///workspace/Consumer.kt",
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 23
+        },
+        "end": {
+          "line": 2,
+          "character": 29
+        }
+      }
+    }
+  ],
+  "rename": {
+    "documentChanges": [
+      {
+        "textDocument": {
+          "uri": "file:///workspace/Example.kt",
+          "version": 1
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 4
+              },
+              "end": {
+                "line": 3,
+                "character": 9
+              }
+            },
+            "newText": ""
+          },
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 10
+              },
+              "end": {
+                "line": 3,
+                "character": 10
+              }
+            },
+            "newText": "esultOf"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 7,
+                "character": 17
+              },
+              "end": {
+                "line": 7,
+                "character": 22
+              }
+            },
+            "newText": ""
+          },
+          {
+            "range": {
+              "start": {
+                "line": 7,
+                "character": 23
+              },
+              "end": {
+                "line": 7,
+                "character": 23
+              }
+            },
+            "newText": "esultOf"
+          }
+        ]
+      },
+      {
+        "textDocument": {
+          "uri": "file:///workspace/Consumer.kt",
+          "version": 1
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 23
+              },
+              "end": {
+                "line": 2,
+                "character": 28
+              }
+            },
+            "newText": ""
+          },
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 29
+              },
+              "end": {
+                "line": 2,
+                "character": 29
+              }
+            },
+            "newText": "esultOf"
+          }
+        ]
+      }
+    ]
+  }
+}

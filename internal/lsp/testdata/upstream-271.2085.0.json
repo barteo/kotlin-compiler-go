@@ -1,0 +1,514 @@
+{
+  "release": "kotlin-lsp/v271.2085.0",
+  "registrations": [],
+  "clientCapabilities": {
+    "workspace": {
+      "configuration": true,
+      "workspaceFolders": true
+    },
+    "textDocument": {
+      "documentSymbol": {
+        "hierarchicalDocumentSymbolSupport": true
+      },
+      "foldingRange": {},
+      "hover": {
+        "contentFormat": [
+          "markdown"
+        ]
+      }
+    }
+  },
+  "initialize": {
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 2,
+        "save": {
+          "includeText": false
+        }
+      },
+      "completionProvider": {
+        "triggerCharacters": [
+          "."
+        ],
+        "resolveProvider": true
+      },
+      "hoverProvider": true,
+      "signatureHelpProvider": {
+        "triggerCharacters": [
+          "(",
+          ","
+        ],
+        "retriggerCharacters": [
+          ","
+        ],
+        "workDoneProgress": false
+      },
+      "definitionProvider": true,
+      "typeDefinitionProvider": true,
+      "implementationProvider": true,
+      "referencesProvider": true,
+      "documentHighlightProvider": true,
+      "documentSymbolProvider": true,
+      "codeActionProvider": {
+        "codeActionKinds": [
+          "source.organizeImports",
+          "quickfix",
+          "refactor",
+          "refactor.inline.variable",
+          "refactor.extract.variable"
+        ],
+        "resolveProvider": false,
+        "workDoneProgress": false
+      },
+      "codeLensProvider": {
+        "workDoneProgress": false,
+        "resolveProvider": false
+      },
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "renameProvider": {
+        "prepareProvider": true
+      },
+      "foldingRangeProvider": true,
+      "executeCommandProvider": {
+        "commands": [
+          "decompile",
+          "applyModCommand",
+          "resolveModCommand",
+          "interpolateFileTemplate",
+          "wait-for-highwatermark",
+          "resolveLocation",
+          "start_debug_server",
+          "intellij.build",
+          "intellij.java.buildTool",
+          "intellij.java.resolveClassDocument",
+          "kotlin.organize.imports",
+          "jetbrains.kotlin.completion.apply",
+          "kotlin.applyCompilerDiagnosticFix",
+          "kotlin.inline.variable",
+          "refactor.extract.variable",
+          "exportWorkspace",
+          "intellij.jvm.discoverTestsInFile",
+          "intellij.jvm.discoverTestModules",
+          "intellij.jvm.discoverTestsInModule",
+          "intellij.jvm.resolveTestLaunch"
+        ]
+      },
+      "callHierarchyProvider": true,
+      "semanticTokensProvider": {
+        "legend": {
+          "tokenTypes": [
+            "namespace",
+            "class",
+            "enum",
+            "interface",
+            "struct",
+            "typeParameter",
+            "type",
+            "parameter",
+            "variable",
+            "property",
+            "enumMember",
+            "event",
+            "function",
+            "method",
+            "macro",
+            "keyword",
+            "modifier",
+            "comment",
+            "string",
+            "number",
+            "regexp",
+            "operator",
+            "decorator",
+            "label"
+          ],
+          "tokenModifiers": [
+            "declaration",
+            "definition",
+            "readonly",
+            "static",
+            "deprecated",
+            "abstract",
+            "async",
+            "modification",
+            "documentation",
+            "defaultLibrary",
+            "namedArgument"
+          ]
+        },
+        "range": true,
+        "full": true
+      },
+      "typeHierarchyProvider": true,
+      "inlayHintProvider": {
+        "resolveProvider": true
+      },
+      "diagnosticProvider": {
+        "interFileDependencies": true,
+        "workspaceDiagnostics": false,
+        "workDoneProgress": false
+      },
+      "workspaceSymbolProvider": {
+        "resolveProvider": true,
+        "workDoneProgress": true
+      },
+      "workspace": {
+        "workspaceFolders": {
+          "supported": true,
+          "changeNotifications": true
+        },
+        "fileOperations": {
+          "willRename": {
+            "filters": [
+              {
+                "pattern": {
+                  "glob": "**/*"
+                }
+              }
+            ]
+          }
+        },
+        "textDocumentContent": {
+          "schemes": [
+            "jar",
+            "jrt"
+          ]
+        }
+      },
+      "experimental": {
+        "licensing": true,
+        "indexDir": "<reference-state>/index",
+        "logFile": "<reference-state>/idea.log",
+        "workspaceImport": true,
+        "serverStatus": true,
+        "inspectCode": true,
+        "inheritedMembers": true
+      }
+    },
+    "serverInfo": {
+      "name": "IntelliJ Language Server by JetBrains",
+      "version": "ILS-271.2085.0"
+    }
+  },
+  "textDocument/documentSymbol": [
+    {
+      "name": "answer",
+      "detail": "(Int): Int",
+      "kind": 12,
+      "deprecated": false,
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 0
+        },
+        "end": {
+          "line": 5,
+          "character": 1
+        }
+      },
+      "selectionRange": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 10
+        }
+      }
+    },
+    {
+      "name": "use",
+      "detail": "(): Int",
+      "kind": 12,
+      "deprecated": false,
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 0
+        },
+        "end": {
+          "line": 7,
+          "character": 27
+        }
+      },
+      "selectionRange": {
+        "start": {
+          "line": 7,
+          "character": 4
+        },
+        "end": {
+          "line": 7,
+          "character": 7
+        }
+      }
+    }
+  ],
+  "textDocument/foldingRange": [
+    {
+      "startLine": 3,
+      "endLine": 5,
+      "startCharacter": 28,
+      "endCharacter": 1,
+      "kind": "region",
+      "collapsedText": "{...}"
+    }
+  ],
+  "textDocument/definition": [
+    {
+      "uri": "file:///workspace/Example.kt",
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 10
+        }
+      }
+    }
+  ],
+  "textDocument/hover": {
+    "contents": {
+      "kind": "markdown",
+      "value": "Returns the supplied value.\n````kotlin\nfun answer(value: Int): Int\n````\n"
+    },
+    "range": {
+      "start": {
+        "line": 7,
+        "character": 17
+      },
+      "end": {
+        "line": 7,
+        "character": 23
+      }
+    }
+  },
+  "textDocument/references": [
+    {
+      "uri": "file:///workspace/Example.kt",
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 4
+        },
+        "end": {
+          "line": 3,
+          "character": 10
+        }
+      }
+    }
+  ],
+  "textDocument/rename": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "error": {
+      "code": -32602,
+      "message": "This element cannot be renamed",
+      "data": {}
+    }
+  },
+  "textDocument/signatureHelp": {
+    "signatures": [
+      {
+        "label": "answer(value: Int): Int",
+        "documentation": {
+          "kind": "markdown",
+          "value": "````kotlin\n/** Returns the supplied value. */\n````\n"
+        },
+        "parameters": [
+          {
+            "label": [
+              7,
+              17
+            ]
+          }
+        ],
+        "activeParameter": 0
+      }
+    ],
+    "activeSignature": 0
+  },
+  "textDocument/diagnostic": {
+    "kind": "full",
+    "items": []
+  },
+  "textDocument/completion": {
+    "isIncomplete": true,
+    "items": [
+      {
+        "label": "answer",
+        "labelDetails": {
+          "detail": "(value: Int) (sample)",
+          "description": "Int"
+        },
+        "kind": 3,
+        "sortText": "0000000000",
+        "textEdit": {
+          "newText": "",
+          "insert": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          },
+          "replace": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          }
+        },
+        "command": {
+          "title": "Apply Completion",
+          "command": "jetbrains.kotlin.completion.apply",
+          "arguments": [
+            1
+          ]
+        },
+        "data": {
+          "KotlinCompletionItemKey": 1,
+          "configurationEntryId": "KotlinCompletionProvider"
+        }
+      },
+      {
+        "label": "arrayOfNulls",
+        "labelDetails": {
+          "detail": "(size: Int) (kotlin)",
+          "description": "Array<T?>"
+        },
+        "kind": 3,
+        "sortText": "0000000001",
+        "textEdit": {
+          "newText": "",
+          "insert": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          },
+          "replace": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          }
+        },
+        "command": {
+          "title": "Apply Completion",
+          "command": "jetbrains.kotlin.completion.apply",
+          "arguments": [
+            2
+          ]
+        },
+        "data": {
+          "KotlinCompletionItemKey": 2,
+          "configurationEntryId": "KotlinCompletionProvider"
+        }
+      },
+      {
+        "label": "booleanArrayOf",
+        "labelDetails": {
+          "detail": "(vararg elements: Boolean) (kotlin)",
+          "description": "BooleanArray"
+        },
+        "kind": 3,
+        "sortText": "0000000002",
+        "textEdit": {
+          "newText": "",
+          "insert": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          },
+          "replace": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          }
+        },
+        "command": {
+          "title": "Apply Completion",
+          "command": "jetbrains.kotlin.completion.apply",
+          "arguments": [
+            3
+          ]
+        },
+        "data": {
+          "KotlinCompletionItemKey": 3,
+          "configurationEntryId": "KotlinCompletionProvider"
+        }
+      },
+      {
+        "label": "anonymous",
+        "labelDetails": {
+          "description": "Anonymous class"
+        },
+        "sortText": "0000000003",
+        "textEdit": {
+          "newText": "",
+          "insert": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          },
+          "replace": {
+            "start": {
+              "line": 7,
+              "character": 19
+            },
+            "end": {
+              "line": 7,
+              "character": 19
+            }
+          }
+        },
+        "command": {
+          "title": "Apply Completion",
+          "command": "jetbrains.kotlin.completion.apply",
+          "arguments": [
+            4
+          ]
+        },
+        "data": {
+          "KotlinCompletionItemKey": 4,
+          "configurationEntryId": "KotlinCompletionProvider"
+        }
+      }
+    ]
+  }
+}

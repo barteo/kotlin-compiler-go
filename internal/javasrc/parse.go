@@ -57,7 +57,13 @@ type Annotation struct {
 }
 
 // Class is a class, interface, enum, record or annotation type.
+// NamePosition identifies a declaration name with a 1-based line and byte column.
+type NamePosition struct{ Line, Column int }
+
+func (p *parser) namePosition() NamePosition { t := p.tok(); return NamePosition{t.line, t.col} }
+
 type Class struct {
+	NamePosition
 	Modifiers
 	Name       string
 	Kind       Kind
@@ -112,6 +118,7 @@ type TypeArg struct {
 
 // Field is a field, or one of the variables of a field declaration.
 type Field struct {
+	NamePosition
 	Modifiers
 	Type *Type
 	Name string
@@ -122,6 +129,7 @@ type Field struct {
 
 // Method is a method or a constructor, whose Ret is nil.
 type Method struct {
+	NamePosition
 	Modifiers
 	TypeParams []*TypeParam
 	Ret        *Type
@@ -401,6 +409,7 @@ func (p *parser) typeDecl(mods Modifiers, outer *Class) *Class {
 		return nil
 	}
 	p.next()
+	c.NamePosition = p.namePosition()
 	c.Name = p.ident()
 	c.TypeParams = p.typeParams()
 	if c.Kind == KindRecord {
@@ -655,8 +664,9 @@ func (p *parser) member(c *Class) {
 	// method without a return type is a misnamed constructor, as
 	// IntelliJ's Java PSI reads it.
 	if p.tok().kind == tIdent && (p.peek(1).text == "(" || p.tok().text == c.Name && p.peek(1).text == "{" && c.Kind == KindRecord) {
+		pos := p.namePosition()
 		p.next()
-		m := &Method{Modifiers: mods, TypeParams: tps, Name: "<init>"}
+		m := &Method{NamePosition: pos, Modifiers: mods, TypeParams: tps, Name: "<init>"}
 		if p.is("{") {
 			p.skipBalanced()
 			return // the canonical constructor is declared anyway
@@ -667,9 +677,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	t := p.typ()
+	pos := p.namePosition()
 	name := p.ident()
 	if p.is("(") {
-		m := &Method{Modifiers: mods, TypeParams: tps, Ret: t, Name: name}
+		m := &Method{NamePosition: pos, Modifiers: mods, TypeParams: tps, Ret: t, Name: name}
 		p.params(m)
 		t.Dims += p.dims()
 		p.methodRest(m)
@@ -677,7 +688,7 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	for {
-		f := &Field{Modifiers: mods, Type: &Type{Prim: t.Prim, Segs: t.Segs, Dims: t.Dims + p.dims()}, Name: name}
+		f := &Field{NamePosition: pos, Modifiers: mods, Type: &Type{Prim: t.Prim, Segs: t.Segs, Dims: t.Dims + p.dims()}, Name: name}
 		c.Fields = append(c.Fields, f)
 		if p.accept("=") {
 			f.Init = p.initializer()
@@ -695,6 +706,7 @@ func (p *parser) member(c *Class) {
 			return
 		}
 		p.expect(",")
+		pos = p.namePosition()
 		name = p.ident()
 	}
 }

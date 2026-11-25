@@ -1,0 +1,90 @@
+# kc-lsp for Kotlin/JVM
+
+Build the server from the kc repository and configure your editor's Kotlin language client to launch it over stdio.
+
+```sh
+CGO_ENABLED=0 go build -o bin/kc-lsp ./cmd/kc-lsp
+bin/kc-lsp --version
+```
+
+Use the absolute path to `bin/kc-lsp` as the command, `["--stdio"]` as its arguments, and `kotlin` as the document language ID. Give the client the project root as its workspace folder. The release packaging workflow includes the server beside `kc`.
+
+kc-lsp parses and checks Kotlin inside the Go process. It reads installed JDK classes, stdlib metadata, JARs and Java sources as files. Set `JAVA_HOME` to the JDK home for JDK symbols and `KOTLIN_HOME` to a Kotlin distribution for standalone projects that use the standard library. A basic Kotlin document can be edited with neither installed.
+
+## Opening a project
+
+A folder with no build file becomes one source module. The Maven importer reads reactor modules, parent POMs, dependency management, imported BOMs, exclusions and conventional production and test roots. The Gradle importer handles literal project includes, conventional JVM source sets, project dependencies and version catalog library and plugin aliases. It tracks the difference between a project's own compile dependencies and the dependencies it exports through `api` and `compileOnlyApi`. A supported Kotlin JVM plugin declaration supplies the default standard library version. The importer honors `kotlin.stdlib.default.dependency=false` for that dependency.
+
+The server checks local Maven and Gradle caches first. It can fetch versioned POMs, JARs and optional source JARs over HTTPS from Maven Central. Maven uses Central by default. For Gradle, declare `mavenCentral()` in the project repositories or in settings under `dependencyResolutionManagement`.
+
+| Environment variable | Effect |
+| --- | --- |
+| `MAVEN_REPO_LOCAL`, `GRADLE_USER_HOME` | Override the local Maven repository and Gradle user home, respectively. |
+| `KC_LSP_CACHE_DIR` | Store downloads in the `maven` subdirectory. The default is the operating system's user cache under `kc-lsp`. Download caches are separate for each repository URL. |
+| `KC_LSP_MAVEN_REPOSITORY` | Use the supplied HTTPS repository base URL for missing Maven artifacts. |
+| `KC_LSP_OFFLINE=1` | Read cached artifacts only. Import reports the coordinates of missing dependencies. |
+
+For a build that computes its source sets or dependency graph in plugin code, put a resolved `kc-lsp.json` at the workspace root. It takes precedence over build discovery. Paths are relative to this file unless absolute. Each module is one Kotlin compilation. List both production and test compilations if their classpaths differ.
+
+```json
+{
+  "version": 1,
+  "modules": [
+    {"name": "core", "sourceRoots": ["core/src/main/kotlin"]},
+    {
+      "name": "app",
+      "sourceRoots": ["app/src/main/kotlin"],
+      "javaRoots": ["app/src/main/java"],
+      "generatedRoots": ["app/build/generated/ksp/main/kotlin"],
+      "dependencies": ["core"],
+      "classPath": ["libs/kotlin-stdlib.jar"],
+      "sources": ["libs/kotlin-stdlib-sources.jar"]
+    },
+    {
+      "name": "app-test",
+      "sourceRoots": ["app/src/test/kotlin"],
+      "dependencies": ["app"],
+      "friendModules": ["app"]
+    }
+  ]
+}
+```
+
+`classPath` is ordered. `sources` holds optional source archives. For a binary friend dependency, include its entry in `classPath` and `friendPaths`. Each module can set `jdkHome`, `explicitAPI` and `languageVersion` (currently `2.4`). Build import errors appear in the editor. Clients supporting file watch registration can reload after build, source or dependency changes. Restart the server after external changes in clients that omit watch support.
+
+## Behavior and parity
+
+The comparison target is [JetBrains kotlin-lsp v271.2085.0](https://github.com/Kotlin/kotlin-lsp/releases/tag/kotlin-lsp/v271.2085.0). This is a preview for Kotlin/JVM.
+
+| Operation | Implemented behavior | Remaining differences |
+| --- | --- | --- |
+| Symbols, folding, hover and diagnostics | The standalone fixture matches the upstream outline, fold ranges, definition, KDoc hover and diagnostics. The server publishes versioned diagnostics after edits and supports pull diagnostics. | Diagnostics follow the kc parser and checker. IntelliJ inspections report additional findings. |
+| Completion and signature help | Locals, source and library members, imported aliases, applicable extensions and source declarations with import edits. Signature help supports incomplete source calls, overloads, active arguments, KDoc and UTF-16 label offsets. | Ranking, generated completions, complex implicit receivers and overloads in incomplete library calls differ. |
+| References, highlights and rename | Cross-module references, named arguments, import aliases and source method override families. Rename returns versioned workspace edits when the client supports them. | Rename declines possible collisions and incomplete coverage, including read-only overrides. General Java refactorings remain open. |
+| Navigation and hierarchies | Kotlin and Java source definitions, attached sources, call and type hierarchies, implementations, and workspace symbols from source archives. | Some overloaded library symbols lack a unique source location. |
+| Semantic tokens and inlay hints | Full and range token requests use the upstream legend. The server classifies declarations, named arguments, documentation and Kotlin modifiers. Available hints include inferred declaration types, expression-body return types and argument names. | Modifier classification, lambda and call-chain hints, and upstream visual presentation have partial coverage. |
+| Formatting, imports and file moves | Document and range indentation, whitespace edits, import sorting and removal, and package/import edits for moving one file between named packages of one module. | The IntelliJ formatter, multi-file package moves and complex import policies have broader coverage. |
+| Code actions | Import a missing source declaration, remove a redundant safe call or non-null assertion, suppress a warning, and extract or inline a local literal. | Additional Kotlin and kotlinx intentions and inspections remain open. |
+| Project import | Static Maven and Gradle Kotlin/JVM project models, remote artifacts and an explicit resolved model. | Dynamic plugins and variants need an explicit model. Older Kotlin language modes, Multiplatform and Android are outside this preview. |
+
+The editor model resolves unsaved source dependencies and rechecks the changed module and its consumers. Full overload selection across module visibility boundaries and reference searches originating in Java need further coverage.
+
+Clients can send dotted or nested `jetbrains.kotlin.hints` settings in `initializationOptions` or `workspace/didChangeConfiguration`. Supported boolean keys under that prefix are `settings.types.property`, `settings.types.variable`, `type.function.return`, `type.function.parameter`, `parameters` and `parameters.compiled`. Each defaults to true.
+
+## Verification
+
+```sh
+go test -race ./internal/lsp
+go test ./internal/lsp -run '^$' -bench BenchmarkWorkspace -benchmem
+```
+
+The offline stdio tests replay a standalone file, a two-file Maven project and a Gradle project with a separate library module. Imported-project captures wait for navigation from the consumer to the other file before recording results. Tests compare definition and hover payloads, reference locations, and the final text of every renamed file. [Standalone capture](../internal/lsp/testdata/upstream-271.2085.0.json) · [Maven capture](../internal/lsp/testdata/maven/upstream-271.2085.0.json) · [Gradle capture](../internal/lsp/testdata/gradle/upstream-271.2085.0.json)
+
+To regenerate a capture, run `python3 tools/lsp/capture.py /path/to/bin/intellij-server --output baseline.json` with the pinned distribution. Add `--maven` or `--gradle` for the corresponding project. Regeneration uses the upstream JVM server and its build tooling. Running kc-lsp and replaying the checked-in results use Go.
+
+The benchmark generates Kotlin-only workspaces and measures import plus indexing, warm requests and an edit through consumer diagnostics. One Apple M2 run, three iterations per operation, produced these timings.
+
+| Workspace | Cold index | Warm hover | Warm completion | Edit to diagnostics |
+| --- | ---: | ---: | ---: | ---: |
+| 8,000 lines, one module | 64 ms | 12 µs | 0.66 ms | 44 ms |
+| 40,000 lines, four modules | 342 ms | 4.9 µs | 5.8 ms | 268 ms |
