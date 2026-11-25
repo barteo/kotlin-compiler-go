@@ -828,12 +828,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					store: func() { g.backingField(p, false) }}
 			}
 			if p.StaticField() {
-				owner, ft := p.ConstOwner().Name, types.FieldType(p)
+				ft := types.FieldType(p)
 				return lvalue{t: t, prepare: func() {},
 					load: func() { g.backingField(p, true) },
 					store: func() {
 						g.toField(p, ft)
-						g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, desc(ft))
+						g.staticField(cf.PUTSTATIC, p)
 					}}
 			}
 			if sym.OuterOf != nil {
@@ -1080,21 +1080,19 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 // through the accessors of a receiver of class cls.
 func (g *gen) propLvalue(p *types.VarSym, t types.Type, recv func(), cls *types.ClassSym, this bool) lvalue {
 	ft := types.FieldType(p)
-	d := desc(ft)
 	lv := lvalue{t: t, prepare: recv, recv: 1}
 	switch {
 	case this && p.StaticField() && g.directGet(p) && g.directSet(p):
 		// An object's field: no receiver.
-		owner := p.ConstOwner().Name
 		lv.prepare, lv.recv = func() {}, 0
 		lv.load = func() {
-			g.code.FieldInsn(cf.GETSTATIC, owner, p.Name, d)
+			g.staticField(cf.GETSTATIC, p)
 			g.lateinit(p)
 			g.coerce(ft, p.Type)
 		}
 		lv.store = func() {
 			g.toField(p, ft)
-			g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, d)
+			g.staticField(cf.PUTSTATIC, p)
 		}
 	case this && g.directGet(p):
 		lv.load = func() {
