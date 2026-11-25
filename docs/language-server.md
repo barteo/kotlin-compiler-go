@@ -82,7 +82,7 @@ The offline stdio tests replay a standalone file, a two-file Maven project and a
 
 To regenerate a capture, run `python3 tools/lsp/capture.py /path/to/bin/intellij-server --output baseline.json` with the pinned distribution. Add `--maven` or `--gradle` for the corresponding project. Regeneration uses the upstream JVM server and its build tooling. Running kc-lsp and replaying the checked-in results use Go.
 
-The daily-editing fixture puts the consumer and receiver declarations in separate modules and adds a compiled Kotlin library. JetBrains imports the Gradle project. The offline Go replay loads the equivalent resolved module graph. It checks the relative order of three completion candidates and the actual inserted text, both compiled overload signatures and their active parameters, and five quick fixes. For each fix it compares the diagnostic under the cursor, the edited document and the diagnostics after the edit. Regenerate it with `--daily --kc /path/to/kc`. [Recorded daily-editing results](../internal/lsp/testdata/daily/upstream-271.2085.0.json)
+The editing fixture puts the consumer and receiver declarations in separate modules and adds a compiled Kotlin library. JetBrains imports the Gradle project. The offline Go replay loads the equivalent resolved module graph. It checks the relative order of three completion candidates and the actual inserted text, both compiled overload signatures and their active parameters, and five quick fixes. For each fix it compares the diagnostic under the cursor, the edited document and the diagnostics after the edit. Regenerate it with `--editing --kc /path/to/kc`. [Recorded editing results](../internal/lsp/testdata/editing/upstream-271.2085.0.json)
 
 The benchmark generates Kotlin-only workspaces and measures import plus indexing, warm requests and an edit through consumer diagnostics. One Apple M2 run, three iterations per operation, produced these timings.
 
@@ -91,7 +91,7 @@ The benchmark generates Kotlin-only workspaces and measures import plus indexing
 | 8,000 lines, one module | 64 ms | 12 µs | 0.66 ms | 44 ms |
 | 40,000 lines, four modules | 342 ms | 4.9 µs | 5.8 ms | 268 ms |
 
-For the daily-editing change, a separate Apple M2 comparison measured the same warm member-completion and edit-to-diagnostics cases on the original branch commit (`1697f3d`) and with the receiver index. Values are medians of three runs of five iterations. The larger fixture's diagnostics time still reflects a module-wide recheck.
+For the editing change, a separate Apple M2 comparison measured the same warm member-completion and edit-to-diagnostics cases on the original branch commit (`1697f3d`) and with the receiver index. Values are medians of three runs of five iterations. The larger fixture's diagnostics time still reflects a module-wide recheck.
 
 | Workspace | Member completion before → after | Edit to diagnostics before → after |
 | --- | ---: | ---: |

@@ -2,11 +2,11 @@
   "release": "kotlin-lsp/v271.2085.0",
   "completion": {
     "order": [
-      "dailyLocal",
-      "dailyMember",
-      "dailyGlobal"
+      "editingLocal",
+      "editingMember",
+      "editingGlobal"
     ],
-    "text": "package sample\n\nfun edit() = inScope {\n    val dailyLocal = 1\n    dailyLocal\n}\n"
+    "text": "package sample\n\nfun edit() = inScope {\n    val editingLocal = 1\n    editingLocal\n}\n"
   },
   "signature": {
     "signatures": [
@@ -135,13 +135,13 @@
           },
           "end": {
             "line": 1,
-            "character": 24
+            "character": 26
           }
         },
         "severity": 1
       }
     ],
-    "text": "package sample\n\nimport editinglib.DailyPacket\n\nfun edit() = DailyPacket()\n",
+    "text": "package sample\n\nimport editinglib.EditingPacket\n\nfun edit() = EditingPacket()\n",
     "after": []
   }
 }

@@ -48,14 +48,14 @@ def record_cases(request, notify, buffer, fixture):
         if case == "completion":
             result = request("textDocument/completion", params)
             items = result["items"] if isinstance(result, dict) else result
-            names = [i["label"] for i in items if i["label"] in ("dailyLocal", "dailyMember", "dailyGlobal")]
-            selected = next(i for i in items if i["label"] == "dailyLocal")
+            names = [i["label"] for i in items if i["label"] in ("editingLocal", "editingMember", "editingGlobal")]
+            selected = next(i for i in items if i["label"] == "editingLocal")
             e = selected.get("textEdit")
             if e:
                 buffer.apply({"changes": {buffer.uri: [{"range": e.get("replace", e.get("range")), "newText": e["newText"]}]}}, notify)
             if "command" in selected:
                 request("workspace/executeCommand", selected["command"])
-            if "dailyLocal\n" not in buffer.text:
+            if "editingLocal\n" not in buffer.text:
                 raise RuntimeError(f"completion did not apply: {selected} {buffer.text}")
             out[case] = {"order": names, "text": buffer.text}
         elif case == "signature":
@@ -75,7 +75,7 @@ def record_cases(request, notify, buffer, fixture):
                 actions = request("textDocument/codeAction", {"textDocument": doc, "range": {"start": pos, "end": pos},
                     "context": {"diagnostics": ds, "only": ["quickfix"]}}) or []
                 words = {"assertion": ("remove", "!!"), "safeCall": ("replace",), "elvis": ("elvis",),
-                         "inner": ("remove", "inner"), "import": ("import", "dailypacket")}[case]
+                         "inner": ("remove", "inner"), "import": ("import", "editingpacket")}[case]
                 action = next((a for a in actions if all(w in a["title"].lower() for w in words)), None)
                 if action: break
                 if time.monotonic() >= deadline: raise RuntimeError(f"{case}: {ds} {actions}")

@@ -14,22 +14,22 @@ import (
 
 func fixtureJSON(t *testing.T, name string, v any) {
 	t.Helper()
-	if err := json.Unmarshal(input(t, filepath.Join("testdata", "daily", name)), v); err != nil {
+	if err := json.Unmarshal(input(t, filepath.Join("testdata", "editing", name)), v); err != nil {
 		t.Fatal(err)
 	}
 }
-func dailyWorkspace(t *testing.T) (*client, string) {
+func editingWorkspace(t *testing.T) (*client, string) {
 	t.Helper()
 	t.Setenv("PATH", "")
 	t.Setenv("JAVA_HOME", "")
 	t.Setenv("KOTLIN_HOME", "")
 	root := t.TempDir()
-	if err := driver.Compile([]string{"testdata/daily/Library.kt"}, driver.Options{NoJDK: true, OutDir: filepath.Join(root, "classes"), ModuleName: "editinglib"}); err != nil {
+	if err := driver.Compile([]string{"testdata/editing/Library.kt"}, driver.Options{NoJDK: true, OutDir: filepath.Join(root, "classes"), ModuleName: "editinglib"}); err != nil {
 		t.Fatal(err)
 	}
 	put(t, filepath.Join(root, "kc-lsp.json"), `{"version":1,"modules":[{"name":"library","sourceRoots":["library"]},{"name":"app","sourceRoots":["src"],"dependencies":["library"],"classPath":["classes"]}]}`)
-	put(t, filepath.Join(root, "library", "Scopes.kt"), string(input(t, "testdata/daily/Scopes.kt")))
-	return start(t, root), filepath.Join(root, "src", "Daily.kt")
+	put(t, filepath.Join(root, "library", "Scopes.kt"), string(input(t, "testdata/editing/Scopes.kt")))
+	return start(t, root), filepath.Join(root, "src", "Editing.kt")
 }
 func applyText(t *testing.T, text string, edits []edit) string {
 	t.Helper()
@@ -66,8 +66,8 @@ func markedQuery(t *testing.T, path, marked string) (string, object) {
 	src := a + b
 	return src, params(path, pos(psi.ParseDocument(path, src), len(a)))
 }
-func TestDailyEditingReplay(t *testing.T) {
-	c, path := dailyWorkspace(t)
+func TestEditingReplay(t *testing.T) {
+	c, path := editingWorkspace(t)
 	var cases map[string]string
 	var ref map[string]json.RawMessage
 	fixtureJSON(t, "cases.json", &cases)
@@ -114,7 +114,7 @@ func TestDailyEditingReplay(t *testing.T) {
 					if slices.Contains(want.Order, item.Label) {
 						names = append(names, item.Label)
 					}
-					if item.Label == "dailyLocal" && applyText(t, src, []edit{item.TextEdit}) != want.Text {
+					if item.Label == "editingLocal" && applyText(t, src, []edit{item.TextEdit}) != want.Text {
 						t.Errorf("completion edit %+v", item)
 					}
 				}
@@ -280,7 +280,7 @@ func TestCompletionEditsAndResolve(t *testing.T) {
 }
 
 func TestCompiledPartialSignatures(t *testing.T) {
-	c, path := dailyWorkspace(t)
+	c, path := editingWorkspace(t)
 	for j, tc := range []struct {
 		call, first string
 		active      int
@@ -289,7 +289,7 @@ func TestCompiledPartialSignatures(t *testing.T) {
 		{"p.printValue(4, 7, |", "vararg rest", 1},
 		{"p.printValue(count = 2, value = |\"x\")", "value: String", 0},
 		{"p.printValue(p.printValue(\"x\", |1), 2)", "value: String", 1},
-		{"DailyPacket(|", "tag: Int", 0},
+		{"EditingPacket(|", "tag: Int", 0},
 	} {
 		src, q := markedQuery(t, path, "package sample\nimport editinglib.*\nfun f(p: Printer) = "+tc.call)
 		if j == 0 {
@@ -366,11 +366,11 @@ func TestQuickFixScopesAndComments(t *testing.T) {
 }
 
 func TestCompletionScopesAndSafeReceiver(t *testing.T) {
-	c, path := dailyWorkspace(t)
+	c, path := editingWorkspace(t)
 	source := "package sample\nclass Row(val heading: Int)\nfun Row.visibleExt()=heading\n"
 	for j, tc := range []struct{ use, has, lacks string }{
 		{"fun use(row: Row?) { row?.| }", "heading", "use"},
-		{"fun Row.use() { visible| }", "visibleExt", "dailyLocal"},
+		{"fun Row.use() { visible| }", "visibleExt", "editingLocal"},
 		{"fun Row.use() { hea| }", "heading", "inScope"},
 		{"fun use() { val marked = 1; run { val marked = \"inner\"; mar| } }", "marked", "heading"},
 	} {
