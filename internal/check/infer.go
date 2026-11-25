@@ -1120,6 +1120,23 @@ func (s *system) fix(tv *tvar) {
 		for _, l := range lowers[1:] {
 			val = c.lub(val, l)
 		}
+		for _, l := range tv.lower {
+			// A lower bound with variables in it, of a supertype's class,
+			// takes part as that class, as in K2's common supertype:
+			// List<E> of emptyList() and MutableList<X> give List<X>,
+			// and E is then X. A platform type, (Mutable)List<X>!,
+			// takes a List<E> as it is.
+			l = s.apply(l)
+			if !l.HasVars() || l.K != types.Class || l.C == nil || s.c.onlyStubs(l) || val.K != types.Class || val.C == nil || val.C == l.C || val.P {
+				continue
+			}
+			if sup, ok := c.asSuper(val, l.C); ok {
+				if val.N {
+					sup = sup.Nullable()
+				}
+				val = sup
+			}
+		}
 		if len(tv.lits) > 0 && !litsFit(tv.lits, val) {
 			val = c.lub(val, s.litType(tv, nil))
 		}
