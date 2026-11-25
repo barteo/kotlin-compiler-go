@@ -441,6 +441,9 @@ func merge(f *Fact, src Fact) {
 	f.ImpossibleCast = f.ImpossibleCast || src.ImpossibleCast
 	f.Unreachable = f.Unreachable || src.Unreachable
 	f.SuspendOperation = f.SuspendOperation || src.SuspendOperation
+	if f.LambdaReceiver == nil {
+		f.LambdaReceiver = src.LambdaReceiver
+	}
 	if f.LambdaParameters == nil {
 		f.LambdaParameters, f.ImplicitParameter = src.LambdaParameters, src.ImplicitParameter
 	}
@@ -765,6 +768,9 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		if x.Recv != nil {
 			b.receivers[x.Recv] = el
+			if b.editor {
+				f.LambdaReceiver = b.cv.typ(x.Recv.Type)
+			}
 		}
 		switch {
 		case x.Ref != nil:

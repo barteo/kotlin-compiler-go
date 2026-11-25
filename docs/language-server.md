@@ -59,12 +59,12 @@ The comparison target is [JetBrains kotlin-lsp v271.2085.0](https://github.com/K
 | Operation | Implemented behavior | Remaining differences |
 | --- | --- | --- |
 | Symbols, folding, hover and diagnostics | The standalone fixture matches the upstream outline, fold ranges, definition, KDoc hover and diagnostics. The server publishes versioned diagnostics after edits and supports pull diagnostics. | Diagnostics follow the kc parser and checker. IntelliJ inspections report additional findings. |
-| Completion and signature help | Locals, source and library members, imported aliases, applicable extensions and source declarations with import edits. Signature help supports incomplete source calls, overloads, active arguments, KDoc and UTF-16 label offsets. | Ranking, generated completions, complex implicit receivers and overloads in incomplete library calls differ. |
+| Completion and signature help | Completion ranks locals, implicit class or lambda members, imported declarations and source auto-imports. Items carry standard text edits and support snippets, insert/replace ranges and source KDoc on resolve. Signature help covers partial source and compiled Kotlin calls, constructors, named and default parameters, and varargs. | IntelliJ templates, DSL-specific scope rules and ranking for complex generic overloads have wider coverage upstream. |
 | References, highlights and rename | Cross-module references, named arguments, import aliases and source method override families. Rename returns versioned workspace edits when the client supports them. | Rename declines possible collisions and incomplete coverage, including read-only overrides. General Java refactorings remain open. |
 | Navigation and hierarchies | Kotlin and Java source definitions, attached sources, call and type hierarchies, implementations, and workspace symbols from source archives. | Some overloaded library symbols lack a unique source location. |
 | Semantic tokens and inlay hints | Full and range token requests use the upstream legend. The server classifies declarations, named arguments, documentation and Kotlin modifiers. Available hints include inferred declaration types, expression-body return types and argument names. | Modifier classification, lambda and call-chain hints, and upstream visual presentation have partial coverage. |
 | Formatting, imports and file moves | Document and range indentation, whitespace edits, import sorting and removal, and package/import edits for moving one file between named packages of one module. | The IntelliJ formatter, multi-file package moves and complex import policies have broader coverage. |
-| Code actions | Import a missing source declaration, remove a redundant safe call or non-null assertion, suppress a warning, and extract or inline a local literal. | Additional Kotlin and kotlinx intentions and inspections remain open. |
+| Code actions | Import a visible source or compiled Kotlin name, simplify a redundant safe call, non-null assertion or Elvis fallback, remove an invalid `inner` modifier, suppress a warning on a statement, function or class, and extract or inline a local literal. | Additional Kotlin and kotlinx intentions and inspections remain open. |
 | Project import | Static Maven and Gradle Kotlin/JVM project models, remote artifacts and an explicit resolved model. | Dynamic plugins and variants need an explicit model. Older Kotlin language modes, Multiplatform and Android are outside this preview. |
 
 The editor model resolves unsaved source dependencies and rechecks the changed module and its consumers. Full overload selection across module visibility boundaries and reference searches originating in Java need further coverage.
@@ -82,9 +82,18 @@ The offline stdio tests replay a standalone file, a two-file Maven project and a
 
 To regenerate a capture, run `python3 tools/lsp/capture.py /path/to/bin/intellij-server --output baseline.json` with the pinned distribution. Add `--maven` or `--gradle` for the corresponding project. Regeneration uses the upstream JVM server and its build tooling. Running kc-lsp and replaying the checked-in results use Go.
 
+The daily-editing fixture puts the consumer and receiver declarations in separate modules and adds a compiled Kotlin library. JetBrains imports the Gradle project. The offline Go replay loads the equivalent resolved module graph. It checks the relative order of three completion candidates and the actual inserted text, both compiled overload signatures and their active parameters, and five quick fixes. For each fix it compares the diagnostic under the cursor, the edited document and the diagnostics after the edit. Regenerate it with `--daily --kc /path/to/kc`. [Recorded daily-editing results](../internal/lsp/testdata/daily/upstream-271.2085.0.json)
+
 The benchmark generates Kotlin-only workspaces and measures import plus indexing, warm requests and an edit through consumer diagnostics. One Apple M2 run, three iterations per operation, produced these timings.
 
 | Workspace | Cold index | Warm hover | Warm completion | Edit to diagnostics |
 | --- | ---: | ---: | ---: | ---: |
 | 8,000 lines, one module | 64 ms | 12 µs | 0.66 ms | 44 ms |
 | 40,000 lines, four modules | 342 ms | 4.9 µs | 5.8 ms | 268 ms |
+
+For the daily-editing change, a separate Apple M2 comparison measured the same warm member-completion and edit-to-diagnostics cases on the original branch commit (`1697f3d`) and with the receiver index. Values are medians of three runs of five iterations. The larger fixture's diagnostics time still reflects a module-wide recheck.
+
+| Workspace | Member completion before → after | Edit to diagnostics before → after |
+| --- | ---: | ---: |
+| 8,000 lines | 0.500 → 0.046 ms | 44.4 → 45.0 ms |
+| 40,000 lines | 5.09 → 0.063 ms | 263 → 269 ms |

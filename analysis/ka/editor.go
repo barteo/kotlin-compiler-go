@@ -3,6 +3,8 @@ package ka
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
@@ -59,4 +61,41 @@ func (s *Session) CheckEditor(ctx context.Context, snaps []*psi.Snapshot, source
 		return nil, err
 	}
 	return &EditorModel{Model: m, Facts: facts}, nil
+}
+
+// ImportNames returns public Kotlin classifiers and non-extension callables
+// available under a simple name on this editor model's compile classpath.
+func (m *EditorModel) ImportNames(ctx context.Context, name string) []string {
+	lib := m.lib
+	if lib == nil {
+		return nil
+	}
+	var names []string
+	for _, id := range lib.cp.ClassesNamed(name) {
+		if ctx.Err() != nil {
+			return nil
+		}
+		if d := m.Class(id); d != nil && d.Visibility == Public && d.Flags&FlagJava == 0 {
+			names = append(names, strings.ReplaceAll(id, "/", "."))
+		}
+	}
+	for pkg := range lib.parts() {
+		if ctx.Err() != nil {
+			return nil
+		}
+		p := m.Package(pkg)
+		if p == nil {
+			continue
+		}
+		for _, d := range p.Decls {
+			if d.Name == name && d.Visibility == Public && d.Receiver == nil {
+				if pkg != "" {
+					names = append(names, pkg+"."+name)
+				}
+				break
+			}
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
 }

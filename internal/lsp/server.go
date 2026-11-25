@@ -57,6 +57,7 @@ type parameters struct {
 	ContentChanges []change `json:"contentChanges"`
 	Capabilities   struct {
 		TextDocument struct {
+			Completion    struct{ CompletionItem completionOptions }
 			SignatureHelp struct {
 				SignatureInformation struct {
 					ParameterInformation struct{ LabelOffsetSupport bool }
@@ -75,6 +76,7 @@ type server struct {
 	out                                            io.Writer
 	started, shutdown, versionEdits, registerWatch bool
 	loaded, refreshHints, labelOffsets             bool
+	completion                                     completionOptions
 	hints                                          hintSettings
 	hintRequest                                    uint64
 	latest                                         atomic.Uint64
@@ -263,7 +265,7 @@ func capabilities() object {
 		"positionEncoding": "utf-16", "textDocumentSync": object{"openClose": true, "change": 2, "save": true},
 		"workspace":              object{"workspaceFolders": object{"supported": true, "changeNotifications": true}, "fileOperations": object{"willRename": object{"filters": []object{{"scheme": "file", "pattern": object{"glob": "**/*.kt", "matches": "file"}}}}}},
 		"documentSymbolProvider": true, "workspaceSymbolProvider": true, "foldingRangeProvider": true, "hoverProvider": true,
-		"definitionProvider": true, "typeDefinitionProvider": true, "referencesProvider": true, "documentHighlightProvider": true, "completionProvider": object{"triggerCharacters": []string{".", "?"}},
+		"definitionProvider": true, "typeDefinitionProvider": true, "referencesProvider": true, "documentHighlightProvider": true, "completionProvider": object{"resolveProvider": true, "triggerCharacters": []string{".", "?"}},
 		"signatureHelpProvider": object{"triggerCharacters": []string{"(", ","}}, "renameProvider": object{"prepareProvider": true},
 		"semanticTokensProvider": object{"legend": object{"tokenTypes": tokenTypes, "tokenModifiers": tokenModifiers}, "full": true, "range": true},
 		"diagnosticProvider":     object{"identifier": "kc", "interFileDependencies": true, "workspaceDiagnostics": false},
@@ -293,6 +295,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		}
 		s.started = true
 		s.hints = readHintSettings(p.InitializationOptions)
+		s.completion = p.Capabilities.TextDocument.Completion.CompletionItem
 		s.labelOffsets = p.Capabilities.TextDocument.SignatureHelp.SignatureInformation.ParameterInformation.LabelOffsetSupport
 		s.refreshHints = p.Capabilities.Workspace.InlayHint.RefreshSupport
 		s.versionEdits = p.Capabilities.Workspace.WorkspaceEdit.DocumentChanges
@@ -372,6 +375,33 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		return nil, nil
 	case "workspace/willRenameFiles":
 		return s.fileMoves(ctx, p.Files)
+	case "completionItem/resolve":
+		var item object
+		if err := json.Unmarshal(m.Params, &item); err != nil || item == nil {
+			return nil, rpcError{-32602, "Invalid completion item"}
+		}
+		var payload struct{ Data completionData }
+		if err := json.Unmarshal(m.Params, &payload); err != nil {
+			return nil, rpcError{-32602, "Invalid completion data"}
+		}
+		data := payload.Data
+		path, _ := filePath(data.URI)
+		if d := s.w.docs[path]; d.snap != nil && d.snap.ID() == data.Snapshot {
+			n := d.snap.Node(data.Node)
+			if n.Declaration().Valid() {
+				if _, hasDetail := item["detail"]; !hasDetail {
+					item["detail"] = summary(n)
+				}
+				if doc := kdoc(n); doc != "" {
+					format := "plaintext"
+					if len(s.completion.DocumentationFormat) > 0 && s.completion.DocumentationFormat[0] == "markdown" {
+						format = "markdown"
+					}
+					item["documentation"] = object{"kind": format, "value": doc}
+				}
+			}
+		}
+		return item, nil
 	case "workspace/symbol":
 		out := []object{}
 		for _, path := range slices.Sorted(maps.Keys(s.w.docs)) {
@@ -483,9 +513,9 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		}
 		return libraryDefinition(&s.w, path, i, n), nil
 	case "textDocument/completion":
-		return i.completion(ctx, d.snap, off), nil
+		return i.completion(ctx, d.snap, off, s.completion), nil
 	case "textDocument/signatureHelp":
-		return i.signature(d.snap.NodeAt(off), off, s.labelOffsets), nil
+		return i.signature(ctx, d.snap.NodeAt(off), off, s.labelOffsets), nil
 	case "textDocument/prepareRename":
 		if target.Valid() {
 			return rng(n), nil
@@ -498,7 +528,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 	case "textDocument/inlayHint":
 		return hints(d.snap, i, p.Range, s.hints), nil
 	case "textDocument/codeAction":
-		out := actions(d.snap, i, p)
+		out := actions(ctx, d.snap, i, p)
 		for _, a := range out {
 			we := a["edit"].(object)
 			a["edit"] = s.workspaceEdits(we["changes"].(map[string][]edit))
@@ -551,7 +581,7 @@ func diagnostics(s *psi.Snapshot, i *index) []object {
 		}
 		off := min(len(s.Source()), start+max(0, d.Column-1))
 		n := s.NodeAt(off)
-		r := rng(n)
+		r := diagnosticRange(n, d)
 		if slices.ContainsFunc(out, func(o object) bool { return o["range"].(span).Start == r.Start && o["message"] == d.Message }) {
 			continue
 		}

@@ -260,6 +260,8 @@ type Fact struct {
 	// x++, has a Call.
 	SuspendOperation bool `json:"suspendOperation,omitempty"`
 
+	// LambdaReceiver is the type of this in a receiver lambda during an editor check.
+	LambdaReceiver *Type `json:"lambdaReceiver,omitempty"`
 	// LambdaParameters are the symbols of a lambda's parameters, its
 	// implicit it if ImplicitParameter is set.
 	LambdaParameters  []uint32 `json:"lambdaParameters,omitempty"`
@@ -518,6 +520,7 @@ func copyFact(f Fact) Fact {
 		b := *f.NonNullLeftSubtypeRight
 		f.NonNullLeftSubtypeRight = &b
 	}
+	f.LambdaReceiver = copyType(f.LambdaReceiver)
 	f.LambdaParameters = slices.Clone(f.LambdaParameters)
 	f.ReturnTarget = copyID(f.ReturnTarget)
 	f.ReceiverTarget = copyID(f.ReceiverTarget)

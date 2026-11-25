@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -85,9 +86,13 @@ func BenchmarkWorkspace(b *testing.B) {
 					i.hover(snap.NodeAt(off))
 				}
 			})
+			items := i.completion(ctx, snap, off, completionOptions{})
+			if !slices.ContainsFunc(items, func(item object) bool { return item["label"] == "f0" }) {
+				b.Fatal("missing receiver member f0")
+			}
 			b.Run("Completion", func(b *testing.B) {
 				for b.Loop() {
-					i.completion(ctx, snap, off)
+					i.completion(ctx, snap, off, completionOptions{})
 				}
 			})
 			b.Run("EditToDiagnostics", func(b *testing.B) {

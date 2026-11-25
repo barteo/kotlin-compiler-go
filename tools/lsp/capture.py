@@ -7,8 +7,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+import zipfile
 from queue import Queue
 from threading import Thread
+
+import daily
 
 FIXTURES = Path(__file__).resolve().parents[2] / "internal/lsp/testdata"
 RELEASE = "271.2085.0"
@@ -40,6 +43,9 @@ def read_messages(stream, messages):
 def capture(process, messages, root, state, project):
     registrations = []
     request_id = 0
+    buffer = daily.Buffer((root / "src/main/kotlin/Daily.kt").as_uri())
+    def notify(method, params):
+        send(process, method=method, params=params)
 
     def request(method, params):
         nonlocal request_id
@@ -57,6 +63,9 @@ def capture(process, messages, root, state, project):
                     result = [None] * len(msg["params"]["items"])
                 if msg["method"] == "client/registerCapability":
                     registrations.extend(msg["params"]["registrations"])
+                if msg["method"] == "workspace/applyEdit" and project == "daily":
+                    buffer.apply(msg["params"]["edit"], notify)
+                    result = {"applied": True}
                 send(process, id=msg["id"], result=result)
 
     caps = {"workspace": {"configuration": True, "workspaceFolders": True},
@@ -71,7 +80,7 @@ def capture(process, messages, root, state, project):
     record = {"release": "kotlin-lsp/v" + RELEASE, "registrations": registrations,
               "clientCapabilities": caps, "initialize": init}
     send(process, method="initialized", params={})
-    file = (root / "library" if project == "gradle" else root) / "src/main/kotlin/Example.kt"
+    file = (root / "library" if project in ("gradle", "daily") else root) / "src/main/kotlin/Example.kt"
     doc = {"uri": file.as_uri()}
     send(process, method="textDocument/didOpen", params={"textDocument": {
         **doc, "languageId": "kotlin", "version": 1, "text": file.read_text()}})
@@ -106,6 +115,8 @@ def capture(process, messages, root, state, project):
                   "references": request("textDocument/references", {
                       **declaration, "context": {"includeDeclaration": True}}),
                   "rename": request("textDocument/rename", {**declaration, "newName": "resultOf"})}
+    if project == "daily":
+        record = {"release": record["release"], **daily.record_cases(request, notify, buffer, FIXTURES / "daily")}
     request("shutdown", None)
     send(process, method="exit", params=None)
     experimental = init["capabilities"]["experimental"]
@@ -125,19 +136,35 @@ def main():
     projects.add_argument("--maven", action="store_const", const="maven", dest="project", help="capture Maven cross-file operations")
     projects.add_argument("--gradle", action="store_const", const="gradle", dest="project", help="capture Gradle cross-module operations")
     parser.add_argument("--output", type=Path, required=True)
+    projects.add_argument("--daily", action="store_const", const="daily", dest="project", help="capture daily editing with a binary Kotlin library")
+    parser.add_argument("--kc", type=Path, help="kc executable to compile the daily fixture")
     args = parser.parse_args()
+    if args.project == "daily" and not args.kc:
+        parser.error("--daily requires --kc")
     with tempfile.TemporaryDirectory() as temp:
         state = Path(temp).resolve()
         root = state / "project"
-        if args.project == "gradle":
+        if args.project in ("gradle", "daily"):
             shutil.copytree(FIXTURES / "gradle", root, ignore=shutil.ignore_patterns("upstream-*.json"))
-        source = (root / "library" if args.project == "gradle" else root) / "src/main/kotlin/Example.kt"
+        source = (root / "library" if args.project in ("gradle", "daily") else root) / "src/main/kotlin/Example.kt"
         source.parent.mkdir(parents=True)
         source.write_bytes((FIXTURES / "Example.kt").read_bytes())
         if args.project:
             consumer = root / "src/main/kotlin/Consumer.kt"
             consumer.parent.mkdir(parents=True, exist_ok=True)
             consumer.write_bytes((FIXTURES / "Consumer.kt").read_bytes())
+        if args.project == "daily":
+            fixture = FIXTURES / "daily"
+            subprocess.run([args.kc.resolve(), "-no-jdk", "-d", state / "classes", fixture / "Library.kt"], check=True)
+            with zipfile.ZipFile(root / "editing.jar", "w") as jar:
+                for file in (state / "classes").rglob("*"):
+                    if file.is_file():
+                        jar.write(file, file.relative_to(state / "classes"))
+            with (root / "build.gradle.kts").open("a") as build:
+                build.write('\ndependencies { implementation(files("editing.jar")) }\n')
+            (root / "gradle.properties").write_text("")
+            source.with_name("Scopes.kt").write_bytes((fixture / "Scopes.kt").read_bytes())
+            (root / "src/main/kotlin/Daily.kt").write_text("package sample\n")
         if args.project == "maven":
             (root / "pom.xml").write_bytes((FIXTURES / "maven/pom.xml").read_bytes())
         with subprocess.Popen([args.binary, "--stdio", "--system-path=" + str(state / "state")],

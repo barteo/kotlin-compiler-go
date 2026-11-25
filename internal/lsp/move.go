@@ -66,6 +66,11 @@ func addImports(s *psi.Snapshot, paths map[string]bool) []edit {
 	text := lead + "import " + strings.Join(slices.Sorted(maps.Keys(paths)), sep+"import ")
 	if at == (position{}) {
 		text += sep + sep
+	} else if end, err := offset(s, at); err == nil {
+		rest := s.Source()[end:]
+		if strings.HasPrefix(rest, sep) && !strings.HasPrefix(rest, sep+sep) && strings.TrimSpace(rest) != "" {
+			text += sep
+		}
 	}
 	return []edit{{span{at, at}, text}}
 }

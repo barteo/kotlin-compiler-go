@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/psi"
@@ -453,7 +452,7 @@ func hints(s *psi.Snapshot, i *index, r span, h hintSettings) []object {
 	})
 	return out
 }
-func actions(s *psi.Snapshot, i *index, p parameters) []object {
+func actions(ctx context.Context, s *psi.Snapshot, i *index, p parameters) []object {
 	out := []object{}
 	allows := func(kind string) bool {
 		return len(p.Context.Only) == 0 || slices.ContainsFunc(p.Context.Only, func(k string) bool { return kind == k || strings.HasPrefix(kind, k+".") })
@@ -468,55 +467,13 @@ func actions(s *psi.Snapshot, i *index, p parameters) []object {
 	}
 	if allows("quickfix") {
 		for _, d := range diagnostics(s, i) {
-			r := d["range"].(span)
-			if !overlaps(r, p.Range) {
+			if !overlaps(d["range"].(span), p.Range) {
 				continue
 			}
-			off, _ := offset(s, r.Start)
-			n := s.NodeAt(off)
-			if code, ok := d["code"].(string); ok && d["severity"] == 2 {
-				owner := ancestor(n, psi.KindFUN, psi.KindPROPERTY, psi.KindCLASS)
-				if owner.Valid() && !strings.Contains(owner.ChildKind(psi.KindMODIFIER_LIST).Text(), "Suppress") {
-					at := owner.NameIdentifier()
-					if at.Valid() {
-						begin := owner.FirstChild()
-						for begin.Valid() && (begin.IsTrivia() || begin.NumericKind() == psi.KindKDOC) {
-							begin = begin.NextSibling()
-						}
-						if begin.Valid() {
-							where := rng(begin).Start
-							out = append(out, action("Suppress "+code+" for "+owner.Name(), "quickfix", []edit{{span{where, where}, "@Suppress(" + strconv.Quote(code) + ") "}}))
-						}
-					}
-				}
-			}
-			switch d["code"] {
-			case "UNNECESSARY_NOT_NULL_ASSERTION", "UNNECESSARY_SAFE_CALL":
-				want, repl := "!!", ""
-				if d["code"] == "UNNECESSARY_SAFE_CALL" {
-					want, repl = "?.", "."
-				}
-				if n.Text() == want {
-					out = append(out, action("Remove unnecessary "+want, "quickfix", []edit{{rng(n), repl}}))
-				}
-			}
-		}
-	}
-	if allows("quickfix") {
-		start, err := offset(s, p.Range.Start)
-		if err == nil {
-			n := s.NodeAt(start)
-			if n.NumericKind() == psi.KindIDENTIFIER && !i.targets[n].Valid() && n.Parent().NumericKind() == psi.KindREFERENCE_EXPRESSION {
-				for _, d := range i.decls {
-					if d.Name() != n.Name() || d.Parent().NumericKind() != psi.KindFILE || imported(d, n) || !visibleAt(d, n) || !i.moduleVisible(d, n) {
-						continue
-					}
-					pkg := d.ContainingFile().RootNode().ChildKind(psi.KindPACKAGE_DIRECTIVE).Path()
-					if pkg != "" {
-						fq := pkg + "." + d.Name()
-						out = append(out, action("Import "+fq, "quickfix", addImports(s, map[string]bool{fq: true})))
-					}
-				}
+			for _, fix := range quickFixes(ctx, s, i, d) {
+				a := action(fix.title, "quickfix", fix.edits)
+				a["diagnostics"] = []object{d}
+				out = append(out, a)
 			}
 		}
 	}

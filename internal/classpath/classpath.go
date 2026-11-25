@@ -604,3 +604,22 @@ func FindStdlib() (string, error) {
 	}
 	return "", errors.New("kotlin-stdlib.jar not found: set KOTLIN_HOME")
 }
+
+// ClassesNamed finds top-level classes by simple name without opening class files.
+func (p *Path) ClassesNamed(simple string) []string {
+	var names []string
+	if p.base != nil {
+		names = p.base.ClassesNamed(simple)
+	}
+	for pkg, classes := range p.byPackage().classes {
+		id := simple
+		if pkg != "" {
+			id = pkg + "/" + simple
+		}
+		if _, found := slices.BinarySearch(classes, id); found {
+			names = append(names, id)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
+}

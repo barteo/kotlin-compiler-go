@@ -1,0 +1,9 @@
+{
+  "completion": "package sample\n\nfun edit() = inScope {\n    val dailyLocal = 1\n    dai|\n}\n",
+  "signature": "package sample\nimport editinglib.Printer\nfun edit(p: Printer) = p.printValue(\"x\", |2)\n",
+  "assertion": "package sample\nfun edit(s: String) = s|!!.length\n",
+  "safeCall": "package sample\nfun edit(s: String) = s|?.length\n",
+  "elvis": "package sample\nfun edit(s: String) = s |?: \"fallback\"\n",
+  "inner": "package sample\n|inner class Broken\n",
+  "import": "package sample\nfun edit() = |DailyPacket()\n"
+}

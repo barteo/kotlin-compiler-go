@@ -1,12 +1,8 @@
 package lsp
 
 import (
-	"cmp"
-	"context"
-	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
@@ -14,13 +10,14 @@ import (
 )
 
 type index struct {
-	workspace *workspace
-	model     *ka.EditorModel
-	snaps     map[psi.SnapshotID]*psi.Snapshot
-	facts     map[psi.NodeRef]analysis.Fact
-	symbols   map[psi.NodeRef]analysis.Symbol // exact identifier at cursor
-	targets   map[psi.NodeRef]psi.NodeRef     // reference token -> declaration token
-	decls     []psi.NodeRef
+	workspace  *workspace
+	model      *ka.EditorModel
+	snaps      map[psi.SnapshotID]*psi.Snapshot
+	facts      map[psi.NodeRef]analysis.Fact
+	symbols    map[psi.NodeRef]analysis.Symbol // exact identifier at cursor
+	targets    map[psi.NodeRef]psi.NodeRef     // reference token -> declaration token
+	byReceiver map[string][]psi.NodeRef
+	decls      []psi.NodeRef
 }
 
 func newIndex(model *ka.EditorModel, snaps []*psi.Snapshot) *index {
@@ -73,8 +70,22 @@ func newIndex(model *ka.EditorModel, snaps []*psi.Snapshot) *index {
 			}
 		}
 	}
+	i.byReceiver = map[string][]psi.NodeRef{}
 	for _, n := range i.decls {
 		name := n.NameIdentifier()
+		var receiver string
+		if rt := n.ReceiverType(); rt.Valid() {
+			if t := i.facts[rt].Type; t != nil {
+				receiver = t.Name
+			}
+		} else if constructorProperty(n) {
+			receiver = i.symbols[n.Parent().Parent().Parent().NameIdentifier()].QualifiedName
+		} else if n.Parent().NumericKind() == psi.KindCLASS_BODY {
+			receiver = dottedName(i.symbols[name].Owner)
+		}
+		if receiver != "" {
+			i.byReceiver[receiver] = append(i.byReceiver[receiver], n)
+		}
 		i.targets[name] = name
 	}
 	// Named argument tokens are references to the selected overload's
@@ -359,143 +370,11 @@ func folding(s *psi.Snapshot) []object {
 	})
 	return out
 }
-func (i *index) signature(n psi.NodeRef, off int, labelOffsets bool) any {
-	list := ancestor(n, psi.KindVALUE_ARGUMENT_LIST)
-	if !list.Valid() && off > 0 {
-		list = ancestor(n.ContainingFile().NodeAt(off-1), psi.KindVALUE_ARGUMENT_LIST)
-	}
-	if !list.Valid() {
-		return nil
-	}
-	call := list.Parent()
-	if call.NumericKind() != psi.KindCALL_EXPRESSION {
-		return nil
-	}
-	arg := 0
-	for child := list.FirstChild(); child.Valid() && child.Range().Start < off; child = child.NextSibling() {
-		if child.NumericKind() == psi.KindCOMMA {
-			arg++
-		}
-	}
-	entries := []object{}
-	seen := map[string]bool{}
-	active := arg
-	appendSig := func(name string, labels []string, ret string, decl psi.NodeRef, parameter int) {
-		label := name + "(" + strings.Join(labels, ", ") + ")"
-		if ret != "" {
-			label += ": " + ret
-		}
-		if seen[label] {
-			return
-		}
-		seen[label] = true
-		ps := []object{}
-		offset := 0
-		if labelOffsets {
-			for _, r := range name + "(" {
-				offset += utf16.RuneLen(r)
-			}
-		}
-		for _, p := range labels {
-			var value any = p
-			if labelOffsets {
-				end := offset
-				for _, r := range p {
-					end += utf16.RuneLen(r)
-				}
-				value = [2]int{offset, end}
-				offset = end + 2
-			}
-			ps = append(ps, object{"label": value})
-		}
-		sig := object{"label": label, "parameters": ps}
-		if len(ps) > 0 {
-			sig["activeParameter"] = min(max(parameter, 0), len(ps)-1)
-		}
-		if doc := decl.ChildKind(psi.KindKDOC); doc.Valid() {
-			sig["documentation"] = object{"kind": "markdown", "value": "````kotlin\n" + doc.Text() + "\n````\n"}
-		}
-		entries = append(entries, sig)
-	}
-	if c := i.facts[call].Call; c != nil {
-		labels := []string{}
-		for j, t := range c.Parameters {
-			label := typeName(&t)
-			if j < len(c.ParameterNames) {
-				label = c.ParameterNames[j] + ": " + label
-			}
-			labels = append(labels, label)
-		}
-		if arg < len(c.ArgumentMapping) {
-			active = c.ArgumentMapping[arg]
-		}
-		appendSig(short(c.Name), labels, typeName(c.ReturnType), i.node(c.Declaration), active)
-	}
-	// Before the closing parenthesis, the checker can legitimately have no
-	// selected call. Offer visible overloads with their declared signatures.
-	callee := factName(call)
-	qual := call.Parent()
-	qualified := qual.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION || qual.NumericKind() == psi.KindSAFE_ACCESS_EXPRESSION
-	var receiver *analysis.Type
-	if qualified {
-		receiver = i.facts[qual.FirstChild()].Type
-	}
-	for _, d := range i.decls {
-		if d.NumericKind() != psi.KindFUN || d.Name() != callee.Name() || !visibleAt(d, callee) || !i.moduleVisible(d, callee) {
-			continue
-		}
-		owner := ancestor(d.Parent(), psi.KindCLASS, psi.KindOBJECT_DECLARATION)
-		if qualified {
-			if receiver == nil {
-				continue
-			}
-			recv := i.symbols[d.NameIdentifier()].Owner
-			if rt := d.ReceiverType(); rt.Valid() {
-				if !imported(d, callee) {
-					continue
-				}
-				if t := i.facts[rt].Type; t != nil {
-					recv = t.Name
-				}
-			}
-			if !sameType(recv, receiver.Name) && !slices.Contains(receiver.Supertypes, strings.ReplaceAll(recv, "/", ".")) {
-				continue
-			}
-		} else if owner.Valid() && !under(callee, owner) || d.ReceiverType().Valid() || !imported(d, callee) {
-			continue
-		}
-		params := d.Parameters()
-		if len(params) <= arg && !(arg == 0 && len(params) == 0) && !(len(params) > 0 && params[len(params)-1].ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindVARARG_KEYWORD).Valid()) {
-			continue
-		}
-		labels := []string{}
-		for _, p := range params {
-			labels = append(labels, p.Name()+": "+p.TypeReference().Text())
-		}
-		sym := i.symbols[d.NameIdentifier()]
-		ret := typeName(&sym.Type)
-		if ret == "" {
-			ret = d.ReturnType().Text()
-		}
-		appendSig(d.Name(), labels, ret, d, arg)
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-	out := object{"signatures": entries, "activeSignature": 0}
-	if a, ok := entries[0]["activeParameter"]; ok {
-		out["activeParameter"] = a
-	}
-	return out
-}
-func sameType(a, b string) bool {
-	return strings.ReplaceAll(strings.ReplaceAll(a, "/", "."), "$", ".") == b
-}
 func visibleAt(d, at psi.NodeRef) bool {
 	if sc := ancestor(d.Parent(), psi.KindBLOCK, psi.KindFUNCTION_LITERAL); sc.Valid() && (!under(at, sc) || d.Range().Start > at.Range().Start) {
 		return false
 	}
-	if d.NumericKind() == psi.KindVALUE_PARAMETER {
+	if d.NumericKind() == psi.KindVALUE_PARAMETER && !constructorProperty(d) {
 		owner := d.Parent().Parent()
 		if owner.NumericKind() == psi.KindPRIMARY_CONSTRUCTOR {
 			owner = owner.Parent()
@@ -512,243 +391,6 @@ func visibleAt(d, at psi.NodeRef) bool {
 	}
 	return true
 }
-func imported(d, at psi.NodeRef) bool {
-	pkg := d.ContainingFile().RootNode().ChildKind(psi.KindPACKAGE_DIRECTIVE).Path()
-	root := at.ContainingFile().RootNode()
-	if pkg == root.ChildKind(psi.KindPACKAGE_DIRECTIVE).Path() {
-		return true
-	}
-	for c := root.ChildKind(psi.KindIMPORT_LIST).FirstChild(); c.Valid(); c = c.NextSibling() {
-		if c.Alias() == "" && (c.IsAllUnder() && c.Path() == pkg || c.Path() == pkg+"."+d.Name()) {
-			return true
-		}
-	}
-	return false
-}
-func (i *index) completion(ctx context.Context, s *psi.Snapshot, off int) []object {
-	at := s.NodeAt(max(off-1, 0))
-	prefix := ""
-	end := off
-	if at.NumericKind() == psi.KindIDENTIFIER {
-		prefix = s.Source()[at.Range().Start:off]
-		end = at.Range().Start
-	}
-	before := strings.TrimRight(s.Source()[:end], " \t")
-	member := strings.HasSuffix(before, ".")
-	var receiver analysis.Type
-	if member {
-		p := len(strings.TrimRight(strings.TrimSuffix(before[:len(before)-1], "?"), " \t"))
-		if p > 0 {
-			token := s.NodeAt(p - 1)
-			for n := token; n.Valid() && n.Range().End == p; n = n.Parent() {
-				if f := i.facts[n]; f.Type != nil {
-					receiver = *f.Type
-				}
-			}
-
-			if receiver.Name == "" && len(s.Diagnostics()) > 0 {
-				// Complete the selector in a throwaway snapshot. Resolution of the
-				// receiver, including overloaded calls, then follows ordinary kc rules.
-				patched := psi.ParseDocument(s.Path(), s.Source()[:end]+"kcEditorCompletion"+s.Source()[off:])
-				temp, err := i.workspace.buildIndex(ctx, s.Path(), patched)
-				if err == nil {
-					defer temp.model.Close()
-					leaf := patched.NodeAt(p - 1)
-					for n := leaf; n.Valid() && n.Range().End == p; n = n.Parent() {
-						if f := temp.facts[n]; f.Type != nil {
-							receiver = *f.Type
-						}
-					}
-				}
-			}
-		}
-	}
-	out := []object{}
-	seen := map[string]bool{}
-	add := func(name, detail string, kind, rank int) object {
-		key := name + "\n" + detail
-		if name == "" || seen[key] || !strings.HasPrefix(name, prefix) {
-			return nil
-		}
-		seen[key] = true
-		item := object{"label": name, "detail": detail, "kind": kind, "sortText": fmt.Sprintf("%02d-%s", rank, name)}
-		out = append(out, item)
-		return item
-	}
-	root := s.RootNode()
-	aliases := map[string]string{}
-	localNames := map[string]string{}
-	for imp := root.ChildKind(psi.KindIMPORT_LIST).FirstChild(); imp.Valid(); imp = imp.NextSibling() {
-		if !imp.Import().Valid() || imp.IsAllUnder() {
-			continue
-		}
-		name := short(imp.Path())
-		if alias := imp.Alias(); alias != "" {
-			aliases[imp.Path()] = alias
-			name = alias
-		}
-		localNames[name] = imp.Path()
-	}
-	for _, d := range i.decls {
-		if !visibleAt(d, at) || !i.moduleVisible(d, at) {
-			continue
-		}
-		sym := i.symbols[d.NameIdentifier()]
-		name := d.Name()
-		autoImport := ""
-		if d.Parent().NumericKind() == psi.KindFILE {
-			pkg := d.ContainingFile().RootNode().ChildKind(psi.KindPACKAGE_DIRECTIVE).Path()
-			fq := pkg + "." + name
-			if alias := aliases[fq]; alias != "" {
-				name = alias
-			} else if !imported(d, at) {
-				if prefix == "" || pkg == "" || localNames[name] != "" || !strings.HasPrefix(name, prefix) {
-					continue
-				}
-				autoImport = fq
-			}
-		}
-		outer := ancestor(d.Parent(), psi.KindCLASS, psi.KindOBJECT_DECLARATION)
-		if member {
-			if receiver.Name == "" {
-				continue
-			}
-			if rt := d.ReceiverType(); rt.Valid() {
-				t := i.facts[rt].Type
-				name := rt.Text()
-				if t != nil {
-					name = t.Name
-				}
-				if name != short(receiver.Name) && !sameType(name, receiver.Name) && !slices.Contains(receiver.Supertypes, name) {
-					continue
-				}
-			} else if !sameType(sym.Owner, receiver.Name) && !slices.Contains(receiver.Supertypes, strings.ReplaceAll(sym.Owner, "/", ".")) {
-				continue
-			}
-		} else if outer.Valid() && !under(at, outer) || d.ReceiverType().Valid() || d.Parent().NumericKind() != psi.KindFILE && !imported(d, at) {
-			continue
-		}
-		rank := 2
-		if d.ContainingFile() == s {
-			rank = 1
-		}
-		if sym.Kind == "parameter" || sym.Kind == "local" {
-			rank = 0
-		}
-		k := 6
-		switch symbolKind(d) {
-		case 5, 11:
-			k = 7
-		case 6, 12:
-			k = 3
-		case 7:
-			k = 10
-		}
-		detail := summary(d)
-		if autoImport != "" {
-			if item := add(name, detail+" ("+autoImport+")", k, 4); item != nil {
-				item["additionalTextEdits"] = addImports(s, map[string]bool{autoImport: true})
-			}
-		} else {
-			add(name, detail, k, rank)
-		}
-	}
-	if member && receiver.Name != "" {
-		for _, name := range append([]string{receiver.Name}, receiver.Supertypes...) {
-			if cl := i.model.Class(strings.ReplaceAll(name, ".", "/")); cl != nil {
-				for _, m := range cl.Members {
-					if m.Visibility == ka.Public && (m.Kind == ka.KindFunction || m.Kind == ka.KindProperty) {
-						k := 2
-						if m.Kind == ka.KindProperty {
-							k = 10
-						}
-						add(m.Name, librarySignature(m), k, 2)
-					}
-				}
-			}
-		}
-	}
-	// Enumerate package callables from Kotlin metadata, including imported
-	// and default-imported extensions applicable to the resolved receiver.
-	pkgs := map[string]bool{"kotlin": true, "kotlin.collections": true, "kotlin.io": true, "kotlin.ranges": true, "kotlin.sequences": true, "kotlin.text": true}
-	pkgs[root.ChildKind(psi.KindPACKAGE_DIRECTIVE).Path()] = true
-	explicit := map[string]string{}
-	for c := root.ChildKind(psi.KindIMPORT_LIST).FirstChild(); c.Valid(); c = c.NextSibling() {
-		if !c.Import().Valid() {
-			continue
-		}
-		if c.IsAllUnder() {
-			pkgs[c.Path()] = true
-		} else if pos := strings.LastIndexByte(c.Path(), '.'); pos >= 0 {
-			pkg := c.Path()[:pos]
-			if _, ok := pkgs[pkg]; !ok {
-				pkgs[pkg] = false
-			}
-			alias := c.Alias()
-			if alias == "" {
-				alias = short(c.Path())
-			}
-			explicit[c.Path()] = alias
-		}
-	}
-	for pkg, star := range pkgs {
-		if ctx.Err() != nil {
-			break
-		}
-		lib := i.model.Package(pkg)
-		if lib == nil {
-			continue
-		}
-		for _, d := range lib.Decls {
-			if d.Visibility != ka.Public {
-				continue
-			}
-			alias := explicit[pkg+"."+d.Name]
-			if !star && alias == "" {
-				continue
-			}
-			if member != (d.Receiver != nil) {
-				continue
-			}
-			if d.Receiver != nil {
-				recv := strings.ReplaceAll(d.Receiver.ClassID, "/", ".")
-				if receiver.Name == "" || recv != receiver.Name && !slices.Contains(receiver.Supertypes, recv) {
-					continue
-				}
-			}
-			name := d.Name
-			if alias != "" {
-				name = alias
-			}
-			if !strings.HasPrefix(name, prefix) {
-				continue
-			}
-			kind := 3
-			if d.Kind == ka.KindProperty {
-				kind = 10
-			}
-			add(name, librarySignature(d), kind, 3)
-		}
-		if !member {
-			for _, cl := range lib.Classes {
-				name := short(cl)
-				alias := explicit[pkg+"."+name]
-				if !star && alias == "" {
-					continue
-				}
-				if alias != "" {
-					name = alias
-				}
-				add(name, strings.ReplaceAll(cl, "/", "."), 7, 3)
-			}
-		}
-	}
-	slices.SortStableFunc(out, func(a, b object) int {
-		return cmp.Or(strings.Compare(a["sortText"].(string), b["sortText"].(string)), strings.Compare(a["detail"].(string), b["detail"].(string)))
-	})
-	return out
-}
-
 func (i *index) moduleVisible(d, at psi.NodeRef) bool {
 	src := i.workspace.module(at.ContainingFile().Path())
 	dst := i.workspace.module(d.ContainingFile().Path())

@@ -20,20 +20,29 @@ import (
 )
 
 type client struct {
-	t    *testing.T
-	req  *io.PipeWriter
-	resp *bufio.Reader
-	id   int
+	t         *testing.T
+	req       *io.PipeWriter
+	resp      *bufio.Reader
+	id        int
+	published struct {
+		URI         string
+		Version     int
+		Diagnostics json.RawMessage
+	}
 }
 
 func start(t *testing.T, root string) *client {
+	t.Helper()
+	return startClient(t, root, completionOptions{})
+}
+func startClient(t *testing.T, root string, opts completionOptions) *client {
 	t.Helper()
 	r, w := io.Pipe()
 	rr, ww := io.Pipe()
 	done := make(chan error, 1)
 	go func() { err := Serve(r, ww); ww.Close(); done <- err }()
 	c := &client{t: t, req: w, resp: bufio.NewReader(rr)}
-	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": true}}}})
+	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": true}}}})
 	c.notify("initialized", object{})
 	t.Cleanup(func() {
 		if !t.Failed() {
@@ -72,9 +81,16 @@ func (c *client) call(m string, p any) json.RawMessage {
 			ID     int
 			Error  *rpcError
 			Result json.RawMessage
+			Method string
+			Params json.RawMessage
 		}
 		if err = json.Unmarshal(b, &r); err != nil {
 			c.t.Fatal(err)
+		}
+		if r.Method == "textDocument/publishDiagnostics" {
+			if err := json.Unmarshal(r.Params, &c.published); err != nil {
+				c.t.Fatal(err)
+			}
 		}
 		if r.ID != c.id {
 			continue

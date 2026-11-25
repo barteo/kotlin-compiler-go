@@ -1,0 +1,147 @@
+{
+  "release": "kotlin-lsp/v271.2085.0",
+  "completion": {
+    "order": [
+      "dailyLocal",
+      "dailyMember",
+      "dailyGlobal"
+    ],
+    "text": "package sample\n\nfun edit() = inScope {\n    val dailyLocal = 1\n    dailyLocal\n}\n"
+  },
+  "signature": {
+    "signatures": [
+      {
+        "label": "printValue(value: String, count: Int = COMPILED_CODE): String",
+        "parameters": [
+          {
+            "label": [
+              11,
+              24
+            ]
+          },
+          {
+            "label": [
+              26,
+              52
+            ]
+          }
+        ],
+        "activeParameter": 1
+      },
+      {
+        "label": "printValue(value: Int, vararg rest: Int): Int",
+        "parameters": [
+          {
+            "label": [
+              11,
+              21
+            ]
+          },
+          {
+            "label": [
+              23,
+              39
+            ]
+          }
+        ],
+        "activeParameter": 1
+      }
+    ],
+    "activeSignature": 0
+  },
+  "assertion": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 23
+          },
+          "end": {
+            "line": 1,
+            "character": 25
+          }
+        },
+        "severity": 2
+      }
+    ],
+    "text": "package sample\nfun edit(s: String) = s.length\n",
+    "after": []
+  },
+  "safeCall": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 23
+          },
+          "end": {
+            "line": 1,
+            "character": 25
+          }
+        },
+        "severity": 2
+      }
+    ],
+    "text": "package sample\nfun edit(s: String) = s.length\n",
+    "after": []
+  },
+  "elvis": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 24
+          },
+          "end": {
+            "line": 1,
+            "character": 37
+          }
+        },
+        "severity": 2
+      }
+    ],
+    "text": "package sample\nfun edit(s: String) = s\n",
+    "after": []
+  },
+  "inner": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 5
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "text": "package sample\nclass Broken\n",
+    "after": []
+  },
+  "import": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 13
+          },
+          "end": {
+            "line": 1,
+            "character": 24
+          }
+        },
+        "severity": 1
+      }
+    ],
+    "text": "package sample\n\nimport editinglib.DailyPacket\n\nfun edit() = DailyPacket()\n",
+    "after": []
+  }
+}
