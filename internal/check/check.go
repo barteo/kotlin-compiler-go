@@ -3751,7 +3751,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 				if d.Interface {
 					c.errorf(m.P, "anonymous initializers are not allowed in interfaces")
 				}
-				c.state = state{scope: c.ctorScope(d.Sym), cls: d.Sym, this: newThis(d.Sym), tparams: d.Sym.TypeParams, init: true}
+				c.state = state{scope: c.initScope(d.Sym), cls: d.Sym, this: newThis(d.Sym), tparams: d.Sym.TypeParams, init: true}
 				c.inAnon(d.Sym)
 				c.block(m.Body, noWant, false)
 			}
@@ -4174,11 +4174,35 @@ func (c *Checker) setterParamType(d *syntax.PropDecl) {
 }
 
 // ctorScope makes primary constructor parameters visible, as they are in
-// property initializers and init blocks.
+// the superclass's constructor call and the delegates of delegated
+// interfaces.
 func (c *Checker) ctorScope(cls *types.ClassSym) *scope {
 	s := &scope{}
 	for _, p := range cls.CtorParams {
 		s.declare(p)
+	}
+	return s
+}
+
+// initScope makes the primary constructor parameters visible in property
+// initializers and init blocks, but for those that declare a property:
+// there, as kotlinc resolves it, the name is the property's, which reads
+// the property's current value, through an overriding getter if there is
+// one, and takes no smart cast unless the property is stable.
+func (c *Checker) initScope(cls *types.ClassSym) *scope {
+	s := &scope{}
+	props := map[*types.VarSym]bool{}
+	if cd, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		for _, cp := range cd.CtorParams {
+			if cp.IsProp {
+				props[cp.Sym] = true
+			}
+		}
+	}
+	for _, p := range cls.CtorParams {
+		if !props[p] {
+			s.declare(p)
+		}
 	}
 	return s
 }
@@ -4277,7 +4301,7 @@ func unitGetter(g *types.FunSym) {
 func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	c.state = state{scope: &scope{}, cls: cls, this: newThis(cls), init: cls != nil, declName: d.Name}
 	if cls != nil {
-		c.scope = c.ctorScope(cls)
+		c.scope = c.initScope(cls)
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
