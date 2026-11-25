@@ -1216,6 +1216,9 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		// Int: as kotlinc's nextInt(), the element is no platform type.
 		elem = elem.Flex()
 	}
+	c.noteOperator(t.NonNull(), "iterator", iter)
+	c.noteOperator(it, "hasNext", hasNext)
+	c.noteOperator(it, "next", next)
 	for _, f := range []*types.FunSym{iter, hasNext, next} {
 		if f != nil {
 			c.suspendCall(s.Range.Pos(), f)

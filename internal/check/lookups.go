@@ -215,6 +215,19 @@ func (c *Checker) noteFun(f *types.FunSym) {
 	c.noteType(f.Ret)
 }
 
+// noteOperator reports an operator call that resolved to f without a
+// call expression, as a for loop's iterator(): name in the class of the
+// receiver's type recv and in the scopes around the code, where an
+// extension may be found, and f.
+func (c *Checker) noteOperator(recv types.Type, name string, f *types.FunSym) {
+	if !c.recordsLookups() {
+		return
+	}
+	c.noteMember(recv, name)
+	c.noteName(name)
+	c.noteFun(f)
+}
+
 // noteVar is noteFun for a property.
 func (c *Checker) noteVar(v *types.VarSym) {
 	if v == nil || !c.recordsLookups() {
