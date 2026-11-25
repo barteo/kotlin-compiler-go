@@ -2129,7 +2129,7 @@ func (g *gen) initializers(cd *syntax.ClassDecl) {
 			g.code.FieldInsn(cf.PUTFIELD, cls.Name, cp.Name, desc(types.FieldType(cp.Sym)))
 		}
 	}
-	if cls.Object && cls.CompanionOf == nil && !cls.Anonymous || initsInOuter(cd) {
+	if cls.Object && !cls.Anonymous {
 		return // in the static initializer: see staticInits
 	}
 	for _, m := range cd.Members {
@@ -2153,26 +2153,30 @@ func (g *gen) initializers(cd *syntax.ClassDecl) {
 	}
 }
 
-// initsInOuter reports whether cd is a companion object, whose property
+// initsInOuter reports whether cd is a companion object whose property
 // initializers and init blocks all run in its outer class's static
 // initializer, in declaration order, once it has created the companion,
 // as kotlinc runs them: they may read the companion through the outer
 // class, as HttpStatusCode.Companion's allStatusCodes = listOf(
 // HttpStatusCode.Continue, ...), and its @JvmField properties, which the
-// outer class holds, as GrpcStatus.OK.
+// outer class holds, as GrpcStatus.OK. An interface's or an annotation
+// class's companion runs them in its own static initializer, unless its
+// properties are @JvmField ones, which the outer class holds.
 func initsInOuter(cd *syntax.ClassDecl) bool {
-	return cd != nil && cd.Sym != nil && cd.Sym.CompanionOf != nil
+	if cd == nil || cd.Sym == nil || cd.Sym.CompanionOf == nil {
+		return false
+	}
+	o := cd.Sym.CompanionOf
+	return !o.Interface && !o.Annotation || slices.ContainsFunc(cd.Sym.Props, func(p *types.VarSym) bool { return p.JvmField })
 }
 
 // staticInits generates, in a static initializer after the object's
-// instance is created, the initializers of object od's static fields: as
-// kotlinc does, all of a named object's property initializers and init
-// blocks, in declaration order, and a companion object's @JvmField
-// initializers, whose fields its outer class holds.
+// instance is created, all of object od's property initializers and init
+// blocks, in declaration order, as kotlinc does: in the object's own
+// static initializer, or in its outer class's (initsInOuter).
 func (g *gen) staticInits(od *syntax.ClassDecl) {
 	saved := g.owner
-	all := od.Sym.CompanionOf == nil || initsInOuter(od)
-	g.owner, g.objThis, g.companionInits = od.Sym, true, od.Sym.CompanionOf != nil && all
+	g.owner, g.objThis, g.companionInits = od.Sym, true, initsInOuter(od)
 	defer func() { g.owner, g.objThis, g.companionInits = saved, false, false }()
 	for _, m := range od.Members {
 		switch m := m.(type) {
@@ -2181,7 +2185,7 @@ func (g *gen) staticInits(od *syntax.ClassDecl) {
 				continue
 			}
 			if !m.Sym.StaticField() {
-				if !all || !m.Sym.HasField() {
+				if !m.Sym.HasField() {
 					continue
 				}
 				// A companion's property, of its instance, set in order
@@ -2198,10 +2202,8 @@ func (g *gen) staticInits(od *syntax.ClassDecl) {
 			g.exprAs(m.Init, types.FieldType(m.Sym))
 			g.staticField(cf.PUTSTATIC, m.Sym)
 		case *syntax.InitBlock:
-			if all {
-				g.prefix = "_init_$lambda"
-				g.block(m.Body, types.UnitType, false)
-			}
+			g.prefix = "_init_$lambda"
+			g.block(m.Body, types.UnitType, false)
 		}
 	}
 }
@@ -2300,7 +2302,7 @@ func companionFields(cd *syntax.ClassDecl) []*types.VarSym {
 	}
 	var out []*types.VarSym
 	for _, p := range ccd.Sym.Props {
-		if p.StaticField() && p.HasField() {
+		if p.StaticField() && p.HasField() && p.ConstOwner() != p.Owner {
 			out = append(out, p)
 		}
 	}
@@ -2817,6 +2819,9 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		g.code.Op(cf.DUP)
 		g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", "()V")
 		g.code.FieldInsn(cf.PUTSTATIC, cls.Name, "$$INSTANCE", d)
+		if !initsInOuter(cd) {
+			g.staticInits(cd)
+		}
 	case interfaceCompanion(obj):
 		owner, name := obj.ObjectField()
 		d := "L" + obj.Name + ";"
@@ -2824,7 +2829,7 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		nullability(g.cls.LastField().Annotate, types.ClassType(obj))
 		g.code.FieldInsn(cf.GETSTATIC, obj.Name, "$$INSTANCE", d)
 		g.code.FieldInsn(cf.PUTSTATIC, owner, name, d)
-		if ccd := companionDecl(cd); ccd != nil {
+		if ccd := companionDecl(cd); initsInOuter(ccd) {
 			g.staticInits(ccd)
 		}
 	default:
@@ -2939,6 +2944,10 @@ func (g *gen) enumMethods(cd *syntax.ClassDecl) {
 // objectRef pushes an object, or a companion object: its instance.
 func (g *gen) objectRef(obj *types.ClassSym) {
 	owner, name := obj.ObjectField()
+	if interfaceCompanion(obj) && g.cls.Name == obj.Name {
+		g.code.FieldInsn(cf.GETSTATIC, obj.Name, "$$INSTANCE", "L"+obj.Name+";")
+		return
+	}
 	if privateCompanion(obj) && g.cls.Name != owner {
 		// Its field is private, as kotlinc's: other classes call an
 		// accessor.
@@ -3408,7 +3417,7 @@ func (g *gen) invokeVirtual(cls *types.ClassSym, name, d string) {
 // delegated property has none.
 func inOuter(p *types.VarSym) bool {
 	pd, ok := p.Decl.(*syntax.PropDecl)
-	return ok && pd.DelegateOf == nil && p.Owner != nil && p.Owner.CompanionOf != nil && !p.JvmField && p.StaticField()
+	return ok && pd.DelegateOf == nil && p.Owner != nil && p.Owner.CompanionOf != nil && !p.JvmField && p.StaticField() && p.ConstOwner() != p.Owner
 }
 
 // directGet and directSet report whether code reads or writes a
@@ -3583,7 +3592,7 @@ func privateSetter(p *types.VarSym) string { return "access$" + types.SetterName
 // its outer class holds privately, as kotlinc writes it: other classes
 // use the outer class's access$getX$cp and access$setX$cp.
 func cpField(p *types.VarSym) bool {
-	if p.Kind != types.Prop || !p.StaticField() || p.Owner.CompanionOf == nil || p.JvmField {
+	if p.Kind != types.Prop || !p.StaticField() || p.ConstOwner() == p.Owner || p.JvmField {
 		return false
 	}
 	if p.Lateinit && !p.Private {

@@ -1324,9 +1324,7 @@ func TestLambdaInvoke(t *testing.T) {
 // -jvm-default=disable and then both with -jvm-default=enable, and
 // compares the members of the classes both write: each has the same
 // fields and methods, by name and descriptor, with the same access flags.
-// The methods of lambdas aren't compared, nor are the fields of an
-// interface's companion, whose properties kc keeps in instance fields
-// that the interface's static initializer sets.
+// The methods of lambdas aren't compared.
 func TestMembers(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1339,7 +1337,6 @@ func TestMembers(t *testing.T) {
 	srcs := sources(t, "../../testdata/members")
 	methods := func(t *testing.T, dir string) map[string]map[string]uint16 {
 		out := map[string]map[string]uint16{}
-		ifaces := map[string]bool{}
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || !strings.HasSuffix(path, ".class") {
 				return err
@@ -1353,9 +1350,6 @@ func TestMembers(t *testing.T) {
 				return err
 			}
 			ms := map[string]uint16{}
-			if info.Access&classfile.AccInterface != 0 {
-				ifaces[info.Name] = true
-			}
 			for _, f := range info.Fields {
 				ms[f.Name+":"+f.Desc] = f.Access
 			}
@@ -1369,9 +1363,6 @@ func TestMembers(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
-		}
-		for name := range ifaces {
-			maps.DeleteFunc(out[name+"$Companion"], func(m string, _ uint16) bool { return strings.Contains(m, ":") })
 		}
 		return out
 	}

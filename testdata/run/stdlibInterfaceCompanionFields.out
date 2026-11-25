@@ -1,0 +1,20 @@
+Api.Companion init 2
+15
+3 2 lazy-2
+10 late private set 5 3
+3:15
+2 10 lazy-2
+first first-second
+tag 2
+Companion.names private static final
+Companion.count private static
+Companion.secret private static
+Companion.doubled private static
+Companion.lazyName$delegate private static final
+Companion.late public static
+Companion.privateSet private static
+Companion.st private static final
+Fields.first public static final
+Fields.second public static final
+Companion.label private static final
+Companion.uses private static
