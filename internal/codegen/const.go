@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"cmp"
 	"math"
 	"slices"
 	"strconv"
@@ -248,6 +249,10 @@ func constOf(e syntax.Expr, depth int) (any, bool) {
 			}
 		case syntax.PLUS:
 			return v, true
+		case syntax.NOT:
+			if b, ok := v.(int64); ok && e.X.Type().K == types.Bool {
+				return 1 - b, true
+			}
 		}
 	case *syntax.Binary:
 		return constBinary(e, depth)
@@ -387,7 +392,7 @@ func constConvert(e *syntax.Call, depth int) (any, bool) {
 		return nil, false
 	}
 	switch m.X.Type().K {
-	case types.Int, types.Long, types.Short, types.Byte, types.Char:
+	case types.Int, types.Long, types.Short, types.Byte, types.Char, types.Float, types.Double:
 	default:
 		return nil, false
 	}
@@ -395,7 +400,17 @@ func constConvert(e *syntax.Call, depth int) (any, bool) {
 	if !ok {
 		return nil, false
 	}
-	v := x.(int64)
+	var v int64
+	switch x := x.(type) {
+	case int64:
+		v = x
+	case float32:
+		v = floatToInt(float64(x), e.Builtin != types.ToLong)
+	case float64:
+		v = floatToInt(x, e.Builtin != types.ToLong)
+	default:
+		return nil, false
+	}
 	switch e.Builtin {
 	case types.ToInt:
 		return int64(int32(v)), true
@@ -409,8 +424,30 @@ func constConvert(e *syntax.Call, depth int) (any, bool) {
 	return v, true
 }
 
-// constFloat computes x.toFloat() or x.toDouble() of a constant Float or
-// Double, as an annotation argument +1.0.toFloat().
+// floatToInt converts a Float's or a Double's value to an Int's, if
+// toInt, or else to a Long's, as the JVM's f2i and d2l do: toward zero,
+// NaN to 0, and out-of-range values to the nearest bound.
+func floatToInt(v float64, toInt bool) int64 {
+	lo, hi := float64(math.MinInt64), float64(math.MaxInt64)
+	if toInt {
+		lo, hi = math.MinInt32, math.MaxInt32
+	}
+	switch {
+	case math.IsNaN(v):
+		return 0
+	case v <= lo:
+		return int64(lo)
+	case v >= hi:
+		if toInt {
+			return math.MaxInt32
+		}
+		return math.MaxInt64
+	}
+	return int64(v)
+}
+
+// constFloat computes x.toFloat() or x.toDouble() of a constant number,
+// as an annotation argument +1.0.toFloat().
 func constFloat(e *syntax.Call, depth int) (any, bool) {
 	m, ok := e.Fun.(*syntax.Member)
 	if !ok || m.Safe || len(e.Args) != 0 {
@@ -426,6 +463,11 @@ func constFloat(e *syntax.Call, depth int) (any, bool) {
 		v = x
 	case float32:
 		v = float64(x)
+	case int64:
+		if e.Builtin == types.ToFloat {
+			return float32(x), true // rounded once, as the JVM's i2f and l2f
+		}
+		return float64(x), true
 	default:
 		return nil, false
 	}
@@ -550,10 +592,29 @@ func constBinary(e *syntax.Binary, depth int) (any, bool) {
 		}
 		return x.(string) + s, true
 	}
+	t := e.Type()
+	switch {
+	case t.K == types.Float || t.K == types.Double:
+		return constArith(e.Op, x, y, t.K == types.Float)
+	case t.K == types.Bool:
+		return constCompare(e.Op, x, y, e.X.Type(), e.Y.Type())
+	}
 	a, ok1 := x.(int64)
 	b, ok2 := y.(int64)
-	t := e.Type()
-	if !ok1 || !ok2 || t.K != types.Int && t.K != types.Long {
+	if !ok1 || !ok2 {
+		return nil, false
+	}
+	if t.K == types.Char {
+		// Char + Int and Char - Int, a Char.
+		switch e.Op {
+		case syntax.PLUS:
+			return int64(uint16(a + b)), true
+		case syntax.MINUS:
+			return int64(uint16(a - b)), true
+		}
+		return nil, false
+	}
+	if t.K != types.Int && t.K != types.Long {
 		return nil, false
 	}
 	switch e.Op {
@@ -573,6 +634,142 @@ func constBinary(e *syntax.Binary, depth int) (any, bool) {
 		}
 	}
 	return nil, false
+}
+
+// constArith computes Float or, unless float, Double arithmetic of
+// constants x and y, either of which may be an integer, as the JVM does:
+// in 32 bits for a Float.
+func constArith(op syntax.Kind, x, y any, float bool) (any, bool) {
+	a, ok1 := asFloat(x)
+	b, ok2 := asFloat(y)
+	if !ok1 || !ok2 {
+		return nil, false
+	}
+	if float {
+		a, b = float64(float32(a)), float64(float32(b))
+	}
+	var v float64
+	switch op {
+	case syntax.PLUS:
+		v = a + b
+	case syntax.MINUS:
+		v = a - b
+	case syntax.STAR:
+		v = a * b
+	case syntax.SLASH:
+		v = a / b
+	case syntax.PERCENT:
+		v = math.Mod(a, b) // exact, so a Float's needs no rounding before its own
+	default:
+		return nil, false
+	}
+	if float {
+		return float32(v), true // float32 operands' sum, difference, product and quotient round once
+	}
+	return v, true
+}
+
+// asFloat returns a numeric constant as a float64: an integer's exactly
+// for the values an Int holds.
+func asFloat(v any) (float64, bool) {
+	switch v := v.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	}
+	return 0, false
+}
+
+// constCompare computes a comparison of constants x and y, of types xt
+// and yt, or && and || of Booleans, a Boolean's value 0 or 1.
+func constCompare(op syntax.Kind, x, y any, xt, yt types.Type) (any, bool) {
+	b := func(v bool) (any, bool) {
+		if v {
+			return int64(1), true
+		}
+		return int64(0), true
+	}
+	if xt.K == types.Bool && yt.K == types.Bool {
+		a, c := x.(int64), y.(int64)
+		switch op {
+		case syntax.AND:
+			return a & c, true
+		case syntax.OR:
+			return a | c, true
+		case syntax.EQ:
+			return b(a == c)
+		case syntax.NE:
+			return b(a != c)
+		}
+		return nil, false
+	}
+	if xt.K == types.String || yt.K == types.String || xt.N || yt.N {
+		return nil, false
+	}
+	if _, ok := x.(int64); ok {
+		if _, ok := y.(int64); ok {
+			a, c := x.(int64), y.(int64)
+			switch op {
+			case syntax.EQ:
+				return b(a == c)
+			case syntax.NE:
+				return b(a != c)
+			case syntax.LT:
+				return b(a < c)
+			case syntax.GT:
+				return b(a > c)
+			case syntax.LE:
+				return b(a <= c)
+			case syntax.GE:
+				return b(a >= c)
+			}
+			return nil, false
+		}
+	}
+	a, ok1 := asFloat(x)
+	c, ok2 := asFloat(y)
+	if !ok1 || !ok2 {
+		return nil, false
+	}
+	// As kotlinc evaluates them: by Double.compare's total order, where
+	// -0.0 is less than 0.0, and NaN equal to itself and greater than any
+	// other value, rather than as the JVM compares them at run time.
+	switch cmp := javaCompare(a, c); op {
+	case syntax.EQ:
+		return b(cmp == 0)
+	case syntax.NE:
+		return b(cmp != 0)
+	case syntax.LT:
+		return b(cmp < 0)
+	case syntax.GT:
+		return b(cmp > 0)
+	case syntax.LE:
+		return b(cmp <= 0)
+	case syntax.GE:
+		return b(cmp >= 0)
+	}
+	return nil, false
+}
+
+// javaCompare compares a and b as Java's Double.compare does.
+func javaCompare(a, b float64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	// Equal, a zero of each sign, or NaN: by doubleToLongBits.
+	bits := func(v float64) int64 {
+		if math.IsNaN(v) {
+			return 0x7ff8000000000000
+		}
+		return int64(math.Float64bits(v))
+	}
+	return cmp.Compare(bits(a), bits(b))
 }
 
 // wrap truncates an Int's value to 32 bits.
@@ -599,8 +796,60 @@ func constString(v any, t types.Type) (string, bool) {
 	case types.Bool:
 		i, ok := v.(int64)
 		return strconv.FormatBool(i != 0), ok
+	case types.Float:
+		f, ok := v.(float32)
+		return javaFloatString(float64(f), 32), ok
+	case types.Double:
+		f, ok := v.(float64)
+		return javaFloatString(f, 64), ok
 	}
 	return "", false
+}
+
+// javaFloatString returns a Float's (bits 32) or a Double's value as
+// Java's Float.toString and Double.toString show it: the shortest decimal
+// that rounds to it, plain from 10^-3 up to 10^7, and otherwise as
+// d.dddE<exponent>, with at least one digit after the point.
+func javaFloatString(v float64, bits int) string {
+	switch {
+	case math.IsNaN(v):
+		return "NaN"
+	case math.IsInf(v, 1):
+		return "Infinity"
+	case math.IsInf(v, -1):
+		return "-Infinity"
+	case v == 0:
+		if math.Signbit(v) {
+			return "-0.0"
+		}
+		return "0.0"
+	}
+	s := strconv.FormatFloat(v, 'e', -1, bits) // -d.ddde±XX
+	sign := ""
+	if s[0] == '-' {
+		sign, s = "-", s[1:]
+	}
+	mant, exp, _ := strings.Cut(s, "e")
+	e, _ := strconv.Atoi(exp)
+	digits := strings.Replace(mant, ".", "", 1)
+	if a := math.Abs(v); a >= 1e-3 && a < 1e7 {
+		if e >= 0 {
+			for len(digits) <= e {
+				digits += "0"
+			}
+			frac := digits[e+1:]
+			if frac == "" {
+				frac = "0"
+			}
+			return sign + digits[:e+1] + "." + frac
+		}
+		return sign + "0." + strings.Repeat("0", -e-1) + digits
+	}
+	frac := digits[1:]
+	if frac == "" {
+		frac = "0"
+	}
+	return sign + digits[:1] + "." + frac + "E" + strconv.Itoa(e)
 }
 
 // ConstValue returns the value of a constant expression of the program,

@@ -1323,8 +1323,9 @@ func TestLambdaInvoke(t *testing.T) {
 // TestMembers compiles testdata/members/ with kotlinc and kc, both with
 // -jvm-default=disable and then both with -jvm-default=enable, and
 // compares the members of the classes both write: each has the same
-// fields and methods, by name and descriptor, with the same access flags.
-// The methods of lambdas aren't compared.
+// fields and methods, by name and descriptor, with the same access flags,
+// and each field the same ConstantValue. The methods of lambdas aren't
+// compared.
 func TestMembers(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1351,7 +1352,11 @@ func TestMembers(t *testing.T) {
 			}
 			ms := map[string]uint16{}
 			for _, f := range info.Fields {
-				ms[f.Name+":"+f.Desc] = f.Access
+				key := f.Name + ":" + f.Desc
+				if f.Constant != nil {
+					key += fmt.Sprintf(" = %#v", f.Constant)
+				}
+				ms[key] = f.Access
 			}
 			for _, m := range info.Methods {
 				if !strings.Contains(m.Name, "$lambda$") {
