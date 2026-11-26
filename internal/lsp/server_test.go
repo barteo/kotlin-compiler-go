@@ -40,13 +40,17 @@ func startClient(t *testing.T, root string, opts completionOptions, definitionLi
 	return startClientEdits(t, root, opts, definitionLinks, true)
 }
 func startClientEdits(t *testing.T, root string, opts completionOptions, definitionLinks, versionEdits bool) *client {
+	return startWithCapabilities(t, root, object{"textDocument": object{"definition": object{"linkSupport": definitionLinks}, "completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": versionEdits}}})
+}
+
+func startWithCapabilities(t *testing.T, root string, caps object) *client {
 	t.Helper()
 	r, w := io.Pipe()
 	rr, ww := io.Pipe()
 	done := make(chan error, 1)
 	go func() { err := Serve(r, ww); ww.Close(); done <- err }()
 	c := &client{t: t, req: w, resp: bufio.NewReader(rr)}
-	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"definition": object{"linkSupport": definitionLinks}, "completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": versionEdits}}}})
+	c.call("initialize", object{"rootUri": uri(root), "capabilities": caps})
 	c.notify("initialized", object{})
 	t.Cleanup(func() {
 		if !t.Failed() {

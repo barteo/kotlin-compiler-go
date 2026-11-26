@@ -210,29 +210,43 @@ func sameType(a, b *analysis.Type) bool {
 }
 
 func typeName(t *analysis.Type) string {
+	var out strings.Builder
+	typeText(t, func(text, _ string) { out.WriteString(text) })
+	return out.String()
+}
+
+// Emit the displayed type and keep each classifier's qualified identity for navigation.
+func typeText(t *analysis.Type, emit func(text, classifier string)) {
 	if t == nil {
-		return ""
+		return
 	}
 	if t.Projection == "*" {
-		return "*"
-	}
-	s := short(t.Name)
-	if len(t.Arguments) > 0 {
-		var args []string
-		for _, a := range t.Arguments {
-			args = append(args, typeName(&a))
-		}
-		s += "<" + strings.Join(args, ", ") + ">"
-	}
-	if t.Nullable {
-		s += "?"
-	} else if t.Platform {
-		s += "!"
+		emit("*", "")
+		return
 	}
 	if t.Projection != "" {
-		s = t.Projection + " " + s
+		emit(t.Projection+" ", "")
 	}
-	return s
+	classifier := t.Name
+	if t.Parameter {
+		classifier = ""
+	}
+	emit(short(t.Name), classifier)
+	if len(t.Arguments) > 0 {
+		emit("<", "")
+		for j := range t.Arguments {
+			if j > 0 {
+				emit(", ", "")
+			}
+			typeText(&t.Arguments[j], emit)
+		}
+		emit(">", "")
+	}
+	if t.Nullable {
+		emit("?", "")
+	} else if t.Platform {
+		emit("!", "")
+	}
 }
 func summary(n psi.NodeRef) string {
 	var b strings.Builder
@@ -324,42 +338,72 @@ func symbolKind(n psi.NodeRef) int {
 }
 func symbol(n psi.NodeRef) object {
 	o := object{"name": n.Name(), "kind": symbolKind(n), "range": rng(n), "selectionRange": rng(n.NameIdentifier())}
-	if n.NumericKind() == psi.KindFUN {
-		var ts []string
-		for _, p := range n.Parameters() {
-			ts = append(ts, p.TypeReference().Text())
+	var detail string
+	switch n.NumericKind() {
+	case psi.KindFUN, psi.KindPROPERTY, psi.KindVALUE_PARAMETER:
+		if rt := n.ReceiverType(); rt.Valid() {
+			detail = rt.Text() + "."
 		}
-		detail := "(" + strings.Join(ts, ", ") + ")"
+		if n.NumericKind() == psi.KindFUN {
+			detail += outlineParameters(n)
+		}
 		if rt := n.ReturnType(); rt.Valid() {
 			detail += ": " + rt.Text()
 		}
+	}
+	if detail != "" {
 		o["detail"] = detail
 	}
 	return o
 }
+
+func outlineParameters(n psi.NodeRef) string {
+	var types []string
+	for _, p := range n.Parameters() {
+		types = append(types, p.TypeReference().Text())
+	}
+	return "(" + strings.Join(types, ", ") + ")"
+}
+
 func outline(s *psi.Snapshot) []object {
 	out := []object{}
 	parents := map[psi.NodeRef]object{}
-	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
-		if !n.Declaration().Valid() || !n.NameIdentifier().Valid() {
-			return true
-		}
-		switch n.NumericKind() {
-		case psi.KindVALUE_PARAMETER, psi.KindTYPE_PARAMETER:
-			return false
-		}
-		item := symbol(n)
+	add := func(n psi.NodeRef, item object) {
 		item["deprecated"] = false
 		for p := n.Parent(); p.Valid(); p = p.Parent() {
 			if parent := parents[p]; parent != nil {
 				children, _ := parent["children"].([]object)
 				parent["children"] = append(children, item)
-				parents[n] = item
-				return true
+				return
 			}
 		}
-		parents[n] = item
 		out = append(out, item)
+	}
+	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
+		switch n.NumericKind() {
+		case psi.KindPRIMARY_CONSTRUCTOR:
+			for _, p := range n.Parameters() {
+				if constructorProperty(p) {
+					add(p, symbol(p))
+				}
+			}
+			add(n, object{"name": n.Parent().Name(), "kind": 9, "detail": outlineParameters(n), "range": rng(n), "selectionRange": rng(n)})
+			return false
+		case psi.KindPROPERTY_ACCESSOR:
+			name := "get"
+			if n.ChildKind(psi.KindSET_KEYWORD).Valid() {
+				name = "set"
+			}
+			add(n, object{"name": name, "kind": 6, "range": rng(n), "selectionRange": rng(n)})
+			return false
+		case psi.KindTYPE_PARAMETER, psi.KindVALUE_PARAMETER:
+			return false
+		}
+		if n.Declaration().Valid() && n.NameIdentifier().Valid() {
+			item := symbol(n)
+			add(n, item)
+			parents[n] = item
+		}
 		return true
 	})
 	return out

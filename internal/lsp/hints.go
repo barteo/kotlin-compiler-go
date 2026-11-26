@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"context"
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -45,13 +47,32 @@ func readHintSettings(options object) hintSettings {
 	return h
 }
 
-func hints(s *psi.Snapshot, i *index, r span, h hintSettings) []object {
+func (server *server) inlayHints(ctx context.Context, s *psi.Snapshot, i *index, r span) []object {
+	h := server.hints
+	locations := map[string]*location{}
 	out := []object{}
-	add := func(at position, label string, kind int) {
+	lookup := func(classifier string) *location {
+		dest, ok := locations[classifier]
+		if !ok {
+			dest, _ = i.typeLocation(ctx, s.Path(), classifier)
+			locations[classifier] = dest
+		}
+		return dest
+	}
+	add := func(at position, label string, kind int, typ *analysis.Type) {
 		if before(at, r.Start) || !before(at, r.End) {
 			return
 		}
 		hint := object{"position": at, "label": label}
+		if typ != nil && server.hintParts {
+			parts, targets := typeHintLabel(label, typ, server.lazyHintLinks, lookup)
+			hint["label"] = parts
+			if len(targets) > 0 {
+				hint["data"] = hintData{uri(s.Path()), s.ID(), server.revision, targets}
+			}
+		} else if typ != nil {
+			hint["label"] = label + typeName(typ)
+		}
 		if kind == 0 {
 			hint["paddingLeft"] = true
 		} else {
@@ -89,8 +110,8 @@ func hints(s *psi.Snapshot, i *index, r span, h hintSettings) []object {
 					return true
 				}
 			}
-			if t := typeName(&sym.Type); t != "" && target.Valid() {
-				add(rng(target).End, ": "+t, 1)
+			if sym.Type.Name != "" && target.Valid() {
+				add(rng(target).End, ": ", 1, &sym.Type)
 			}
 		case psi.KindLAMBDA_EXPRESSION:
 			lambdaHints(n, i, h, add)
@@ -111,7 +132,7 @@ func hints(s *psi.Snapshot, i *index, r span, h hintSettings) []object {
 				if arg < len(c.ArgumentMapping) {
 					j := c.ArgumentMapping[arg]
 					if j >= 0 && j < len(c.ParameterNames) && !a.ChildKind(psi.KindVALUE_ARGUMENT_NAME).Valid() && a.Text() != c.ParameterNames[j] {
-						add(rng(a).Start, c.ParameterNames[j]+":", 2)
+						add(rng(a).Start, c.ParameterNames[j]+":", 2, nil)
 					}
 				}
 				arg++
@@ -132,32 +153,33 @@ func hints(s *psi.Snapshot, i *index, r span, h hintSettings) []object {
 	return out
 }
 
-type addHint func(position, string, int)
+type addHint func(position, string, int, *analysis.Type)
 
 func lambdaHints(n psi.NodeRef, i *index, h hintSettings, add addHint) {
 	f := i.facts[n]
 	literal := n.ChildKind(psi.KindFUNCTION_LITERAL)
 	brace := literal.ChildKind(psi.KindLBRACE)
 	if h.lambdaParameters && newlineAfter(brace) {
-		var labels []string
-		if t := typeName(f.LambdaReceiver); t != "" {
-			labels = append(labels, "this: "+t)
+		at := rng(brace).End
+		hasLabel := false
+		addType := func(prefix string, t *analysis.Type) {
+			if !hasLabel {
+				add(at, " ", 1, nil)
+				hasLabel = true
+			}
+			add(at, prefix, 1, t)
+			add(at, " ", 1, nil)
+		}
+		if t := f.LambdaReceiver; t != nil && t.Name != "" {
+			addType("this: ", t)
 		}
 		if f.ImplicitParameter && len(f.LambdaParameters) == 1 {
 			id := f.LambdaParameters[0]
 			if id > 0 && int(id) <= len(i.model.Facts.Symbols) {
 				t := &i.model.Facts.Symbols[id-1].Type
-				if name := typeName(t); name != "" && t.Name != "kotlin.Unit" {
-					labels = append(labels, "it: "+name)
+				if t.Name != "" && t.Name != "kotlin.Unit" {
+					addType("it: ", t)
 				}
-			}
-		}
-		if len(labels) > 0 {
-			at := rng(brace).End
-			add(at, " ", 1)
-			for _, label := range labels {
-				add(at, label, 1)
-				add(at, " ", 1)
 			}
 		}
 	}
@@ -221,7 +243,7 @@ func lambdaResultHints(n psi.NodeRef, i *index, label string, add addHint) {
 	}
 	f := i.facts[n]
 	if f.UsedAsExpression && f.Type != nil && f.Type.Name != "" && f.Type.Name != "kotlin.Nothing" {
-		add(rng(n).End, label, 1)
+		add(rng(n).End, label, 1, nil)
 	}
 }
 
@@ -296,7 +318,72 @@ func chainHints(n psi.NodeRef, i *index, add addHint) {
 	}
 	if changed {
 		for _, expr := range points {
-			add(rng(expr).End, " "+typeName(i.facts[expr].Type), 0)
+			add(rng(expr).End, " ", 0, i.facts[expr].Type)
 		}
 	}
+}
+
+type hintPart struct {
+	Value    string    `json:"value"`
+	Location *location `json:"location,omitempty"`
+}
+type hintData struct {
+	URI         string         `json:"uri"`
+	Snapshot    psi.SnapshotID `json:"snapshot"`
+	Revision    uint64         `json:"revision"`
+	Classifiers map[int]string `json:"classifiers"`
+}
+
+func typeHintLabel(prefix string, typ *analysis.Type, lazy bool, lookup func(string) *location) ([]hintPart, map[int]string) {
+	parts := []hintPart{{Value: prefix}}
+	targets := map[int]string{}
+	typeText(typ, func(value, classifier string) {
+		part := hintPart{Value: value}
+		if classifier != "" {
+			if lazy {
+				targets[len(parts)] = classifier
+			} else {
+				part.Location = lookup(classifier)
+			}
+		}
+		parts = append(parts, part)
+	})
+	return parts, targets
+}
+
+func (s *server) resolveHint(ctx context.Context, raw json.RawMessage) (object, error) {
+	var item object
+	var payload struct{ Data hintData }
+	if json.Unmarshal(raw, &item) != nil || item == nil || json.Unmarshal(raw, &payload) != nil {
+		return nil, rpcError{-32602, "Invalid inlay hint"}
+	}
+	data := payload.Data
+	if len(data.Classifiers) == 0 {
+		return item, nil
+	}
+	var label struct{ Label []hintPart }
+	if err := json.Unmarshal(raw, &label); err != nil {
+		return nil, rpcError{-32602, "Invalid hint label"}
+	}
+	path, _ := filePath(data.URI)
+	snap := s.w.docs[path].snap
+	var idx *index
+	if snap != nil && snap.ID() == data.Snapshot && data.Revision == s.revision {
+		var err error
+		idx, err = s.w.check(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for part, name := range data.Classifiers {
+		if part < 0 || part >= len(label.Label) {
+			continue
+		}
+		label.Label[part].Location = nil
+		if idx != nil && label.Label[part].Value == short(name) {
+			label.Label[part].Location, _ = idx.typeLocation(ctx, path, name)
+		}
+	}
+	item["label"] = label.Label
+	return item, nil
 }

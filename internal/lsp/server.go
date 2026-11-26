@@ -16,7 +16,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -58,6 +57,7 @@ type parameters struct {
 	Capabilities   struct {
 		TextDocument struct {
 			Definition    struct{ LinkSupport bool }
+			InlayHint     *struct{ ResolveSupport struct{ Properties []string } }
 			Completion    struct{ CompletionItem completionOptions }
 			SignatureHelp struct {
 				SignatureInformation struct {
@@ -77,7 +77,7 @@ type server struct {
 	out                                            io.Writer
 	started, shutdown, versionEdits, registerWatch bool
 	loaded, refreshHints, labelOffsets             bool
-	definitionLinks                                bool
+	definitionLinks, hintParts, lazyHintLinks      bool
 	completion                                     completionOptions
 	hints                                          hintSettings
 	hintRequest                                    uint64
@@ -275,8 +275,8 @@ func capabilities() object {
 		"signatureHelpProvider": object{"triggerCharacters": []string{"(", ","}}, "renameProvider": object{"prepareProvider": true},
 		"semanticTokensProvider": object{"legend": object{"tokenTypes": tokenTypes, "tokenModifiers": tokenModifiers}, "full": true, "range": true},
 		"diagnosticProvider":     object{"identifier": "kc", "interFileDependencies": true, "workspaceDiagnostics": false},
-		"implementationProvider": true, "callHierarchyProvider": true, "typeHierarchyProvider": true, "inlayHintProvider": true,
-		"codeActionProvider":         object{"codeActionKinds": []string{"quickfix", "refactor.extract.variable", "refactor.inline.variable", "source.organizeImports"}},
+		"implementationProvider": true, "callHierarchyProvider": true, "typeHierarchyProvider": true, "inlayHintProvider": object{"resolveProvider": true},
+		"codeActionProvider":         object{"codeActionKinds": []string{"quickfix", "refactor", "refactor.extract.variable", "refactor.inline.variable", "source.organizeImports"}},
 		"documentFormattingProvider": true, "documentRangeFormattingProvider": true,
 	}
 }
@@ -302,6 +302,10 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		s.started = true
 		s.hints = readHintSettings(p.InitializationOptions)
 		s.completion = p.Capabilities.TextDocument.Completion.CompletionItem
+		if hint := p.Capabilities.TextDocument.InlayHint; hint != nil {
+			s.hintParts = true
+			s.lazyHintLinks = slices.Contains(hint.ResolveSupport.Properties, "label.location")
+		}
 		s.definitionLinks = p.Capabilities.TextDocument.Definition.LinkSupport
 		s.labelOffsets = p.Capabilities.TextDocument.SignatureHelp.SignatureInformation.ParameterInformation.LabelOffsetSupport
 		s.refreshHints = p.Capabilities.Workspace.InlayHint.RefreshSupport
@@ -384,6 +388,8 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		return nil, s.didMoveFiles(ctx, p.Files)
 	case "workspace/willRenameFiles":
 		return s.fileMoves(ctx, p.Files)
+	case "inlayHint/resolve":
+		return s.resolveHint(ctx, m.Params)
 	case "completionItem/resolve":
 		var item object
 		if err := json.Unmarshal(m.Params, &item); err != nil || item == nil {
@@ -506,16 +512,11 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		if f := i.facts[n.Parent()]; f.Type != nil {
 			name = f.Type.Name
 		}
-		for _, d := range i.decls {
-			ds := i.symbols[d.NameIdentifier()]
-			if ds.Kind == "class" && ds.QualifiedName == name {
-				return []location{loc(d.NameIdentifier())}, nil
-			}
+		dest, source := i.typeLocation(ctx, path, name)
+		if dest != nil && source {
+			return []location{*dest}, nil
 		}
-		if name != "" {
-			return resolveLibrary(ctx, &s.w, path, i, analysis.Symbol{ID: 1, Kind: "class", Name: strings.ReplaceAll(name, ".", "/"), QualifiedName: name}, nil), nil
-		}
-		return nil, nil
+		return dest, nil
 	case "textDocument/definition":
 		var dest *location
 		if target.Valid() {
@@ -546,7 +547,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 	case "textDocument/semanticTokens/full", "textDocument/semanticTokens/range":
 		return tokens(d.snap, i, p.Range, strings.HasSuffix(m.Method, "/range")), nil
 	case "textDocument/inlayHint":
-		return hints(d.snap, i, p.Range, s.hints), nil
+		return s.inlayHints(ctx, d.snap, i, p.Range), nil
 	case "textDocument/codeAction":
 		out := actions(ctx, d.snap, i, p)
 		for _, a := range out {

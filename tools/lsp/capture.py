@@ -15,6 +15,7 @@ import editing
 
 FIXTURES = Path(__file__).resolve().parents[2] / "internal/lsp/testdata"
 RELEASE = "271.2085.0"
+GRADLE_PROJECTS = ("gradle", "editing", "navigation", "moves", "intentions")
 
 
 def send(process, **message):
@@ -64,7 +65,7 @@ def capture(process, messages, root, state, project):
                     result = [settings.get(item.get("section")) for item in msg["params"]["items"]]
                 if msg["method"] == "client/registerCapability":
                     registrations.extend(msg["params"]["registrations"])
-                if msg["method"] == "workspace/applyEdit" and project == "editing":
+                if msg["method"] == "workspace/applyEdit" and project in ("editing", "intentions"):
                     buffer.apply(msg["params"]["edit"], notify)
                     result = {"applied": True}
                 send(process, id=msg["id"], result=result)
@@ -77,6 +78,8 @@ def capture(process, messages, root, state, project):
     if project == "moves":
         caps["workspace"].update({"fileOperations": {"willRename": True, "didRename": True},
                                   "workspaceEdit": {"documentChanges": True, "resourceOperations": ["rename"]}})
+    if project == "intentions":
+        caps["textDocument"]["inlayHint"] = {"resolveSupport": {"properties": ["label.location"]}}
     if project == "navigation":
         caps["textDocument"]["inlayHint"] = {}
     if project == "editing":
@@ -93,7 +96,7 @@ def capture(process, messages, root, state, project):
     record = {"release": "kotlin-lsp/v" + RELEASE, "registrations": registrations,
               "clientCapabilities": caps, "initialize": init}
     send(process, method="initialized", params={})
-    file = (root / "library" if project in ("gradle", "editing", "navigation", "moves") else root) / "src/main/kotlin/Example.kt"
+    file = (root / "library" if project in GRADLE_PROJECTS else root) / "src/main/kotlin/Example.kt"
     doc = {"uri": file.as_uri()}
     send(process, method="textDocument/didOpen", params={"textDocument": {
         **doc, "languageId": "kotlin", "version": 1, "text": file.read_text()}})
@@ -135,6 +138,8 @@ def capture(process, messages, root, state, project):
     if project == "navigation":
         cases = editing.record_navigation(request, notify, buffer, FIXTURES / "navigation", settings)
         record = {"release": record["release"], **cases}
+    if project == "intentions":
+        record = {"release": record["release"], **editing.record_intentions(request, notify, buffer, FIXTURES / "intentions", settings)}
     if project == "moves":
         record = {"release": record["release"], "cases": record_moves(root, request)}
     request("shutdown", None)
@@ -189,6 +194,8 @@ def main():
                           help="capture overload navigation and lambda and call-chain hints")
     projects.add_argument("--moves", action="store_const", const="moves", dest="project",
                           help="capture package folder and batch workspace edits")
+    projects.add_argument("--intentions", action="store_const", const="intentions", dest="project",
+                          help="capture outline signatures, type hint links and intentions")
     parser.add_argument("--kc", type=Path, help="kc executable to compile the editing fixture")
     args = parser.parse_args()
     if args.project == "editing" and not args.kc:
@@ -196,9 +203,9 @@ def main():
     with tempfile.TemporaryDirectory() as temp:
         state = Path(temp).resolve()
         root = state / "project"
-        if args.project in ("gradle", "editing", "navigation", "moves"):
+        if args.project in GRADLE_PROJECTS:
             shutil.copytree(FIXTURES / "gradle", root, ignore=shutil.ignore_patterns("upstream-*.json"))
-        source = (root / "library" if args.project in ("gradle", "editing", "navigation", "moves") else root) / "src/main/kotlin/Example.kt"
+        source = (root / "library" if args.project in GRADLE_PROJECTS else root) / "src/main/kotlin/Example.kt"
         source.parent.mkdir(parents=True)
         source.write_bytes((FIXTURES / "Example.kt").read_bytes())
         if args.project:
@@ -216,6 +223,13 @@ def main():
                 build.write('\ndependencies { implementation(files("editing.jar")) }\n')
             (root / "gradle.properties").write_text("")
             source.with_name("Scopes.kt").write_bytes((fixture / "Scopes.kt").read_bytes())
+            (root / "src/main/kotlin/Editing.kt").write_text("package sample\n")
+        if args.project == "intentions":
+            shutil.copy(FIXTURES / "intentions/Library.kt", source.parent)
+            java = root / "library/src/main/java/library"
+            java.mkdir(parents=True)
+            shutil.copy(FIXTURES / "intentions/Printer.java", java)
+            (root / "gradle.properties").write_text("")
             (root / "src/main/kotlin/Editing.kt").write_text("package sample\n")
         if args.project == "navigation":
             fixture = FIXTURES / "navigation"

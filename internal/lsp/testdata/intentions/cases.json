@@ -1,0 +1,11 @@
+{
+  "property": "package sample\nval |quantity = 123\n",
+  "local": "package sample\nfun run() {\n    val |quantity = 123\n}\n",
+  "function": "package sample\nfun |quantity() = 123\n",
+  "names": "package sample\nfun take(count: Int, height: Int, width: Int = 2): Int = count\nfun take(text: String): String = text\nfun use() = take(|1, 4)\n",
+  "mixed": "package sample\nfun take(count: Int, width: Int): Int = count\nfun use() = take(|1, width = 3)\n",
+  "collision": "package sample\nimport library.packet\nfun <Packet> |result() = packet()\n",
+  "java": "package sample\nimport library.Printer\nfun result() = Printer.twice(|2)\n",
+  "alreadyNamed": "package sample\nfun take(count: Int) = count\nfun result() = take(count = |2)\n",
+  "comments": "package sample\nfun take(count: Int, block: () -> Int) = count + block()\nfun result() = take(/* count */ |2) { 3 }\n"
+}

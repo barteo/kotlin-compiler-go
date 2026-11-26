@@ -370,6 +370,13 @@ func actions(ctx context.Context, s *psi.Snapshot, i *index, p parameters) []obj
 			}
 		}
 	}
+	if allows("refactor") {
+		if off, err := offset(s, p.Range.Start); err == nil {
+			for _, fix := range i.intentions(ctx, s.NodeAt(off), p.Range) {
+				out = append(out, action(fix.title, "refactor", fix.edits))
+			}
+		}
+	}
 	return append(out, refactors(s, i, p.Range, allows, action)...)
 }
 func organize(s *psi.Snapshot, idx *index) []edit {

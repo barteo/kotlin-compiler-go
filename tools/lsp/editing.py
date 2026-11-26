@@ -220,3 +220,53 @@ def record_navigation(request, notify, buffer, fixture, settings):
     if not any(h.get("paddingLeft") for h in hints["chains"]):
         raise RuntimeError("Reference returned no intermediate chain types")
     return {"definitions": defs, "hints": hints}
+
+
+def record_intentions(request, notify, buffer, fixture, settings):
+    doc = {"uri": buffer.uri}
+    buffer.change((fixture / "Outline.kt").read_text(), notify)
+    outline = request("textDocument/documentSymbol", {"textDocument": doc})
+    settings["jetbrains.kotlin"] = {"hints": {"type.function.return": True}}
+    notify("workspace/didChangeConfiguration", {"settings": settings})
+    buffer.change("package sample\nimport library.packet\nfun result() = packet()\n", notify)
+    hints = request("textDocument/inlayHint", {"textDocument": doc, "range": {
+        "start": {"line": 0, "character": 0}, "end": {"line": 3, "character": 0}}})
+    if not hints:
+        raise RuntimeError("Expected a type hint for result()")
+    resolved = []
+    for hint in hints:
+        item = request("inlayHint/resolve", hint)
+        for part in item["label"]:
+            if "location" in part:
+                loc = part["location"]
+                loc["uri"] = loc["uri"].rsplit("/", 1)[-1]
+        resolved.append({k: v for k, v in item.items() if k in ("label", "position", "kind", "paddingLeft", "paddingRight")})
+    if not any(p.get("location", {}).get("uri") == "Library.kt" for h in resolved for p in h["label"]):
+        raise RuntimeError(f"Missing cross-module type link: {resolved}")
+    results = {}
+    for case, marked in json.loads((fixture / "cases.json").read_text()).items():
+        prefix, suffix = marked.split("|")
+        source = prefix + suffix
+        buffer.change(source, notify)
+        at = {"line": prefix.count("\n"), "character": len(prefix.rsplit("\n", 1)[-1])}
+        actions = request("textDocument/codeAction", {"textDocument": doc, "range": {"start": at, "end": at},
+                          "context": {"diagnostics": []}}) or []
+        target = {"property": "Specify type explicitly", "local": "Specify type explicitly",
+                  "function": "Specify return type explicitly", "collision": "Specify return type explicitly"}
+        title = target.get(case, "Add names to call arguments")
+        action = next((a for a in actions if a["title"] == title), None)
+        if case in ("java", "alreadyNamed"):
+            if action:
+                raise RuntimeError(f"Unexpected action for {case}: {action}")
+            results[case] = {"absent": title}
+            continue
+        if not action:
+            raise RuntimeError(f"{case}: {actions}")
+        if "edit" in action:
+            buffer.apply(action["edit"], notify)
+        if "command" in action:
+            request("workspace/executeCommand", action["command"])
+        if buffer.text == source:
+            raise RuntimeError(f"No edit for {case}: {action}")
+        results[case] = {"title": action["title"], "kind": action["kind"], "text": buffer.text}
+    return {"outline": outline, "hints": resolved, "actions": results}

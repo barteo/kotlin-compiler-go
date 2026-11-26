@@ -301,6 +301,27 @@ func attachedOverload(ctx context.Context, session *ka.Session, hits []psi.NodeR
 	return found
 }
 
+func (i *index) typeLocation(ctx context.Context, path, name string) (*location, bool) {
+	if name == "" {
+		return nil, false
+	}
+	var found *location
+	for _, d := range i.decls {
+		sym := i.symbols[d.NameIdentifier()]
+		if sym.Kind == "class" && sym.QualifiedName == name {
+			if found != nil {
+				return nil, false
+			}
+			l := loc(d.NameIdentifier())
+			found = &l
+		}
+	}
+	if found != nil {
+		return found, true
+	}
+	return resolveLibrary(ctx, i.workspace, path, i, analysis.Symbol{Kind: "class", Name: strings.ReplaceAll(name, ".", "/"), QualifiedName: name}, nil), false
+}
+
 // Extract one matching source under a private temporary directory. The URI
 // is an ordinary file URI that even clients without a jar: provider can open.
 func libraryDefinition(ctx context.Context, w *workspace, path string, i *index, n psi.NodeRef) *location {
