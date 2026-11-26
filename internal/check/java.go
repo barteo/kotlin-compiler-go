@@ -1191,9 +1191,18 @@ var optionalExpectationPackages = map[string]bool{
 // does, common code can import and use them, and the JVM drops them.
 var optionalExpectations = map[string]bool{
 	"kotlin.js.JsName":                         true,
+	"kotlin.js.JsSymbol":                       true,
+	"kotlin.js.JsFileName":                     true,
 	"kotlin.js.JsExport":                       true,
+	"kotlin.js.JsExport.Ignore":                true,
+	"kotlin.js.JsExport.Default":               true,
+	"kotlin.js.JsStatic":                       true,
+	"kotlin.js.JsNoRuntime":                    true,
 	"kotlin.native.CName":                      true,
+	"kotlin.native.FreezingIsDeprecated":       true,
 	"kotlin.native.ObjCName":                   true,
+	"kotlin.native.ObjCEnum":                   true,
+	"kotlin.native.HidesFromObjC":              true,
 	"kotlin.native.HiddenFromObjC":             true,
 	"kotlin.native.ShouldRefineInSwift":        true,
 	"kotlin.native.RefinesInSwift":             true,

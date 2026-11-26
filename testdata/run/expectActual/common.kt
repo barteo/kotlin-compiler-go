@@ -1,6 +1,7 @@
 package platform
 
 import kotlin.js.JsName
+import kotlin.js.JsStatic
 
 expect fun greet(name: String): String
 
@@ -36,3 +37,10 @@ fun <T> Lock.withLock(f: () -> T): T {
 // An annotation only JavaScript has, which the JVM drops.
 @JsName("jsTwice")
 fun twice(x: Int) = x * 2
+
+class Box(val value: Int) {
+    companion object {
+        @JsStatic
+        fun of(value: Int) = Box(value)
+    }
+}

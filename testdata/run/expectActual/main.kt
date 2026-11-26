@@ -13,6 +13,7 @@ fun main() {
     println(Clock.now())
     println(Lock().withLock { "locked" })
     println(shared() + " " + twice(4))
+    println(Box.of(3).value)
     // Platform.jvm.kt's facade, as kotlinc names it.
     println(Class.forName("platform.Platform_jvmKt").simpleName)
 }
