@@ -65,20 +65,20 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21806 of 22025 expected errors (99.0%) on their lines.
+kc reports 21831 of 22025 expected errors (99.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2553 | 2510 | 43 |
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1466 | 25 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 613 | 22 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 151 | 8 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 243 | 8 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2513 | 40 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1468 | 23 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 616 | 19 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
-| `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 23 | 5 |
+| `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 24 | 4 |
 | `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 156 | 3 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 58 | 3 |
 | `TYPE_MISMATCH` | 33 | 30 | 3 |
 | `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
@@ -87,15 +87,12 @@ kc reports 21806 of 22025 expected errors (99.0%) on their lines.
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 2 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 112 | 2 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
-| `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 43 | 2 |
 | `ILLEGAL_ESCAPE` | 20 | 18 | 2 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
 | `INVISIBLE_REFERENCE` | 525 | 523 | 2 |
-| `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 35 | 33 | 2 |
 | `MEMBER_PROJECTED_OUT` | 50 | 48 | 2 |
 | `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
-| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 94 | 2 |
 | `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
 | `REDECLARATION` | 196 | 194 | 2 |
 | `REPEATED_ANNOTATION` | 69 | 67 | 2 |
@@ -109,15 +106,14 @@ kc reports 21806 of 22025 expected errors (99.0%) on their lines.
 | `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
 | `COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT` | 5 | 4 | 1 |
 | `CONSTRUCTOR_IN_OBJECT` | 13 | 12 | 1 |
+| `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 44 | 1 |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
 | `DEPRECATED_TYPE_PARAMETER_SYNTAX` | 2 | 1 | 1 |
 | `EMPTY_CHARACTER_LITERAL` | 9 | 8 | 1 |
-| `INACCESSIBLE_OUTER_CLASS_RECEIVER` | 40 | 39 | 1 |
 | `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD` | 2 | 1 | 1 |
 | `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE` | 7 | 6 | 1 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 13 | 1 |
 | `ITERATOR_MISSING` | 10 | 9 | 1 |
-| `MISSING_DEPENDENCY_SUPERCLASS` | 4 | 3 | 1 |
 | `NOTHING_TO_OVERRIDE` | 93 | 92 | 1 |
 | `NOT_A_SUPERTYPE` | 14 | 13 | 1 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 24 | 1 |
@@ -128,20 +124,25 @@ kc reports 21806 of 22025 expected errors (99.0%) on their lines.
 | `NULL_FOR_NONNULL_TYPE` | 155 | 154 | 1 |
 | `PRIVATE_CLASS_MEMBER_FROM_INLINE` | 9 | 8 | 1 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 31 | 1 |
-| `TOO_MANY_ARGUMENTS` | 118 | 117 | 1 |
+| `TYPEALIAS_EXPANSION_CAPTURES_OUTER_TYPE_PARAMETERS` | 6 | 5 | 1 |
+| `UNSAFE_CALL` | 525 | 524 | 1 |
+| `VAL_OR_VAR_ON_CATCH_PARAMETER` | 2 | 1 | 1 |
+| `VAL_REASSIGNMENT` | 231 | 230 | 1 |
+| `VAL_WITH_SETTER` | 2 | 1 | 1 |
 | *539 more* | | | |
 
 ### Missed errors by cause
 
-Why kc reports no error on the line of an expected one: *accepted*, it compiled the test; *syntax-error*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *module-not-compiled*, the error is in a module after one that failed, which isn't compiled; *nearby*, kc reported an error within 3 lines of it on a line the markup expects none on (most likely the error, at another position); *missing-check*, none of those.
+Why kc reports no error on the line of an expected one: *accepted*, it compiled the test; *syntax-error*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *module-not-compiled*, the error is in a module after one that failed, which isn't compiled; *environment*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal or a name that only the full one, which kc gets, declares at the top level (`println`, `listOf`); *nearby*, kc reported an error within 3 lines of it on a line the markup expects none on (most likely the error, at another position); *missing-check*, none of those.
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 11.9% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 69 | 31.5% | `UNRESOLVED_REFERENCE` 9, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 26 | 13.4% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 68 | 35.1% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 19 | 8.7% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 105 | 47.9% | `UNRESOLVED_REFERENCE` 25, `CANNOT_INFER_PARAMETER_TYPE` 17, `ARGUMENT_TYPE_MISMATCH` 15, `OVERLOAD_RESOLUTION_AMBIGUITY` 8, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 6 |
+| environment | 13 | 6.7% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| nearby | 19 | 9.8% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 68 | 35.1% | `CANNOT_INFER_PARAMETER_TYPE` 14, `ARGUMENT_TYPE_MISMATCH` 13, `UNRESOLVED_REFERENCE` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `FUNCTION_CALL_EXPECTED` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -150,7 +151,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 120 |
-| `type mismatch: inferred type is _ but _ was expected` | 87 |
+| `type mismatch: inferred type is _ but _ was expected` | 85 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 52 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 23 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
@@ -164,12 +165,12 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' overrides nothing` | 8 |
 | `missing return statement in function '_'` | 7 |
 | `unexpected '_'` | 7 |
-| `ambiguous call: n candidates for '_' take (_)` | 6 |
 | `cannot use '_' as reified type parameter` | 6 |
 | `captured values cannot be initialized because of possible reassignments` | 6 |
 | `this lambda must return a value of type _` | 6 |
 | `val cannot be reassigned` | 6 |
 | `'_' modifier is required on '_'` | 5 |
+| `ambiguous call: n candidates for '_' take (_)` | 5 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 5 |
 | `'_' is not allowed outside a loop` | 4 |
 | `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
