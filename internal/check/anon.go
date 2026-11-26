@@ -161,9 +161,9 @@ func (c *Checker) localConstructed(cls *types.ClassSym) {
 // setup marks, with its capture frame, before the class is checked; or
 // nil if kc doesn't support it. what and whats name the class in errors.
 func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func() string, setup func(*types.ClassSym, *syntax.Lambda)) *types.ClassSym {
-	if !c.localMembers(d, what) {
-		return nil
-	}
+	// A class Kotlin doesn't allow here is reported, and checked as the
+	// nested class it would be, as kotlinc checks it.
+	c.localMembers(d, what)
 	if (c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil || c.inInlineFun && c.inlineAccessorBody()) && d.Local {
 		// Reported, with its functions, as kotlinc does; its code is
 		// still checked, which the error keeps from being generated.
@@ -250,7 +250,11 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	for i := 0; i < len(c.classes); i++ {
 		for _, m := range c.classes[i].Members {
 			if m, ok := m.(*syntax.ClassDecl); ok {
-				c.localInner(m)
+				if m.Sym.Inner {
+					c.localInner(m)
+				} else {
+					c.localNested(m)
+				}
 				c.classes = append(c.classes, m)
 			}
 		}
@@ -265,7 +269,13 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		c.resolveBounds(d.TypeParams)
 	}
 	c.tparams, c.lookupCls, c.noBoundChecks = savedT, savedL, savedChecks
+	// Cycles among the local classes, as findCycles finds the file's:
+	// open inner class A : C() { inner class Inner }; inner class C : A.Inner().
+	savedCyclic := c.cyclic
+	c.cyclic = nil
+	c.findCycles()
 	c.checkSupers()
+	c.cyclic = savedCyclic
 	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
 		c.lookupCls = d.Sym
@@ -376,6 +386,15 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 	this.depth = depth
 	ctx.recvs = append(ctx.recvs, this)
 	c.anon[d.Sym] = ctx
+}
+
+// localNested makes the code of class d, a class Kotlin doesn't allow in
+// a local class or an object expression's class, and that is reported,
+// see the code around that class without its receivers, as kotlinc
+// checks it: class C { class D { fun c(): C = C() } } in a function.
+func (c *Checker) localNested(d *syntax.ClassDecl) {
+	oc := c.anon[d.Sym.Outer]
+	c.anon[d.Sym] = &anonCtx{scope: oc.scope, lambdas: oc.lambdas, lrets: oc.lrets, tparams: oc.tparams, localCalls: oc.localCalls}
 }
 
 // localName names a local class as kotlinc does: after the class or the
