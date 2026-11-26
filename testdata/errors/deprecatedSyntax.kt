@@ -32,3 +32,9 @@ class CG : G<Int> {
         super<G<String>>.foo() // ERROR not an immediate supertype
     }
 }
+
+fun <E> bare(y: Any) {
+    class Outer<F>
+    y as Outer<*>
+    y as Outer // ERROR one type argument expected for
+}
