@@ -2126,7 +2126,7 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		pl := s.lambdas[i]
 		var shape types.Type
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
-			if u, ok := s.funcUpper(tv); ok {
+			if u, ok := s.funcUpper(tv, pl.l); ok {
 				s.addUpper(tv, u)
 				if u.HasVars() {
 					// Another argument's inputs, with a result of its
@@ -2157,6 +2157,10 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 			// One passed for a variable without bounds waits for the call
 			// it is an argument of, which may give it a function type.
 			ready = ready && !((untypedParams(pl.l) || untypedResult(pl.l)) && s.openVar(pl.p))
+			// So does a reference that may name several functions, which
+			// it chooses by the function type the variable will have:
+			// ::foo of val f: (Int) -> Unit = id(id(::foo)).
+			ready = ready && !(pl.l.Ref != nil && s.openVar(pl.p) && len(c.refShapes(pl.l)) > 1)
 		}
 		if !ready {
 			rest = append(rest, pl)
@@ -3275,6 +3279,14 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 		return
 	}
+	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && !pt.HasVars() && !projected(pt) {
+		// A KFunctionN that explicit type arguments give chooses among
+		// the functions the reference may name: bar<Foo>(Foo::resolve).
+		// One with a projection, KFunction2<out Foo, String, String>,
+		// tells nothing of the parameter it projects.
+		l.T = c.lambda(l, pt)
+		return
+	}
 	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && pt.HasVars() {
 		// A KFunctionN's variables are those of the reference's function,
 		// which refArgFit or onlyRefFit gave: foo(Sample::bar) for
@@ -3981,4 +3993,18 @@ func (r *stubRun) force(at int, t, u types.Type) {
 	for _, k := range later {
 		r.add(k[0], k[1])
 	}
+}
+
+// projected reports whether one of t's type arguments is a projection.
+func projected(t types.Type) bool {
+	t = t.Flex().NonNull()
+	if t.A == nil {
+		return false
+	}
+	for i := range t.A.Len() {
+		if t.A.Get(i).V != types.Inv {
+			return true
+		}
+	}
+	return false
 }

@@ -532,7 +532,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				if recv != nil {
 					rt = r.Bound.Type
 				}
-				sub, _ = c.recvTypeArgs(f, rt)
+				var ok bool
+				if sub, ok = c.recvTypeArgs(f, rt); !ok && rt.K == types.Invalid && r.X == nil && r.Type == nil {
+					sub, _ = c.implicitRecvTypeArgs(f)
+				}
 			}
 			// A vararg's parameter takes its array, which the call spreads,
 			// as in Kotlin: ::f is a KFunction1<IntArray, R> for
@@ -860,7 +863,7 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 	case len(fs) > 1:
 		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
 		return nil, false
-	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
+	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) && !c.implicitRecvTypeArgsOK(fs[0], r, recvType, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
 		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
 		return nil, false
 	}
@@ -1080,6 +1083,35 @@ func (c *Checker) recvTypeArgs(f *types.FunSym, rt types.Type) (types.Subst, boo
 		}
 	}
 	return sub, true
+}
+
+// implicitRecvTypeArgsOK reports whether f, the generic extension that a
+// reference without a receiver names, takes its type arguments from an
+// implicit receiver, to which the reference is then bound, as in K2: ::bar
+// in Box<String>.f() for fun <K> Box<K>.bar().
+func (c *Checker) implicitRecvTypeArgsOK(f *types.FunSym, r *syntax.CallableRef, recvType types.Type, bound bool) bool {
+	if bound || r.X != nil || r.Type != nil || recvType.K != types.Invalid {
+		return false
+	}
+	_, ok := c.implicitRecvTypeArgs(f)
+	return ok
+}
+
+// implicitRecvTypeArgs returns the type arguments of generic extension f
+// from the innermost implicit receiver that gives them (see recvTypeArgs).
+func (c *Checker) implicitRecvTypeArgs(f *types.FunSym) (types.Subst, bool) {
+	if !f.Ext {
+		return nil, false
+	}
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		if sub, ok := c.recvTypeArgs(f, c.scope.narrowed(c.recvs[i].sym)); ok {
+			return sub, true
+		}
+	}
+	if c.cls != nil {
+		return c.recvTypeArgs(f, c.cls.This())
+	}
+	return nil, false
 }
 
 // outerParams returns the number of the type parameters of cls that are
