@@ -61,6 +61,8 @@ func (g *gen) try(x *syntax.Try, t types.Type, value bool) {
 	ctx := &tryCtx{finally: x.Finally, loops: len(g.loops), source: true}
 	g.tries = append(g.tries, ctx)
 	start := g.code.Pos()
+	// kotlinc's inliner requires a try in an inline function to start with a NOP.
+	g.code.Op(cf.NOP)
 	g.block(x.Body, t, value)
 	ranges := ctx.ranges(start, g.code.Pos())
 	all := ranges
