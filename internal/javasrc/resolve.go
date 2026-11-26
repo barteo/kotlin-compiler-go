@@ -610,6 +610,9 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			info.Permitted = append(info.Permitted, n)
 		}
 	}
+	if c.Sealed && len(c.Permits) == 0 {
+		info.Permitted = s.sameFileSubclasses(c, name)
+	}
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
 		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
@@ -867,6 +870,31 @@ func superResolver(s *Set, k *Class) *resolver {
 		return &resolver{s: s, c: k.Outer}
 	}
 	return &resolver{s: s, c: k, noInherit: true}
+}
+
+// sameFileSubclasses returns the classes of sealed class c's file that
+// extend it directly: as javac infers them, those it permits when it has
+// no permits clause.
+func (s *Set) sameFileSubclasses(c *Class, name string) []string {
+	var out []string
+	var walk func(k *Class)
+	walk = func(k *Class) {
+		if k != c {
+			for _, t := range append(slices.Clone(k.Extends), k.Implements...) {
+				if n, _ := superResolver(s, k).classType(t); n == name {
+					out = append(out, internalName(k))
+					break
+				}
+			}
+		}
+		for _, n := range k.Nested {
+			walk(n)
+		}
+	}
+	for _, k := range c.file.Classes {
+		walk(k)
+	}
+	return out
 }
 
 // superType resolves a supertype's name.
