@@ -57,6 +57,7 @@ func init() {
 		"MUST_BE_INITIALIZED_OR_BE_ABSTRACT":                `^property must be initialized or be abstract`,
 		"NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION":         `^only 'const val' can be used in constant expressions`,
 		"NOTHING_TO_OVERRIDE":                               `' overrides nothing$`,
+		"COMPILER_REQUIRED_ANNOTATION_AMBIGUITY":            `^resolution of the annotation type is ambiguous between .* and the compiler-required annotation`,
 		"OVERRIDING_FINAL_MEMBER":                           `' is final and cannot be overridden$`,
 		"PROPERTY_WITH_NO_TYPE_NO_INITIALIZER":              `^this property must have a type, be initialized`,
 		"RESERVED_MEMBER_INSIDE_VALUE_CLASS":                `^member name '.*' is reserved for future releases$`,
