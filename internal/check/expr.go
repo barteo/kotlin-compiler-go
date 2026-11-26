@@ -3671,6 +3671,14 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		}
 		if x.Sym != nil {
 			x.Builtin = x.Sym.Builtin
+			if x.Infix && !x.Sym.Infix || x.Operator && !x.Sym.Operator {
+				if c.noneApplicable(x, fn, rt) {
+					// As K2, none of several candidates the call may be
+					// is applicable: its type is an error, which a
+					// lambda's result can't infer a type with.
+					t = types.InvalidType
+				}
+			}
 			if x.Infix && !x.Sym.Infix {
 				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
 			}
@@ -3695,6 +3703,19 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		return t
 	}
 	return c.invoke(x, want, sink)
+}
+
+// noneApplicable reports whether infix or operator call x of a local
+// extension lacking the modifier has a top-level extension of the name
+// that may take it too. K2 then reports that none of them is applicable,
+// rather than resolving x to the local one.
+func (c *Checker) noneApplicable(x *syntax.Call, fn *syntax.Member, rt types.Type) bool {
+	if _, local := x.Sym.Decl.(*syntax.LocalFun); !local || !x.Sym.Ext {
+		return false
+	}
+	return slices.ContainsFunc(slices.Concat(c.funsOf(c.pkg, fn.Name), c.userFuns[fn.Name]), func(f *types.FunSym) bool {
+		return f.Ext && f != x.Sym && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+	})
 }
 
 // kotlinIntrinsic reports whether fn, kotlin.f in a call, names an array
