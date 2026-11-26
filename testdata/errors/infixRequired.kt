@@ -28,3 +28,19 @@ fun infixCalls(a: A, h: H, ext: Int.(Int) -> Unit, s: (Int) -> Unit) {
     11.ext(11)
     s(11)
 }
+
+// A level of scope whose candidates all lack the modifier gives way to
+// the next: the local functions to the top-level ones.
+class Ex
+
+operator infix fun Ex.minus(other: Ex) = 0
+
+fun takeInt(i: Int) {}
+
+fun levels(a: Ex, b: Ex) {
+    fun Ex.minus(other: Ex) = ""
+    takeInt(a - b)
+    takeInt(a minus b)
+    fun Ex.div(other: Ex) = ""
+    a / b // ERROR 'operator' modifier is required on 'div'
+}

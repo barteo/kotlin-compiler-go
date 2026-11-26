@@ -1645,6 +1645,14 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 			// import foo.foo as invoke doesn't make foo one of 42()'s
 			// next to an operator Int.invoke.
 			out = slices.DeleteFunc(out, func(cl callee) bool { return !cl.f.Operator })
+		} else if x != nil && len(out) > 0 && (x.Operator || x.Infix && !slices.ContainsFunc(out, func(cl callee) bool { return cl.f.Infix })) {
+			// A level whose candidates all lack the modifier gives way
+			// to the next, as in K2: a local fun Example.minus to a
+			// top-level operator one, for a - b.
+			if unfit == nil {
+				unfit = out
+			}
+			return nil
 		}
 		if x != nil && len(out) > 0 && !slices.ContainsFunc(out, func(cl callee) bool { return c.recvTakes(rt, cl.f.Recv) && c.mayTake(cl.f, x) }) {
 			if unfit == nil {
