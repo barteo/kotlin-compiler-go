@@ -245,6 +245,9 @@ type builder struct {
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
+	// probe is the completion's, if one is asked for.
+	probe *check.Probe
+
 	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
 	// -1 is the literal's statement.
 	negatedAt map[*syntax.IntLit]ElementID
@@ -332,6 +335,9 @@ func (b *builder) build() {
 	b.wrappers()
 	b.unreachable()
 	b.annotations()
+	if b.probe != nil {
+		b.res.completion = b.completion(b.probe)
+	}
 	b.symbols()
 
 	for id := range b.res.facts {

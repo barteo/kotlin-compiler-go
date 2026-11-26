@@ -70,6 +70,9 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	allowRange, sink := c.allowRange, c.sink
 	c.allowRange, c.sink = false, nil
 	t := c.expr1(x, want, allowRange, sink)
+	if p := c.u.probe; p != nil && c.file == p.File {
+		c.probeAt(x, want)
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		c.propShadowed(x)

@@ -361,6 +361,8 @@ type Result struct {
 	order   []ElementID
 	symbols []Symbol // by ID-1
 	diags   []Diagnostic
+	// completion is what Options.Complete asked for.
+	completion *Completion
 }
 
 // Fact returns the fact of the node id names.

@@ -27,6 +27,8 @@ import (
 // body-checking phase, except for Java classes, which are loaded on demand.
 type Universe struct {
 	Pkgs map[string]*Package // by dotted name; "" is the default package
+	// probe is Options.Probe.
+	probe *Probe
 	// only is Options.Only, and late is set for the parallel phase of a
 	// check of only some files (lazily).
 	only map[*syntax.File]bool
@@ -924,6 +926,9 @@ type Options struct {
 	// as kotlinc's without -Xmulti-platform: the expect and actual
 	// modifiers are errors (NOT_A_MULTIPLATFORM_COMPILATION).
 	NotMultiplatform bool
+	// Probe, if it isn't nil, keeps what is in scope where the check
+	// reaches its identifier, for completion: see Probe.
+	Probe *Probe
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -931,6 +936,14 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	u, checkers, err := signatures(ctx, files, lib, rec, opts)
 	if err != nil {
 		return nil, err
+	}
+	if p := opts.Probe; p != nil {
+		u.probe = p
+		for _, c := range checkers {
+			if c.file == p.File {
+				p.file = c
+			}
+		}
 	}
 	// checked are the checkers of the files to check (opts.Only).
 	checked := onlyCheckers(checkers, opts)

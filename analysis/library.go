@@ -70,6 +70,9 @@ type Options struct {
 	Java []JavaSource
 	// Warnings adds the checker's warnings to the diagnostics.
 	Warnings bool
+	// Complete asks what the code could name at a completion's caret:
+	// see Result.Completion.
+	Complete *Complete
 }
 
 // Analyze analyzes snapshots as the Kotlin sources of the library's
@@ -222,9 +225,23 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 
 	rec := newRecorder()
 	mode, _ := check.ParseAPIMode(l.cfg.ExplicitAPIMode)
-	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{
-		ExplicitAPI: mode, Warnings: opts.Warnings, Recovered: broken, JVMTarget: l.major,
-	})
+	var probe *check.Probe
+	if cp := opts.Complete; cp != nil {
+		for _, f := range files {
+			if f.Path == cp.Path {
+				probe = &check.Probe{File: f, Name: Placeholder, Match: cp.Match, Importable: cp.Importable}
+			}
+		}
+	}
+	copts := check.Options{
+		ExplicitAPI: mode, Warnings: opts.Warnings, Recovered: broken, JVMTarget: l.major, Probe: probe,
+	}
+	if probe != nil {
+		// A completion needs the bodies of its file only: the other files'
+		// omitted types are inferred as it needs them.
+		copts.Only = map[*syntax.File]bool{probe.File: true}
+	}
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, copts)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +253,11 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 	}
 	b := newBuilder(res, keptSnaps, files, provs, rec)
 	b.cp = cp
+	b.probe = probe
 	b.build()
+	if probe != nil {
+		res.diags = slices.DeleteFunc(res.diags, placeholderDiagnostic)
+	}
 	return res, nil
 }
 
