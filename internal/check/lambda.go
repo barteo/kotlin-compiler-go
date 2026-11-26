@@ -1406,13 +1406,18 @@ func abstractMethods(cls *types.ClassSym) []*types.FunSym {
 					// of the program, which has no descriptor yet, by their
 					// number.
 					key := name + f.Desc[:strings.IndexByte(f.Desc, ')')+1]
+					arity := fmt.Sprintf("%s/%d", name, len(f.Params))
 					if f.Desc == "" {
-						key = fmt.Sprintf("%s/%d", name, len(f.Params))
+						key = arity
 					}
-					if seen[key] {
+					// A function type's invoke is overridden by any invoke with
+					// as many parameters, whatever the descriptors: a suspend
+					// function type's has the continuation too.
+					if seen[key] || s.Func && seen[arity] {
 						continue // overridden in a subinterface
 					}
 					seen[key] = true
+					seen[arity] = true
 					if f.Abstract && !objectMethods[key] {
 						out = append(out, f)
 					}
