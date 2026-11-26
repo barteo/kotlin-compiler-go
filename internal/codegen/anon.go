@@ -181,6 +181,9 @@ func (g *gen) copyObject(cd *syntax.ClassDecl) bool {
 	out := cg.classes(cd, nil)
 	c := g.shared.classes[cd.Sym.Name]
 	h := kmeta.WriteClass(cg.classMeta(cd))
+	if g.publicInline || g.owner != nil && publicABI(g.owner.Decl) {
+		h.XI |= kmeta.XIPublicABI
+	}
 	delete(g.shared.classes, c.Name) // added again, with what the class is in
 	g.localClass(c, g.cls, g.code.Name(), g.code.Desc(), cd.P.Line, h)
 	c.InnerClasses[len(c.InnerClasses)-1].Access |= cf.AccPublic

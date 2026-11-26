@@ -59,12 +59,18 @@ func (g *gen) writeMetadata() {
 		// An object expression's class: local, as kotlinc writes it.
 		if c := g.shared.classes[cd.Sym.Name]; c != nil {
 			h := kmeta.WriteClass(g.classMeta(cd))
-			if inInline(cd) && !cd.EnclosingFun.Private {
+			if publicABI(cd) {
 				h.XI |= kmeta.XIPublicABI
 			}
 			g.annotateMeta(c, h)
 		}
 	}
+}
+
+// publicABI reports whether d is the class of an object expression in an inline function that other modules copy.
+func publicABI(d any) bool {
+	cd, ok := d.(*syntax.ClassDecl)
+	return ok && inInline(cd) && !cd.EnclosingFun.Private
 }
 
 // inlineXI returns metadata h of a class of local code, with extra flags
