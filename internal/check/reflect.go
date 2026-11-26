@@ -312,13 +312,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		recv = func() syntax.Expr { return ident(r.Bound.Name) }
 	default:
 		if name, ok := c.typeName(r.X); ok {
-			if cls := c.lookupClass(name); cls != nil && ensured(cls).Object {
-				// An object's members are bound to it: Registry::find.
-				c.bindRef(r, c.value(r.X, noWant))
-				recv = func() syntax.Expr { return ident(r.Bound.Name) }
-				break
-			}
-			if cls := c.lookupClass(name + "." + r.Name); cls != nil && !ensured(cls).Object && !cls.Inner {
+			if cls := c.refNested(name, r.Name); cls != nil {
 				if e := c.lookupClass(name); r.Name == "entries" && e != nil && e.Entries != nil && c.u.ext.kotlin {
 					// An enum's entries and its nested class entries's
 					// constructor: as in K2, neither wins.
@@ -326,6 +320,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 					return nil, types.InvalidType, false
 				}
 				nested = cls
+				break
+			}
+			if cls := c.lookupClass(name); cls != nil && ensured(cls).Object {
+				// An object's members are bound to it: Registry::find.
+				c.bindRef(r, c.value(r.X, noWant))
+				recv = func() syntax.Expr { return ident(r.Bound.Name) }
 				break
 			}
 			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0 {
@@ -430,7 +430,24 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				ps = append(ps, q.Type)
 			}
 		}
-		forms = append(forms, staticForm(ps))
+		f := staticForm(ps)
+		if name, _ := c.typeName(r.X); c.lookupClass(name+"."+r.Name) == nil && nested.Outer != nil {
+			// Through a typealias, Alias::Nested: the class's own name,
+			// which a.b.Alias.Nested(...) isn't.
+			outer := strings.NewReplacer("/", ".", "$", ".").Replace(nested.Outer.Name)
+			f.body = func() syntax.Expr {
+				var x syntax.Expr
+				for i, n := range strings.Split(outer, ".") {
+					if i == 0 {
+						x = ident(n)
+					} else {
+						x = member(x, n)
+					}
+				}
+				return call(member(x, r.Name), ps, 0)
+			}
+		}
+		forms = append(forms, f)
 	case w.prop:
 		if staticProp && !w.prop1 {
 			return c.kpropLambda(x, staticPropForm, false)
@@ -736,7 +753,7 @@ func (c *Checker) refRecvType(r *syntax.CallableRef) (types.Type, bool) {
 		if cls != nil && (ensured(cls).Object || cls.Companion != nil && !c.hasCallable(cls, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0) {
 			return types.Type{}, false // may be bound to the object
 		}
-		if c.lookupClass(name+"."+r.Name) != nil {
+		if c.refNested(name, r.Name) != nil {
 			return types.Type{}, false // a nested class's constructor
 		}
 		ref = &syntax.TypeRef{P: r.X.Pos(), Name: name}
@@ -1448,6 +1465,26 @@ func refStateMachine(x *syntax.Lambda, f *types.FunSym) bool {
 
 // hasCallable reports whether cls has a member function or a property
 // named name.
+// refNested returns the nested class whose constructor Outer::Nested names,
+// or nil: a class nested in a class, or, as in K2, in an object or a
+// typealias's class, A::Wrapper, unless the object has a member of that
+// name.
+func (c *Checker) refNested(outer, name string) *types.ClassSym {
+	cls := c.lookupClass(outer + "." + name)
+	if cls == nil {
+		if o := c.lookupClass(outer); o != nil && c.lookupAlias(outer) != nil {
+			cls = c.nestedOf(o, name)
+		}
+	}
+	if cls == nil || ensured(cls).Object || cls.Inner {
+		return nil
+	}
+	if o := c.lookupClass(outer); o != nil && ensured(o).Object && c.hasCallable(o, name) {
+		return nil
+	}
+	return cls
+}
+
 func (c *Checker) hasCallable(cls *types.ClassSym, name string) bool {
 	return len(c.javaMethods(cls, name)) > 0 || c.hasProp(cls, name)
 }
