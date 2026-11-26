@@ -1532,8 +1532,21 @@ func starBoundCycle(t types.Type, p *types.TypeParamSym) bool {
 			return true
 		}
 		seen[p] = true
-		if len(p.Bounds) == 0 || !p.Bounds[0].IsParam() {
+		if len(p.Bounds) == 0 {
 			return false
+		}
+		if b := p.Bounds[0]; !b.IsParam() {
+			// A bound that mentions a star-projected parameter of the
+			// class in its arguments leaves none either: F of a
+			// Function<?, ?> for F extends Map<String, E>, or of a G<?>
+			// for F extends Comparable<F>.
+			return b.Has(func(u types.Type) bool {
+				if !u.IsParam() {
+					return false
+				}
+				q := u.Param()
+				return q.Owner == any(t.C) && q.Index < len(ps) && ps[q.Index] == q && t.A.Get(q.Index).V == types.Star
+			})
 		}
 		p = p.Bounds[0].Param()
 	}

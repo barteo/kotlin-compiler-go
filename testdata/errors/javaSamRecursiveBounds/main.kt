@@ -13,3 +13,11 @@ fun implicit() {
         null!!
     }
 }
+
+// Nor does one whose bound mentions a star-projected parameter of the
+// interface in its arguments: F extends Comparable<F>, or F extends
+// List<E>.
+fun dependentBounds() {
+    B.g { x -> } // ERROR cannot infer a type for this parameter
+    B.h { x -> } // ERROR cannot infer a type for this parameter
+}
