@@ -159,6 +159,45 @@ type assignment struct {
 	lateinit, lateRead, lateOther map[*types.VarSym]bool
 }
 
+// postponedArg is a call's lambda argument k, analyzed after the
+// call's other arguments, with the state before it.
+type postponedArg struct {
+	k      int
+	l      *syntax.Lambda
+	before *daState
+}
+
+// laterArgs reports whether args, a call's arguments after a lambda's,
+// have one that isn't a lambda, which the lambda is analyzed after.
+func laterArgs(args []syntax.Expr) bool {
+	for _, arg := range args {
+		if _, ok := arg.(*syntax.Lambda); !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// lambdaArg walks lambda l, call x's argument k, that x doesn't call
+// exactly once.
+func (a *assignment) lambdaArg(x *syntax.Call, k int, l *syntax.Lambda, s *daState) {
+	if x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
+		a.inlined++
+		if l.InPlace {
+			a.inPlaceLambdas++
+		}
+		a.expr(l, s)
+		if l.InPlace {
+			a.inPlaceLambdas--
+		}
+		a.inlined--
+		a.atLeastOnce(x, k, s)
+		return
+	}
+	a.expr(l, s)
+	a.atLeastOnce(x, k, s)
+}
+
 // daOnce records the states at the returns from a lambda that its
 // function calls exactly once.
 type daOnce struct {
@@ -898,6 +937,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 			as = s.clone() // the arguments don't run on null
 		}
 		concurrent := a.concurrentVals(x)
+		var postponed []postponedArg
 		// What one of the lambdas called once assigns isn't assigned in
 		// the others, which may run first.
 		var assigned []*types.VarSym
@@ -930,22 +970,37 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 				}
 				continue
 			}
-			if l, ok := arg.(*syntax.Lambda); ok && x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
-				a.inlined++
-				if l.InPlace {
-					a.inPlaceLambdas++
-				}
-				a.expr(arg, as)
-				if l.InPlace {
-					a.inPlaceLambdas--
-				}
-				a.inlined--
-				a.atLeastOnce(x, k, as)
+			if l, ok := arg.(*syntax.Lambda); ok && !laterArgs(x.Args[k+1:]) {
+				a.lambdaArg(x, k, l, as)
+				continue
+			}
+			if l, ok := arg.(*syntax.Lambda); ok {
+				// As in K2, a lambda is analyzed after the call's other
+				// arguments, which may assign what it reads: f({ x.length
+				// }, if (b) { x = ""; "" } else { x = ""; "" }). Not a
+				// val that a lambda that isn't inlined reads, which it
+				// may read once the call has it, wherever it runs.
+				postponed = append(postponed, postponedArg{k, l, as.clone()})
 				continue
 			}
 			a.expr(arg, as)
-			if _, ok := arg.(*syntax.Lambda); ok {
-				a.atLeastOnce(x, k, as)
+		}
+		for _, p := range postponed {
+			st := as.clone()
+			if !p.l.Inline && !p.l.InlineArg {
+				for v := range st.def {
+					if !v.Mutable && !p.before.def[v] {
+						delete(st.def, v)
+					}
+				}
+			}
+			base := maps.Clone(st.def)
+			a.lambdaArg(x, p.k, p.l, st)
+			as.mergeMaybe(st)
+			for v := range st.def {
+				if !base[v] {
+					as.def[v] = true
+				}
 			}
 		}
 		if as != s {
