@@ -3239,8 +3239,10 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 				return c.call(x, want, sink)
 			}
 		}
-		if mi, ok := c.callableImport(name); ok {
+		if mi, ok := c.callableImport(name); ok && !(!c.memberImportTakes(name, x) && c.ctorTakes(name, x)) {
 			// An imported static method or method of an object: f() is C.f().
+			// Not where only the constructor of a class imported with
+			// it takes the arguments: import a.S.A of class A and fun A(c).
 			m := c.importedRef(mi, fn.P)
 			x.Fun = m
 			if m.X.(*syntax.Ident).Object != nil {

@@ -687,6 +687,9 @@ func (c *Checker) castErased(x *syntax.As, t, target types.Type) bool {
 			if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N {
 				j = slices.Index(k.TypeParams, a.T.Param())
 			}
+			if j < 0 && !a.T.Has(func(u types.Type) bool { return u.IsParam() && slices.Contains(k.TypeParams, u.Param()) }) {
+				continue // KI<String> of KTest<K> : KI<String> tells nothing of K
+			}
 			if j < 0 || ta.V != types.Inv && ta.V != types.Star {
 				return false // not one of k's parameters, or projected
 			}

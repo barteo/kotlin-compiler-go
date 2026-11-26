@@ -933,7 +933,9 @@ func (c *Checker) resolveImports() {
 			if ext.hasPackage(name) || ext.isKotlinPackage(imp.Path) {
 				c.stars = append(c.stars, name)
 			} else if owner := c.importOwner(imp.Path); user == nil && owner != nil && owner.Object && !owner.External {
+				// Its members are imported all the same, as K2 does.
 				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+				memberStars = append(memberStars, imp)
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
 			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
@@ -1075,6 +1077,13 @@ func (c *Checker) resolveImports() {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
+				if cd, _ := owner.Decl.(*syntax.ClassDecl); cd != nil && owner.Object && slices.ContainsFunc(cd.Members, func(m syntax.Decl) bool {
+					fd, ok := m.(*syntax.FunDecl)
+					return ok && fd.Name == simple
+				}) && c.memberImports[alias].owner == nil {
+					// import a.S.A of an object's class A and its fun A(c: Int).
+					c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
+				}
 			} else if a := owner.Aliases[simple]; a != nil {
 				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
 				classifiers[alias] = append(classifiers[alias], imp.P)

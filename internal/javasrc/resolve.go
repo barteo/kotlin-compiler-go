@@ -567,7 +567,9 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 	case KindInterface:
 		flags |= classfile.AccInterface | classfile.AccAbstract
 		info.Super = "java/lang/Object"
-		supers = c.Extends
+		// interface I implements J, which javac rejects, extends J for
+		// K2's Java model, as kc reads it too.
+		supers = append(slices.Clone(c.Extends), c.Implements...)
 	case KindAnnotation:
 		flags |= classfile.AccInterface | classfile.AccAbstract | classfile.AccAnnotation
 		info.Super = "java/lang/Object"
