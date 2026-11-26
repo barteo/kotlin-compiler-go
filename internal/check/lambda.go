@@ -3401,6 +3401,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
+	if l.Anon && sam == nil && w.recv && l.AnonRecv == nil && !anonRecvParam(l, w) && !s.apply(ft).HasVars() {
+		// Unlike a lambda's, an anonymous function's receiver isn't
+		// implicit: id(fun (x: String) = 10) for an Int.(String) -> Int
+		// is a (String) -> Int, as in K2.
+		lt := c.lambda(l, noWant)
+		l.T = lt
+		if lt.K != types.Invalid {
+			c.assignable(lt, s.apply(ft), l.P)
+		}
+		return
+	}
 	if sam == nil {
 		if _, pr, ok := funcParts(p); ok {
 			ret = pr
