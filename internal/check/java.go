@@ -1056,6 +1056,14 @@ func (c *Checker) resolveImports() {
 		if cls != nil || ta != nil {
 			classifiers[alias] = append(classifiers[alias], imp.P)
 		}
+		if ta != nil && cls == nil && len(fs) == 0 && v == nil && len(gs) == 0 {
+			// As kotlinc 2.4 (ForbidTypeAliasWithMissingDependencyType),
+			// a library's typealias whose class isn't on the class path
+			// imports nothing, though its uses are still the alias.
+			if ac := c.aliasClass(ta); ac != nil && ac.Missing {
+				c.errorf(imp.P, "unresolved import: %s", imp.Path)
+			}
+		}
 		if cls != nil || ta != nil || len(fs) > 0 || v != nil || len(gs) > 0 {
 			continue
 		}
@@ -3214,7 +3222,14 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		c.value(x.Outer, noWant)
 	}
 	if cls.Inner && x.Outer == nil {
-		outer, ot := c.implicitOuter(cls.Outer, p)
+		// Outer.Inner(), qualified by a class, takes no implicit outer
+		// instance, even in Outer's code.
+		_, qualified := x.Fun.(*syntax.Member)
+		var outer syntax.Expr
+		var ot types.Type
+		if !qualified {
+			outer, ot = c.implicitOuter(cls.Outer, p)
+		}
 		if outer == nil {
 			c.errorf(p, "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
 			c.args(x, nil)

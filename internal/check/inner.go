@@ -185,6 +185,18 @@ func (c *Checker) extInnerOf(cls *types.ClassSym, name string) *types.ClassSym {
 // a typealias name expands to: outer.Alias() for typealias Alias =
 // Outer.Inner. It returns the alias too, or nil.
 func (c *Checker) innerNamed(cls *types.ClassSym, name string) (*types.ClassSym, *types.AliasSym) {
+	// A nested class that isn't inner hides its superclasses' inner
+	// classes of the name: b.Inner() for a B with a class Inner is
+	// unresolved, whatever B's superclass has.
+	for s := cls; s != nil; s = s.Super {
+		s.Ensure()
+		if n := c.nestedOf(s, name); n != nil {
+			if n.Ensure(); !n.Inner {
+				return nil, nil
+			}
+			break
+		}
+	}
 	if n := innerOf(cls, name); n != nil {
 		return n, nil
 	}
@@ -303,8 +315,13 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		outer = k.This()
 	} else {
 		// In the outer class's code, where its type parameters are.
-		for _, p := range cls.TypeParams[own+extra:] {
-			if c.typeParamInScope(p) {
+		// G.I written qualified needs G's own arguments even in G's code;
+		// those of G's outer classes are taken as in scope (A.B in G<T>
+		// for G<T>.A.B).
+		qualified := strings.Contains(ref.Name, ".")
+		outerOwn := len(cls.Outer.TypeParams) - cls.Outer.OuterParams
+		for i, p := range cls.TypeParams[own+extra:] {
+			if c.typeParamInScope(p) && !(qualified && i < outerOwn) {
 				continue
 			}
 			if strings.Contains(ref.Name, ".") { // G.I for G<T>.I

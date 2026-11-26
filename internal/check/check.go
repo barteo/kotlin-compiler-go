@@ -1548,11 +1548,28 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
-	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 && ref.Args != nil {
-		// A local class of a generic function, Local<D>::f: kotlinc wants
-		// the type arguments of the type parameters it captures too.
-		c.errorf(ref.P, "%s expected for class %s", countArgs(len(ps)+len(hidden)), cls.DisplayName())
-		return types.InvalidType
+	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 {
+		// A local class on a callable reference's left side, Local::f:
+		// kotlinc 2.4 wants type arguments for its own type parameters
+		// and those it captures of the classes around it, not of the
+		// functions, and takes the rest as in scope.
+		n := len(ps)
+		for _, a := range hidden {
+			if p := a.T.Param(); p != nil {
+				if _, ok := p.Owner.(*types.ClassSym); ok {
+					n++
+				}
+			}
+		}
+		if len(ref.Args) != n {
+			c.errorf(ref.P, "%s expected for class %s", countArgs(n), cls.DisplayName())
+			return types.InvalidType
+		}
+		if n > len(ps) {
+			r := *ref
+			r.Args = ref.Args[:len(ps)]
+			ref = &r
+		}
 	}
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)

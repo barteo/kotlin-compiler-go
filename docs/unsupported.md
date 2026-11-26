@@ -274,10 +274,6 @@ own tests.
   yet or assigns another type. In a loop, `kc` is stricter: any
   assignment in a lambda the loop holds counts, `x++` among them,
   whatever type it assigns.
-- Two private classes or typealiases of one name in different files of
-  a package aren't reported as a `CLASSIFIER_REDECLARATION`, and each
-  file's uses resolve to its own, where K2 resolves them to the first
-  file's and reports them as invisible.
 - Two classes of one name on the class path, from different modules,
   are one class, the first, as in K2. A type in the other module's class
   files with another number of type arguments is a type of neither, so
