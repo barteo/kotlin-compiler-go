@@ -3575,6 +3575,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			if tv := s.unfixedVar(r); tv != nil && bt == types.UnitType && !l.Anon && l.Body != nil && len(l.Body.Stmts) == 0 {
 				tv.coercedUnits++ // { }'s
 			}
+			if tv := s.unfixedVar(r); tv != nil && w.ret.K == types.Invalid && s.unfixedVar(bt) != nil && !l.Anon {
+				tv.tailLow = append(tv.tailLow, bt)
+			}
 		}
 	}
 	s.fixups = append(s.fixups, func(s *system) {
