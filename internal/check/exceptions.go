@@ -1,6 +1,7 @@
 package check
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -39,7 +40,10 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		}
 	}
 	// After the try, the smart casts are those where its body and its
-	// catch blocks end, past its finally block, whose vars have its.
+	// catch blocks end, of any value, as x as A in a try whose catch
+	// blocks jump makes x an A after it, past its finally block, whose
+	// vars have its, and whose own smart casts add to them: an x that is
+	// a C there is an A & C.
 	var ends []*branchExit
 	var finallyEnd *branchExit
 	defer func() {
@@ -50,28 +54,35 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 				states = append(states, e.state)
 			}
 		}
+		var fvars []*types.VarSym
+		if x.Finally != nil {
+			fvars = c.watchedVars(x.Finally)
+		}
+		finallyOK := finallyEnd != nil && !finallyEnd.jumped && finallyEnd.state != nil
 		if len(states) == 0 {
+			// The code after is unreachable, but checked, as K2 does,
+			// with the finally block's smart casts.
+			if finallyOK {
+				c.scope.narrows = append(c.scope.narrows, c.finallyNarrows(finallyEnd.state, nil, fvars)...)
+			}
 			return
 		}
-		after := onlyVars(c.joinFlows(states), allVars)
+		after := c.joinFlows(states)
 		if finallyEnd != nil {
-			var fvars []*types.VarSym
-			if x.Finally != nil {
-				fvars = c.watchedVars(x.Finally)
-			}
 			kept := after[:0:0]
 			for _, n := range after {
-				if !slices.Contains(fvars, n.sym) {
+				if n.recv != nil || !slices.Contains(fvars, n.sym) {
 					kept = append(kept, n)
 				}
 			}
 			after = kept
-			if !finallyEnd.jumped && finallyEnd.state != nil {
+			if finallyOK {
 				for _, v := range fvars {
 					if t, ok := finallyEnd.state[flowKey{sym: v}]; ok && t != v.Type {
 						after = append(after, narrow{sym: v, t: t})
 					}
 				}
+				after = append(after, c.finallyNarrows(finallyEnd.state, after, fvars)...)
 			}
 		}
 		c.scope.narrows = append(c.scope.narrows, after...)
@@ -166,6 +177,17 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 			// loop.
 			return types.NothingType
 		}
+		// They jump once the finally block has run, with its smart casts.
+		if finallyEnd.state != nil {
+			fvars := c.watchedVars(x.Finally)
+			for _, j := range saved {
+				for _, sts := range [][]flowState{j.breaks, j.continues} {
+					for i, st := range sts {
+						sts[i] = c.withFinally(st, finallyEnd.state, fvars)
+					}
+				}
+			}
+		}
 		c.addLoopExits(saved)
 	}
 	if !valueUsed {
@@ -175,6 +197,61 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		return types.UnitType
 	}
 	return result
+}
+
+// finallyNarrows returns the smart casts that a finally block, which
+// ends in state, adds to those after its try's body and catch blocks,
+// after, of the values it doesn't assign, fvars: of a value that after
+// narrows too, the intersection of its types. They are sorted, as
+// joinFlows's are.
+func (c *Checker) finallyNarrows(state flowState, after []narrow, fvars []*types.VarSym) []narrow {
+	var out []narrow
+	for k, t := range state {
+		if k.sym == nil || k.recv == nil && slices.Contains(fvars, k.sym) || k.recv != nil && slices.Contains(fvars, k.recv) {
+			continue
+		}
+		cur := c.scope.narrowedMember(k.recv, k.sym, k.sym.Type)
+		for _, n := range after {
+			if n.recv == k.recv && n.sym == k.sym {
+				cur = n.t
+			}
+		}
+		if c.subtype(cur, t) {
+			continue
+		}
+		out = append(out, narrow{recv: k.recv, sym: k.sym, t: c.isNarrowed(cur, t)})
+	}
+	slices.SortFunc(out, cmpNarrow)
+	return out
+}
+
+// withFinally returns flow state st, where a break or a continue in a
+// try or a catch block jumps from, with the smart casts that its finally
+// block, which ends in fstate, adds to those of the values it doesn't
+// assign, fvars: of a value narrowed in both, the intersection of its
+// types.
+func (c *Checker) withFinally(st, fstate flowState, fvars []*types.VarSym) flowState {
+	var out flowState
+	for k, t := range fstate {
+		if k.sym == nil || k.recv == nil && slices.Contains(fvars, k.sym) || k.recv != nil && slices.Contains(fvars, k.recv) {
+			continue
+		}
+		cur, ok := st[k]
+		if !ok {
+			cur = k.sym.Type
+		}
+		if c.subtype(cur, t) {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(st)
+		}
+		out[k] = c.isNarrowed(cur, t)
+	}
+	if out == nil {
+		return st
+	}
+	return out
 }
 
 // loopExit is what a loop knows of its breaks and continues.

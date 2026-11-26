@@ -289,7 +289,8 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	return once, inPlace, atLeast, implies, calls, conds
 }
 
-// contractImplies reads returns(value) implies (p != null), (p is T) or
+// contractImplies reads returns(value), for true, false or null,
+// implies (p != null), (p is T) or
 // (p), for a Boolean p, or a conjunction of them, and returnsNotNull()
 // implies them, (x is Int && y is
 // String), each of which holds when the function returns the value.
@@ -314,13 +315,16 @@ func contractImplies(c *syntax.Call) ([]syntax.Implies, bool) {
 		}
 		im.Returns = 2
 	} else if len(ret.Args) == 1 {
-		v, ok := ret.Args[0].(*syntax.BoolLit)
-		if !ok {
+		switch v := ret.Args[0].(type) {
+		case *syntax.BoolLit:
+			im.Returns = 0
+			if v.Val {
+				im.Returns = 1
+			}
+		case *syntax.NullLit:
+			im.Returns = 3
+		default:
 			return nil, false
-		}
-		im.Returns = 0
-		if v.Val {
-			im.Returns = 1
 		}
 	}
 	var out []syntax.Implies
@@ -359,6 +363,14 @@ func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool
 	case *syntax.Ident:
 		p, im.Holds = x, true
 	case *syntax.Unary:
+		if b, ok := x.X.(*syntax.Binary); ok && x.Op == syntax.NOT {
+			// !(p == null) is p != null.
+			if _, null := b.Y.(*syntax.NullLit); !null || b.Op != syntax.EQ && b.Op != syntax.EQ_EQ_EQ {
+				return im, false
+			}
+			p = b.X
+			break
+		}
 		id, ok := x.X.(*syntax.Ident)
 		if x.Op != syntax.NOT || !ok {
 			return im, false

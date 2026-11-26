@@ -99,10 +99,22 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 			return false
 		}
 	}
+	site, ok := c.varSites[v]
+	if ok && t.K != types.Invalid {
+		// As in K2, of a smart cast to t, an assignment that may run
+		// while the frame does keeps it if it has been checked already
+		// and assigns a value of type t: x = "" before a lambda in a loop
+		// keeps x a String in it. ++ and -- aren't assignments here.
+		for _, a := range c.outsideAssigns(site.b.Stmts[site.i+1:], v, key.frame) {
+			if at, ok := c.assignTypes[a]; !ok || !c.subtype(at, t) {
+				return false
+			}
+		}
+		return true
+	}
 	if assigned, ok := c.concurrent[key]; ok {
 		return !assigned
 	}
-	site, ok := c.varSites[v]
 	assigned := !ok || assignedOutside(site.b.Stmts[site.i+1:], v.Name, key.frame)
 	c.concurrent[key] = assigned
 	return !assigned
@@ -267,6 +279,71 @@ func assignedOutside1(node any, name string, frame *syntax.Lambda) bool {
 		return !found
 	})
 	return found
+}
+
+// outsideAssigns returns the assignments of local var v in stmts that may
+// run while frame does, as assignedOutside finds them: after frame's
+// start, in a loop around it, its own included, or in other nested code.
+// Unlike assignedOutside, it leaves out x++ and x--, which K2's
+// FirLocalVariableAssignmentAnalyzer doesn't record.
+func (c *Checker) outsideAssigns(stmts []syntax.Stmt, v *types.VarSym, frame *syntax.Lambda) []*syntax.Assign {
+	key := varFrame{v, frame}
+	if as, ok := c.outsideMemo[key]; ok {
+		return as
+	}
+	var as []*syntax.Assign
+	var walk func(node any)
+	walk = func(node any) {
+		inspect(node, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Block:
+				if n == nil || n == node {
+					break
+				}
+				// A var of the name in the block shadows v after it.
+				for _, st := range n.Stmts {
+					walk(st)
+					if slices.Contains(declaredNames(st), v.Name) {
+						break
+					}
+				}
+				return false
+			case *syntax.Lambda:
+				if n != frame {
+					as = append(as, c.assignsIn(n, v.Name)...)
+				}
+				return false
+			case *syntax.LocalFun:
+				if n.Frame != frame {
+					as = append(as, c.assignsIn(n, v.Name)...)
+				}
+				return false
+			case *syntax.ObjectExpr:
+				if n.Decl.P != frame.P {
+					as = append(as, c.assignsIn(n, v.Name)...)
+				}
+				return false
+			case *syntax.While, *syntax.For:
+				if hasFrame(n, frame) {
+					as = append(as, c.assignsIn(n, v.Name)...)
+					return false
+				}
+			case *syntax.Assign:
+				if id, ok := n.Target.(*syntax.Ident); ok && id.Name == v.Name && (n.P.Line > frame.P.Line || n.P.Line == frame.P.Line && n.P.Col > frame.P.Col) {
+					as = append(as, n)
+				}
+			}
+			return true
+		})
+	}
+	for _, s := range stmts {
+		walk(s)
+	}
+	if c.outsideMemo == nil {
+		c.outsideMemo = map[varFrame][]*syntax.Assign{}
+	}
+	c.outsideMemo[key] = slices.Compact(as)
+	return c.outsideMemo[key]
 }
 
 // hasFrame reports whether node has the lambda, the local function or
@@ -518,7 +595,7 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, []*types.VarSym, func
 	var old []types.Type
 	var had []bool
 	for _, v := range vars {
-		incDec := onlyIncDec(v.Name, nodes)
+		incDec := onlyIncDec(v.Name, nodes, false)
 		if incDec {
 			aliased = append(aliased, v)
 		} else {
@@ -548,9 +625,9 @@ func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, []*types.VarSym, func
 }
 
 // onlyIncDec reports whether every assignment of the local name in nodes
-// is a ++, a -- or an op=, outside lambdas, local functions and classes,
-// and object expressions.
-func onlyIncDec(name string, nodes []any) bool {
+// is a ++, a -- or, unless strict, an op=, outside lambdas, local
+// functions and classes, and object expressions.
+func onlyIncDec(name string, nodes []any, strict bool) bool {
 	ok := true
 	for _, node := range nodes {
 		if b, isBlock := node.(*syntax.Block); node == nil || isBlock && b == nil {
@@ -564,7 +641,7 @@ func onlyIncDec(name string, nodes []any) bool {
 				}
 				return false
 			case *syntax.Assign:
-				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && n.Op == syntax.ASSIGN {
+				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && (n.Op == syntax.ASSIGN || strict) {
 					ok = false
 				}
 			}
@@ -1222,7 +1299,10 @@ func isNull(x syntax.Expr) bool {
 
 // boolEquality returns the smart casts of c == true and the like: those
 // of c, or of !c, when one side is a Boolean literal and the other a
-// condition.
+// condition. A Boolean? condition, as a?.f() or a call of a function
+// that returns one, equal to true is true, so not null, and equal to
+// false is false: a?.returnsTrue(s) == true tells what returnsTrue's
+// contract says of s. Not equal, it may be null, and tells nothing.
 func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, ok bool) {
 	lit, cond := x.X, x.Y
 	l, isLit := lit.(*syntax.BoolLit)
@@ -1232,11 +1312,23 @@ func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, 
 			return nil, nil, false
 		}
 	}
-	if cond.Type().Flex() != types.BoolType {
+	ct := cond.Type().Flex()
+	if ct.NonNull() != types.BoolType {
 		return nil, nil, false
 	}
+	eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 	whenTrue, whenFalse = c.narrowing(cond)
-	if l.Val != (x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ) {
+	if ct.N {
+		if !l.Val {
+			whenTrue = whenFalse
+		}
+		whenTrue, whenFalse = append(whenTrue[:len(whenTrue):len(whenTrue)], c.equalNonNull(cond)...), nil
+		if !eq {
+			whenTrue, whenFalse = whenFalse, whenTrue
+		}
+		return whenTrue, whenFalse, true
+	}
+	if l.Val != eq {
 		whenTrue, whenFalse = whenFalse, whenTrue
 	}
 	return whenTrue, whenFalse, true

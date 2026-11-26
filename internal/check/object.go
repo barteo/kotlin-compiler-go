@@ -98,6 +98,17 @@ func (c *Checker) dottedClass(parts []string) *types.ClassSym {
 	if cls := c.findClass(parts[0]); cls != nil && !cls.External {
 		return nestedPath(cls, parts[1:])
 	}
+	if c.findClassifier(parts[0]) == (classifier{}) && !c.u.isPackage(parts[0]) {
+		if cls := c.rootQualifier(parts[0]); cls != nil {
+			// Klass.Nested of the root package's Klass (see rootQualifier).
+			for _, n := range parts[1:] {
+				if cls = c.nestedOf(cls, n); cls == nil {
+					break
+				}
+			}
+			return cls
+		}
+	}
 	return nil
 }
 

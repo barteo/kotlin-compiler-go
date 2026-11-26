@@ -271,9 +271,11 @@ own tests.
 - A captured `var` is smart cast as in K2: not where a lambda or local
   function that may run later assigns it, nor where the outermost lambda
   entered since its declaration holds an assignment that isn't checked
-  yet or assigns another type. In a loop, `kc` is stricter: any
-  assignment in a lambda the loop holds counts, `x++` among them,
-  whatever type it assigns.
+  yet or assigns another type, nor where an assignment that may run
+  while the lambda does, in a loop around it among them, does; `x++` and
+  `x--` aren't assignments there. A lambda that may run more than once
+  is a loop: it drops the smart casts of the vars it assigns with `=` at
+  its start.
 - Two classes of one name on the class path, from different modules,
   are one class, the first, as in K2. A type in the other module's class
   files with another number of type arguments is a type of neither, so

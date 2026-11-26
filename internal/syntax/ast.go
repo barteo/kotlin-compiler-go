@@ -1276,7 +1276,7 @@ type CharLit struct {
 
 // Implies is a contract's returns(value) implies (p != null) or (p is T)
 // effect: Returns is 1 for returns(true), 0 for returns(false), -1 for
-// returns() and 2 for returnsNotNull(); Param names the parameter, "this" the extension receiver;
+// returns(), 2 for returnsNotNull() and 3 for returns(null); Param names the parameter, "this" the extension receiver;
 // Is is T, or nil for p != null.
 type Implies struct {
 	Returns int

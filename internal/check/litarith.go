@@ -69,6 +69,46 @@ func arithValue(x syntax.Expr) (int64, bool) {
 			}
 			return a % b, true
 		}
+	case *syntax.Call:
+		// 2.plus(1) is 2 + 1; 1.shl(3) and the like, as Ints.
+		m, ok := literalOpCall(x)
+		if !ok {
+			return 0, false
+		}
+		if len(x.Args) == 0 {
+			v, ok := arithValue(m.X)
+			switch m.Name {
+			case "unaryMinus":
+				v = -v
+			case "inv":
+				v = ^v
+			}
+			return v, ok
+		}
+		op, ok := map[string]syntax.Kind{"plus": syntax.PLUS, "minus": syntax.MINUS, "times": syntax.STAR, "div": syntax.SLASH, "rem": syntax.PERCENT}[m.Name]
+		if ok {
+			return arithValue(&syntax.Binary{Op: op, X: m.X, Y: x.Args[0]})
+		}
+		a, ok1 := arithValue(m.X)
+		b, ok2 := arithValue(x.Args[0])
+		if !ok1 || !ok2 {
+			return 0, false
+		}
+		i, j := int32(a), int32(b)
+		switch m.Name {
+		case "and":
+			return int64(i & j), true
+		case "or":
+			return int64(i | j), true
+		case "xor":
+			return int64(i ^ j), true
+		case "shl":
+			return int64(i << (j & 31)), true
+		case "shr":
+			return int64(i >> (j & 31)), true
+		case "ushr":
+			return int64(int32(uint32(i) >> (j & 31))), true
+		}
 	}
 	return 0, false
 }

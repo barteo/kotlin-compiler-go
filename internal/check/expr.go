@@ -776,7 +776,8 @@ func (c *Checker) convert(x syntax.Expr, t types.Type) syntax.Expr {
 }
 
 // literalArith reports whether x is arithmetic of integer literals
-// without a type of their own: 8 * 1024 or -1, but not 1L or 1u.
+// without a type of their own: 8 * 1024 or -1, or 2.plus(1) or 1.shl(3),
+// operator functions called by name, but not 1L or 1u, nor 1.inc().
 func literalArith(x syntax.Expr) bool {
 	switch x := x.(type) {
 	case *syntax.IntLit:
@@ -788,8 +789,31 @@ func literalArith(x syntax.Expr) bool {
 		case syntax.PLUS, syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
 			return literalArith(x.X) && literalArith(x.Y)
 		}
+	case *syntax.Call:
+		_, ok := literalOpCall(x)
+		return ok
 	}
 	return false
+}
+
+// literalOpCall returns the receiver of x if it is an operator function
+// of integer literals called by name, 2.plus(1) or (1 + 2).inv(), which
+// is a literal's type, as 2 + 1 is.
+func literalOpCall(x *syntax.Call) (*syntax.Member, bool) {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok || m.Safe || x.Invoke || len(x.TypeArgs) > 0 || !intLiteralOps[m.Name] || len(x.Args) > 1 || !literalArith(m.X) {
+		return nil, false
+	}
+	unary := m.Name == "inv" || m.Name == "unaryPlus" || m.Name == "unaryMinus"
+	if unary != (len(x.Args) == 0) {
+		return nil, false
+	}
+	for _, a := range x.Args {
+		if !literalArith(a) {
+			return nil, false
+		}
+	}
+	return m, true
 }
 
 // isIntOrLong reports whether t is Int or Long, which an Int or Long
@@ -1839,10 +1863,15 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				k, ok = c.chainKeyOf(x.Y)
 			}
 			var n, null []narrow
+			if ynull {
+				null = c.callNull(x.X)
+			} else if xnull {
+				null = c.callNull(x.Y)
+			}
 			if ok && types.MayBeNull(k.t) {
 				kn := k
 				kn.t = types.NullType
-				null = []narrow{kn}
+				null = append([]narrow{kn}, null...)
 				base := k.t
 				if id, isID := unchecked(nullSide(x)).(*syntax.Ident); isID {
 					if v := c.narrowSym(id); v != nil {
@@ -1861,9 +1890,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 			switch {
 			case ynull:
-				n = append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...)
+				n = append(append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...), c.callNonNull(x.X)...)
 			case xnull:
-				n = append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...)
+				n = append(append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...), c.callNonNull(x.Y)...)
 			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
 			case equalsNonNull(x.X.Type()):
@@ -1880,6 +1909,16 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 					whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], same...)
 				} else {
 					whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], same...)
+				}
+			}
+			// f(x) == Unit: f returned, whichever way the comparison
+			// goes, so its contract's returns() implies holds.
+			for _, side := range []syntax.Expr{x.X, x.Y} {
+				if call, ok := side.(*syntax.Call); ok {
+					if ran := c.contractNarrows(call, -1); len(ran) > 0 {
+						whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], ran...)
+						whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], ran...)
+					}
 				}
 			}
 			if len(whenTrue) == 0 && len(whenFalse) == 0 {
@@ -1904,6 +1943,10 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				// that can't be reached learns nothing.
 				return nil, c.eitherNarrows(f1, t1, f2)
 			}
+			if isTrue(x.Y) {
+				// a && true is false where a is.
+				return t1, f1
+			}
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
@@ -1918,6 +1961,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			c.pop()
 			if neverCompletes(x.Y) {
 				return c.eitherNarrows(t1, f1, t2), nil // never false
+			}
+			if lit, ok := x.Y.(*syntax.BoolLit); ok && !lit.Val {
+				return t1, f1 // a || false is true where a is
 			}
 			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
@@ -2159,17 +2205,23 @@ func (c *Checker) safeEquals(t types.Type) bool {
 
 // contractNarrows returns the smart casts that the contract of a call's
 // function implies when it returns a value (1: true, 0: false, -1: at
-// all): the arguments it says aren't null, or are of a type, then.
+// all, 2: not null, 3: null): the arguments it says aren't null, or are
+// of a type, then.
 func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 	f := x.Sym
 	if f == nil || len(f.Implies) == 0 {
 		return nil
 	}
 	var out []narrow
+	// Each effect builds on those before it: myRequireAnd(x is B, x is
+	// C) makes x a B & C.
+	c.push()
+	defer c.pop()
 	for _, e := range f.Implies {
 		if e.Returns != returns {
 			continue
 		}
+		c.scope.narrows = out
 		var arg syntax.Expr
 		if e.Param < 0 {
 			m, ok := x.Fun.(*syntax.Member)
@@ -2354,7 +2406,29 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 		k.t = k.t.NonNull()
 		n = append(append(n, k), c.impliedBy(k)...)
 	}
-	return n
+	// f(x) isn't null: what f's returnsNotNull() implies, as in
+	// notEqualsNull(nullWhenNotString(x)).
+	return append(n, c.callNonNull(x)...)
+}
+
+// callNonNull returns what call x not being null tells: what its
+// function's returnsNotNull() implies, as of a?.f(s) != null.
+func (c *Checker) callNonNull(x syntax.Expr) []narrow {
+	if call, ok := x.(*syntax.Call); ok {
+		return c.contractNarrows(call, 2)
+	}
+	return nil
+}
+
+// callNull returns what call x being null tells: what its function's
+// returns(null) implies. Not of a safe call, a?.f(s), which is null
+// where a is too.
+func (c *Checker) callNull(x syntax.Expr) []narrow {
+	call, ok := x.(*syntax.Call)
+	if !ok || safeCallOf(call) {
+		return nil
+	}
+	return c.contractNarrows(call, 3)
 }
 
 // safeCastNonNull returns what a as? T not being null tells: a is a T.
@@ -2473,6 +2547,52 @@ func signedIntLit(x syntax.Expr) bool {
 	return false
 }
 
+// intersectionView returns the type of an intersection t, of smart
+// casts, whose member or extension name a call or a property read on it
+// finds, where kc's
+// lookup in t itself wouldn't find it: a built-in type's, String's or
+// Int's, that none of its class types has, wherever it is in t, as
+// x.length after x is A and x is String, or of an Int & String x after
+// x is String and x is Int; and o.trim() of a String & T is a String,
+// not CharSequence.trim()'s CharSequence, but not o.compareTo(p) for
+// T : Comparable<T>, whose bound has it too. Of an intersection whose
+// first type is a built-in one without name, its first class type with
+// it: x.foo() after x is A and x is Int.
+func (c *Checker) intersectionView(t types.Type, name string) (types.Type, bool) {
+	if !t.IsIntersection() {
+		return types.InvalidType, false
+	}
+	bounds := t.Param().Bounds
+	others := func(i int) bool {
+		for j, b := range bounds {
+			if j != i && !finalBuiltin(b.NonNull()) && c.hasNamed(b, name) {
+				return true
+			}
+		}
+		return false
+	}
+	builtin := func(b types.Type) bool {
+		// String's length and Char's code are built-in properties.
+		return b == types.StringType && name == "length" || b == types.CharType && name == "code" || c.builtinNamed(b, name)
+	}
+	for i, b := range bounds {
+		if b = b.NonNull(); finalBuiltin(b) && builtin(b) {
+			if others(i) {
+				break
+			}
+			return b, true
+		}
+	}
+	if first := bounds[0].NonNull(); finalBuiltin(first) && !builtin(first) {
+		for _, b := range bounds[1:] {
+			if b.K == types.Class && c.hasNamed(b, name) {
+				return b.NonNull(), true
+			}
+		}
+	}
+	return types.InvalidType, false
+}
+
 // callReceiver checks the receiver of a member call, expecting want. A
 // nullable receiver can be called without ?. if extensions for nullable
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
@@ -2494,30 +2614,11 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		return types.InvalidType, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)
-	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
-		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
-		// A String & T, of a smart cast of a T, has String's built-in
-		// members and extensions, as the String did: o.trim() is a
-		// String, not CharSequence.trim()'s CharSequence. Not a name
-		// T's bounds have too: o.compareTo(p) for T : Comparable<T>.
-		st := types.StringType
+	if b, ok := c.intersectionView(t, fn.Name); ok {
 		if types.MayBeNull(t) {
-			st = st.Nullable()
+			b = b.Nullable()
 		}
-		fn.X, t = checked(fn.X, st), st
-	}
-	if t.IsIntersection() && finalBuiltin(t.Param().Bounds[0].NonNull()) && !c.builtinNamed(t.Param().Bounds[0].NonNull(), fn.Name) {
-		// An Int & A of a smart cast has A's members too: x.foo() after
-		// x is A and x is Int.
-		for _, b := range t.Param().Bounds[1:] {
-			if b.K == types.Class && c.hasNamed(b, fn.Name) {
-				if types.MayBeNull(t) {
-					b = b.Nullable()
-				}
-				fn.X, t = checked(fn.X, b), b
-				break
-			}
-		}
+		fn.X, t = checked(fn.X, b), b
 	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
@@ -2617,6 +2718,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if cls := c.classRef(x.X); cls != nil && (objectOf(cls) == nil || c.hasStatic(cls, x.Name)) {
 		return c.staticField(x, cls)
 	}
+	c.rootObject(x.X)
 	if id, ok := x.X.(*syntax.Ident); ok && !c.isVar(id.Name) {
 		// A constant of a built-in type's companion: Int.MAX_VALUE.
 		if obj := c.builtinCompanion(id.Name); obj != nil && c.hasStatic(obj, x.Name) {
@@ -2659,6 +2761,12 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return types.InvalidType
 	}
 	xt = c.castView(x.X, xt, x.Name)
+	if b, ok := c.intersectionView(xt, x.Name); ok {
+		if types.MayBeNull(xt) {
+			b = b.Nullable()
+		}
+		x.X, xt = checked(x.X, b), b
+	}
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {
 		// Only an extension property for nullable receivers takes it.
@@ -3343,6 +3451,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if cls := c.classRef(fn.X); cls != nil && (objectOf(cls) == nil || len(javaStatics(cls, fn.Name)) > 0) {
 			return c.staticCall(x, fn, cls, want, sink)
 		}
+		c.rootObject(fn.X)
 		if s, ok := fn.X.(*syntax.Super); ok {
 			c.superSafeCall(fn)
 			return c.superCall(x, fn, s, want, sink)
@@ -3381,8 +3490,9 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			return c.invoke(x, want, sink)
 		}
 		rw := noWant
-		if types.BitwiseOps[fn.Name] && want.Flex().NonNull() == types.LongType && intLitExpr(fn.X) && !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return !intLitExpr(a) }) {
-			// As 1 + 2, 1 shl 31 where a Long is expected is a Long's.
+		if intLiteralOps[fn.Name] && want.Flex().NonNull() == types.LongType && literalArith(fn.X) && !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return !literalArith(a) }) {
+			// As 1 + 2, 1 shl 31, 1.plus(2) and (2 + 2 * 3).inv() where
+			// a Long is expected are a Long's. Not 1.inc().
 			rw = types.LongType
 		}
 		rt, nullExts, ok := c.callReceiver(fn, rw)

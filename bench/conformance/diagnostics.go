@@ -468,8 +468,44 @@ func (dt *diagTest) switchedOff(d diag) bool {
 		if check.IsNamed(d.msg, name) {
 			return true
 		}
+		if re := offNames[name]; re != nil && re.MatchString(d.msg) {
+			return true
+		}
 	}
 	return false
+}
+
+// offNames maps the names of errors that the tests' DIAGNOSTICS
+// directives switch off to kc's messages for them, beyond those that
+// check.IsNamed knows, which are the errors @Suppress may silence.
+var offNames = map[string]*regexp.Regexp{}
+
+func init() {
+	for n, m := range map[string]string{
+		"ABSTRACT_SUPER_CALL":                                `^abstract member cannot be accessed directly`,
+		"CANNOT_CHECK_FOR_ERASED":                            `^cannot check for instance of erased type`,
+		"CONFLICTING_PROJECTION":                             `^projection is conflicting with variance`,
+		"EXPOSED_PARAMETER_TYPE":                             ` function exposes its .* parameter type `,
+		"EXPOSED_SUPER_INTERFACE":                            ` sub-interface exposes its .* supertype `,
+		"GETTER_VISIBILITY_DIFFERS_FROM_PROPERTY_VISIBILITY": `^getter visibility must be the same as property visibility`,
+		"INCOMPATIBLE_MODIFIERS":                             `^modifier '.*' is incompatible with `,
+		"INFIX_MODIFIER_REQUIRED":                            `^'infix' modifier is required on `,
+		"MANY_COMPANION_OBJECTS":                             `^only one companion object is allowed in a class`,
+		"MULTIPLE_LABELS_ARE_FORBIDDEN":                      `^multiple labels are forbidden`,
+		"NON_ASCENDING_VERSION_ANNOTATION":                   `^version .* is lower than the earlier `,
+		"NON_LOCAL_RETURN_NOT_ALLOWED":                       ` here: it may contain non-local returns`,
+		"NULLABLE_INLINE_PARAMETER":                          `^inline-parameter .* must not be nullable`,
+		"RECURSION_IN_INLINE":                                `^inline function .* cannot be recursive`,
+		"SUPERTYPES_FOR_ANNOTATION_CLASS":                    `^annotation class cannot have supertypes`,
+		"TYPE_PARAMETER_AS_REIFIED":                          `^cannot use .* as reified type parameter`,
+		"TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM":         `^type checking has run into a recursive problem`,
+		"TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM_ERROR":   `^type checking has run into a recursive problem`,
+		"UNDERSCORE_IS_RESERVED":                             `^names _, __, ___, \.\.\. are reserved in Kotlin`,
+		"UNSUPPORTED":                                        `^unresolved or unsupported type: dynamic$`,
+		"VARIABLE_EXPECTED":                                  `^variable expected`,
+	} {
+		offNames[n] = regexp.MustCompile(m)
+	}
 }
 
 func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {

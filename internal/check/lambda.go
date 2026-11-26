@@ -537,10 +537,21 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		syms = append([]*types.VarSym{x.Recv}, syms...)
 	}
 	syms = append(x.Ctx[:len(x.Ctx):len(x.Ctx)], syms...)
+	unkeep := func() {}
 	if !x.Once {
 		// As in a loop, the vars it assigns lose their narrowing at its
-		// start: it may run again after it assigns them.
-		c.reset(c.watchedVars(x.Body))
+		// start: it may run again after it assigns them. As K2 has it, a
+		// lambda that may run again is a loop: those it only increments,
+		// decrements or assigns with op= keep theirs (see loopVars).
+		var vars, aliased []*types.VarSym
+		vars, aliased, unkeep = c.loopVars(x.Body)
+		if !x.InPlace && (!x.Inline || x.Crossinline) {
+			// One that may run at any time ends the aliases of those it
+			// assigns with op= too, which K2 counts as assignments there,
+			// but not ++ and --, which it doesn't.
+			aliased = slices.DeleteFunc(aliased, func(v *types.VarSym) bool { return !onlyIncDec(v.Name, []any{x.Body}, true) })
+		}
+		c.resetEntry(vars, aliased)
 	}
 	if !x.Inline {
 		// An inlined lambda's body is part of the enclosing function: return,
@@ -620,6 +631,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		// return@map listOf(it); listOf() }.
 		c.tailBelowReturns(tail, bt, lr.types)
 	}
+	unkeep()
 	c.state = saved
 	// As in Kotlin, the vars declared outside it that it assigns lose the
 	// smart casts they have where it is, though it may run in place and

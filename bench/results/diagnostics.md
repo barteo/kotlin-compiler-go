@@ -149,14 +149,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 193 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 130 |
-| `type mismatch: inferred type is _ but _ was expected` | 112 |
+| `unresolved reference: _` | 137 |
+| `type mismatch: inferred type is _ but _ was expected` | 87 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 70 |
-| `unresolved or unsupported type: _` | 28 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 33 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `no function '_' takes n arguments` | 20 |
-| `cannot use '_' as reified type parameter` | 15 |
+| `unresolved or unsupported type: _` | 15 |
 | `variable '_' must be initialized` | 15 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
@@ -168,18 +167,19 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' overrides nothing` | 8 |
-| `'_' sub-interface exposes its '_' supertype '_'` | 7 |
 | `missing return statement in function '_'` | 7 |
-| `multiple labels are forbidden` | 7 |
-| `operator '_' cannot be applied to Any?` | 7 |
 | `unexpected '_'` | 7 |
-| `'_' modifier is required on '_'` | 6 |
 | `ambiguous call: n candidates for '_' take (_)` | 6 |
+| `cannot use '_' as reified type parameter` | 6 |
 | `captured values cannot be initialized because of possible reassignments` | 6 |
-| `names _, __, ___, ... are reserved in Kotlin` | 6 |
 | `this lambda must return a value of type _` | 6 |
 | `val cannot be reassigned` | 6 |
-| *98 more* | |
+| `'_' modifier is required on '_'` | 5 |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 5 |
+| `'_' is not allowed outside a loop` | 4 |
+| `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
+| `inheriting an annotation class is prohibited` | 4 |
+| *79 more* | |
 
 ## Unsupported features
 
@@ -191,7 +191,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3550 of the 3667 warnings the tests expect (96.8%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3553 of the 3667 warnings the tests expect (96.9%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -200,7 +200,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
-| `USELESS_IS_CHECK` | 127 | 118 | 0 |
+| `USELESS_IS_CHECK` | 127 | 119 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 98 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
@@ -216,7 +216,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 60 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 47 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 49 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
 | `USELESS_ELVIS` | 44 | 43 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |

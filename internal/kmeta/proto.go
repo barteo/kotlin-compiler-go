@@ -174,8 +174,8 @@ var ComposeMetadata = PluginData{Plugin: "androidx.compose.compiler.plugins.kotl
 // Implies is a contract's returns(value) implies (p != null), (p is T)
 // or (p) effect: if the function returns Returns, the parameter at Param
 // (-1: the extension receiver) isn't null, is an Is if that isn't nil, or
-// is true if Holds. Returns is ReturnsTrue, ReturnsFalse, ReturnsAny,
-// for returns(), or ReturnsNotNull, for returnsNotNull().
+// is true if Holds. Returns is ReturnsTrue, ReturnsFalse, ReturnsNull,
+// ReturnsAny, for returns(), or ReturnsNotNull, for returnsNotNull().
 type Implies struct {
 	Returns, Param int
 	Is             *Type
@@ -187,6 +187,7 @@ type Implies struct {
 const (
 	ReturnsTrue    = 0
 	ReturnsFalse   = 1
+	ReturnsNull    = 2
 	ReturnsAny     = -1
 	ReturnsNotNull = -3
 )
@@ -827,7 +828,7 @@ func (s scope) contract(msg []byte) ([]InPlace, []Implies) {
 			case 2:
 				x := s.expression(e.bytes())
 				param = x.param
-				if x.constant == ReturnsTrue || x.constant == ReturnsFalse {
+				if x.constant == ReturnsTrue || x.constant == ReturnsFalse || x.constant == ReturnsNull {
 					returns = x.constant
 				} else {
 					returns = -2

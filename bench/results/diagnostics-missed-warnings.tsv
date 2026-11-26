@@ -101,9 +101,6 @@ tests/when/guard/diverseBooleanExpression.kt	diverseBooleanExpression.kt:33	IMPO
 testsWithStdLib/contracts/dsl/errors/illegalEqualsCondition.kt	illegalEqualsCondition.kt:21	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/contracts/dsl/errors/unlabeledReceiver.kt	unlabeledReceiver.kt:9	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/contracts/fromSource/good/callsInPlace/infiniteLoop.kt	infiniteLoop.kt:9	WRONG_INVOCATION_KIND	missing-check
-testsWithStdLib/contracts/smartcasts/deeplyNested.kt	deeplyNested.kt:82	IMPOSSIBLE_IS_CHECK_WARNING	missing-check
-testsWithStdLib/contracts/smartcasts/deeplyNested.kt	deeplyNested.kt:93	IMPOSSIBLE_IS_CHECK_WARNING	missing-check
-testsWithStdLib/contracts/smartcasts/deeplyNested.kt	deeplyNested.kt:98	USELESS_IS_CHECK	missing-check
 testsWithStdLib/contracts/smartcasts/nullabilitySmartcastWhenNullability.kt	nullabilitySmartcastWhenNullability.kt:42	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/contracts/smartcasts/nullabilitySmartcastWhenNullability.kt	nullabilitySmartcastWhenNullability.kt:52	SENSELESS_COMPARISON	missing-check
 testsWithStdLib/experimental/annotation.kt	usage-none.kt:10	OPT_IN_USAGE	missing-check

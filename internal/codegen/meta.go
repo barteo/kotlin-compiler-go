@@ -586,6 +586,8 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 			im.Returns = kmeta.ReturnsFalse
 		case 2:
 			im.Returns = kmeta.ReturnsNotNull
+		case 3:
+			im.Returns = kmeta.ReturnsNull
 		}
 		if e.Is != nil {
 			im.Is = s.typ(*e.Is)
