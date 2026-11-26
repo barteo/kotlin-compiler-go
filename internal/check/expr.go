@@ -158,6 +158,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
+			if sym.Kind == types.Prop && sym.Owner != nil && c.cls != nil && isJavaClass(sym.Owner) && c.memberProp(c.cls, x.Name) == sym {
+				c.shadowedField(c.cls, sym, x.P) // a of this
+			}
 			if v, imported := c.userVars[x.Name]; imported && v == sym {
 				c.importAmbiguity(x)
 			}
@@ -2745,6 +2748,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		x.Prop = instanceField(cls, x.Name)
 		if x.Prop.Protected && !c.protectedVia(x.Prop.Owner, x.X) {
 			c.invisibleProp(x.P, x.Prop)
+		} else {
+			c.shadowedField(cls, x.Prop, x.P)
 		}
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:

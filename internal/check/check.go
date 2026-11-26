@@ -4207,6 +4207,19 @@ func (c *Checker) ctorScope(cls *types.ClassSym) *scope {
 	return s
 }
 
+// inlinePropAccessor reports whether d is an accessor of an inline property,
+// or an accessor marked inline.
+func inlinePropAccessor(d *syntax.FunDecl) bool {
+	if d.AccessorOf == nil {
+		return false
+	}
+	pd, ok := d.AccessorOf.Decl.(*syntax.PropDecl)
+	if !ok {
+		return false
+	}
+	return pd.Inline || d == pd.Getter && pd.InlineGetter || d == pd.Setter && pd.InlineSetter
+}
+
 // mainArgs reports whether a function's only parameter is an
 // Array<String>, as main's args.
 func mainArgs(sym *types.FunSym) bool {
@@ -4222,6 +4235,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.parcelBody(d, cls)
 	if d.Inline {
 		defer c.inlineBodyChecks(d, cls)
+	} else if inlinePropAccessor(d) {
+		// An inline property's accessor: its parameter, a setter's
+		// value, is an inline parameter.
+		defer c.inlineUsage(d)
 	}
 	sym := d.Sym
 	s := &scope{}
