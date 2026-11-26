@@ -1887,6 +1887,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 					k.t = k.t.NonNull()
 				}
 				n = append([]narrow{k}, c.impliedBy(k)...)
+			} else if ok && k.t.K == types.Invalid && !k.t.D {
+				k.t = errorNotNull // see reportedError
+				n = []narrow{k}
 			}
 			// a?.b != null, and a?.b == c where c isn't null, mean that a
 			// isn't null.
@@ -2414,6 +2417,9 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 	if ok && types.MayBeNull(k.t) {
 		k.t = k.t.NonNull()
 		n = append(append(n, k), c.impliedBy(k)...)
+	} else if ok && k.t.K == types.Invalid && !k.t.D {
+		k.t = errorNotNull // see reportedError
+		n = append(n, k)
 	}
 	// f(x) isn't null: what f's returnsNotNull() implies, as in
 	// notEqualsNull(nullWhenNotString(x)).
@@ -2617,7 +2623,10 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	}
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
-		return t, nil, false
+		if reportedError(t) {
+			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+		}
+		return types.InvalidType, nil, false
 	}
 	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
 		return types.InvalidType, nil, false
@@ -2764,6 +2773,10 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	}
 	xt := c.fixedStub(c.declaredIfNull(x.X, c.value(x.X, noWant)))
 	if xt.K == types.Invalid {
+		if reportedError(xt) {
+			c.errorf(x.P, "unresolved reference: %s", x.Name)
+			return types.InvalidType
+		}
 		return xt
 	}
 	if c.unfixedReceiver(x.X, xt, x.Name, x.P) {

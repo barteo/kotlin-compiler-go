@@ -484,7 +484,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			syms = append(syms, p.Sym)
 		}
 	case w.recover:
-		x.It = &types.VarSym{Name: "it", Type: types.InvalidType, Kind: types.Param}
+		// The lambda of a call without a candidate, unresolved or none
+		// of whose candidates take it, has no expected type, and so, as
+		// in K2, no implicit parameter: it in l.unresolved { it } is
+		// unresolved.
 	case w.known && len(params) == 1:
 		x.It = &types.VarSym{Name: "it", Type: params[0], Kind: types.Param}
 		if params[0] == cyclicParamType && ok && len(c.errs) == errs0 {

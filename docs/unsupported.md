@@ -661,10 +661,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Without an expected type, a reference to a generic function whose
   type parameters its receiver's type doesn't give (`Box<Int>::first`
   for `fun <T> Box<T>.first()` is fine) is an error.
-- A value of an error type (an unresolved name's, or a call's that
-  failed) has members without errors where K2 reports some of them
-  unresolved, as members of a variable of such a type smart-cast to
-  non-null.
+- A value of an error type has members without errors where K2
+  reports some of them unresolved: an element of an array of such a
+  type, or a property whose delegate has no `getValue`. (The members
+  of such a value smart-cast to non-null, or of an inner class
+  constructed without an outer instance, are reported.)
 - An overload whose parameter's type `kc` couldn't resolve isn't a
   candidate for a call, which K2 finds ambiguous between it and the
   others: `f1(l)` for an `f1(l: Unresolved<T>)` and an

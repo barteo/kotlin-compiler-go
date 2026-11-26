@@ -1182,12 +1182,33 @@ func (c *Checker) chainKeyOf(x syntax.Expr) (narrow, bool) {
 // notNullOf returns the smart cast of stable value x to its type without
 // null, which holds where it isn't null.
 func (c *Checker) notNullOf(x syntax.Expr) []narrow {
-	if k, ok := c.narrowKeyOf(x); ok && k.t.K != types.Invalid {
-		k.t = k.t.NonNull()
+	if k, ok := c.narrowKeyOf(x); ok {
+		if k.t.K == types.Invalid {
+			// An error type smart-cast to non-null, whose members K2
+			// reports unresolved (see reportedError).
+			k.t = errorNotNull
+		} else {
+			k.t = k.t.NonNull()
+		}
 		return []narrow{k}
 	}
 	return nil
 }
+
+// errorNotNull is an error type whose members are reported unresolved
+// (see reportedError): K2's ConeErrorType & Any of an error type
+// smart-cast to non-null, or an error type of another diagnostic than an
+// unresolved name's, as that of Outer.Inner() without an outer instance.
+var errorNotNull = types.Type{K: types.Invalid, D: true}
+
+// reportedError reports whether t is an error type whose members are
+// reported unresolved, as K2 reports them on a receiver that isn't the
+// error type of a name it couldn't resolve (ErrorNodeDiagnosticCollector-
+// Component's cannotBeResolved): an error type smart-cast to non-null,
+// xmlText.value for a val xmlText = unresolved() after xmlText == null
+// is false, or the value of an inner class's constructor called without
+// an outer instance.
+func reportedError(t types.Type) bool { return t.K == types.Invalid && t.D }
 
 // assignedVal narrows a val property that an initializer block or a
 // constructor assigns, x = v, to v's type, as assignedVar a local var.

@@ -3403,7 +3403,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		if outer == nil {
 			c.errorf(p, "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
 			c.args(x, nil)
-			return types.InvalidType
+			return errorNotNull // see reportedError
 		}
 		return c.innerConstruct(x, cls, outer, ot, p, want, sink)
 	}
