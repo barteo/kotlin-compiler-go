@@ -49,20 +49,28 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 			}
 		}
 	}
-	for _, cs := range [][]types.Type{tv.lower, tv.upper} {
+	coerced := tv.coercedUnits
+	for i, cs := range [][]types.Type{tv.lower, tv.upper} {
 		for _, t := range cs {
 			if w := s.unfixedVar(t); w != nil && len(w.lits) > 0 && len(w.lower) == 0 {
 				continue // its literals, passed on to tv's (see fix)
 			}
+			if i == 0 && coerced > 0 && t == types.UnitType {
+				// The Unit of an empty lambda isn't an input, as in K2:
+				// expect {} of expect(block: () -> T) infers a Unit that
+				// no input has.
+				coerced--
+				continue
+			}
 			t = s.apply(t)
-			if t.K == types.Invalid || t.HasVars() || t.Has(hasStar) || t.Has(s.outOfScope) || t.K == types.Nothing && !t.N {
+			if t.K == types.Invalid || t.HasVars() || t.Has(hasStar) || t.Has(s.outOfScope) {
 				return true
 			}
 			inputs = append(inputs, t)
 		}
 	}
 	if len(inputs) == 0 {
-		return true
+		return tv.coercedUnits == 0
 	}
 	for _, t := range inputs {
 		if s.c.subtype(t, val) && s.c.subtype(val, t) {

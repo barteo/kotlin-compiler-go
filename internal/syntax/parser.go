@@ -2279,6 +2279,8 @@ func (p *parser) annotationArgs(i, end int) []AnnotationArg {
 			switch p.toks[i].Kind {
 			case LPAREN, LBRACK, LBRACE:
 				i = p.matching(i)
+			case LT:
+				i = p.typeArgsEnd(i) // A<B, C>(x): its commas aren't the arguments'
 			}
 			i++
 		}
@@ -2287,6 +2289,28 @@ func (p *parser) annotationArgs(i, end int) []AnnotationArg {
 		i++ // the comma
 	}
 	return args
+}
+
+// typeArgsEnd returns the index of the > that closes the type arguments of
+// a call at the < at token i, or i if they aren't (see typeArgsAhead).
+func (p *parser) typeArgsEnd(i int) int {
+	saved := p.i
+	p.i = i
+	ahead := p.typeArgsAhead()
+	p.i = saved
+	if !ahead {
+		return i
+	}
+	for j, depth := i, 0; ; j++ {
+		switch p.toks[j].Kind {
+		case LT:
+			depth++
+		case GT:
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+	}
 }
 
 // AnnotationArgToks returns the tokens of an annotation's argument that

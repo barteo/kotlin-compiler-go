@@ -365,6 +365,9 @@ type Checker struct {
 	// arguments for a parameter whose type is a type parameter (see
 	// markRecvParam).
 	recvParamLambdas map[*syntax.Lambda]bool
+	// noInferLambdas are the lambdas passed for @NoInfer parameters, whose
+	// declared parameter types don't constrain the call's variables.
+	noInferLambdas map[*syntax.Lambda]bool
 	// stubDepth is the number of stubInference runs in progress.
 	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
@@ -1548,11 +1551,28 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
-	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 && ref.Args != nil {
-		// A local class of a generic function, Local<D>::f: kotlinc wants
-		// the type arguments of the type parameters it captures too.
-		c.errorf(ref.P, "%s expected for class %s", countArgs(len(ps)+len(hidden)), cls.DisplayName())
-		return types.InvalidType
+	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 {
+		// A local class on a callable reference's left side, Local::f:
+		// kotlinc 2.4 wants type arguments for its own type parameters
+		// and those it captures of the classes around it, not of the
+		// functions, and takes the rest as in scope.
+		n := len(ps)
+		for _, a := range hidden {
+			if p := a.T.Param(); p != nil {
+				if _, ok := p.Owner.(*types.ClassSym); ok {
+					n++
+				}
+			}
+		}
+		if len(ref.Args) != n {
+			c.errorf(ref.P, "%s expected for class %s", countArgs(n), cls.DisplayName())
+			return types.InvalidType
+		}
+		if n > len(ps) {
+			r := *ref
+			r.Args = ref.Args[:len(ps)]
+			ref = &r
+		}
 	}
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
@@ -1862,15 +1882,22 @@ func (c *Checker) declare() {
 			} else if _, dup := c.pkg.Aliases[d.Name]; dup {
 				c.errorf(d.P, "redeclaration: typealias %s", d.Name)
 			}
-			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
+			// The name stays the first declaration's, as kotlinc resolves it.
+			if a := c.declareAlias(d, nil); c.pkg.Aliases[d.Name] == nil && c.pkg.Classes[d.Name] == nil {
+				c.pkg.Aliases[d.Name] = a
+			}
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
+			_, dup := c.pkg.Classes[d.Name]
+			dup = (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>"
+			if dup {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
 				c.errorf(d.P, "modifier 'companion' is only allowed on objects in classes")
 			}
-			c.pkg.Classes[d.Name] = c.declareClass(d, prefix+d.Name, nil)
+			if sym := c.declareClass(d, prefix+d.Name, nil); !dup {
+				c.pkg.Classes[d.Name] = sym
+			}
 			c.u.builtinNames = c.u.builtinNames || kotlinTypes[d.Name]
 		}
 	}
@@ -2254,6 +2281,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	c.resolveBounds(d.TypeParams)
 	if d.Recv != nil {
 		c.declareRecv(d)
+		sym.NoInferRecv = noInfer(d.Recv)
 	}
 	c.declareContexts(d, sym)
 	c.memberModifiers(d.Modifiers, owner, d.P, "function '"+d.Name+"'")
@@ -4184,6 +4212,19 @@ func (c *Checker) ctorScope(cls *types.ClassSym) *scope {
 	return s
 }
 
+// inlinePropAccessor reports whether d is an accessor of an inline property,
+// or an accessor marked inline.
+func inlinePropAccessor(d *syntax.FunDecl) bool {
+	if d.AccessorOf == nil {
+		return false
+	}
+	pd, ok := d.AccessorOf.Decl.(*syntax.PropDecl)
+	if !ok {
+		return false
+	}
+	return pd.Inline || d == pd.Getter && pd.InlineGetter || d == pd.Setter && pd.InlineSetter
+}
+
 // initScope makes the primary constructor parameters visible in property
 // initializers and init blocks, but for those that declare a property:
 // there, as kotlinc resolves it, the name is the property's, which reads
@@ -4222,6 +4263,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.parcelBody(d, cls)
 	if d.Inline {
 		defer c.inlineBodyChecks(d, cls)
+	} else if inlinePropAccessor(d) {
+		// An inline property's accessor: its parameter, a setter's
+		// value, is an inline parameter.
+		defer c.inlineUsage(d)
 	}
 	sym := d.Sym
 	s := &scope{}

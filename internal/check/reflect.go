@@ -134,8 +134,11 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 			}
 		}
 	}
+	// A local class that captures type parameters is checked as written
+	// even without arguments (see applyTypeArgs).
+	_, hidden := localOwnParams(c.lookupClass(ref.Name))
 	old, oldLit := c.refLHS, c.classLitLHS
-	c.refLHS, c.classLitLHS = callable && written, true
+	c.refLHS, c.classLitLHS = callable && (written || len(hidden) > 0), true
 	t := c.resolveType(ref)
 	c.refLHS, c.classLitLHS = old, oldLit
 	if t.K == types.Invalid || callable {

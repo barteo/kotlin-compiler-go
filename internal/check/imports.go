@@ -48,12 +48,27 @@ func (c *Checker) checkMemberImport(mi memberImport) {
 		return
 	}
 	switch {
+	case mi.owner.Object && !c.importedStatic(mi) && c.inheritedPrivate(mi.owner, mi.name) != nil:
+		p := c.inheritedPrivate(mi.owner, mi.name)
+		c.errorf(mi.p, "cannot access '%s': it is private in '%s'", mi.name, p.Owner.DisplayName())
 	case c.importedStatic(mi) || mi.owner.Object && c.objectHas(mi.owner, mi.name):
 	case c.objectHas(mi.owner, mi.name):
 		c.errorf(mi.p, "cannot import '%s'. Functions and properties can only be imported from packages or objects", mi.name)
 	default:
 		c.errorf(mi.p, "unresolved import: %s", mi.path)
 	}
+}
+
+// inheritedPrivate returns the private property of a supertype of cls
+// that is all cls has of the name: an object doesn't inherit it, so it
+// can't be imported from the object.
+func (c *Checker) inheritedPrivate(cls *types.ClassSym, name string) *types.VarSym {
+	p := c.userProp(cls, name)
+	if p == nil || p.Owner == nil || p.Owner == cls || !propNotInherited(p, cls) || c.memberProp(cls, name) != nil ||
+		len(c.javaMethods(cls, name)) > 0 || len(memberExtProps(cls, name)) > 0 || len(memberExtMethods(cls, name)) > 0 {
+		return nil
+	}
+	return p
 }
 
 // importedStatic reports whether an imported member is a static field,

@@ -1039,6 +1039,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		case x.Getter != nil && !c.javaSetterVisible(x.Setter, x.X):
 			c.errorf(x.P, invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
 			return t, false
+		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class && kotlinGetter(x.Getter):
+			// A Kotlin override of a Java getter gives the property its
+			// type, which the value must fit too: as in K2, a String
+			// one with Java's setSomething(Object) takes no 1.
+			return t, true
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class:
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.
@@ -1086,6 +1091,13 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	}
 	c.errorf(x.Pos(), "variable expected")
 	return types.InvalidType, false
+}
+
+// kotlinGetter reports whether g, the getter of a synthetic property, is
+// a Kotlin function of the program.
+func kotlinGetter(g *types.FunSym) bool {
+	_, ok := g.Decl.(*syntax.FunDecl)
+	return ok && g.Owner != nil && !isJavaClass(g.Owner)
 }
 
 // extSetterProjectedOut reports whether generic extension property x's

@@ -74,9 +74,16 @@ func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
 			}
 		}
 	}
-	if i := len(ref.Contexts); ref.Recv != nil && t.IsExtFunc() && t.A != nil && i < t.A.Len() {
+	if n := len(ref.Contexts); ref.Ret != nil && t.A != nil && (n > 0 || ref.Recv != nil && t.IsExtFunc()) {
+		// The function type's context parameters and receiver, its
+		// first arguments, carry the marker too.
+		if ref.Recv != nil && t.IsExtFunc() {
+			n++
+		}
 		args := slices.Clone(t.A.List)
-		args[i].T = args[i].T.WithMarkers(ms)
+		for i := 0; i < n && i < len(args); i++ {
+			args[i].T = args[i].T.WithMarkers(ms)
+		}
 		t.A = types.MakeArgs(args)
 	}
 	return t.WithMarkers(ms)

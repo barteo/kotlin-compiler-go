@@ -75,3 +75,17 @@ fun inlineAssigns(): Int {
         E.C -> 3
     }
 }
+
+fun later(block: () -> Unit) {}
+
+fun assignedLaterInLambda(e0: E) {
+    var e: E = e0
+    if (e == E.A) return
+    if (e == E.C) return
+    later {
+        val n = when (e) { // ERROR 'when' expression must be exhaustive, add necessary 'else' branch
+            E.B -> 1
+        }
+        e = E.A
+    }
+}

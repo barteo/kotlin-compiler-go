@@ -1056,6 +1056,14 @@ func (c *Checker) resolveImports() {
 		if cls != nil || ta != nil {
 			classifiers[alias] = append(classifiers[alias], imp.P)
 		}
+		if ta != nil && cls == nil && len(fs) == 0 && v == nil && len(gs) == 0 {
+			// As kotlinc 2.4 (ForbidTypeAliasWithMissingDependencyType),
+			// a library's typealias whose class isn't on the class path
+			// imports nothing, though its uses are still the alias.
+			if ac := c.aliasClass(ta); ac != nil && ac.Missing {
+				c.errorf(imp.P, "unresolved import: %s", imp.Path)
+			}
+		}
 		if cls != nil || ta != nil || len(fs) > 0 || v != nil || len(gs) > 0 {
 			continue
 		}
@@ -1637,6 +1645,14 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 			// import foo.foo as invoke doesn't make foo one of 42()'s
 			// next to an operator Int.invoke.
 			out = slices.DeleteFunc(out, func(cl callee) bool { return !cl.f.Operator })
+		} else if x != nil && len(out) > 0 && (x.Operator || x.Infix && !slices.ContainsFunc(out, func(cl callee) bool { return cl.f.Infix })) {
+			// A level whose candidates all lack the modifier gives way
+			// to the next, as in K2: a local fun Example.minus to a
+			// top-level operator one, for a - b.
+			if unfit == nil {
+				unfit = out
+			}
+			return nil
 		}
 		if x != nil && len(out) > 0 && !slices.ContainsFunc(out, func(cl callee) bool { return c.recvTakes(rt, cl.f.Recv) && c.mayTake(cl.f, x) }) {
 			if unfit == nil {
@@ -3214,7 +3230,14 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		c.value(x.Outer, noWant)
 	}
 	if cls.Inner && x.Outer == nil {
-		outer, ot := c.implicitOuter(cls.Outer, p)
+		// Outer.Inner(), qualified by a class, takes no implicit outer
+		// instance, even in Outer's code.
+		_, qualified := x.Fun.(*syntax.Member)
+		var outer syntax.Expr
+		var ot types.Type
+		if !qualified {
+			outer, ot = c.implicitOuter(cls.Outer, p)
+		}
 		if outer == nil {
 			c.errorf(p, "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
 			c.args(x, nil)

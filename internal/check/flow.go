@@ -695,7 +695,33 @@ func (c *Checker) aliasable(k narrow) bool {
 // positive smart casts (see varStable), not the values it isn't, nor the
 // smart casts of its properties.
 func (c *Checker) varUntouched(v *types.VarSym) bool {
-	return !isVar(v) || len(c.nestedAssigns[v]) == 0 && c.varStable(v, types.Type{})
+	return !isVar(v) || len(c.nestedAssigns[v]) == 0 && c.varStable(v, types.Type{}) && !c.frameAssignsVar(v)
+}
+
+// frameAssignsVar reports whether the outermost frame entered since local
+// var v's declaration that doesn't run in place assigns v, before the
+// code here or after it: the frame may run while it runs, as K2 has it,
+// so in myRunUnknown { when (x) { … }; x = E.A } the when knows nothing
+// of the values x isn't.
+func (c *Checker) frameAssignsVar(v *types.VarSym) bool {
+	found, depth := c.scope.find(v.Name)
+	if found != v {
+		return false
+	}
+	depth = c.pastInPlace(depth, v.Name)
+	if depth >= c.scope.depth || depth >= len(c.lambdas) {
+		return false
+	}
+	f := c.lambdas[depth]
+	var node any = f
+	if f.Body == nil {
+		if d, ok := c.classFrames[f]; ok {
+			node = d
+		} else if node = c.frameNodes[f]; node == nil {
+			return false
+		}
+	}
+	return len(c.assignsIn(node, v.Name)) > 0
 }
 
 // alias records that local v holds the value of k, as after val v = x,

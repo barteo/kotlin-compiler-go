@@ -274,10 +274,6 @@ own tests.
   yet or assigns another type. In a loop, `kc` is stricter: any
   assignment in a lambda the loop holds counts, `x++` among them,
   whatever type it assigns.
-- Two private classes or typealiases of one name in different files of
-  a package aren't reported as a `CLASSIFIER_REDECLARATION`, and each
-  file's uses resolve to its own, where K2 resolves them to the first
-  file's and reports them as invisible.
 - Two classes of one name on the class path, from different modules,
   are one class, the first, as in K2. A type in the other module's class
   files with another number of type arguments is a type of neither, so
@@ -353,6 +349,10 @@ methods, and `require`, `check`, `error` and `TODO` (which throws an
 (`listOf`, `mutableListOf`, `MutableList`), `map[key] = value`,
 `toTypedArray()` and `String.trim()` need the standard library. Use the
 Java classes directly for the rest. Also:
+
+- Unsigned literals (`1u`) are an error, as with `kotlinc`
+  (`UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH`): the unsigned
+  types are the standard library's.
 
 - Ranges work only in `for` loops and `in` checks; they aren't values
   (`val r = 1..10` needs `IntRange`).
@@ -597,7 +597,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
   `get`, `getOrDefault` and both `remove`s; others keep Java's, though
-  named arguments take Kotlin's parameter names.
+  named arguments take Kotlin's parameter names. Only the collection
+  class's own methods are mapped: one it inherits from a superclass
+  that isn't a collection, as `remove(Object)` of
+  `class A extends AImpl implements List<String>`, keeps Java's.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s

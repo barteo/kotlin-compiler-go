@@ -753,6 +753,9 @@ func (c *Checker) altAmbiguity(x syntax.Expr) bool {
 			ambiguous = ambiguous || q != prop && c.propApplies(q)
 		}
 	}
+	if !ambiguous && m != nil && prop != nil && m.X != nil {
+		ambiguous = c.inheritedContextAlt(c.classOf(m.X.Type().Flex().NonNull()), prop)
+	}
 	if ambiguous {
 		var name string
 		if m != nil {
@@ -764,6 +767,33 @@ func (c *Checker) altAmbiguity(x syntax.Expr) bool {
 		c.errorf(x.Pos(), "overload resolution ambiguity: %s", name)
 	}
 	return ambiguous
+}
+
+// inheritedContextAlt reports whether cls inherits, besides prop, a
+// property of its name from a supertype unrelated to prop's class that
+// differs from it in its context parameters and applies here too: a.b of
+// a: I, interface I : First, Second, for First's context(a: A) val b and
+// Second's context(a: Any) val b, as K2 has it.
+func (c *Checker) inheritedContextAlt(cls *types.ClassSym, prop *types.VarSym) bool {
+	if cls == nil || prop.Owner == nil || prop.Owner.External {
+		return false
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s.External || s == prop.Owner || s.IsSubclassOf(prop.Owner) || prop.Owner.IsSubclassOf(s) {
+			return true
+		}
+		q := s.Prop(prop.Name)
+		if q == nil || q.Owner != s || sameContexts(q.Contexts, prop.Contexts) {
+			return true
+		}
+		if c.propApplies(q) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // contextRead checks read x, of type t, of a property with context

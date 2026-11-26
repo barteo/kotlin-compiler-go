@@ -235,9 +235,14 @@ func (c *Checker) cyclicAlias(cd *syntax.ClassDecl, walk func(*types.ClassSym) b
 		if a == nil || a.Decl == nil || c.u.aliasFile[a] == nil {
 			continue
 		}
+		d := a.Decl.(*syntax.TypeAliasDecl)
+		if st.T.C == cd.Sym {
+			// class A : S of typealias S = A.
+			c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
+			continue
+		}
 		for o := st.T.C.Outer; o != nil; o = o.Outer {
 			if o == cd.Sym || inherits(o, cd.Sym, walk, map[*types.ClassSym]bool{}) {
-				d := a.Decl.(*syntax.TypeAliasDecl)
 				c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
 				break
 			}
