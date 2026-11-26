@@ -70,6 +70,10 @@ type Options struct {
 	Java []JavaSource
 	// Warnings adds the checker's warnings to the diagnostics.
 	Warnings bool
+	// ExtraWarnings adds, with Warnings, those of kotlinc's extra
+	// checkers, which an IDE shows and kotlinc only with -Wextra: unused
+	// variables and parameters, redundant modifiers, unreachable code.
+	ExtraWarnings bool
 	// Complete asks what the code could name at a completion's caret:
 	// see Result.Completion.
 	Complete *Complete
@@ -234,7 +238,7 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 		}
 	}
 	copts := check.Options{
-		ExplicitAPI: mode, Warnings: opts.Warnings, Recovered: broken, JVMTarget: l.major, Probe: probe,
+		ExplicitAPI: mode, Warnings: opts.Warnings, ExtraWarnings: opts.Warnings && opts.ExtraWarnings, Recovered: broken, JVMTarget: l.major, Probe: probe,
 	}
 	if probe != nil {
 		// A completion needs the bodies of its file only: the other files'

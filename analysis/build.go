@@ -449,6 +449,9 @@ func merge(f *Fact, src Fact) {
 	if f.LambdaParameters == nil {
 		f.LambdaParameters, f.ImplicitParameter = src.LambdaParameters, src.ImplicitParameter
 	}
+	if f.LambdaReceiver == nil {
+		f.LambdaReceiver = src.LambdaReceiver
+	}
 	if f.ReturnTarget == nil {
 		f.ReturnTarget = src.ReturnTarget
 	}
@@ -579,6 +582,12 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Destructure:
 		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Sym != nil && x.Names == nil {
+			// The loop variable's declaration, VALUE_PARAMETER.
+			if p := b.node(el).ChildKind(psi.KindVALUE_PARAMETER); p.Valid() {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: p.ID()}, Fact{Role: "declaration", Symbol: b.sym(x.Sym)})
+			}
+		}
 		if x.Names != nil && x.Body != nil {
 			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
@@ -770,6 +779,7 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		if x.Recv != nil {
 			b.receivers[x.Recv] = el
+			f.LambdaReceiver = b.cv.typ(x.Recv.Type)
 		}
 		switch {
 		case x.Ref != nil:

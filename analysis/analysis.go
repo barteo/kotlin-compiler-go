@@ -285,6 +285,9 @@ type Fact struct {
 	// implicit it if ImplicitParameter is set.
 	LambdaParameters  []uint32 `json:"lambdaParameters,omitempty"`
 	ImplicitParameter bool     `json:"implicitParameter,omitempty"`
+	// LambdaReceiver is the type of a lambda's receiver, the this in its
+	// body, if it has one.
+	LambdaReceiver *Type `json:"lambdaReceiver,omitempty"`
 	// ReturnTarget is the function or lambda a return leaves;
 	// ReceiverTarget the class, function or lambda whose receiver a this
 	// is.
@@ -543,6 +546,7 @@ func copyFact(f Fact) Fact {
 	}
 	f.LambdaParameters = slices.Clone(f.LambdaParameters)
 	f.ReturnTarget = copyID(f.ReturnTarget)
+	f.LambdaReceiver = copyType(f.LambdaReceiver)
 	f.ReceiverTarget = copyID(f.ReceiverTarget)
 	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)
