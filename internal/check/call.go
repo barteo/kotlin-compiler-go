@@ -1406,6 +1406,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// a builder's, is inferred on its own (see endsWithCall).
 		sink = nil
 	}
+	if sink != nil && f.NoInferRet && ret.HasVars() {
+		// As K2, a result annotated @NoInfer, as filterIsInstance's
+		// List<@NoInfer R>, doesn't take part in the inference of the
+		// call it is an argument of: bar(x.filterIsInstance(), y)
+		// doesn't infer R.
+		sink = nil
+	}
 	if sink != nil {
 		if c.afterOpenLambda(sink, x) && c.nestedInputs(sys) {
 			// A lambda of the call this one is an argument of, written

@@ -329,7 +329,9 @@ func (c *Checker) missingDependencies() {
 			}
 			access(p, x.T, f.Ret, recv, params)
 			var dispatch *types.ClassSym
-			if m, ok := x.Fun.(*syntax.Member); ok && m.X != nil && !f.Ext {
+			if m, ok := x.Fun.(*syntax.Member); ok && m.X != nil && (!f.Ext || anyMember[f.Name]) {
+				// Or the standard library's Any?.hashCode() and
+				// Any?.toString(), which stand for the members K2 calls.
 				dispatch = classOf(m.X.Type())
 			}
 			var ext *types.ClassSym

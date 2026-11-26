@@ -3238,6 +3238,8 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 {
 			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
 				return c.construct(x, cls, fn.P, want, sink)
+			} else if c.starCtorTiesFuns(name, cls, fs, x) {
+				c.errorf(fn.P, "overload resolution ambiguity: %s is a constructor and a function of the star imports", name)
 			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
@@ -3487,13 +3489,19 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 			return c.call(x, want, sink)
 		}
-		_, ok := c.extFuncVar(fn.Name)
+		ft, ok := c.extFuncVar(fn.Name)
 		if p := c.orderDependent; p != nil && p.Owner != nil {
 			c.warnf(fn.P, "IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT",
 				"the resolution result depends on the declaration order. This can lead to false-positive errors in the IDE. Specify the type of '%s' defined in '%s' explicitly", p.Name, p.Owner.DisplayName())
 		}
 		if (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
+			if rt := ft.Flex().NonNull(); ok && rt.Contexts() > 0 && len(x.Args)+1 == rt.A.Len()-1 {
+				// With an argument for each context parameter, x among
+				// them, which K2 doesn't support: "".f(1, true) for an
+				// f: context(String, Int) Boolean.() -> Unit.
+				c.errorf(fn.P, "unsupported contextual declaration call: '%s' takes its context arguments implicitly", fn.Name)
+			}
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
 			x.Fun, x.Args = id, append([]syntax.Expr{fn.X}, x.Args...)

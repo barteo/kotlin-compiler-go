@@ -2931,7 +2931,7 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
-			if seen[params] || javaRemoveAt(cls, f) || kotlinShaped(s, f) {
+			if seen[params] || javaRemoveAt(cls, f) || kotlinShaped(s, f) || irrelevantObjectImpl(cls, s, f) {
 				continue
 			}
 			// The program's overloads in one class are distinct even when
@@ -2965,6 +2965,63 @@ func cloneable(cls *types.ClassSym) bool {
 		return !found
 	})
 	return found
+}
+
+// declaredProtected replaces, among the methods ms of the class cls that
+// variable x is smart-cast to, the protected members of cls the code
+// can't call on a cls by Kotlin's rule with the members of x's declared
+// class of the same parameters that it can call, as K2, which drops
+// them, has the declared type's candidates too: b.foo(d, d) for b: B
+// smart-cast to C, in B's code, is B's foo(Derived, Derived), not C's
+// protected override of it.
+func (c *Checker) declaredProtected(x syntax.Expr, cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	d := c.declaredClass(x, cls)
+	if d == nil || d.External || cls.External || !cls.IsSubclassOf(d) || len(ms) == 0 {
+		return ms
+	}
+	out, cloned := ms, false
+	for _, f := range c.javaMethods(cls, ms[0].Name) {
+		if !protectedFun(f) || f.Owner == d || d.IsSubclassOf(f.Owner) || c.strictProtectedVia(f.Owner, cls) {
+			continue
+		}
+		if !cloned {
+			out, cloned = slices.Clone(ms), true
+		}
+		out = slices.DeleteFunc(out, func(g *types.FunSym) bool { return g == f })
+		key := paramKey(f)
+		for _, g := range c.javaMethods(d, f.Name) {
+			if paramKey(g) == key && c.funVisible(g) && (!protectedFun(g) || c.strictProtectedVia(g.Owner, d)) && !slices.Contains(out, g) {
+				out = append(out, g)
+			}
+		}
+	}
+	return out
+}
+
+// irrelevantObjectImpl reports whether f, a method of a Java class s that
+// isn't a collection, taking an Object, is one that implements a
+// collection's member taking an element in cls, which is a collection
+// through a subclass of s: AImpl's remove(Object) in class X : A(), for a
+// Java class A extends AImpl implements List<String>. K2 sees the
+// collection's remove(element: String), which a supertype has.
+func irrelevantObjectImpl(cls, s *types.ClassSym, f *types.FunSym) bool {
+	switch f.Name {
+	case "remove", "contains", "indexOf", "lastIndexOf":
+	default:
+		return false
+	}
+	if s == cls || f.Static || !isJavaClass(s) || len(f.Params) != 1 || f.Params[0].Type.K != types.Any {
+		return false
+	}
+	coll := func(k *types.ClassSym) bool {
+		found := false
+		k.Supertypes(func(t *types.ClassSym) bool {
+			found = t.Name == "java/util/Collection"
+			return !found
+		})
+		return found
+	}
+	return !coll(s) && coll(cls)
 }
 
 // javaRemoveAt reports whether f, a method of class cls or of one of its
@@ -3198,6 +3255,49 @@ func (c *Checker) ctorBeatsFuns(cls *types.ClassSym, fs []*types.FunSym, x *synt
 			continue
 		}
 		if !slices.ContainsFunc(fit, func(g *types.FunSym) bool { return !c.paramsMoreSpecific(k, g) || c.paramsMoreSpecific(g, k) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// starCtorTiesFuns reports whether a constructor of the program's class
+// cls, star-imported as name, may take call x and none of the functions fs,
+// also star-imported, that may is more specific: as K2's, a class and
+// functions of its name at one level of scope are candidates together, an
+// abstract class's constructor included (its call is an error too), so
+// with import a.* and import b.*, Cls() for a.Cls and b.Cls() is
+// ambiguous.
+func (c *Checker) starCtorTiesFuns(name string, cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if cls == nil || cls.External || cls.Object || cls.Interface || cls.Entries != nil || cls.Array || cls.Local {
+		return false
+	}
+	if _, ok := c.imports[name]; ok || c.pkg.Classes[name] != nil || len(c.userFuns[name]) > 0 {
+		return false
+	}
+	var stars []*types.FunSym
+	starCls := false
+	for _, p := range c.userStars {
+		if p == c.pkg || c.renamedAway(p.Name, name) {
+			continue
+		}
+		stars = append(stars, nonExt(c.funsOf(p, name))...)
+		starCls = starCls || p.Classes[name] == cls
+	}
+	if !starCls || slices.ContainsFunc(fs, func(f *types.FunSym) bool { return !slices.Contains(stars, f) }) {
+		return false
+	}
+	var fit []*types.FunSym
+	for _, f := range fs {
+		if c.mayTake(f, x) {
+			fit = append(fit, f)
+		}
+	}
+	if len(fit) == 0 {
+		return false
+	}
+	for _, k := range c.visibleCtors(cls) {
+		if c.mayTake(k, x) && !slices.ContainsFunc(fit, func(g *types.FunSym) bool { return c.paramsMoreSpecific(g, k) && !c.paramsMoreSpecific(k, g) }) {
 			return true
 		}
 	}
@@ -3486,6 +3586,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		return c.resolve(x, hides, want, sink)
 	}
 	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
+	ms = c.declaredProtected(fn.X, cls, ms)
 	if slices.ContainsFunc(x.Names, func(n string) bool { return n != "" }) {
 		defer c.ambiguousNamedArgs(x, cls, rt)
 	}
