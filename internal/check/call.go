@@ -1285,6 +1285,14 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			sys = trial
 		} else if trial := c.refArgFit(sys, l, params[i]); trial != nil {
 			sys = trial
+		} else if best.param(i).NoInfer && params[i].HasVars() {
+			// A @NoInfer parameter's lambda adds no constraint from the
+			// types its parameters declare: Predicate<@NoInfer T>'s
+			// { x: String -> } is checked against the T the others give.
+			if c.noInferLambdas == nil {
+				c.noInferLambdas = map[*syntax.Lambda]bool{}
+			}
+			c.noInferLambdas[l] = true
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
@@ -2338,8 +2346,11 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	}
 	if cd.ext.K != types.Invalid {
 		recv, want := c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv)
-		cd.sys.sub(recv, want)
-		c.exactRecvArgs(cd, recv, want)
+		if !cd.f.NoInferRecv || !want.HasVars() {
+			// A @NoInfer receiver adds no constraint either.
+			cd.sys.sub(recv, want)
+			c.exactRecvArgs(cd, recv, want)
+		}
 	}
 	for i, t := range ts {
 		p := cd.params[i]

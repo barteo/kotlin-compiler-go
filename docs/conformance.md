@@ -337,7 +337,7 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,745 of the 22,025 expected errors (98.7%) on their lines, and 3,550 of
+21,806 of the 22,025 expected errors (99.0%) on their lines, and 3,550 of
 the 3,667 expected warnings (96.8%), with 18 warnings on lines that expect
 none. Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the
@@ -377,3 +377,11 @@ by cause*), the first of these that applies:
   the markup expects none on: most likely this error, at another
   position.
 - *missing-check*: none of those.
+
+Some *missing-check* errors are out of reach for the reason some
+*accepts invalid* tests are: the harness puts the full standard library
+and a real JDK on every test's class path. A test without
+`WITH_STDLIB` expects the names that only they declare to be
+unresolved: `listOf`, `println`, `requireNotNull`, `map` and `rangeTo`
+calls, `List.reversed`, `Method.parameters`. `kotlinc` resolves them
+under the harness too, as `kc` does.

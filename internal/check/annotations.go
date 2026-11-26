@@ -700,6 +700,24 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 				}
 			}
 			values, ok := c.annotationValues(t.C, nil, args, call.Pos())
+			if ok && len(call.TypeArgs) > 0 && t.A != nil && len(call.TypeArgs) == len(t.C.TypeParams) && len(t.A.List) == len(call.TypeArgs) {
+				// Its explicit type arguments, which an annotation call
+				// doesn't infer: Test2<String, C<String>>(…) for a
+				// Test2<Int, C<Int>>.
+				targs := make([]types.Arg, len(call.TypeArgs))
+				for i, ta := range call.TypeArgs {
+					if ta.Type == nil || ta.Underscore {
+						targs = nil
+						break
+					}
+					targs[i] = types.Arg{V: ta.Variance, T: c.resolveType(ta.Type)}
+				}
+				if targs != nil {
+					n := len(c.errs)
+					c.assignable(types.GenericType(t.C, targs), t, call.Pos())
+					ok = len(c.errs) == n
+				}
+			}
 			nested := &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}
 			if rec := c.u.rec; rec != nil {
 				rec.Annotation(c.file, nested, t.C)
@@ -708,7 +726,8 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 		}
 	}
 	before := len(c.errs)
-	c.assignable(c.value(x, t), t, x.Pos())
+	vt := c.value(x, t)
+	c.assignable(vt, t, x.Pos())
 	// The post-pass over the code doesn't enter annotations: their
 	// arguments' warnings, which don't depend on smart casts, are
 	// reported here, with an error too, as kotlinc does.
@@ -722,6 +741,16 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	if len(c.errs) == before {
 		if bad := c.nonConst(x); bad != nil {
 			c.errorf(bad.Pos(), nonConstArgMsg)
+		} else if lit, ok := x.(*syntax.ClassLit); ok && vt.K == types.Invalid {
+			// A::class of a typealias of an unresolved class, whose
+			// error is the alias's: kotlinc has no class to write.
+			p := lit.P
+			if lit.Ref != nil {
+				p = lit.Ref.P
+			} else if lit.X != nil {
+				p = syntax.StartPos(lit.X)
+			}
+			c.errorf(p, nonConstArgMsg)
 		}
 	}
 	return syntax.AnnotationElem{X: x}, len(c.errs) == before

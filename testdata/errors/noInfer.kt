@@ -19,3 +19,23 @@ fun test(x: In<Base>, base: Base, derived: Derived) {
     val i: Int = make { 42 }
     val v: Unit = make { 42 } // ERROR type mismatch: inferred type is Int but Unit was expected
 }
+
+// Nor does a @NoInfer receiver, nor the types a @NoInfer parameter's
+// lambda declares for its parameters: each is checked against the type
+// the others infer.
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+fun <T> @kotlin.internal.NoInfer T.recvNoInfer(t1: T): T = t1
+
+fun interface NoInferPredicate<in T> {
+    fun accept(i: T): Boolean
+}
+
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+fun <T> samNoInfer(a: NoInferPredicate<@kotlin.internal.NoInfer T>, b: NoInferPredicate<T>): T = null!!
+
+fun receiverAndLambdas() {
+    1.recvNoInfer("") // ERROR type mismatch: inferred type is Int but String was expected
+    "".recvNoInfer("")
+    samNoInfer({ x: String -> false }, { x: CharSequence -> true }) // ERROR expected parameter of type CharSequence
+    samNoInfer({ x: CharSequence -> false }, { x: String -> true })
+}

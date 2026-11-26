@@ -241,7 +241,10 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		c.noCapture = saved
 		// A property private to this is still the receiver's, as in K2,
 		// and its use an error.
-		if len(c.errs) > n && !(len(c.errs) == n+1 && m.Prop != nil && m.Prop.PrivateToThis && strings.Contains(c.errs[n].Msg, privateToThisMsg)) {
+		// So is one whose type is a recursive problem here, y of
+		// private val y = object { val a = y }.
+		if len(c.errs) > n && !(len(c.errs) == n+1 && m.Prop != nil && m.Prop.PrivateToThis && strings.Contains(c.errs[n].Msg, privateToThisMsg)) &&
+			!(m.Prop != nil && allRecursive(c.errs[n:])) {
 			c.errs = c.errs[:n]
 			continue
 		}
@@ -250,6 +253,17 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		return t, true
 	}
 	return types.InvalidType, false
+}
+
+// allRecursive reports whether errs are all errors of a type checking
+// that ran into a recursive problem.
+func allRecursive(errs []*syntax.Error) bool {
+	for _, e := range errs {
+		if !strings.HasPrefix(e.Msg, "type checking has run into a recursive problem") {
+			return false
+		}
+	}
+	return true
 }
 
 // headerStaticProp reports whether, in a class's header, such as its

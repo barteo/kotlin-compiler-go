@@ -5045,7 +5045,7 @@ tests/inline/privateOperatorsInInline.kt	skip	LANGUAGE
 tests/inline/privateOperatorsInInlineAfterOld.kt	skip	LANGUAGE	
 tests/inline/privateOperatorsInInlineBeforeOld.kt	skip	LANGUAGE	
 tests/inline/propagation.kt	rejects invalid	on an expected line	
-tests/inline/property/invoke.kt	rejects invalid	elsewhere	
+tests/inline/property/invoke.kt	rejects invalid	on an expected line	
 tests/inline/property/propertyWithBackingField.kt	rejects invalid	on an expected line	
 tests/inline/property/unsupportedConstruction.kt	rejects invalid	on an expected line	
 tests/inline/property/virtualProperty.kt	rejects invalid	on an expected line	

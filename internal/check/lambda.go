@@ -1544,8 +1544,21 @@ func starBoundCycle(t types.Type, p *types.TypeParamSym) bool {
 			return true
 		}
 		seen[p] = true
-		if len(p.Bounds) == 0 || !p.Bounds[0].IsParam() {
+		if len(p.Bounds) == 0 {
 			return false
+		}
+		if b := p.Bounds[0]; !b.IsParam() {
+			// A bound that mentions a star-projected parameter of the
+			// class in its arguments leaves none either: F of a
+			// Function<?, ?> for F extends Map<String, E>, or of a G<?>
+			// for F extends Comparable<F>.
+			return b.Has(func(u types.Type) bool {
+				if !u.IsParam() {
+					return false
+				}
+				q := u.Param()
+				return q.Owner == any(t.C) && q.Index < len(ps) && ps[q.Index] == q && t.A.Get(q.Index).V == types.Star
+			})
 		}
 		p = p.Bounds[0].Param()
 	}
@@ -3337,7 +3350,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// gave as R's upper bound, not B.
 	declared := false
 	for i, d := range c.declaredParams(l, ft, len(params)) {
-		if d.K != types.Invalid && s.apply(params[i]).HasVars() {
+		if d.K != types.Invalid && s.apply(params[i]).HasVars() && !c.noInferLambdas[l] {
 			trial := s.clone()
 			if trial.sub(params[i], d); trial.ok {
 				*s = *trial
@@ -3413,6 +3426,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		}
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
+	if l.Anon && sam == nil && w.recv && l.AnonRecv == nil && !anonRecvParam(l, w) && !s.apply(ft).HasVars() {
+		// Unlike a lambda's, an anonymous function's receiver isn't
+		// implicit: id(fun (x: String) = 10) for an Int.(String) -> Int
+		// is a (String) -> Int, as in K2.
+		lt := c.lambda(l, noWant)
+		l.T = lt
+		if lt.K != types.Invalid {
+			c.assignable(lt, s.apply(ft), l.P)
+		}
+		return
+	}
 	if sam == nil {
 		if _, pr, ok := funcParts(p); ok {
 			ret = pr
@@ -3524,6 +3548,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		trial := s.clone()
 		if trial.sub(bt, r); trial.ok || !declared {
 			s.sub(bt, r)
+			if tv := s.unfixedVar(r); tv != nil && bt == types.UnitType && !l.Anon && l.Body != nil && len(l.Body.Stmts) == 0 {
+				tv.coercedUnits++ // { }'s
+			}
 		}
 	}
 	s.fixups = append(s.fixups, func(s *system) {

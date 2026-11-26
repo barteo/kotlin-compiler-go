@@ -59,7 +59,33 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 		c.errorf(a.P, "%s is not an annotation class", cls.DisplayName())
 		return nil
 	}
+	if k := c.requiredTargetAmbiguity(a, cls); k != nil {
+		return k
+	}
 	return cls
+}
+
+// requiredTargetAmbiguity reports @Target, written without a qualifier,
+// that names a nested class, its own or inherited, not imported, and
+// returns kotlin.annotation.Target, which kotlinc reads it as before it
+// resolves types: as K2 has it, an ambiguity, with the arguments checked
+// as Target's (COMPILER_REQUIRED_ANNOTATION_AMBIGUITY).
+func (c *Checker) requiredTargetAmbiguity(a *syntax.Annotation, cls *types.ClassSym) *types.ClassSym {
+	if a.Name != "Target" || cls.Outer == nil || cls.External || cls.Name == "kotlin/annotation/Target" {
+		return nil
+	}
+	for _, im := range c.file.Imports {
+		if !im.Star && (im.Alias == "Target" || im.Alias == "" && strings.HasSuffix("."+im.Path, ".Target")) {
+			return nil
+		}
+	}
+	k := c.lookupClass("kotlin.annotation.Target")
+	if k == nil {
+		return nil
+	}
+	k.Ensure()
+	c.errorf(a.P, "resolution of the annotation type is ambiguous between '%s' and the compiler-required annotation 'Target': specify a fully qualified annotation name", cls.DisplayName())
+	return k
 }
 
 // annotTypeParam reports whether name is a type parameter of class owner,

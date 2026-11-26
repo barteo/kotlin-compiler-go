@@ -43,3 +43,10 @@ inline fun inObject(crossinline s: () -> Unit) {
 }
 
 inline fun reference(s: (Int) -> Int) = s::invoke // ERROR illegal usage of inline-parameter 's'
+
+inline var setterValue: (Int) -> String
+    get() = { "" }
+    set(s) {
+        s(1)
+        val z = s // ERROR illegal usage of inline-parameter 's'
+    }

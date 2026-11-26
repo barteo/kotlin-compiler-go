@@ -804,7 +804,7 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 	case nil:
 		return
 	case *syntax.Ident:
-		if a.comp != nil && (x.Object == a.comp || x.Sym != nil && x.Sym.Kind == types.Prop && x.Sym.Owner == a.comp && !x.Sym.Const) {
+		if a.comp != nil && (x.Object == a.comp || x.Sym != nil && x.Sym.Kind == types.Prop && x.Sym.Owner == a.comp) {
 			a.companion(x.P)
 		}
 		if x.Sym == nil && x.Member != nil {
@@ -847,7 +847,16 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 		a.expr(x.X, s)
 	case *syntax.Member:
 		if x.Prop != nil && x.Prop.Const {
-			break // inlined
+			// Inlined, but kotlinc still reports the enum's companion
+			// as uninitialized, whose constant it is.
+			if a.comp != nil {
+				if id, ok := x.X.(*syntax.Ident); ok && id.Object == a.comp {
+					a.companion(id.P)
+				} else if x.Object == a.comp || x.Prop.Owner == a.comp {
+					a.companion(x.P)
+				}
+			}
+			break
 		}
 		if a.comp != nil && x.Object == a.comp {
 			a.companion(x.P)

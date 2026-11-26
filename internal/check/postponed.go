@@ -192,7 +192,7 @@ func (c *Checker) readyFirst(s *system) {
 	if len(s.lambdas) < 2 {
 		return
 	}
-	var ready, rest, late []pendingLambda
+	var ready, rest, late, noInfer []pendingLambda
 	waits := func(pl pendingLambda) bool {
 		// A deferred lambda waits for one written before it whose
 		// variable is fixed first (see nestedInputs).
@@ -210,7 +210,11 @@ func (c *Checker) readyFirst(s *system) {
 		for _, p := range c.inputs(s, pl) {
 			ok = ok && s.known(p)
 		}
-		if c.returnedInputsOpen(s, pl) {
+		if c.noInferLambdas[pl.l] {
+			// A @NoInfer parameter's lambda is checked against what the
+			// others infer (see noInferLambdas).
+			noInfer = append(noInfer, pl)
+		} else if c.returnedInputsOpen(s, pl) {
 			late = append(late, pl)
 		} else if ok && !waits(pl) {
 			ready = append(ready, pl)
@@ -230,7 +234,7 @@ func (c *Checker) readyFirst(s *system) {
 			return 0
 		})
 	}
-	s.lambdas = slices.Concat(ready, rest, late)
+	s.lambdas = slices.Concat(ready, rest, late, noInfer)
 }
 
 // untypedDelegate reports whether p is a property without a type whose
