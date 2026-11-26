@@ -43,6 +43,9 @@ fun interopDemo() {
     @Suppress("DEPRECATION")
     val code: String = kl.code()
     println("$label ${kl.label().length} $code")
+    val m = JMatcher { it == "x" }
+    val km = KMatcher { it == 1 }
+    println("${m.equals("x")} ${m.equals("y")} ${km.equals(1)}")
     for (c in listOf(FixedJob::class.java, Leaf::class.java, Both::class.java)) {
         for (m in c.declaredMethods.filter { !it.isBridge && (it.name == "clone" || it.name == "step") }) {
             println("${c.simpleName}.${m.name} ${java.lang.reflect.Modifier.toString(m.modifiers)}")
@@ -222,3 +225,9 @@ class LabelsImpl : BothLabels, KotlinLabels {
     override fun label(): String = "label"
     override fun code(): String = "code"
 }
+
+fun interface Matcher {
+    override fun equals(other: Any?): Boolean
+}
+
+fun interface KMatcher : JMatcher

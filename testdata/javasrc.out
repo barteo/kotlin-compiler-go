@@ -63,6 +63,7 @@ p, p, p, p, p
 5:2 3:5 13 true
 a b leaf both
 label 5 code
+true false true
 FixedJob.clone public
 Leaf.step public
 Both.step public
