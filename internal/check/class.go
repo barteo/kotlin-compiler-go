@@ -2118,7 +2118,9 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			return want, false
 		}
 		for _, st := range cls.Supers {
-			if st.C == want.C && (!args || c.sameArgs(st, want)) || want.K == types.Any {
+			// Type arguments, written or a typealias's, must be the
+			// supertype's: super<G<String>> of G<Int> is NOT_A_SUPERTYPE.
+			if st.C == want.C && (!args && s.Iface.Args == nil || c.sameArgs(st, want)) || want.K == types.Any {
 				t = st
 			}
 		}

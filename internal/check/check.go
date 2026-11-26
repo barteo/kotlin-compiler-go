@@ -2844,7 +2844,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	if d.Interface && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "an interface may not have a constructor")
 	}
-	if d.Object && len(d.CtorParams) > 0 {
+	if d.Object && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {

@@ -520,6 +520,10 @@ func VarianceMod(v *types.Variance, prevP *Pos, w types.Variance, p Pos, r Repor
 	}
 }
 
+// WhenCommaMsg is kotlinc's COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT,
+// for a, b -> in a when without a subject.
+const WhenCommaMsg = "deprecated syntax: use '||' instead of commas in a when-condition for 'when' without an argument"
+
 // CheckAccessor reports a second getter or setter of property pd at
 // accessor name written at pos.
 func CheckAccessor(pd *PropDecl, name string, pos Pos, r Reporter) {

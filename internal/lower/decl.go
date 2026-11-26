@@ -151,6 +151,10 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindTYPE_PARAMETER_LIST:
+			if seenName && !tpl.Valid() {
+				// As kc's parser: fun f<T>().
+				l.errorLater(l.pos(c), "type parameters must be placed before the name of the function")
+			}
 			tpl = c
 		case psi.KindTYPE_REFERENCE:
 			switch {

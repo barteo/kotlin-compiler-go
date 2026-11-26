@@ -1370,6 +1370,11 @@ func (p *parser) parseFun() *FunDecl {
 	}
 	recv, recvAs := p.receiver(true)
 	name := p.ident()
+	if p.at(LT) && tps == nil {
+		// fun f<T>(), kotlinc's DEPRECATED_TYPE_PARAMETER_SYNTAX.
+		p.errorLater(p.tok().Pos, "type parameters must be placed before the name of the function")
+		tps = p.parseTypeParams()
+	}
 	fd := &FunDecl{P: pos, Name: name.Text, TypeParams: tps, Recv: recv, RecvAnnotations: recvAs, Params: p.params("function")}
 	// The return type can go on the next line, and its ':' too.
 	if p.peekPastNL() == COLON {
@@ -3521,6 +3526,10 @@ func (p *parser) parseTry() Expr {
 			as = append(as, p.annotation())
 			p.skipNL()
 		}
+		if t := p.tok(); t.Kind == VAL || t.Kind == VAR {
+			p.next()
+			p.errorLater(t.Pos, "'%s' on catch parameter is not allowed", t.Kind)
+		}
 		name := p.ident()
 		p.expect(COLON)
 		c := &Catch{P: t.Pos, Name: name.Text, Quoted: name.Quoted, Type: p.parseType(), Annotations: as}
@@ -3632,12 +3641,16 @@ func (p *parser) parseWhen() Expr {
 					}
 				}
 				br.Conds = append(br.Conds, c)
+				comma := p.tok().Pos
 				if !p.comma() {
 					break
 				}
 				p.skipNL()
 				if p.at(ARROW) {
 					break // a trailing comma
+				}
+				if n.Subject == nil {
+					p.errorLater(comma, "%s", WhenCommaMsg)
 				}
 			}
 		}
