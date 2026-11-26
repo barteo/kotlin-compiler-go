@@ -1862,15 +1862,22 @@ func (c *Checker) declare() {
 			} else if _, dup := c.pkg.Aliases[d.Name]; dup {
 				c.errorf(d.P, "redeclaration: typealias %s", d.Name)
 			}
-			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
+			// The name stays the first declaration's, as kotlinc resolves it.
+			if a := c.declareAlias(d, nil); c.pkg.Aliases[d.Name] == nil && c.pkg.Classes[d.Name] == nil {
+				c.pkg.Aliases[d.Name] = a
+			}
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
+			_, dup := c.pkg.Classes[d.Name]
+			dup = (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>"
+			if dup {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
 				c.errorf(d.P, "modifier 'companion' is only allowed on objects in classes")
 			}
-			c.pkg.Classes[d.Name] = c.declareClass(d, prefix+d.Name, nil)
+			if sym := c.declareClass(d, prefix+d.Name, nil); !dup {
+				c.pkg.Classes[d.Name] = sym
+			}
 			c.u.builtinNames = c.u.builtinNames || kotlinTypes[d.Name]
 		}
 	}
