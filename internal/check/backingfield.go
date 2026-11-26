@@ -223,7 +223,7 @@ func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.
 	c.done[d] = true
 	c.state = state{scope: &scope{}, cls: cls, this: newThis(cls), init: cls != nil, declName: d.Name}
 	if cls != nil {
-		c.scope = c.ctorScope(cls)
+		c.scope = c.initScope(cls)
 		c.tparams = cls.TypeParams
 	}
 	c.inAnon(cls)
