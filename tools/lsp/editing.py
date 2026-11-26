@@ -162,3 +162,57 @@ def record_cases(request, notify, buffer, fixture, legend):
         formatting[name] = buffer.text
     out["formatting"] = formatting
     return out
+
+
+def record_navigation(request, notify, buffer, fixture, settings):
+    doc = {"uri": buffer.uri}
+    defs = {}
+    for name, marked in json.loads((fixture / "cases.json").read_text()).items():
+        prefix, suffix = marked.split("|")
+        buffer.change(prefix + suffix + "\n", notify)
+        position = {"line": prefix.count("\n"), "character": len(prefix.split("\n")[-1].encode("utf-16-le")) // 2}
+        deadline = time.monotonic() + 15
+        while True:
+            links = request("textDocument/definition", {"textDocument": doc, "position": position})
+            if isinstance(links, list) and len(links) == 1:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"{name}: {links}")
+            time.sleep(0.3)
+        link = links[0]
+        link["targetUri"] = link["targetUri"].rsplit("/", 1)[-1]
+        defs[name] = link
+    source = (fixture / "Hints.kt").read_text()
+    hints = {}
+    for name, options in (("default", {}), ("chains", {"call.chains": True}), ("partialEdit", {}),
+                          ("disabled", {"lambda.return": False, "lambda.receivers.parameters": False})):
+        if name == "partialEdit":
+            buffer.change(source.replace("    42\n", "    /* 😀 */ 420\n"), notify)
+        else:
+            buffer.change(source, notify)
+        settings.clear()
+        # The release's provider reads hints.lambda.return from the
+        # jetbrains.kotlin section. Its extension lists settings.lambda.return.
+        defaults = {"type.function.parameter": True, "lambda.return": True,
+                    "lambda.receivers.parameters": True, "call.chains": False}
+        settings["jetbrains.kotlin"] = {"hints": {**defaults, **options}}
+        notify("workspace/didChangeConfiguration", {"settings": settings.copy()})
+        r = {"start": {"line": 12, "character": 0}, "end": {"line": source.count("\n"), "character": 0}}
+        if name == "partialEdit":
+            line = next(i for i, text in enumerate(buffer.text.splitlines()) if "420" in text)
+            r = {"start": {"line": line - 2, "character": 0}, "end": {"line": line + 1, "character": 0}}
+        values = request("textDocument/inlayHint", {"textDocument": doc, "range": r})
+        if not isinstance(values, list):
+            raise RuntimeError(f"{name}: {values}")
+        hints[name] = []
+        for value in values:
+            h = {k: v for k, v in value.items() if k in ("position", "label", "kind", "paddingLeft", "paddingRight")}
+            if isinstance(h["label"], list):
+                h["label"] = "".join(part["value"] for part in h["label"])
+            hints[name].append(h)
+        hints[name].sort(key=lambda h: (h["position"]["line"], h["position"]["character"]))
+    if not any(h["label"].startswith("^") for h in hints["default"]):
+        raise RuntimeError("Reference returned no lambda result hints")
+    if not any(h.get("paddingLeft") for h in hints["chains"]):
+        raise RuntimeError("Reference returned no intermediate chain types")
+    return {"definitions": defs, "hints": hints}

@@ -771,23 +771,13 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 				access |= classfile.AccAbstract
 			}
 		}
-		var params []*Type
-		var outer *Type
 		if m.Ret == nil {
 			hasCtor = true
 			if c.Kind == KindEnum {
 				access = access&^(classfile.AccPublic|classfile.AccProtected) | classfile.AccPrivate
 			}
-			outer = outerParam(c)
 		}
-		for _, p := range m.Params {
-			params = append(params, p.Type)
-		}
-		ret := m.Ret
-		if ret == nil {
-			ret = &Type{Prim: "void"}
-		}
-		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
+		desc, sig := mr.methodSignature(m)
 		declared[m.Name+desc] = true
 		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations, m.DocDeprecated)}
 		marked := mr.nullMarked(m.Annotations)
@@ -897,6 +887,28 @@ func outerParam(c *Class) *Type {
 		return nil
 	}
 	return &Type{Segs: []Seg{{Name: c.Outer.Name}}}
+}
+
+// MethodDescriptor identifies a source overload using the same erasure and
+// name resolution that produced its class-path declaration.
+func (s *Set) MethodDescriptor(c *Class, m *Method) string {
+	r := resolver{s: s, c: c, mparams: m.TypeParams}
+	desc, _ := r.methodSignature(m)
+	return desc
+}
+
+func (r *resolver) methodSignature(m *Method) (string, string) {
+	var params []*Type
+	for _, p := range m.Params {
+		params = append(params, p.Type)
+	}
+	ret := m.Ret
+	var outer *Type
+	if ret == nil {
+		ret = &Type{Prim: "void"}
+		outer = outerParam(r.c)
+	}
+	return r.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 }
 
 // methodDesc returns a method's descriptor and its generic signature, or

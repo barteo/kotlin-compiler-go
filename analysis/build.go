@@ -1425,6 +1425,9 @@ func (b *builder) call(x *syntax.Call) *Call {
 	c.Suspend = f.Suspend
 	c.Operator = f.Operator
 	c.FromJava = f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" && f.Decl == nil
+	if b.editor && c.FromJava {
+		c.JVMDescriptor = f.Desc
+	}
 	// kotlinc: a function type's invoke has no stable parameter names,
 	// whatever names its type spells.
 	c.StableNames = !c.FromJava && !x.Invoke

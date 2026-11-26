@@ -44,6 +44,7 @@ def capture(process, messages, root, state, project):
     registrations = []
     request_id = 0
     buffer = editing.Buffer((root / "src/main/kotlin/Editing.kt").as_uri())
+    settings = {}
     def notify(method, params):
         send(process, method=method, params=params)
 
@@ -60,7 +61,7 @@ def capture(process, messages, root, state, project):
             if "method" in msg and "id" in msg:
                 result = None
                 if msg["method"] == "workspace/configuration":
-                    result = [None] * len(msg["params"]["items"])
+                    result = [settings.get(item.get("section")) for item in msg["params"]["items"]]
                 if msg["method"] == "client/registerCapability":
                     registrations.extend(msg["params"]["registrations"])
                 if msg["method"] == "workspace/applyEdit" and project == "editing":
@@ -71,8 +72,11 @@ def capture(process, messages, root, state, project):
     caps = {"workspace": {"configuration": True, "workspaceFolders": True},
             "textDocument": {"documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
                              "foldingRange": {}, "hover": {"contentFormat": ["markdown"]}}}
-    if project == "editing":
+    if project in ("editing", "navigation"):
         caps["textDocument"]["definition"] = {"linkSupport": True}
+    if project == "navigation":
+        caps["textDocument"]["inlayHint"] = {}
+    if project == "editing":
         caps["textDocument"]["semanticTokens"] = {
             "requests": {"full": True, "range": True}, "formats": ["relative"],
             "tokenTypes": ["label"], "tokenModifiers": ["declaration", "definition"],
@@ -86,7 +90,7 @@ def capture(process, messages, root, state, project):
     record = {"release": "kotlin-lsp/v" + RELEASE, "registrations": registrations,
               "clientCapabilities": caps, "initialize": init}
     send(process, method="initialized", params={})
-    file = (root / "library" if project in ("gradle", "editing") else root) / "src/main/kotlin/Example.kt"
+    file = (root / "library" if project in ("gradle", "editing", "navigation") else root) / "src/main/kotlin/Example.kt"
     doc = {"uri": file.as_uri()}
     send(process, method="textDocument/didOpen", params={"textDocument": {
         **doc, "languageId": "kotlin", "version": 1, "text": file.read_text()}})
@@ -125,6 +129,9 @@ def capture(process, messages, root, state, project):
         legend = init["capabilities"]["semanticTokensProvider"]["legend"]
         cases = editing.record_cases(request, notify, buffer, FIXTURES / "editing", legend)
         record = {"release": record["release"], **cases}
+    if project == "navigation":
+        cases = editing.record_navigation(request, notify, buffer, FIXTURES / "navigation", settings)
+        record = {"release": record["release"], **cases}
     request("shutdown", None)
     send(process, method="exit", params=None)
     experimental = init["capabilities"]["experimental"]
@@ -147,6 +154,8 @@ def main():
     projects.add_argument("--gradle", action="store_const", const="gradle", dest="project", help="capture Gradle cross-module operations")
     parser.add_argument("--output", type=Path, required=True)
     projects.add_argument("--editing", action="store_const", const="editing", dest="project", help="capture editing behavior with a binary Kotlin library")
+    projects.add_argument("--navigation", action="store_const", const="navigation", dest="project",
+                          help="capture overload navigation and lambda and call-chain hints")
     parser.add_argument("--kc", type=Path, help="kc executable to compile the editing fixture")
     args = parser.parse_args()
     if args.project == "editing" and not args.kc:
@@ -154,9 +163,9 @@ def main():
     with tempfile.TemporaryDirectory() as temp:
         state = Path(temp).resolve()
         root = state / "project"
-        if args.project in ("gradle", "editing"):
+        if args.project in ("gradle", "editing", "navigation"):
             shutil.copytree(FIXTURES / "gradle", root, ignore=shutil.ignore_patterns("upstream-*.json"))
-        source = (root / "library" if args.project in ("gradle", "editing") else root) / "src/main/kotlin/Example.kt"
+        source = (root / "library" if args.project in ("gradle", "editing", "navigation") else root) / "src/main/kotlin/Example.kt"
         source.parent.mkdir(parents=True)
         source.write_bytes((FIXTURES / "Example.kt").read_bytes())
         if args.project:
@@ -174,6 +183,15 @@ def main():
                 build.write('\ndependencies { implementation(files("editing.jar")) }\n')
             (root / "gradle.properties").write_text("")
             source.with_name("Scopes.kt").write_bytes((fixture / "Scopes.kt").read_bytes())
+            (root / "src/main/kotlin/Editing.kt").write_text("package sample\n")
+        if args.project == "navigation":
+            fixture = FIXTURES / "navigation"
+            for name in ("Overloads.kt", "IntExtensions.kt"):
+                shutil.copy(fixture / name, source.parent)
+            java_dir = root / "library/src/main/java/nav"
+            java_dir.mkdir(parents=True)
+            shutil.copy(fixture / "Parser.java", java_dir)
+            (root / "gradle.properties").write_text("")
             (root / "src/main/kotlin/Editing.kt").write_text("package sample\n")
         if args.project == "maven":
             (root / "pom.xml").write_bytes((FIXTURES / "maven/pom.xml").read_bytes())

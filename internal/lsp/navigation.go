@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
+	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -138,10 +140,10 @@ func (s *server) hierarchy(ctx context.Context, method string, i *index, target 
 	}
 	return out, nil
 }
-func javaRange(text string, sym analysis.Symbol, call *analysis.Call) (span, bool) {
+func javaRanges(model *ka.EditorModel, text string, sym analysis.Symbol, call *analysis.Call) []span {
 	f, _ := javasrc.Parse("source.java", text)
 	if f == nil {
-		return span{}, false
+		return nil
 	}
 	class := sym.Owner
 	if class == "" && sym.Kind == "class" {
@@ -170,6 +172,9 @@ func javaRange(text string, sym analysis.Symbol, call *analysis.Call) (span, boo
 			}
 			for _, m := range c.Methods {
 				if m.Name == sym.Name && (call == nil || len(call.Parameters) == len(m.Params)) {
+					if call != nil && call.JVMDescriptor != "" && model.JavaMethodDescriptor(c, m) != call.JVMDescriptor {
+						continue
+					}
 					name := m.Name
 					if name == "<init>" {
 						name = c.Name
@@ -178,7 +183,7 @@ func javaRange(text string, sym analysis.Symbol, call *analysis.Call) (span, boo
 				}
 			}
 			for _, f := range c.Fields {
-				if f.Name == sym.Name {
+				if f.Name == sym.Name && (call == nil || sym.Kind == "property") {
 					add(f.NamePosition, f.Name)
 				}
 			}
@@ -194,22 +199,14 @@ func javaRange(text string, sym analysis.Symbol, call *analysis.Call) (span, boo
 	for _, c := range f.Classes {
 		visit(c, prefix)
 	}
-	if len(hits) == 1 {
-		return hits[0], true
-	}
-	return span{}, false
+	return hits
 }
-func sourceRange(path, text string, sym analysis.Symbol, c *analysis.Call) (span, bool) {
-	if strings.HasSuffix(path, ".java") {
-		return javaRange(text, sym, c)
-	}
-	if !strings.Contains(text, short(sym.QualifiedName)) {
-		return span{}, false
-	}
-	s := psi.ParseDocument(path, text)
+
+// kotlinTargets finds declarations of the selected name before overload
+// resolution. Top-level overloads can live in different archive entries.
+func kotlinTargets(s *psi.Snapshot, sym analysis.Symbol, c *analysis.Call) []psi.NodeRef {
 	pkg := s.RootNode().ChildKind(psi.KindPACKAGE_DIRECTIVE).Path()
-	var hits []span
-	var typed []span
+	var hits []psi.NodeRef
 	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
 		if !n.Declaration().Valid() || !n.NameIdentifier().Valid() {
 			return true
@@ -237,38 +234,76 @@ func sourceRange(path, text string, sym analysis.Symbol, c *analysis.Call) (span
 		if pkg != "" {
 			name = pkg + "." + name
 		}
-		if name == sym.QualifiedName && (c == nil || n.NumericKind() != psi.KindFUN || len(n.Parameters()) == len(c.Parameters)) {
-			where := rng(n.NameIdentifier())
-			hits = append(hits, where)
-			if c != nil && n.NumericKind() == psi.KindFUN {
-				matches := true
-				for j, param := range n.Parameters() {
-					written := strings.ReplaceAll(param.TypeReference().Text(), " ", "")
-					t := &c.Parameters[j]
-					if written != strings.ReplaceAll(typeName(t), " ", "") && written != t.Name {
-						matches = false
-						break
-					}
-				}
-				if matches {
-					typed = append(typed, where)
-				}
-			}
+		if name == sym.QualifiedName && (c == nil || n.NumericKind() != psi.KindFUN ||
+			len(n.Parameters()) == len(c.Parameters) && n.ReceiverType().Valid() == c.Extension) {
+			hits = append(hits, n)
 		}
 		return n.NumericKind() != psi.KindFUN
 	})
-	if len(typed) == 1 {
-		return typed[0], true
+	return hits
+}
+
+func attachedOverload(ctx context.Context, session *ka.Session, hits []psi.NodeRef, c *analysis.Call) psi.NodeRef {
+	if len(hits) == 1 && (c == nil || hits[0].NumericKind() != psi.KindFUN ||
+		len(c.Parameters) == 0 && !c.Extension) {
+		return hits[0]
 	}
-	if len(hits) == 1 {
-		return hits[0], true
+	if len(hits) == 0 || c == nil {
+		return psi.NodeRef{}
 	}
-	return span{}, false
+	// Resolve imported aliases, nested types and receivers in the source
+	// declaration's own scope, using the consumer's compile classpath.
+	var snaps []*psi.Snapshot
+	for _, n := range hits {
+		if !slices.Contains(snaps, n.ContainingFile()) {
+			snaps = append(snaps, n.ContainingFile())
+		}
+	}
+	model, err := session.CheckEditor(ctx, snaps, nil)
+	if err != nil {
+		return psi.NodeRef{}
+	}
+	defer model.Close()
+	types := make(map[analysis.ElementID]*analysis.Type)
+	for _, fact := range model.Facts.Facts {
+		if fact.Symbol != 0 && fact.Role == "declaration" {
+			types[fact.Element] = &model.Facts.Symbols[fact.Symbol-1].Type
+		} else if fact.Type != nil {
+			types[fact.Element] = fact.Type
+		}
+	}
+	resolved := func(ref psi.NodeRef) *analysis.Type {
+		if !ref.Valid() {
+			return nil
+		}
+		return types[analysis.ElementID{Snapshot: ref.ContainingFile().ID(), Node: ref.ID()}]
+	}
+	var found psi.NodeRef
+	for _, n := range hits {
+		if n.NumericKind() != psi.KindFUN || !sameType(resolved(n.ReceiverType()), c.DeclaredReceiver) {
+			continue
+		}
+		matches := true
+		for j, p := range n.Parameters() {
+			t := resolved(p)
+			if !sameType(t, &c.Parameters[j]) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			if found.Valid() {
+				return psi.NodeRef{}
+			}
+			found = n
+		}
+	}
+	return found
 }
 
 // Extract one matching source under a private temporary directory. The URI
 // is an ordinary file URI that even clients without a jar: provider can open.
-func libraryDefinition(w *workspace, path string, i *index, n psi.NodeRef) *location {
+func libraryDefinition(ctx context.Context, w *workspace, path string, i *index, n psi.NodeRef) *location {
 	sym := i.symbols[n]
 	if sym.Kind == "" {
 		return nil
@@ -277,17 +312,24 @@ func libraryDefinition(w *workspace, path string, i *index, n psi.NodeRef) *loca
 	if call := ancestor(n, psi.KindCALL_EXPRESSION); call.Valid() && factName(call) == n {
 		c = i.facts[call].Call
 	}
-	return resolveLibrary(w, path, sym, c)
+	return resolveLibrary(ctx, w, path, i, sym, c)
 }
-func resolveLibrary(w *workspace, path string, sym analysis.Symbol, c *analysis.Call) *location {
+func resolveLibrary(ctx context.Context, w *workspace, path string, i *index, sym analysis.Symbol, c *analysis.Call) *location {
 	m := w.module(path)
 	group := w.p.group(m)
+	var java []location
 	for p, t := range w.java {
 		if slices.Contains(group, w.p.owner(p)) {
-			if r, ok := javaRange(t, sym, c); ok {
-				return &location{uri(p), r}
+			for _, r := range javaRanges(i.model, t, sym, c) {
+				java = append(java, location{uri(p), r})
 			}
 		}
+	}
+	if len(java) > 1 {
+		return nil
+	}
+	if len(java) == 1 {
+		return &java[0]
 	}
 	var sources []string
 	for _, dep := range group {
@@ -297,17 +339,42 @@ func resolveLibrary(w *workspace, path string, sym analysis.Symbol, c *analysis.
 	if cfg.JDKHome != "" {
 		sources = append(sources, filepath.Join(cfg.JDKHome, "lib", "src.zip"))
 	}
+	var hits []psi.NodeRef
+	seen := map[string]bool{}
 	for _, src := range sources {
-		if loc, ok := inArchive(w, src, sym, c); ok {
-			return &loc
+		if seen[src] {
+			continue
 		}
+		seen[src] = true
+		locations, candidates := inArchive(ctx, w, i.model, src, sym, c)
+		for _, loc := range locations {
+			if !slices.Contains(java, loc) {
+				java = append(java, loc)
+			}
+		}
+		hits = append(hits, candidates...)
 	}
-	return nil
+	if len(java) > 1 || ctx.Err() != nil {
+		return nil
+	}
+	if len(java) == 1 {
+		return &java[0]
+	}
+	n := attachedOverload(ctx, w.sessions[m], hits, c)
+	if !n.Valid() {
+		return nil
+	}
+	snap := n.ContainingFile()
+	p, err := w.materialize(snap.Path(), []byte(snap.Source()))
+	if err != nil {
+		return nil
+	}
+	return &location{uri(p), rng(n.NameIdentifier())}
 }
-func inArchive(w *workspace, src string, sym analysis.Symbol, c *analysis.Call) (location, bool) {
+func inArchive(ctx context.Context, w *workspace, model *ka.EditorModel, src string, sym analysis.Symbol, c *analysis.Call) ([]location, []psi.NodeRef) {
 	z, err := zip.OpenReader(src)
 	if err != nil {
-		return location{}, false
+		return nil, nil
 	}
 	defer z.Close()
 	owner := sym.Owner
@@ -315,7 +382,12 @@ func inArchive(w *workspace, src string, sym analysis.Symbol, c *analysis.Call) 
 		owner = sym.Name
 	}
 	outer, _, _ := strings.Cut(owner, "$")
+	var hits []psi.NodeRef
+	var javaLocations []location
 	for _, f := range z.File {
+		if ctx.Err() != nil {
+			return nil, nil
+		}
 		java := strings.HasSuffix(f.Name, ".java")
 		if java && (outer == "" || !strings.HasSuffix("/"+f.Name, "/"+outer+".java")) || !java && !strings.HasSuffix(f.Name, ".kt") || f.UncompressedSize64 > 8<<20 {
 			continue
@@ -324,17 +396,23 @@ func inArchive(w *workspace, src string, sym analysis.Symbol, c *analysis.Call) 
 		if err != nil {
 			continue
 		}
-		r, ok := sourceRange(f.Name, string(b), sym, c)
-		if !ok {
+		if !java {
+			if bytes.Contains(b, []byte(short(sym.QualifiedName))) {
+				snap := psi.ParseDocument(f.Name, string(b))
+				hits = append(hits, kotlinTargets(snap, sym, c)...)
+			}
 			continue
 		}
-		p, err := w.materialize(f.Name, b)
-		if err != nil {
-			continue
+		rs := javaRanges(model, string(b), sym, c)
+		if len(rs) > 0 {
+			if p, err := w.materialize(f.Name, b); err == nil {
+				for _, r := range rs {
+					javaLocations = append(javaLocations, location{uri(p), r})
+				}
+			}
 		}
-		return location{uri(p), r}, true
 	}
-	return location{}, false
+	return javaLocations, hits
 }
 
 // librarySymbols searches source attachments on demand. Keep their parsed

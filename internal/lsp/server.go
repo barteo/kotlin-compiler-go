@@ -507,7 +507,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 			}
 		}
 		if name != "" {
-			return resolveLibrary(&s.w, path, analysis.Symbol{ID: 1, Kind: "class", Name: strings.ReplaceAll(name, ".", "/"), QualifiedName: name}, nil), nil
+			return resolveLibrary(ctx, &s.w, path, i, analysis.Symbol{ID: 1, Kind: "class", Name: strings.ReplaceAll(name, ".", "/"), QualifiedName: name}, nil), nil
 		}
 		return nil, nil
 	case "textDocument/definition":
@@ -519,7 +519,7 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 			}
 			dest = &l
 		} else {
-			dest = libraryDefinition(&s.w, path, i, n)
+			dest = libraryDefinition(ctx, &s.w, path, i, n)
 		}
 		if dest == nil || !s.definitionLinks {
 			return dest, nil

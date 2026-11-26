@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -61,6 +62,16 @@ func (s *Session) CheckEditor(ctx context.Context, snaps []*psi.Snapshot, source
 		return nil, err
 	}
 	return &EditorModel{Model: m, Facts: facts}, nil
+}
+
+// JavaMethodDescriptor resolves a parsed Java method against the checked
+// document's classpath, including other Java sources in the module.
+func (m *EditorModel) JavaMethodDescriptor(class *javasrc.Class, method *javasrc.Method) string {
+	java := m.lib.java
+	if java == nil {
+		java = driver.AddJavaSources(m.lib.cp, nil)
+	}
+	return java.MethodDescriptor(class, method)
 }
 
 // ImportNames returns public Kotlin classifiers and non-extension callables

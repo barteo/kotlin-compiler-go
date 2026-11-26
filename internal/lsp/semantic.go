@@ -190,6 +190,25 @@ func ancestor(n psi.NodeRef, kinds ...psi.Kind) psi.NodeRef {
 	return psi.NodeRef{}
 }
 func short(s string) string { j := strings.LastIndexAny(s, "./$"); return s[j+1:] }
+
+// sameType compares the classifier and type arguments, independent of the
+// source spelling or the symbol IDs used in two different editor models.
+func sameType(a, b *analysis.Type) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Name != b.Name || a.Nullable != b.Nullable || a.Projection != b.Projection ||
+		a.Parameter != b.Parameter || a.Platform != b.Platform || a.Suspend != b.Suspend || len(a.Arguments) != len(b.Arguments) {
+		return false
+	}
+	for j := range a.Arguments {
+		if !sameType(&a.Arguments[j], &b.Arguments[j]) {
+			return false
+		}
+	}
+	return a.Name != "" || a.Projection == "*"
+}
+
 func typeName(t *analysis.Type) string {
 	if t == nil {
 		return ""

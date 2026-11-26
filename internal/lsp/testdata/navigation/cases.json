@@ -1,0 +1,8 @@
+{
+  "javaInt": "fun use() = nav.Parser.pa|rse(42)",
+  "javaObject": "fun use(p: nav.Parser) = nav.Parser.pa|rse(p)",
+  "kotlinAlias": "fun use() = /* 😀 */ nav.pa|rse(nav.Packet())",
+  "kotlinInt": "fun use() = nav.pa|rse(42)",
+  "intReceiver": "import nav.convert\nfun use() = 42.con|vert()",
+  "packetReceiver": "import nav.convert\nfun use() = nav.Packet().con|vert()"
+}

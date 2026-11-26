@@ -151,6 +151,8 @@ type Symbol struct {
 
 // Call is a resolved call of a function or constructor.
 type Call struct {
+	// JVMDescriptor identifies the selected Java overload during editor analysis.
+	JVMDescriptor string `json:"jvmDescriptor,omitempty"`
 	// Name is the callee's fully qualified name: pkg.f, pkg.C.m, or
 	// pkg.C.<init> for a constructor.
 	Name string `json:"name"`
