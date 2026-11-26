@@ -80,6 +80,17 @@ class R { fun take(x: Int) {} }
 fun f(a: Q, e: Any, i: Int) {
     with(a) { with(R()) { take(e as Int); e.inc(); take(i as Int) } }
 }`, []string{"5:USELESS_CAST"}},
+		{"cast of a value a val safe-casts and isn't null", `
+interface S { val foo: Int }
+fun g(a: Any?): Int {
+    val c = a as? S
+    if (c != null) {
+        println(a as S)
+        val x = a as S
+        return a.foo + x.foo
+    }
+    return 0
+}`, []string{"6:USELESS_CAST", "7:USELESS_CAST"}},
 		{"blank trimMargin prefix in an annotation", `
 annotation class Ann(val s: String)
 @Ann("".trimMargin(" ")) val a = 1`, []string{"3:TRIM_MARGIN_BLANK_PREFIX", "3:error"}},
