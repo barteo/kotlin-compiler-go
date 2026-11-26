@@ -4768,6 +4768,19 @@ func jumped(pending []pendingBranch, ts []types.Type, bodies []*syntax.Block) bo
 	return false
 }
 
+// incompatibleCond renames errs, the errors of a when's condition
+// compared with its subject, as kotlinc's INCOMPATIBLE_TYPES, where an ==
+// is EQUALITY_NOT_APPLICABLE: when (a) { true -> } for an a of an
+// interface type A has incompatible types A and Boolean.
+func incompatibleCond(errs []*syntax.Error) {
+	const eq = "operator '==' cannot be applied to "
+	for _, e := range errs {
+		if rest, ok := strings.CutPrefix(e.Msg, eq); ok {
+			e.Msg = "incompatible types " + rest
+		}
+	}
+}
+
 // noteBranchJoin records t, the join of the types of the branches of
 // the if or when x, which no expected type gave a type, for the warnings
 // about it (see inferredInvisibleBranches).
@@ -5077,6 +5090,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.OpType.K == types.Invalid {
 					n := len(c.errs)
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
+					incompatibleCond(c.errs[n:])
 					if dt, ok := declaredOf(x.Subject); ok && cond.OpType.K == types.Invalid {
 						// A smart-cast subject, compared with a value its
 						// declared type may be equal to: as kotlinc, only
