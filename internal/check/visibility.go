@@ -520,7 +520,7 @@ func annotationThis(owner *types.ClassSym, site annotSite) *types.ClassSym {
 		}
 	case siteFun, siteProp, siteCtorProp, siteParam, siteCtor, siteEnumEntry, siteInit:
 		return owner
-	case siteType:
+	case siteType, siteTypealias:
 		if site.outerThis {
 			return owner
 		}

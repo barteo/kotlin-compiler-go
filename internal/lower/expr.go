@@ -268,10 +268,12 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	if !t.IsLeaf() || t.NumericKind() == psi.KindTHIS_KEYWORD || t.NumericKind() == psi.KindSUPER_KEYWORD {
 		l.fail(t, "unexpected %s", describeNode(t))
 	}
-	if p := n.Parent(); t.Text() != "_" || p.NumericKind() != psi.KindCALL_EXPRESSION || !has(p, psi.KindTYPE_ARGUMENT_LIST) {
+	p := n.Parent()
+	underscore := t.Text() == "_" && p.NumericKind() == psi.KindCALL_EXPRESSION && has(p, psi.KindTYPE_ARGUMENT_LIST)
+	if !underscore {
 		l.underscoreRef(t)
 	}
-	id := &syntax.Ident{Name: ident(t)}
+	id := &syntax.Ident{Name: ident(t), Underscore: underscore} // see Ident.Underscore
 	id.P = l.pos(t)
 	return record(l, id, n)
 }

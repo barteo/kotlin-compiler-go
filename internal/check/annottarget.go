@@ -46,7 +46,8 @@ type annotSite struct {
 	bound bool
 	// outerThis is set on the supertypes of an inner class, whose
 	// annotations' arguments see the instance members of its outer
-	// class, their owner.
+	// class, their owner, and on an inner typealias, which sees those of
+	// the class it is in.
 	outerThis bool
 	// header is set on a constructor and its parameters, whose
 	// annotations' arguments, as kotlinc's, don't see the instance

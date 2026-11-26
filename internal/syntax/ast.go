@@ -1196,6 +1196,11 @@ type Ident struct {
 	exprBase
 	Name string
 	Sym  *types.VarSym
+	// Underscore is set on a _ without back-ticks that a call with type
+	// arguments calls, _<T>(), which the parser doesn't report: the
+	// CHECK_TYPE helper of kotlinc's tests is a function of that name.
+	// The checker reports it where it calls a constructor.
+	Underscore bool
 	// Getter is set for a property inherited from a Java or Kotlin class,
 	// read through this: message in a subclass of Exception.
 	Getter *types.FunSym

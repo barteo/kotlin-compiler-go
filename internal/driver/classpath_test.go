@@ -54,6 +54,9 @@ fun interface Sam { fun foo(x: @Anno String) }
 		{"fun f(b: l.Base) = b.give()", "cannot access class 'r.Some'"},
 		{"fun f() = l.Impl()", ""}, // only a warning in Kotlin 2.4
 		{"fun f(i: l.Impl) = i.own()", "cannot access 'r.Missed' which is a supertype of 'l.Impl'"},
+		// Any?.hashCode() of the standard library, which stands for
+		// Impl's own.
+		{"fun f(i: l.Impl) = i.hashCode()", "cannot access 'r.Missed' which is a supertype of 'l.Impl'"},
 		{"class C : l.Mid", "cannot access 'r.Missed' which is a supertype of 'a.C'"},
 		// ForbidTypeAliasWithMissingDependencyType: the alias's expansion.
 		{"fun f(): l.ToSome? = null", "cannot access class 'r.Some?'"},

@@ -196,6 +196,9 @@ func main() {
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
 		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut, strayWarns: *strayWarns}
+		if c.stdlibOnly, err = stdlibOnlyNames(*stdlib); err != nil {
+			log.Fatal(err)
+		}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}

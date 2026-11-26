@@ -10,7 +10,8 @@ import (
 // several, as compiler/testData/diagnostics/ReadMe.md describes.
 type expected struct {
 	name string
-	line int // of the element's start, counting from 1
+	line int    // of the element's start, counting from 1
+	text string // the element, without the markup inside it
 }
 
 // stripMarkup removes the diagnostic markup from src, which keeps its
@@ -18,17 +19,30 @@ type expected struct {
 func stripMarkup(src string) (string, []expected) {
 	var sb strings.Builder
 	var es []expected
+	// The open elements: where each starts in sb, and its diagnostics'
+	// indexes in es.
+	type open struct{ start, first, end int }
+	var opens []open
 	line := 1
 	for i := 0; i < len(src); {
 		if strings.HasPrefix(src[i:], "<!>") {
+			if n := len(opens); n > 0 {
+				o := opens[n-1]
+				opens = opens[:n-1]
+				for j := o.first; j < o.end; j++ {
+					es[j].text = sb.String()[o.start:]
+				}
+			}
 			i += 3
 			continue
 		}
 		if strings.HasPrefix(src[i:], "<!") {
 			if names, n := parseOpenTag(src[i:]); n > 0 {
+				first := len(es)
 				for _, name := range names {
 					es = append(es, expected{name: name, line: line})
 				}
+				opens = append(opens, open{sb.Len(), first, len(es)})
 				i += n
 				continue
 			}

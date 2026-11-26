@@ -2998,6 +2998,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		marks = append(marks, mark{len(r.cons), len(r.joined), len(r.extra)})
 	}
 	t := c.call1(x, want, sink)
+	if id, ok := x.Fun.(*syntax.Ident); ok && id.Underscore && x.Ctor != nil {
+		// _<Any>() of a class `_`, not the CHECK_TYPE helper.
+		c.errorf(id.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
 	if c.ambiguities > amb {
 		// An ambiguous call in a builder's lambda gives the builder's
 		// variables nothing, as in kotlinc: what its candidates
@@ -3234,6 +3238,8 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 {
 			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
 				return c.construct(x, cls, fn.P, want, sink)
+			} else if c.starCtorTiesFuns(name, cls, fs, x) {
+				c.errorf(fn.P, "overload resolution ambiguity: %s is a constructor and a function of the star imports", name)
 			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
@@ -3483,13 +3489,19 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 			return c.call(x, want, sink)
 		}
-		_, ok := c.extFuncVar(fn.Name)
+		ft, ok := c.extFuncVar(fn.Name)
 		if p := c.orderDependent; p != nil && p.Owner != nil {
 			c.warnf(fn.P, "IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT",
 				"the resolution result depends on the declaration order. This can lead to false-positive errors in the IDE. Specify the type of '%s' defined in '%s' explicitly", p.Name, p.Owner.DisplayName())
 		}
 		if (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
+			if rt := ft.Flex().NonNull(); ok && rt.Contexts() > 0 && len(x.Args)+1 == rt.A.Len()-1 {
+				// With an argument for each context parameter, x among
+				// them, which K2 doesn't support: "".f(1, true) for an
+				// f: context(String, Int) Boolean.() -> Unit.
+				c.errorf(fn.P, "unsupported contextual declaration call: '%s' takes its context arguments implicitly", fn.Name)
+			}
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
 			x.Fun, x.Args = id, append([]syntax.Expr{fn.X}, x.Args...)
@@ -3659,6 +3671,14 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		}
 		if x.Sym != nil {
 			x.Builtin = x.Sym.Builtin
+			if x.Infix && !x.Sym.Infix || x.Operator && !x.Sym.Operator {
+				if c.noneApplicable(x, fn, rt) {
+					// As K2, none of several candidates the call may be
+					// is applicable: its type is an error, which a
+					// lambda's result can't infer a type with.
+					t = types.InvalidType
+				}
+			}
 			if x.Infix && !x.Sym.Infix {
 				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
 			}
@@ -3683,6 +3703,19 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		return t
 	}
 	return c.invoke(x, want, sink)
+}
+
+// noneApplicable reports whether infix or operator call x of a local
+// extension lacking the modifier has a top-level extension of the name
+// that may take it too. K2 then reports that none of them is applicable,
+// rather than resolving x to the local one.
+func (c *Checker) noneApplicable(x *syntax.Call, fn *syntax.Member, rt types.Type) bool {
+	if _, local := x.Sym.Decl.(*syntax.LocalFun); !local || !x.Sym.Ext {
+		return false
+	}
+	return slices.ContainsFunc(slices.Concat(c.funsOf(c.pkg, fn.Name), c.userFuns[fn.Name]), func(f *types.FunSym) bool {
+		return f.Ext && f != x.Sym && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+	})
 }
 
 // kotlinIntrinsic reports whether fn, kotlin.f in a call, names an array

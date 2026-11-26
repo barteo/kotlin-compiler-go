@@ -88,6 +88,7 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl, jdk bool) [][]*types.F
 		if slices.ContainsFunc(cls.Methods[gr[0].Name], func(f *types.FunSym) bool { return !f.Static && c.sameParams(this, f, gr[0]) }) {
 			continue
 		}
+		all := gr
 		gr = slices.DeleteFunc(slices.Clone(gr), func(g *types.FunSym) bool {
 			return slices.ContainsFunc(gr, func(h *types.FunSym) bool { return h.Owner != g.Owner && h.Owner.IsSubclassOf(g.Owner) })
 		})
@@ -95,9 +96,32 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl, jdk bool) [][]*types.F
 			continue
 		}
 		// A supertype that inherits them all has the intersection: it is
-		// checked there.
-		if slices.ContainsFunc(directSupers(cls), func(s *types.ClassSym) bool {
-			return !slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !s.IsSubclassOf(g.Owner) })
+		// checked there. Unless another supertype inherits one of them
+		// without declaring it through two of its own supertypes, which
+		// gives it an intersection of its own, one more implementation
+		// than the first one's holds, as in K2: Child : Parent(), IChild,
+		// for a Parent : GrandParent(), ISecondary and an IChild :
+		// ISecondary, ITop, not for Parent(), ISecondary.
+		supers := directSupers(cls)
+		reaches := func(s *types.ClassSym) bool {
+			return slices.ContainsFunc(all, func(g *types.FunSym) bool { return s.IsSubclassOf(g.Owner) })
+		}
+		if slices.ContainsFunc(supers, func(s *types.ClassSym) bool {
+			if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return !s.IsSubclassOf(g.Owner) }) {
+				return false
+			}
+			return !slices.ContainsFunc(supers, func(o *types.ClassSym) bool {
+				if o == s || s.IsSubclassOf(o) || slices.ContainsFunc(all, func(g *types.FunSym) bool { return g.Owner == o }) {
+					return false
+				}
+				n := 0
+				for _, oo := range directSupers(o) {
+					if reaches(oo) {
+						n++
+					}
+				}
+				return n >= 2
+			})
 		}) {
 			continue
 		}

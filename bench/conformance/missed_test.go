@@ -6,7 +6,7 @@ import (
 )
 
 func TestMissCause(t *testing.T) {
-	e := mark{"a.kt", expected{"X", 10}}
+	e := mark{"a.kt", expected{name: "X", line: 10}}
 	tests := []struct {
 		name     string
 		dt       diagTest
@@ -19,11 +19,30 @@ func TestMissCause(t *testing.T) {
 		{"nearby", diagTest{kc: []diag{{file: "a.kt", line: 12}}}, catRejectsInvalid, causeNearby},
 		{"other file", diagTest{kc: []diag{{file: "b.kt", line: 10}}}, catRejectsInvalid, causeMissingCheck},
 		{"far", diagTest{kc: []diag{{file: "a.kt", line: 20}}}, catRejectsInvalid, causeMissingCheck},
-		{"nearby, marked", diagTest{kc: []diag{{file: "a.kt", line: 11}}, marks: []mark{{"a.kt", expected{"Y", 11}}}}, catRejectsInvalid, causeMissingCheck},
+		{"nearby, marked", diagTest{kc: []diag{{file: "a.kt", line: 11}}, marks: []mark{{"a.kt", expected{name: "Y", line: 11}}}}, catRejectsInvalid, causeMissingCheck},
 	}
 	for _, tt := range tests {
 		if got := tt.dt.missCause(tt.category, e); got != tt.want {
 			t.Errorf("%s: missCause = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+	// Names only the full standard library declares, in a test without
+	// WITH_STDLIB.
+	only := map[string]bool{"println": true, "rangeTo": true}
+	for _, tt := range []struct {
+		dt   diagTest
+		e    expected
+		want string
+	}{
+		{diagTest{stdlibOnly: only}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "println"}, causeEnvironment},
+		{diagTest{stdlibOnly: only}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: ".."}, causeEnvironment},
+		{diagTest{stdlibOnly: only}, expected{name: "UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH", line: 10, text: "1u"}, causeEnvironment},
+		{diagTest{stdlibOnly: only}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "foo"}, causeMissingCheck},
+		{diagTest{stdlibOnly: only}, expected{name: "ARGUMENT_TYPE_MISMATCH", line: 10, text: "println"}, causeMissingCheck},
+		{diagTest{}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "println"}, causeMissingCheck},
+	} {
+		if got := tt.dt.missCause(catRejectsInvalid, mark{"a.kt", tt.e}); got != tt.want {
+			t.Errorf("%+v: missCause = %s, want %s", tt.e, got, tt.want)
 		}
 	}
 }
@@ -56,7 +75,7 @@ func TestCompareMissed(t *testing.T) {
 
 func TestMissedWarningLines(t *testing.T) {
 	sev := map[string]string{"W": sevWarning, "E": sevError}
-	w := func(file string, line int) mark { return mark{file, expected{"W", line}} }
+	w := func(file string, line int) mark { return mark{file, expected{name: "W", line: line}} }
 	rs := []*result{
 		{path: "hit.kt", category: catAcceptsValid},
 		{path: "broken.kt", category: catRejectsInvalid},
@@ -66,7 +85,7 @@ func TestMissedWarningLines(t *testing.T) {
 	dts := []*diagTest{
 		// One of two warnings on their lines, an error mark, and a
 		// warning of another name on the missed one's line.
-		{marks: []mark{w("a.kt", 1), w("a.kt", 2), {"a.kt", expected{"E", 3}}},
+		{marks: []mark{w("a.kt", 1), w("a.kt", 2), {"a.kt", expected{name: "E", line: 3}}},
 			kcWarns: []diag{{file: "a.kt", line: 1, name: "W"}, {file: "a.kt", line: 2, name: "V"}}},
 		{marks: []mark{w("b.kt", 4)}, parseErrs: true},
 		{marks: []mark{w("c.kt", 5), w("d.kt", 6)}, tried: map[string]bool{"c.kt": true}},

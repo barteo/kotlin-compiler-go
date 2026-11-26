@@ -3170,11 +3170,13 @@ func (p *parser) parsePrimary() Expr {
 			return l
 		}
 		p.next()
-		if t.Text != "_" || !p.at(LT) {
-			// _<T>() calls the CHECK_TYPE helper of kotlinc's tests.
+		underscore := t.Text == "_" && p.at(LT)
+		if !underscore {
 			p.underscoreRef(*t)
 		}
-		id := &Ident{Name: t.Text}
+		// _<T>() calls the CHECK_TYPE helper of kotlinc's tests, or
+		// another _ the checker reports.
+		id := &Ident{Name: t.Text, Underscore: underscore && t.Kind == IDENT && !t.Quoted}
 		id.P = t.Pos
 		return id
 	case LPAREN:

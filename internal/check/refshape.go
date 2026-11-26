@@ -305,6 +305,19 @@ func (c *Checker) memberRefShapes(cls *types.ClassSym, name string) []types.Type
 			out = append(out, t)
 		}
 	}
+	// Those of its companion object's functions of the name, which K2's
+	// C::name also finds, bound to the companion: KotlinClass::baz is
+	// (String) -> Int for a companion's baz(String) as well as
+	// (KotlinClass, CharSequence) -> Int for a member baz.
+	if comp := cls.Companion; comp != nil && !isJavaClass(cls) && p == nil && c.memberProp(comp, name) == nil {
+		for _, f := range c.javaMethods(comp, name) {
+			t, ok := c.funShape(f, nil)
+			if !ok {
+				return nil
+			}
+			out = append(out, t)
+		}
+	}
 	return out
 }
 

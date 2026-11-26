@@ -3292,7 +3292,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		l.T = c.lambda(l, pt)
 		return
 	}
-	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && pt.HasVars() {
+	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && pt.HasVars() && !projected(pt) {
 		// A KFunctionN's variables are those of the reference's function,
 		// which refArgFit or onlyRefFit gave: foo(Sample::bar) for
 		// foo(x: KFunction1<T, R>) names bar().
