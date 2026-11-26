@@ -9,6 +9,7 @@ val l1: Long = (2 + 2 * 3).inv()
 val l2: Long = (2 + 2 * 3).unaryMinus()
 val l3: Long = 3000000000.plus(1)
 const val c1: Long = 2000000000.plus(2000000000)
+const val c2: Long = -(1 shl 31)
 
 fun main() {
     println(takeLong(2.plus(1)))
@@ -29,5 +30,8 @@ fun main() {
     println(takeLong((1 + 1).times(1000000000)))
     val h: Holder<Long> = Holder(1.plus(2))
     println(h.t + 1)
-    println("$l1 $l2 $l3 $c1")
+    val n1: Long = -(1 shl 31)
+    val n2: Long = -(1 + 2147483647)
+    val n3: Long = -(2.plus(2147483646))
+    println("$l1 $l2 $l3 $c1 $c2 $n1 $n2 $n3")
 }

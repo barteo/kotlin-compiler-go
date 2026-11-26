@@ -233,6 +233,9 @@ func constOf(e syntax.Expr, depth int) (any, bool) {
 		}
 		return constRef(e.Prop, depth)
 	case *syntax.Unary:
+		if v, ok := literalUnaryLong(e); ok {
+			return v, true
+		}
 		v, ok := constOf(e.X, depth+1)
 		if !ok || e.Call != nil {
 			return nil, false
@@ -894,6 +897,17 @@ func literalArithLong(x *syntax.Binary) (int64, bool) {
 // computes as Ints and widens.
 func literalCallLong(x *syntax.Call) (int64, bool) {
 	if x.T.K != types.Long || x.T.N || x.Builtin != types.OperatorFun && x.Builtin != types.Bitwise {
+		return 0, false
+	}
+	v, ok := literalInt(x, 0)
+	return int64(v), ok
+}
+
+// literalUnaryLong returns the value of -x or +x, for arithmetic of
+// integer literals x, that is a Long because a Long is expected, val n:
+// Long = -(1 shl 31), which kotlinc computes as Ints too: -2147483648.
+func literalUnaryLong(x *syntax.Unary) (int64, bool) {
+	if x.T.K != types.Long || x.T.N || x.Call != nil || x.Op != syntax.MINUS && x.Op != syntax.PLUS {
 		return 0, false
 	}
 	v, ok := literalInt(x, 0)

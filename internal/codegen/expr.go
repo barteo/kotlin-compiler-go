@@ -342,6 +342,10 @@ func (g *gen) expr(x syntax.Expr) {
 			g.call(x.Call) // an operator function
 			return
 		}
+		if v, ok := literalUnaryLong(x); ok {
+			g.code.Lconst(v) // val n: Long = -(1 shl 31), computed as Ints
+			return
+		}
 		switch x.Op {
 		case syntax.MINUS:
 			g.exprAs(x.X, x.T)
