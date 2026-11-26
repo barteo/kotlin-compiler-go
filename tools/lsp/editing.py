@@ -29,12 +29,16 @@ class Buffer:
         for change in edit.get("documentChanges", []):
             assert change["textDocument"]["uri"] == self.uri
             edits.extend(change["edits"])
-        text = self.text
-        for e in sorted(edits, key=lambda e: offset(text, e["range"]["start"]), reverse=True):
-            a, b = (offset(self.text, e["range"][k]) for k in ("start", "end"))
-            text = text[:a] + e["newText"] + text[b:]
         if edits:
-            self.change(text, notify)
+            self.change(apply_edits(self.text, edits), notify)
+
+
+def apply_edits(source, edits):
+    text = source
+    for edit in sorted(edits, key=lambda e: offset(source, e["range"]["start"]), reverse=True):
+        a, b = (offset(source, edit["range"][k]) for k in ("start", "end"))
+        text = text[:a] + edit["newText"] + text[b:]
+    return text
 
 
 def labels(result, legend):

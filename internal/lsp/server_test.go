@@ -37,12 +37,16 @@ func start(t *testing.T, root string) *client {
 }
 func startClient(t *testing.T, root string, opts completionOptions, definitionLinks bool) *client {
 	t.Helper()
+	return startClientEdits(t, root, opts, definitionLinks, true)
+}
+func startClientEdits(t *testing.T, root string, opts completionOptions, definitionLinks, versionEdits bool) *client {
+	t.Helper()
 	r, w := io.Pipe()
 	rr, ww := io.Pipe()
 	done := make(chan error, 1)
 	go func() { err := Serve(r, ww); ww.Close(); done <- err }()
 	c := &client{t: t, req: w, resp: bufio.NewReader(rr)}
-	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"definition": object{"linkSupport": definitionLinks}, "completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": true}}}})
+	c.call("initialize", object{"rootUri": uri(root), "capabilities": object{"textDocument": object{"definition": object{"linkSupport": definitionLinks}, "completion": object{"completionItem": opts}, "signatureHelp": object{"signatureInformation": object{"parameterInformation": object{"labelOffsetSupport": true}}}}, "workspace": object{"workspaceEdit": object{"documentChanges": versionEdits}}}})
 	c.notify("initialized", object{})
 	t.Cleanup(func() {
 		if !t.Failed() {
@@ -70,6 +74,14 @@ func (c *client) write(m object) {
 func (c *client) notify(m string, p any) { c.write(object{"jsonrpc": "2.0", "method": m, "params": p}) }
 func (c *client) call(m string, p any) json.RawMessage {
 	c.t.Helper()
+	result, err := c.request(m, p)
+	if err != nil {
+		c.t.Fatalf("%s: %v", m, err)
+	}
+	return result
+}
+func (c *client) request(m string, p any) (json.RawMessage, *rpcError) {
+	c.t.Helper()
 	c.id++
 	c.write(object{"jsonrpc": "2.0", "id": c.id, "method": m, "params": p})
 	for {
@@ -95,10 +107,7 @@ func (c *client) call(m string, p any) json.RawMessage {
 		if r.ID != c.id {
 			continue
 		}
-		if r.Error != nil {
-			c.t.Fatalf("%s: %v", m, r.Error)
-		}
-		return r.Result
+		return r.Result, r.Error
 	}
 }
 func params(path string, pos position) object {
@@ -324,7 +333,18 @@ func TestFileMoveAndImportAlias(t *testing.T) {
 		}
 	}
 	got = c.call("workspace/willRenameFiles", object{"files": []fileMove{{uri(path), uri(filepath.Join(root, "src", "next", "Api.kt"))}}})
-	if !bytes.Contains(got, []byte("next.answer")) || !bytes.Contains(got, []byte("package next")) {
+	if err := json.Unmarshal(got, &rename); err != nil {
+		t.Fatal(err)
+	}
+	after := map[string]string{}
+	for _, d := range rename.DocumentChanges {
+		p, err := filePath(d.TextDocument.URI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after[p] = applyText(t, string(input(t, p)), d.Edits)
+	}
+	if !strings.Contains(after[user], "import next.answer as result") || !strings.Contains(after[path], "package next") {
 		t.Fatalf("file move %s", got)
 	}
 }

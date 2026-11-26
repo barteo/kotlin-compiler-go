@@ -74,6 +74,9 @@ def capture(process, messages, root, state, project):
                              "foldingRange": {}, "hover": {"contentFormat": ["markdown"]}}}
     if project in ("editing", "navigation"):
         caps["textDocument"]["definition"] = {"linkSupport": True}
+    if project == "moves":
+        caps["workspace"].update({"fileOperations": {"willRename": True, "didRename": True},
+                                  "workspaceEdit": {"documentChanges": True, "resourceOperations": ["rename"]}})
     if project == "navigation":
         caps["textDocument"]["inlayHint"] = {}
     if project == "editing":
@@ -90,7 +93,7 @@ def capture(process, messages, root, state, project):
     record = {"release": "kotlin-lsp/v" + RELEASE, "registrations": registrations,
               "clientCapabilities": caps, "initialize": init}
     send(process, method="initialized", params={})
-    file = (root / "library" if project in ("gradle", "editing", "navigation") else root) / "src/main/kotlin/Example.kt"
+    file = (root / "library" if project in ("gradle", "editing", "navigation", "moves") else root) / "src/main/kotlin/Example.kt"
     doc = {"uri": file.as_uri()}
     send(process, method="textDocument/didOpen", params={"textDocument": {
         **doc, "languageId": "kotlin", "version": 1, "text": file.read_text()}})
@@ -132,6 +135,8 @@ def capture(process, messages, root, state, project):
     if project == "navigation":
         cases = editing.record_navigation(request, notify, buffer, FIXTURES / "navigation", settings)
         record = {"release": record["release"], **cases}
+    if project == "moves":
+        record = {"release": record["release"], "cases": record_moves(root, request)}
     request("shutdown", None)
     send(process, method="exit", params=None)
     experimental = init["capabilities"]["experimental"]
@@ -146,6 +151,32 @@ def capture(process, messages, root, state, project):
     return text + "\n"
 
 
+def move_cases():
+    return json.loads((FIXTURES / "moves/cases.json").read_text())
+
+
+def record_moves(root, request):
+    results = {}
+    for name, case in move_cases().items():
+        paths = {(root / path).as_uri(): path for path in case["files"]}
+        moves = [{"oldUri": (root / old).as_uri(), "newUri": (root / dest).as_uri()}
+                 for old, dest in case["moves"].items()]
+        edit = request("workspace/willRenameFiles", {"files": moves})
+        if not edit or "error" in edit:
+            raise RuntimeError(f"{name}: expected a workspace edit, received {edit}")
+        changes = edit.get("changes", {}).copy()
+        for change in edit.get("documentChanges", []):
+            changes.setdefault(change["textDocument"]["uri"], []).extend(change["edits"])
+        files = case["files"].copy()
+        for uri, edits in changes.items():
+            path = paths[uri]
+            files[path] = editing.apply_edits(files[path], edits)
+        if files == case["files"]:
+            raise RuntimeError(f"{name}: the move produced no text changes")
+        results[name] = files
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
@@ -156,6 +187,8 @@ def main():
     projects.add_argument("--editing", action="store_const", const="editing", dest="project", help="capture editing behavior with a binary Kotlin library")
     projects.add_argument("--navigation", action="store_const", const="navigation", dest="project",
                           help="capture overload navigation and lambda and call-chain hints")
+    projects.add_argument("--moves", action="store_const", const="moves", dest="project",
+                          help="capture package folder and batch workspace edits")
     parser.add_argument("--kc", type=Path, help="kc executable to compile the editing fixture")
     args = parser.parse_args()
     if args.project == "editing" and not args.kc:
@@ -163,9 +196,9 @@ def main():
     with tempfile.TemporaryDirectory() as temp:
         state = Path(temp).resolve()
         root = state / "project"
-        if args.project in ("gradle", "editing", "navigation"):
+        if args.project in ("gradle", "editing", "navigation", "moves"):
             shutil.copytree(FIXTURES / "gradle", root, ignore=shutil.ignore_patterns("upstream-*.json"))
-        source = (root / "library" if args.project in ("gradle", "editing", "navigation") else root) / "src/main/kotlin/Example.kt"
+        source = (root / "library" if args.project in ("gradle", "editing", "navigation", "moves") else root) / "src/main/kotlin/Example.kt"
         source.parent.mkdir(parents=True)
         source.write_bytes((FIXTURES / "Example.kt").read_bytes())
         if args.project:
@@ -193,6 +226,12 @@ def main():
             shutil.copy(fixture / "Parser.java", java_dir)
             (root / "gradle.properties").write_text("")
             (root / "src/main/kotlin/Editing.kt").write_text("package sample\n")
+        if args.project == "moves":
+            for case in move_cases().values():
+                for path, text in case["files"].items():
+                    file = root / path
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    file.write_text(text)
         if args.project == "maven":
             (root / "pom.xml").write_bytes((FIXTURES / "maven/pom.xml").read_bytes())
         with subprocess.Popen([args.binary, "--stdio", "--system-path=" + str(state / "state")],

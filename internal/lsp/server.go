@@ -153,7 +153,7 @@ type rpcError struct {
 func (e rpcError) Error() string { return e.Message }
 func changesWorld(m string) bool {
 	switch m {
-	case "textDocument/didChange", "textDocument/didOpen", "textDocument/didClose", "textDocument/didSave", "workspace/didChangeWatchedFiles", "workspace/didChangeWorkspaceFolders":
+	case "textDocument/didChange", "textDocument/didOpen", "textDocument/didClose", "textDocument/didSave", "workspace/didChangeWatchedFiles", "workspace/didChangeWorkspaceFolders", "workspace/didRenameFiles":
 		return true
 	}
 	return false
@@ -263,9 +263,13 @@ func Serve(in io.Reader, out io.Writer) error {
 	return err
 }
 func capabilities() object {
+	renames := object{"filters": []object{
+		{"scheme": "file", "pattern": object{"glob": "**/*.kt", "matches": "file"}},
+		{"scheme": "file", "pattern": object{"glob": "**/*", "matches": "folder"}},
+	}}
 	return object{
 		"positionEncoding": "utf-16", "textDocumentSync": object{"openClose": true, "change": 2, "save": true},
-		"workspace":              object{"workspaceFolders": object{"supported": true, "changeNotifications": true}, "fileOperations": object{"willRename": object{"filters": []object{{"scheme": "file", "pattern": object{"glob": "**/*.kt", "matches": "file"}}}}}},
+		"workspace":              object{"workspaceFolders": object{"supported": true, "changeNotifications": true}, "fileOperations": object{"willRename": renames, "didRename": renames}},
 		"documentSymbolProvider": true, "workspaceSymbolProvider": true, "foldingRangeProvider": true, "hoverProvider": true,
 		"definitionProvider": true, "typeDefinitionProvider": true, "referencesProvider": true, "documentHighlightProvider": true, "completionProvider": object{"resolveProvider": true, "triggerCharacters": []string{".", "?"}},
 		"signatureHelpProvider": object{"triggerCharacters": []string{"(", ","}}, "renameProvider": object{"prepareProvider": true},
@@ -376,6 +380,8 @@ func (s *server) handle(ctx context.Context, m message) (result any, err error) 
 		s.reportIssues()
 		s.publish(ctx)
 		return nil, nil
+	case "workspace/didRenameFiles":
+		return nil, s.didMoveFiles(ctx, p.Files)
 	case "workspace/willRenameFiles":
 		return s.fileMoves(ctx, p.Files)
 	case "completionItem/resolve":

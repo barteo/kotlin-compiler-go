@@ -1,0 +1,23 @@
+{
+  "folder": {
+    "moves": {"library/src/main/kotlin/old": "library/src/main/kotlin/fresh"},
+    "files": {
+      "library/src/main/kotlin/old/Api.kt": "package old\n\nfun answer() = 42\n",
+      "library/src/main/kotlin/old/nested/Child.kt": "package old.nested\n\nimport old.answer\n\nfun child() = answer()\n",
+      "src/main/kotlin/client/Folder.kt": "package client\n\nimport old.nested.child as result\n\nfun useFolder() = result()\n"
+    }
+  },
+  "batch": {
+    "moves": {
+      "library/src/main/kotlin/source/One.kt": "library/src/main/kotlin/dest/One.kt",
+      "library/src/main/kotlin/source/Two.kt": "library/src/main/kotlin/dest/Two.kt"
+    },
+    "files": {
+      "library/src/main/kotlin/source/One.kt": "package source\n\nfun one() = two()\n",
+      "library/src/main/kotlin/source/Two.kt": "package source\n\nfun two() = 2\n",
+      "library/src/main/kotlin/source/Keep.kt": "package source\n\nfun keep() = 1\n",
+      "library/src/main/kotlin/dest/Anchor.kt": "package dest\n\nclass Anchor\n",
+      "src/main/kotlin/client/Batch.kt": "package client\n\nimport source.one as first\n\nfun useBatch() = first()\n"
+    }
+  }
+}
