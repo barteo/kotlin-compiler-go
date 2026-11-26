@@ -770,7 +770,10 @@ func TestLibrary(t *testing.T) {
 				appOut := t.TempDir()
 				cp := strings.Join(append([]string{libOut}, deps[1:]...), string(os.PathListSeparator))
 				args := append(append([]string{"-nowarn", "-cp", cp, "-d", appOut}, appFlags...), app...)
-				if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+				// kotlinc's own assertions check the bytecode of kc's inline functions as kotlinc's inliner reads it.
+				cmd := exec.Command(kotlinc, args...)
+				cmd.Env = append(os.Environ(), "JAVA_OPTS=-ea")
+				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("kotlinc: %v\n%s", err, out)
 				}
 				run(t, appOut)

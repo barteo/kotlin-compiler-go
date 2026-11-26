@@ -670,7 +670,6 @@ func (in *inliner) insn(i int) {
 		return
 	}
 	switch op := ins.Op; {
-	case op == cf.NOP:
 	case op == cf.BIPUSH || op == cf.SIPUSH:
 		c.Iconst(int32(ins.Int))
 	case op == cf.LDC:
