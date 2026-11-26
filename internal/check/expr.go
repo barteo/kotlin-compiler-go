@@ -772,7 +772,8 @@ func (c *Checker) convert(x syntax.Expr, t types.Type) syntax.Expr {
 }
 
 // literalArith reports whether x is arithmetic of integer literals
-// without a type of their own: 8 * 1024 or -1, but not 1L or 1u.
+// without a type of their own: 8 * 1024 or -1, or 2.plus(1) or 1.shl(3),
+// operator functions called by name, but not 1L or 1u, nor 1.inc().
 func literalArith(x syntax.Expr) bool {
 	switch x := x.(type) {
 	case *syntax.IntLit:
@@ -784,8 +785,31 @@ func literalArith(x syntax.Expr) bool {
 		case syntax.PLUS, syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
 			return literalArith(x.X) && literalArith(x.Y)
 		}
+	case *syntax.Call:
+		_, ok := literalOpCall(x)
+		return ok
 	}
 	return false
+}
+
+// literalOpCall returns the receiver of x if it is an operator function
+// of integer literals called by name, 2.plus(1) or (1 + 2).inv(), which
+// is a literal's type, as 2 + 1 is.
+func literalOpCall(x *syntax.Call) (*syntax.Member, bool) {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok || m.Safe || x.Invoke || len(x.TypeArgs) > 0 || !intLiteralOps[m.Name] || len(x.Args) > 1 || !literalArith(m.X) {
+		return nil, false
+	}
+	unary := m.Name == "inv" || m.Name == "unaryPlus" || m.Name == "unaryMinus"
+	if unary != (len(x.Args) == 0) {
+		return nil, false
+	}
+	for _, a := range x.Args {
+		if !literalArith(a) {
+			return nil, false
+		}
+	}
+	return m, true
 }
 
 // isIntOrLong reports whether t is Int or Long, which an Int or Long
@@ -3427,8 +3451,9 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			return c.invoke(x, want, sink)
 		}
 		rw := noWant
-		if types.BitwiseOps[fn.Name] && want.Flex().NonNull() == types.LongType && intLitExpr(fn.X) && !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return !intLitExpr(a) }) {
-			// As 1 + 2, 1 shl 31 where a Long is expected is a Long's.
+		if intLiteralOps[fn.Name] && want.Flex().NonNull() == types.LongType && literalArith(fn.X) && !slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return !literalArith(a) }) {
+			// As 1 + 2, 1 shl 31, 1.plus(2) and (2 + 2 * 3).inv() where
+			// a Long is expected are a Long's. Not 1.inc().
 			rw = types.LongType
 		}
 		rt, nullExts, ok := c.callReceiver(fn, rw)

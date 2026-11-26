@@ -257,6 +257,9 @@ func constOf(e syntax.Expr, depth int) (any, bool) {
 	case *syntax.Binary:
 		return constBinary(e, depth)
 	case *syntax.Call:
+		if v, ok := literalCallLong(e); ok {
+			return v, true
+		}
 		switch e.Builtin {
 		case types.Bitwise:
 			return constBitwise(e, depth)
@@ -885,8 +888,21 @@ func literalArithLong(x *syntax.Binary) (int64, bool) {
 	return int64(v), ok
 }
 
+// literalCallLong returns the value of an operator function of integer
+// literals called by name that is a Long because a Long is expected,
+// val n: Long = 2147483647.plus(1) or 1.shl(40), which kotlinc also
+// computes as Ints and widens.
+func literalCallLong(x *syntax.Call) (int64, bool) {
+	if x.T.K != types.Long || x.T.N || x.Builtin != types.OperatorFun && x.Builtin != types.Bitwise {
+		return 0, false
+	}
+	v, ok := literalInt(x, 0)
+	return int64(v), ok
+}
+
 // literalInt computes arithmetic of integer literals without a type of
-// their own, Int-sized, as Ints.
+// their own, Int-sized, as Ints: of operators, and of the operator
+// functions called by name, 2.plus(1) or 1.shl(3).
 func literalInt(e syntax.Expr, depth int) (int32, bool) {
 	if depth > 64 {
 		return 0, false
@@ -938,6 +954,50 @@ func literalInt(e syntax.Expr, depth int) (int32, bool) {
 				}
 				return a % b, true
 			}
+		}
+	case *syntax.Checked:
+		return literalInt(e.X, depth+1)
+	case *syntax.Call:
+		m, ok := e.Fun.(*syntax.Member)
+		if !ok || m.Safe || e.Builtin != types.OperatorFun && e.Builtin != types.Bitwise || len(e.Args) > 1 {
+			return 0, false
+		}
+		a, ok := literalInt(m.X, depth+1)
+		if !ok {
+			return 0, false
+		}
+		if len(e.Args) == 0 {
+			switch m.Name {
+			case "unaryPlus":
+				return a, true
+			case "unaryMinus":
+				return -a, true
+			case "inv":
+				return ^a, true
+			}
+			return 0, false
+		}
+		b, ok := literalInt(e.Args[0], depth+1)
+		if !ok {
+			return 0, false
+		}
+		switch m.Name {
+		case "plus", "minus", "times", "div", "rem":
+			op := map[string]syntax.Kind{"plus": syntax.PLUS, "minus": syntax.MINUS, "times": syntax.STAR, "div": syntax.SLASH, "rem": syntax.PERCENT}[m.Name]
+			bin := &syntax.Binary{Op: op, X: &syntax.IntLit{Val: int64(a)}, Y: &syntax.IntLit{Val: int64(b)}}
+			return literalInt(bin, depth+1)
+		case "and":
+			return a & b, true
+		case "or":
+			return a | b, true
+		case "xor":
+			return a ^ b, true
+		case "shl":
+			return a << (b & 31), true
+		case "shr":
+			return a >> (b & 31), true
+		case "ushr":
+			return int32(uint32(a) >> (b & 31)), true
 		}
 	}
 	return 0, false

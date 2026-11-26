@@ -2219,6 +2219,10 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.safeCall(m, arrayMemberType(x.Builtin, rt), x.T, func() { g.arrayMember(x, rt) })
 
 	case x.Builtin != types.NotBuiltin:
+		if v, ok := literalCallLong(x); ok {
+			g.code.Lconst(v) // val n: Long = 2147483647.plus(1), computed as Ints
+			return
+		}
 		m := x.Fun.(*syntax.Member)
 		rt := m.T // receiver type, non-null
 		ret := builtinRet(x)
