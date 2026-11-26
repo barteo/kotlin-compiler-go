@@ -525,7 +525,8 @@ func (v *VarSym) UnitLocal() bool { return v.Kind == Local && v.Type.K == Unit &
 // FunSym is a top-level function, method, constructor or builtin.
 // Effect is a contract's returns(value) implies (p != null) or (p is
 // T): if the function returns true (Returns 1), false (Returns 0), at
-// all (Returns -1) or a value that isn't null (Returns 2), its parameter
+// all (Returns -1), a value that isn't null (Returns 2) or null (Returns
+// 3), its parameter
 // at Param (-1: the extension receiver) isn't null, or is an Is when that
 // isn't nil.
 type Effect struct {

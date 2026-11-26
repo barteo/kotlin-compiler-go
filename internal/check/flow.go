@@ -1273,7 +1273,10 @@ func isNull(x syntax.Expr) bool {
 
 // boolEquality returns the smart casts of c == true and the like: those
 // of c, or of !c, when one side is a Boolean literal and the other a
-// condition.
+// condition. A Boolean? condition, as a?.f() or a call of a function
+// that returns one, equal to true is true, so not null, and equal to
+// false is false: a?.returnsTrue(s) == true tells what returnsTrue's
+// contract says of s. Not equal, it may be null, and tells nothing.
 func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, ok bool) {
 	lit, cond := x.X, x.Y
 	l, isLit := lit.(*syntax.BoolLit)
@@ -1283,11 +1286,23 @@ func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, 
 			return nil, nil, false
 		}
 	}
-	if cond.Type().Flex() != types.BoolType {
+	ct := cond.Type().Flex()
+	if ct.NonNull() != types.BoolType {
 		return nil, nil, false
 	}
+	eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 	whenTrue, whenFalse = c.narrowing(cond)
-	if l.Val != (x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ) {
+	if ct.N {
+		if !l.Val {
+			whenTrue = whenFalse
+		}
+		whenTrue, whenFalse = append(whenTrue[:len(whenTrue):len(whenTrue)], c.equalNonNull(cond)...), nil
+		if !eq {
+			whenTrue, whenFalse = whenFalse, whenTrue
+		}
+		return whenTrue, whenFalse, true
+	}
+	if l.Val != eq {
 		whenTrue, whenFalse = whenFalse, whenTrue
 	}
 	return whenTrue, whenFalse, true

@@ -1835,10 +1835,15 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				k, ok = c.chainKeyOf(x.Y)
 			}
 			var n, null []narrow
+			if ynull {
+				null = c.callNull(x.X)
+			} else if xnull {
+				null = c.callNull(x.Y)
+			}
 			if ok && types.MayBeNull(k.t) {
 				kn := k
 				kn.t = types.NullType
-				null = []narrow{kn}
+				null = append([]narrow{kn}, null...)
 				base := k.t
 				if id, isID := unchecked(nullSide(x)).(*syntax.Ident); isID {
 					if v := c.narrowSym(id); v != nil {
@@ -1857,9 +1862,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			eq := x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ
 			switch {
 			case ynull:
-				n = append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...)
+				n = append(append(append(n, c.safeReceivers(x.X)...), c.safeCastNonNull(x.X)...), c.callNonNull(x.X)...)
 			case xnull:
-				n = append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...)
+				n = append(append(append(n, c.safeReceivers(x.Y)...), c.safeCastNonNull(x.Y)...), c.callNonNull(x.Y)...)
 			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
 			case equalsNonNull(x.X.Type()):
@@ -1876,6 +1881,16 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 					whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], same...)
 				} else {
 					whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], same...)
+				}
+			}
+			// f(x) == Unit: f returned, whichever way the comparison
+			// goes, so its contract's returns() implies holds.
+			for _, side := range []syntax.Expr{x.X, x.Y} {
+				if call, ok := side.(*syntax.Call); ok {
+					if ran := c.contractNarrows(call, -1); len(ran) > 0 {
+						whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], ran...)
+						whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], ran...)
+					}
 				}
 			}
 			if len(whenTrue) == 0 && len(whenFalse) == 0 {
@@ -1900,6 +1915,10 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				// that can't be reached learns nothing.
 				return nil, c.eitherNarrows(f1, t1, f2)
 			}
+			if isTrue(x.Y) {
+				// a && true is false where a is.
+				return t1, f1
+			}
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
@@ -1914,6 +1933,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			c.pop()
 			if neverCompletes(x.Y) {
 				return c.eitherNarrows(t1, f1, t2), nil // never false
+			}
+			if lit, ok := x.Y.(*syntax.BoolLit); ok && !lit.Val {
+				return t1, f1 // a || false is true where a is
 			}
 			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
@@ -2155,17 +2177,23 @@ func (c *Checker) safeEquals(t types.Type) bool {
 
 // contractNarrows returns the smart casts that the contract of a call's
 // function implies when it returns a value (1: true, 0: false, -1: at
-// all): the arguments it says aren't null, or are of a type, then.
+// all, 2: not null, 3: null): the arguments it says aren't null, or are
+// of a type, then.
 func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 	f := x.Sym
 	if f == nil || len(f.Implies) == 0 {
 		return nil
 	}
 	var out []narrow
+	// Each effect builds on those before it: myRequireAnd(x is B, x is
+	// C) makes x a B & C.
+	c.push()
+	defer c.pop()
 	for _, e := range f.Implies {
 		if e.Returns != returns {
 			continue
 		}
+		c.scope.narrows = out
 		var arg syntax.Expr
 		if e.Param < 0 {
 			m, ok := x.Fun.(*syntax.Member)
@@ -2350,7 +2378,29 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 		k.t = k.t.NonNull()
 		n = append(append(n, k), c.impliedBy(k)...)
 	}
-	return n
+	// f(x) isn't null: what f's returnsNotNull() implies, as in
+	// notEqualsNull(nullWhenNotString(x)).
+	return append(n, c.callNonNull(x)...)
+}
+
+// callNonNull returns what call x not being null tells: what its
+// function's returnsNotNull() implies, as of a?.f(s) != null.
+func (c *Checker) callNonNull(x syntax.Expr) []narrow {
+	if call, ok := x.(*syntax.Call); ok {
+		return c.contractNarrows(call, 2)
+	}
+	return nil
+}
+
+// callNull returns what call x being null tells: what its function's
+// returns(null) implies. Not of a safe call, a?.f(s), which is null
+// where a is too.
+func (c *Checker) callNull(x syntax.Expr) []narrow {
+	call, ok := x.(*syntax.Call)
+	if !ok || safeCallOf(call) {
+		return nil
+	}
+	return c.contractNarrows(call, 3)
 }
 
 // safeCastNonNull returns what a as? T not being null tells: a is a T.
