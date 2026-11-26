@@ -543,6 +543,112 @@ func captured(arg, param, final types.Type) types.Type {
 	return t
 }
 
+// captureUse is how the arguments of a call use a variable that a
+// projection may be captured by (see secondCapture): kinds has inv for
+// a capture in an invariant position, cov for a type below the
+// variable, and capt is the first capture's projection.
+type captureUse struct {
+	kinds uint8
+	capt  types.Arg
+}
+
+// secondCapture reports whether arg, of a parameter of type param that
+// is want once inferred, conflicts with a capture, as K2 finds it: a
+// projected argument for a variable in an invariant position of param
+// makes the variable equal to the capture, which no other capture and
+// no type but Nothing can be equal to or a subtype of, whether of an
+// earlier argument (capts) or of arg itself. T of cp(a: MutableList<T>,
+// b: MutableList<T>) for two MutableList<out Number>s, even of the same
+// value, T of foo(m: Map<T, T>) for a Map<*, *>, whose value's capture is
+// below T, and T of one(a: MutableList<T>, b: List<T>) for a
+// MutableList<out Number> and a List<Int>. It returns the type expected,
+// with the captures as K2 writes them, and adds arg's uses to capts.
+func secondCapture(arg, param, want types.Type, capts map[*types.TypeParamSym]*captureUse) (string, bool) {
+	const inv, cov = 1, 2
+	a := arg.Flex().NonNull()
+	if param.K != types.Class || param.A == nil || a.K != types.Class || a.C != param.C || a.A == nil || a.A.Len() != param.A.Len() {
+		return "", false
+	}
+	type use struct {
+		v    *types.TypeParamSym
+		kind uint8
+		aa   types.Arg
+	}
+	var uses []use
+	for i, pa := range param.A.List {
+		if pa.V != types.Inv || pa.T.K != types.TypeVar || pa.T.D {
+			continue
+		}
+		aa := a.A.List[i]
+		kind := uint8(inv)
+		if i < len(param.C.TypeParams) {
+			switch param.C.TypeParams[i].Var {
+			case types.Out:
+				if aa.V == types.In || aa.V == types.Inv && (aa.T.K == types.Nothing || aa.T.HasVars() || aa.T.HasParams()) {
+					continue
+				}
+				kind = cov
+			case types.In:
+				continue
+			}
+		}
+		if kind == inv && aa.V == types.Inv {
+			continue
+		}
+		uses = append(uses, use{pa.T.Param(), kind, aa})
+	}
+	// The variables' uses before arg's, and arg's own.
+	before := map[*types.TypeParamSym]uint8{}
+	for _, u := range uses {
+		if u.v != nil && capts[u.v] != nil {
+			before[u.v] = capts[u.v].kinds
+		}
+	}
+	own := map[*types.TypeParamSym]uint8{}
+	second := false
+	for _, u := range uses {
+		if u.v == nil {
+			continue
+		}
+		if prev := before[u.v] | own[u.v]; prev != 0 && (prev|u.kind)&inv != 0 {
+			second = true
+		}
+		own[u.v] |= u.kind
+		cu := capts[u.v]
+		if cu == nil {
+			cu = &captureUse{}
+			capts[u.v] = cu
+		}
+		if u.kind == inv && cu.kinds&inv == 0 {
+			cu.capt = u.aa
+		}
+		cu.kinds |= u.kind
+	}
+	if !second {
+		return "", false
+	}
+	// The type expected: a capture of arg's own where arg has one, else
+	// the variable's.
+	args := make([]string, a.A.Len())
+	for i, aa := range a.A.List {
+		args[i] = aa.String()
+		pa := param.A.List[i]
+		if pa.V != types.Inv || pa.T.K != types.TypeVar || pa.T.D {
+			continue
+		}
+		if aa.V != types.Inv {
+			args[i] = "CapturedType(" + aa.String() + ")"
+		} else if cu := capts[pa.T.Param()]; cu != nil && cu.kinds&inv != 0 {
+			args[i] = "CapturedType(" + cu.capt.String() + ")"
+		}
+	}
+	w := a.C.DisplayName() + "<" + strings.Join(args, ", ") + ">"
+	if want.N {
+		w += "?"
+	}
+	return w, true
+}
+
 // capturable reports whether the projected type arguments of ext, the
 // receiver of a call of generic extension f, can be captured, and returns
 // ext as f's receiver class. f's type parameters that out and star
@@ -1351,6 +1457,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
+		// The variables that an argument's projection is captured by, as
+		// T of cp(a: MutableList<T>, b: MutableList<T>) for an a of
+		// MutableList<out Number>: another argument's capture is another
+		// type, which T can't be too (see secondCapture).
+		capts := map[*types.TypeParamSym]*captureUse{}
 		for i, a := range x.Args {
 			if _, ok := a.(*syntax.Lambda); ok {
 				continue // checked by postponedLambda
@@ -1375,6 +1486,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				continue
 			}
 			want := captured(a.Type(), params[i], pt)
+			if w, ok := secondCapture(a.Type(), params[i], want, capts); ok {
+				c.errorf(syntax.StartPos(a), "type mismatch: inferred type is %s but %s was expected", a.Type(), w)
+				continue
+			}
 			c.assignable(a.Type(), want, syntax.StartPos(a))
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {

@@ -548,7 +548,13 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   captures a projection of an argument is inferred as that projection,
   so a parameter of the argument's own or a supertype's type takes it
   (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
-  error. A member's parameter whose type holds a projected argument
+  error. As in K2, a call's arguments can't give such a variable a
+  second capture, or a type below it other than `Nothing`: `cp(x, y)`
+  for `fun <T> cp(a: MutableList<T>, b: MutableList<T>)` and two
+  `MutableList<out Number>`s, or `foo(m)` for a `Map<*, *>` passed for
+  a `Map<T, T>`, is an error; but only where the projections are the
+  arguments' own type arguments, not those of a receiver or nested
+  deeper in a parameter's type. A member's parameter whose type holds a projected argument
   takes `Nothing` there, except a lambda's function type (see below);
   a function value passed for it can't return the capture, and a
   member's type parameter, explicit or inferred, is checked against a
