@@ -354,7 +354,7 @@ func actions(ctx context.Context, s *psi.Snapshot, i *index, p parameters) []obj
 		return object{"title": title, "kind": kind, "edit": object{"changes": map[string][]edit{uri(s.Path()): edits}}}
 	}
 	if allows("source.organizeImports") {
-		if edits := organize(s, i); len(edits) > 0 {
+		if edits := organize(ctx, s, i); len(edits) > 0 {
 			out = append(out, action("Organize imports", "source.organizeImports", edits))
 		}
 	}
@@ -379,72 +379,6 @@ func actions(ctx context.Context, s *psi.Snapshot, i *index, p parameters) []obj
 	}
 	return append(out, refactors(s, i, p.Range, allows, action)...)
 }
-func organize(s *psi.Snapshot, idx *index) []edit {
-	used := map[string]bool{}
-	var docs []string
-	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
-		switch n.NumericKind() {
-		case psi.KindIMPORT_LIST:
-			return false
-		case psi.KindIDENTIFIER:
-			used[n.Name()] = true
-		case psi.KindKDOC:
-			docs = append(docs, n.Text())
-			return false
-		}
-		return true
-	})
-
-	list := s.RootNode().ChildKind(psi.KindIMPORT_LIST)
-	var lines []string
-	var first, last psi.NodeRef
-	for c := list.FirstChild(); c.Valid(); c = c.NextSibling() {
-		switch c.NumericKind() {
-		case psi.KindIMPORT_DIRECTIVE:
-			if !first.Valid() {
-				first = c
-			}
-			last = c
-			name := short(c.Path())
-			if alias := c.Alias(); alias != "" {
-				name = alias
-			}
-			if idx != nil && len(s.Diagnostics()) == 0 && !c.IsAllUnder() && !used[name] && !slices.ContainsFunc(docs, func(doc string) bool { return strings.Contains(doc, name) }) {
-				// Only prune an import whose declaration we identified. An operator
-				// function may be used in source without its identifier appearing.
-				var id psi.NodeRef
-				for q := c.FirstChild(); q.Valid(); q = q.NextSibling() {
-					if id = factName(q); id.Valid() {
-						break
-					}
-				}
-				decl := idx.targets[id].Parent()
-				if decl.Valid() && decl.NumericKind() != psi.KindOBJECT_DECLARATION && !decl.ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindOPERATOR_KEYWORD).Valid() {
-					continue
-				}
-			}
-			lines = append(lines, c.Text())
-		case psi.KindWHITE_SPACE:
-		default:
-			return nil
-		}
-	}
-	if !first.Valid() {
-		return nil
-	}
-	slices.Sort(lines)
-	lines = slices.Compact(lines)
-	sep := "\n"
-	if strings.Contains(s.Source(), "\r\n") {
-		sep = "\r\n"
-	}
-	text := strings.Join(lines, sep)
-	if text == s.Source()[first.Range().Start:last.Range().End] {
-		return nil
-	}
-	return []edit{{span{rng(first).Start, rng(last).End}, text}}
-}
-
 func literal(n psi.NodeRef) bool {
 	switch n.NumericKind() {
 	case psi.KindINTEGER_CONSTANT, psi.KindBOOLEAN_CONSTANT, psi.KindFLOAT_CONSTANT, psi.KindCHARACTER_CONSTANT, psi.KindNULL:

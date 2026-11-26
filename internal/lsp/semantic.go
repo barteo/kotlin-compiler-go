@@ -10,14 +10,15 @@ import (
 )
 
 type index struct {
-	workspace  *workspace
-	model      *ka.EditorModel
-	snaps      map[psi.SnapshotID]*psi.Snapshot
-	facts      map[psi.NodeRef]analysis.Fact
-	symbols    map[psi.NodeRef]analysis.Symbol // exact identifier at cursor
-	targets    map[psi.NodeRef]psi.NodeRef     // reference token -> declaration token
-	byReceiver map[string][]psi.NodeRef
-	decls      []psi.NodeRef
+	importEdits map[*psi.Snapshot][]edit
+	workspace   *workspace
+	model       *ka.EditorModel
+	snaps       map[psi.SnapshotID]*psi.Snapshot
+	facts       map[psi.NodeRef]analysis.Fact
+	symbols     map[psi.NodeRef]analysis.Symbol // exact identifier at cursor
+	targets     map[psi.NodeRef]psi.NodeRef     // reference token -> declaration token
+	byReceiver  map[string][]psi.NodeRef
+	decls       []psi.NodeRef
 }
 
 func newIndex(model *ka.EditorModel, snaps []*psi.Snapshot) *index {

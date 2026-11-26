@@ -164,6 +164,21 @@ def record_cases(request, notify, buffer, fixture, legend):
             raise RuntimeError(f"{name}: expected formatting edits, received {edits}")
         buffer.apply({"changes": {buffer.uri: edits}}, notify)
         formatting[name] = buffer.text
+    imports = {}
+    for name, source in json.loads((fixture / "imports.json").read_text()).items():
+        buffer.change(source, notify)
+        at = {"line": 0, "character": 0}
+        actions = request("textDocument/codeAction", {"textDocument": doc, "range": {"start": at, "end": at},
+                          "context": {"only": ["source.organizeImports"], "diagnostics": []}})
+        action = next(a for a in actions if a["kind"] == "source.organizeImports")
+        if "edit" in action:
+            buffer.apply(action["edit"], notify)
+        if "command" in action:
+            request("workspace/executeCommand", action["command"])
+        if source == buffer.text:
+            raise RuntimeError(f"No import edit for {name}")
+        imports[name] = buffer.text
+    out["imports"] = imports
     out["formatting"] = formatting
     return out
 

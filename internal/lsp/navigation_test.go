@@ -49,6 +49,13 @@ func writeSources(t *testing.T, path string, sources fstest.MapFS) {
 	}
 }
 
+func writeEmptyBuiltins(t *testing.T, classes string) {
+	t.Helper()
+	// Enable Kotlin package metadata lookup with an empty versioned
+	// built-ins fragment. The fixture uses only compiler intrinsic types.
+	put(t, filepath.Join(classes, "kotlin/kotlin.kotlin_builtins"), "\x00\x00\x00\x03\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07")
+}
+
 func TestOverloadNavigationReplay(t *testing.T) {
 	t.Setenv("JAVA_HOME", "")
 	t.Setenv("KOTLIN_HOME", "")
@@ -66,9 +73,7 @@ func TestOverloadNavigationReplay(t *testing.T) {
 			if err := driver.Compile([]string{navFixture + "Overloads.kt", navFixture + "IntExtensions.kt"}, driver.Options{NoJDK: true, OutDir: classes}); err != nil {
 				t.Fatal(err)
 			}
-			// Enable Kotlin package metadata lookup with an empty versioned
-			// built-ins fragment. The fixture uses only compiler intrinsic types.
-			put(t, filepath.Join(classes, "kotlin/kotlin.kotlin_builtins"), "\x00\x00\x00\x03\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x07")
+			writeEmptyBuiltins(t, classes)
 			java := input(t, navFixture+"Parser.java")
 			sources := fstest.MapFS{
 				"nav/Overloads.kt":     {Data: input(t, navFixture+"Overloads.kt")},

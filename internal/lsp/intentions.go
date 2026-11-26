@@ -145,21 +145,25 @@ func (i *index) namedArguments(ctx context.Context, call psi.NodeRef) []edit {
 	}
 	if !i.checkIntention(ctx, call.ContainingFile(), edits, func(next *index, preview movedDocument) bool {
 		id := preview.token(factName(call))
-		other := next.facts[ancestor(id, psi.KindCALL_EXPRESSION)].Call
-		if other == nil || other.Name != c.Name || !slices.Equal(other.ArgumentMapping, c.ArgumentMapping) {
-			return false
-		}
-		original := i.node(c.Declaration)
-		if original.Valid() {
-			if original.ContainingFile() == call.ContainingFile() {
-				original = ancestor(preview.token(original), original.NumericKind())
-			}
-			return original.Valid() && next.node(other.Declaration) == original
-		}
-		return other.Declaration == nil && sameType(other.DeclaredReceiver, c.DeclaredReceiver) &&
-			slices.EqualFunc(other.Parameters, c.Parameters, func(a, b analysis.Type) bool { return sameType(&a, &b) })
+		return i.sameCall(next, preview, c, next.facts[ancestor(id, psi.KindCALL_EXPRESSION)].Call)
 	}) {
 		return nil
 	}
 	return edits
+}
+
+// Compare a call across editor revisions. Source declarations may shift in
+// the edited document. For a library overload compare its stable signature.
+func (i *index) sameCall(next *index, preview movedDocument, c, other *analysis.Call) bool {
+	if other == nil || other.Name != c.Name || other.JVMDescriptor != c.JVMDescriptor || !slices.Equal(other.ArgumentMapping, c.ArgumentMapping) {
+		return false
+	}
+	if original := i.node(c.Declaration); original.Valid() {
+		if original.ContainingFile().Path() == preview.snap.Path() {
+			original = ancestor(preview.token(original), original.NumericKind())
+		}
+		return original.Valid() && next.node(other.Declaration) == original
+	}
+	return other.Declaration == nil && sameType(other.DeclaredReceiver, c.DeclaredReceiver) &&
+		slices.EqualFunc(other.Parameters, c.Parameters, func(a, b analysis.Type) bool { return sameType(&a, &b) })
 }

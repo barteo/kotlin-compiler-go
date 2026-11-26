@@ -376,7 +376,7 @@ func TestNativeClasspathAndDiagnostics(t *testing.T) {
 func TestFormattingAndOrganize(t *testing.T) {
 	src := "package p\r\nimport z.Z\r\nimport a.A\r\nfun x(){\r\nval s=\"\"\"a\r\n  b\"\"\"\r\n}\r\n"
 	s := psi.ParseDocument("x.kt", src)
-	edits := organize(s, nil)
+	edits := organize(context.Background(), s, nil)
 	if len(edits) != 1 || edits[0].NewText != "import a.A\r\nimport z.Z" {
 		t.Fatal(edits)
 	}

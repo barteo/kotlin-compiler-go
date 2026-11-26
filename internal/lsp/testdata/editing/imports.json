@@ -1,0 +1,6 @@
+{
+  "shadowed": "package consumer\n\nimport editinglib.Printer\nimport editinglib.packetValue\n\nfun read(Printer: Int) = Printer\n",
+  "qualified": "package consumer\n\nimport editinglib.EditingPacket\nimport editinglib.Printer\n\nfun read() = editinglib.EditingPacket()\n",
+  "aliases": "package consumer\n\nimport sample.choose as pick\nimport editinglib.Printer\nimport sample.Scope\nimport editinglib.packetValue\nimport editinglib.EditingPacket as Packet\n\nfun read(s: Scope) = Packet(pick(packetValue()) + s.editingMember)\n",
+  "operators": "package consumer\n\nimport sample.plus\nimport editinglib.Printer\nimport editinglib.get\nimport editinglib.doubled\nimport sample.Scope\nimport editinglib.EditingPacket\n\nfun read(s: Scope, p: EditingPacket) = s + (p[1] + p.doubled())\n"
+}

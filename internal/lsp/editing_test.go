@@ -28,6 +28,7 @@ func editingWorkspace(t *testing.T) (*client, string) {
 	if err := driver.Compile([]string{"testdata/editing/Library.kt"}, driver.Options{NoJDK: true, OutDir: filepath.Join(root, "classes"), ModuleName: "editinglib"}); err != nil {
 		t.Fatal(err)
 	}
+	writeEmptyBuiltins(t, filepath.Join(root, "classes"))
 	put(t, filepath.Join(root, "kc-lsp.json"), `{"version":1,"modules":[{"name":"library","sourceRoots":["library"]},{"name":"app","sourceRoots":["src"],"dependencies":["library"],"classPath":["classes"]}]}`)
 	put(t, filepath.Join(root, "library", "Scopes.kt"), string(input(t, "testdata/editing/Scopes.kt")))
 	return startClient(t, root, completionOptions{}, true), filepath.Join(root, "src", "Editing.kt")
