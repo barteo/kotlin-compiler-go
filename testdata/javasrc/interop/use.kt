@@ -37,6 +37,15 @@ fun interopDemo() {
     println("${Ids.show(id, 2L)} ${Ids.show(listOf(3L)[0], id)} ${next + Ids.next(next)} ${ids.last == 20L}")
     val job: Job<String> = FixedJob("a")
     println("${job.clone().run()} ${FixedJob("b").clone().run()} ${Leaf().step()} ${Both().step()}")
+    val labels: BothLabels = LabelsImpl()
+    val label: String = labels.label()
+    val kl: KotlinLabels = LabelsImpl()
+    @Suppress("DEPRECATION")
+    val code: String = kl.code()
+    println("$label ${kl.label().length} $code")
+    val m = JMatcher { it == "x" }
+    val km = KMatcher { it == 1 }
+    println("${m.equals("x")} ${m.equals("y")} ${km.equals(1)}")
     for (c in listOf(FixedJob::class.java, Leaf::class.java, Both::class.java)) {
         for (m in c.declaredMethods.filter { !it.isBridge && (it.name == "clone" || it.name == "step") }) {
             println("${c.simpleName}.${m.name} ${java.lang.reflect.Modifier.toString(m.modifiers)}")
@@ -204,3 +213,21 @@ fun bundles(): String {
     got += b.readElvis<Parcelled>("p")?.name() ?: "none"
     return got.joinToString()
 }
+
+interface KLabels {
+    fun label(): String
+    fun code(): CharSequence
+}
+
+interface KotlinLabels : Labels, KLabels
+
+class LabelsImpl : BothLabels, KotlinLabels {
+    override fun label(): String = "label"
+    override fun code(): String = "code"
+}
+
+fun interface Matcher {
+    override fun equals(other: Any?): Boolean
+}
+
+fun interface KMatcher : JMatcher

@@ -798,6 +798,15 @@ func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 // again.
 func (c *Checker) argTypes(x *syntax.Call) []types.Type {
 	ts := make([]types.Type, len(x.Args))
+	// The smart casts the arguments make are the call's, once it is
+	// checked: take(e as Int) on an implicit receiver isn't a useless
+	// cast, as it would be if checked with e already an Int.
+	sc, narrows := c.scope, slices.Clip(c.scope.narrows)
+	defer func() {
+		if c.scope == sc {
+			sc.narrows = narrows
+		}
+	}()
 	for i, a := range x.Args {
 		ok := true
 		syntax.Inspect(a, func(n any) bool {

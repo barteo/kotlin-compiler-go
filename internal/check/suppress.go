@@ -48,6 +48,7 @@ func init() {
 		"DATA_CLASS_VARARG_PARAMETER":                       `^primary constructor vararg parameters are forbidden for data classes`,
 		"DEPRECATION_ERROR":                                 `' is deprecated with level ERROR`,
 		"EQUALITY_NOT_APPLICABLE":                           `^operator '(==|!=|===|!==)' cannot be applied to `,
+		"INCOMPATIBLE_TYPES":                                `^incompatible types `,
 		"INITIALIZER_TYPE_MISMATCH":                         typeMismatch,
 		"INTERFACE_WITH_SUPERCLASS":                         `^an interface cannot inherit from a class`,
 		"INVISIBLE_MEMBER":                                  invisible,

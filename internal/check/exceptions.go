@@ -108,6 +108,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		return c.block(b, want, valueUsed)
 	}
 	result := block(x.Body)
+	ts, bodies := []types.Type{result}, []*syntax.Block{x.Body}
 	if len(x.Catches) > 0 {
 		inBody = c.tryAssigned(bodyVars, x.Body)
 	}
@@ -142,6 +143,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		}
 		ends = append(ends, c.watchExit(nil))
 		bt := block(cb.Body)
+		ts, bodies = append(ts, bt), append(bodies, cb.Body)
 		c.pop()
 		allJump = allJump && bt.K == types.Nothing
 		if valueUsed {
@@ -157,7 +159,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		}
 	}
 	if pending != nil {
-		result = c.completeBranches(*pending, result, want, true)
+		result = c.completeBranches(*pending, result, want, true, jumped(*pending, ts, bodies))
 	}
 	if x.Finally != nil {
 		c.finallies = c.finallies[:len(c.finallies)-1]

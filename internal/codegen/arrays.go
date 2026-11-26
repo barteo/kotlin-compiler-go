@@ -85,18 +85,28 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		g.exprAs(x.Args[0], types.IntType)
 		g.newArrayOf(d, types.ArrayElem(t))
 	case types.ArrayInit:
-		if l, ok := x.Args[1].(*syntax.Lambda); ok && (l.Inline || g.usesInlined(l)) {
-			g.arrayInitInlined(x, l, t)
+		size, init := arrayInitArgs(x)
+		if l, ok := init.(*syntax.Lambda); ok && (l.Inline || g.usesInlined(l)) {
+			g.arrayInitInlined(size, l, t)
 			return
 		}
-		// The init function is called with each index in turn.
+		// The init function is called with each index in turn. The
+		// arguments are evaluated in their order: Array(init = f(),
+		// size = n()) calls f first.
 		ft := x.Sym.Params[1].Type
-		g.exprAs(x.Args[0], types.IntType)
 		n := g.code.AllocLocal("I")
-		g.code.Local(cf.ISTORE, n)
-		g.exprAs(x.Args[1], ft)
 		fn := g.code.AllocLocal(desc(ft))
-		g.code.Local(cf.ASTORE, fn)
+		sizeFirst := size == x.Args[0]
+		if !sizeFirst {
+			g.exprAs(init, ft)
+			g.code.Local(cf.ASTORE, fn)
+		}
+		g.exprAs(size, types.IntType)
+		g.code.Local(cf.ISTORE, n)
+		if sizeFirst {
+			g.exprAs(init, ft)
+			g.code.Local(cf.ASTORE, fn)
+		}
 		g.code.Local(cf.ILOAD, n)
 		g.newArrayOf(d, types.ArrayElem(t))
 		arr := g.code.AllocLocal(d)
@@ -113,6 +123,16 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		}, nil)
 		g.code.Local(cf.ALOAD, arr)
 	}
+}
+
+// arrayInitArgs returns the size and init arguments of x, a call of an
+// array class's constructor Array(size, init), which named arguments
+// may pass in the other order: Array(init = { it }, size = 3).
+func arrayInitArgs(x *syntax.Call) (size, init syntax.Expr) {
+	if len(x.ArgMap) == 2 && x.ArgMap[0] == 1 {
+		return x.Args[1], x.Args[0]
+	}
+	return x.Args[0], x.Args[1]
 }
 
 // usesInlined reports whether lambda l, in a copy of an inline function,
@@ -141,10 +161,10 @@ func (g *gen) usesInlined(l *syntax.Lambda) bool {
 // function, is: init uses an inlined lambda parameter of the copy of an
 // inline function it is in, as Array(1) { i -> x(i) } in
 // inline fun <reified T> f(x: (Int) -> T).
-func (g *gen) arrayInitInlined(x *syntax.Call, l *syntax.Lambda, t types.Type) {
+func (g *gen) arrayInitInlined(size syntax.Expr, l *syntax.Lambda, t types.Type) {
 	d := desc(t)
 	elem := types.StoredElem(t)
-	g.exprAs(x.Args[0], types.IntType)
+	g.exprAs(size, types.IntType)
 	n := g.code.AllocLocal("I")
 	g.code.Local(cf.ISTORE, n)
 	g.code.Local(cf.ILOAD, n)

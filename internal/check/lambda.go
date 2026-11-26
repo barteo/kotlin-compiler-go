@@ -804,7 +804,7 @@ func (c *Checker) unitTail(b *syntax.Block) types.Type {
 	// Unit is the expected type too, which a builder's call, whose
 	// variables only its lambdas would otherwise give, takes:
 	// coerceToUnit { builder {} } infers builder's K as Unit.
-	c.completeBranches(pending, target, target, false)
+	c.completeBranches(pending, target, target, false, false)
 	if t.K == types.Nothing {
 		return t
 	}
@@ -829,10 +829,10 @@ func (c *Checker) bareTail(b *syntax.Block) types.Type {
 			// be empty; kc, without intersection types, the bound:
 			// I of run { if (b) return@run; materializeI() }, whose
 			// value is dropped.
-			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true)
+			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true, false)
 		}
 	}
-	return c.completeBranches(pending, types.UnitType, noWant, true)
+	return c.completeBranches(pending, types.UnitType, noWant, true, false)
 }
 
 // unitExcludingBound returns a proper declared bound of t, a variable of
@@ -1397,6 +1397,13 @@ func abstractMethods(cls *types.ClassSym) []*types.FunSym {
 	var out []*types.FunSym
 	seen := map[string]bool{}
 	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s.Name == "java/lang/Object" && s != cls {
+			// Its methods aren't abstract, and they don't implement a
+			// superinterface's: a Java interface's Object, which its
+			// walk meets before the Kotlin fun interface K1 it extends,
+			// doesn't hide K1's abstract equals.
+			return true
+		}
 		// And the member extensions of the class path's: Compose's
 		// MeasurePolicy's MeasureScope.measure.
 		for _, methods := range []map[string][]*types.FunSym{s.Methods, s.ExtMethods} {

@@ -732,7 +732,8 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 // given (typed), v is an alias of x, a stable value or a local var (see
 // alias), and if v is a val, its not being null implies that the
 // receivers of x's safe calls aren't null either, as for val t = a?.b,
-// where t != null means a != null.
+// where t != null means a != null, and that the value x safe-casts is of
+// the cast's type.
 func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
 	if k, ok := c.narrowKeyOf(x); ok && !typed && c.aliasable(k) {
 		c.alias(v, k)
@@ -741,7 +742,8 @@ func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
 		return
 	}
 	var ns []narrow
-	for _, k := range c.safeReceivers(x) {
+	// And of a safe cast: after val c = a as? T, c != null means a is a T.
+	for _, k := range append(c.safeReceivers(x), c.safeCastNonNull(x)...) {
 		if c.aliasable(k) {
 			ns = append(ns, k)
 		}

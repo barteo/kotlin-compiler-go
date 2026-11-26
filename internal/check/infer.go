@@ -55,6 +55,12 @@ type tvar struct {
 	// fixed to it, which Subst approximates as Kotlin does, out Int in
 	// an invariant argument and Int at the top level (V is Inv if none).
 	capt types.Arg
+	// captures counts the projections of arguments' types the variable
+	// is equal to at the top level of a parameter's type, as T of
+	// MutableList<T> for a MutableList<out Number>: each is a capture of
+	// its own, so a second one, even of the same value's type, is
+	// another type that the variable can't be equal to as well.
+	captures int
 	// invRet is set when the variable is in an invariant or contravariant
 	// position of its call's result type, as T of Bar<T>, where K2 infers
 	// it from a T <: V? as T rather than T & Any.
@@ -587,6 +593,15 @@ func (s *system) subArgs(sup, b types.Type) {
 				}
 				if s.nest == 0 && !ba.T.D && ta.V != types.Star && !ta.T.HasVars() {
 					tv.capt = ta
+				}
+				if s.nest == 0 && !ba.T.D && (ta.V == types.Star || !ta.T.HasVars()) {
+					if tv.captures++; tv.captures > 1 {
+						// Two captures, as of cp(a, b) for fun <T> cp(a:
+						// MutableList<T>, b: MutableList<T>) with two
+						// MutableList<out Number>s: T can't be both.
+						s.ok = false
+						return
+					}
 				}
 				switch ta.V {
 				case types.Out:
