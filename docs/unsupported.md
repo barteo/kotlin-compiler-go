@@ -666,10 +666,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   type, or a property whose delegate has no `getValue`. (The members
   of such a value smart-cast to non-null, or of an inner class
   constructed without an outer instance, are reported.)
-- An overload whose parameter's type `kc` couldn't resolve isn't a
-  candidate for a call, which K2 finds ambiguous between it and the
-  others: `f1(l)` for an `f1(l: Unresolved<T>)` and an
-  `f1(c: Collection<T>)` calls the latter.
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for

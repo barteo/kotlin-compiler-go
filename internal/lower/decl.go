@@ -370,6 +370,7 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 			pm := l.modifiers(mods)
 			syntax.NoContexts(&pm, "value parameters", l)
 			param.Annotations, param.Vararg, param.Mods = pm.Annotations, pm.Vararg, pm.Written
+			param.Noinline, param.Crossinline = pm.Noinline, pm.Crossinline
 		}
 		fd.Params = []*syntax.Param{param}
 		if ret.Valid() {

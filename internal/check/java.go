@@ -3888,6 +3888,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 			// elements, but by their own names (see annotElem).
 			// isX() is the getter of isX whatever its result, as Rx's
 			// Maybe.isEmpty(), a Single<Boolean>.
+			if fd, ok := f.Decl.(*syntax.FunDecl); ok && !fd.Override && (name == "getFirst" || name == "getLast") {
+				// A program's getFirst() without override doesn't
+				// override JDK 21's, hidden in Kotlin's List, and isn't a
+				// property's getter.
+				continue
+			}
 			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
 				!overridesKotlinFun(cls, f) && (special || f.Owner == nil || !isAnnotationClass(f.Owner)) {
 				g = f

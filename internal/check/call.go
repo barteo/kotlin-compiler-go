@@ -256,7 +256,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	n := len(x.Args)
 	simple := n == len(ps)
 	for _, p := range ps {
-		simple = simple && !p.Vararg && p.Type.K != types.Invalid
+		simple = simple && !p.Vararg
 	}
 	for _, a := range x.Args {
 		simple = simple && !isSpread(a)
@@ -267,7 +267,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	amap := make([]int, n)
 	limit, positional := len(ps), n
 	if x.Trailing() && n > 0 && len(ps) > 0 {
-		if ps[len(ps)-1].Type.K == types.Invalid || ps[len(ps)-1].Vararg {
+		if ps[len(ps)-1].Vararg {
 			// A trailing lambda isn't a vararg's argument
 			// (VARARG_OUTSIDE_PARENTHESES, see arityError).
 			return nil, false
@@ -277,7 +277,9 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	}
 	pi := 0
 	for i := range positional {
-		if pi >= limit || ps[pi].Type.K == types.Invalid || isSpread(x.Args[i]) && !ps[pi].Vararg {
+		// A parameter of a type that couldn't be resolved takes any
+		// argument, as K2's error type does.
+		if pi >= limit || isSpread(x.Args[i]) && !ps[pi].Vararg {
 			return nil, false
 		}
 		amap[i] = pi

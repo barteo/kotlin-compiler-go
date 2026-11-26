@@ -1819,7 +1819,8 @@ func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
 	pm := p.modifiers() // the checker reports those a setter's parameter can't have
 	NoContexts(&pm, "value parameters", p)
 	name := p.ident()
-	param := &Param{P: name.Pos, Name: name.Text, Annotations: pm.Annotations, Vararg: pm.Vararg, Mods: pm.Written}
+	param := &Param{P: name.Pos, Name: name.Text, Annotations: pm.Annotations, Vararg: pm.Vararg, Mods: pm.Written,
+		Noinline: pm.Noinline, Crossinline: pm.Crossinline}
 	if p.at(COLON) {
 		p.next()
 		param.Type = p.parseType()
