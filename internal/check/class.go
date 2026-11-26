@@ -686,6 +686,46 @@ func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
 			cl.recv, cl.tparams = s, nil
 		}
 	}
+	return c.intersectionOverride(rt, cls)
+}
+
+// intersectionOverride replaces each of cls with the member of an
+// unrelated supertype of rt with the same parameters and the most
+// specific return type, if it is more specific: as Kotlin's intersection
+// override, which returns that type, a.baz() of an A : J, K with Java's
+// CharSequence baz() and K's String baz() is K's, a String, and not
+// deprecated if only J's is. The lookup of the methods by name keeps only
+// the first of a signature that it meets.
+func (c *Checker) intersectionOverride(rt types.Type, cls []callee) []callee {
+	if rt.K != types.Class {
+		return cls
+	}
+	for i, cl := range cls {
+		f := cl.f
+		if f.Owner == nil || f.Static || f.Ext || len(f.TypeParams) > 0 {
+			continue
+		}
+		best, bestRet := cl, cl.recv.Apply(f.Ret)
+		rt.C.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || f.Owner.IsSubclassOf(s) || s.IsSubclassOf(f.Owner) {
+				return true
+			}
+			for _, g := range methodsNamed(s, f) {
+				if g.Static || g.Private || g.Ext || len(g.TypeParams) > 0 || !c.funVisible(g) || !c.sameParams(rt, f, g) {
+					continue
+				}
+				gs := c.memberSubst(rt, g.Owner)
+				if rawSubst(gs) {
+					continue
+				}
+				if gt := gs.Apply(g.Ret); c.subtype(gt, bestRet) && !c.subtype(bestRet, gt) {
+					best, bestRet = callee{f: g, recv: gs}, gt
+				}
+			}
+			return true
+		})
+		cls[i] = best
+	}
 	return cls
 }
 
