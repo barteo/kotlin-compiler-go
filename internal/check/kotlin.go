@@ -1073,6 +1073,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 		sym.Ext = true
 		recv, recvOK := t.ktype(f.Recv, scope)
 		sym.Recv = recv
+		sym.NoInferRecv = kNoInfer(f.Recv)
 		ok = ok && recvOK
 	}
 	sym.Infix = f.IsInfix()

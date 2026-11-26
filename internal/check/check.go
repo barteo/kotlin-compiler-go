@@ -365,6 +365,9 @@ type Checker struct {
 	// arguments for a parameter whose type is a type parameter (see
 	// markRecvParam).
 	recvParamLambdas map[*syntax.Lambda]bool
+	// noInferLambdas are the lambdas passed for @NoInfer parameters, whose
+	// declared parameter types don't constrain the call's variables.
+	noInferLambdas map[*syntax.Lambda]bool
 	// stubDepth is the number of stubInference runs in progress.
 	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
@@ -2278,6 +2281,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	c.resolveBounds(d.TypeParams)
 	if d.Recv != nil {
 		c.declareRecv(d)
+		sym.NoInferRecv = noInfer(d.Recv)
 	}
 	c.declareContexts(d, sym)
 	c.memberModifiers(d.Modifiers, owner, d.P, "function '"+d.Name+"'")

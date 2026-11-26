@@ -3338,7 +3338,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	// gave as R's upper bound, not B.
 	declared := false
 	for i, d := range c.declaredParams(l, ft, len(params)) {
-		if d.K != types.Invalid && s.apply(params[i]).HasVars() {
+		if d.K != types.Invalid && s.apply(params[i]).HasVars() && !c.noInferLambdas[l] {
 			trial := s.clone()
 			if trial.sub(params[i], d); trial.ok {
 				*s = *trial

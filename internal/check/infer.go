@@ -34,7 +34,7 @@ type tvar struct {
 	// coercedUnits counts the lower bounds Unit that empty lambdas gave,
 	// which aren't input types (see onlyInputOK).
 	coercedUnits int
-	fixed bool
+	fixed        bool
 	// star is set when the variable stands for a captured star
 	// projection, as T in KClass<T>.java for a KClass<*>: without other
 	// bounds, it is its declared bound.
