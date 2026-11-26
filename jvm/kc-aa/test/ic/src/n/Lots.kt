@@ -1,0 +1,3 @@
+package n
+
+class Lots

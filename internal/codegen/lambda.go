@@ -222,8 +222,9 @@ func (g *gen) loadThis() {
 
 // inInterface reports whether the code being generated is in an
 // interface's class file, where lambdas' and local functions' methods are
-// interface methods: not in its DefaultImpls class. A companion's
-// initializers are, which the interface's static initializer runs.
+// interface methods: not in its DefaultImpls class. The initializers of a
+// companion's @JvmField properties are, which the interface's static
+// initializer runs.
 func (g *gen) inInterface() bool {
 	return g.cls.Access&cf.AccInterface != 0
 }

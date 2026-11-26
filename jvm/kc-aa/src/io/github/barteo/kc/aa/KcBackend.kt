@@ -149,6 +149,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         }
         if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
         round = next
+        next.reached = ::replay
         environment.kotlinClasses.find(next, next.javaFiles.filter { it.virtualFile.path !in initialJava })
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
@@ -177,23 +178,39 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     override fun sourceFiles(): List<KSFile> =
         round.fileSymbols.map { KSFileImpl.getCached(it) } + round.javaFiles.map { KSFileJavaImpl.getCached(it) }
 
-    // kc's checker records the names each file looks up (KcFile.lookups);
-    // they are replayed into KSP's tracker for the files it hasn't seen yet,
-    // under the paths KSFile.filePath gives. All are recorded as PACKAGE
-    // lookups, class scopes too, as FIR's lookup tracker component does: KSP
-    // finds the files a changed class member dirties in its symbol lookups,
-    // and its class tracker, for CLASSIFIER lookups, stays empty on FIR
-    // (docs/analysis-api.md, "Step 16: incremental lookups").
+    // kc's checker records the names each file looks up (KcFile.lookups),
+    // and they are replayed into KSP's tracker, under the paths
+    // KSFile.filePath gives, for the files a client reaches
+    // (KcFileSymbol.reached) and the files that declare a name such a file
+    // looks up, and so on: FIR records a file's lookups when it resolves
+    // one of its declarations, for a client or for another declaration
+    // that names it. A file no processor's answers depend on has none, so
+    // no change dirties it. All are recorded as PACKAGE lookups, class
+    // scopes too, as FIR's lookup tracker component does: KSP finds the
+    // files a changed class member dirties in its symbol lookups, and its
+    // class tracker, for CLASSIFIER lookups, stays empty on FIR.
     override val recordsLookups: Boolean get() = true
 
+    private var tracker: DualLookupTracker? = null
     private val replayed = HashSet<String>()
 
     override fun beginRound(lookupTracker: DualLookupTracker) {
-        for (s in round.fileSymbols) {
+        tracker = lookupTracker
+        round.fileSymbols.forEach { if (it.reached) replay(it) }
+    }
+
+    @Synchronized
+    private fun replay(file: KcFileSymbol) {
+        val tracker = tracker ?: return
+        val queue = ArrayDeque(listOf(file))
+        while (queue.isNotEmpty()) {
+            val s = queue.removeFirst()
             if (!replayed.add(s.file.path)) continue
             val path = s.psi.virtualFile.path
-            for (l in s.file.lookups)
-                lookupTracker.record(path, Position.NO_POSITION, l.scope, ScopeKind.PACKAGE, l.name)
+            for (l in s.file.lookups) {
+                tracker.record(path, Position.NO_POSITION, l.scope, ScopeKind.PACKAGE, l.name)
+                queue += s.round.declaring(l.scope, l.name)
+            }
         }
     }
 
@@ -215,7 +232,10 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     override fun close() {
         // The round's model is the environment's, which keeps the round.
-        if (this::round.isInitialized) round.token.invalidation = "session closed"
+        if (this::round.isInitialized) {
+            round.token.invalidation = "session closed"
+            round.reached = null
+        }
         KcOps.close(handle)
         KcEnvironments.release(environment)
     }
@@ -343,6 +363,7 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
 
     private fun annotationDefault(symbol: KaValueParameterSymbol, member: String): KaAnnotationValue? {
         val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.$member of $symbol")
+        p.info.reach()
         p.default?.let { return it }
         val token = p.info.round.token
         val t = p.info.decl.type

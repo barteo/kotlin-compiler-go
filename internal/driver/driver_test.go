@@ -1002,7 +1002,8 @@ fun main() {
 // TestCompanionAccessors checks that a companion object's code reads and
 // writes its properties whose fields the outer class holds through their
 // accessors, as kotlinc's does, so a mock of the companion answers for
-// them, and the fields of those with a private accessor directly.
+// them, and the private fields of those with a private accessor through
+// the outer class's access$getX$cp and access$setX$cp.
 func TestCompanionAccessors(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1050,7 +1051,7 @@ func TestCompanionAccessors(t *testing.T) {
 	want := map[string][]string{
 		"viaGetter": {"getExisting"},
 		"viaSetter": {"getCount", "setCount"},
-		"direct":    {"existing", "hidden", "hidden"},
+		"direct":    {"access$setExisting$cp", "access$getHidden$cp", "access$setHidden$cp"},
 	}
 	for _, m := range ms {
 		names, ok := want[m.Name]
@@ -1064,7 +1065,7 @@ func TestCompanionAccessors(t *testing.T) {
 		var got []string
 		for i := range insns {
 			switch in := &insns[i]; in.Op {
-			case classfile.INVOKEVIRTUAL, classfile.GETSTATIC, classfile.PUTSTATIC:
+			case classfile.INVOKEVIRTUAL, classfile.INVOKESTATIC, classfile.GETSTATIC, classfile.PUTSTATIC:
 				if in.Owner == "Manager" || in.Owner == "Manager$Companion" {
 					got = append(got, in.Name)
 				}
@@ -1321,11 +1322,10 @@ func TestLambdaInvoke(t *testing.T) {
 
 // TestMembers compiles testdata/members/ with kotlinc and kc, both with
 // -jvm-default=disable and then both with -jvm-default=enable, and
-// compares the methods of the classes both write: each has the same
-// methods, by name and descriptor, with the same access flags. The
-// methods of lambdas aren't compared, nor are the accessors of a
-// companion's fields, access$getX$cp, which kotlinc keeps private in the
-// outer class.
+// compares the members of the classes both write: each has the same
+// fields and methods, by name and descriptor, with the same access flags,
+// and each field the same ConstantValue. The methods of lambdas aren't
+// compared.
 func TestMembers(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -1351,8 +1351,15 @@ func TestMembers(t *testing.T) {
 				return err
 			}
 			ms := map[string]uint16{}
+			for _, f := range info.Fields {
+				key := f.Name + ":" + f.Desc
+				if f.Constant != nil {
+					key += fmt.Sprintf(" = %#v", f.Constant)
+				}
+				ms[key] = f.Access
+			}
 			for _, m := range info.Methods {
-				if !strings.Contains(m.Name, "$lambda$") && !(strings.HasPrefix(m.Name, "access$") && strings.HasSuffix(m.Name, "$cp")) {
+				if !strings.Contains(m.Name, "$lambda$") {
 					ms[m.Name+m.Desc] = m.Access
 				}
 			}
@@ -1388,14 +1395,14 @@ func TestMembers(t *testing.T) {
 					compared++
 					switch access, ok := gm[m]; {
 					case !ok:
-						t.Errorf("%s.%s: only kotlinc writes the method", cls, m)
+						t.Errorf("%s.%s: only kotlinc writes the member", cls, m)
 					case access != want[cls][m]:
 						t.Errorf("%s.%s: access flags %#x, want kotlinc's %#x", cls, m, access, want[cls][m])
 					}
 				}
 				for _, m := range slices.Sorted(maps.Keys(gm)) {
 					if _, ok := want[cls][m]; !ok {
-						t.Errorf("%s.%s: kotlinc writes no such method", cls, m)
+						t.Errorf("%s.%s: kotlinc writes no such member", cls, m)
 					}
 				}
 			}
@@ -1405,7 +1412,7 @@ func TestMembers(t *testing.T) {
 				}
 			}
 			if compared < 200 {
-				t.Errorf("compared only %d methods", compared)
+				t.Errorf("compared only %d members", compared)
 			}
 		})
 	}
