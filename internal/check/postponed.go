@@ -17,8 +17,12 @@ import (
 // passed for T takes its parameter types from it, or from a declared
 // bound, as A's of fun <A : (Int) -> Unit> take(x: A). If the function
 // type is another argument's, a lower bound of a variable tv is below,
-// only its inputs are tv's: see openResult.
-func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
+// only its inputs are tv's: see openResult. For a callable reference l
+// that may name several functions, those lower bounds must all take the
+// same inputs, as their common supertype otherwise takes others: ::foo4
+// of select(id(::foo4), id { x: A -> }, id { x: B -> }) is ambiguous for
+// an (A & B) -> Unit.
+func (s *system) funcUpper(tv *tvar, l *syntax.Lambda) (types.Type, bool) {
 	if slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper) {
 		return types.InvalidType, false
 	}
@@ -28,6 +32,8 @@ func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 	}
 	seen := map[*tvar]bool{tv: true}
 	queue := []*tvar{tv}
+	overloaded := l != nil && l.Ref != nil && len(s.c.refShapes(l)) > 1
+	var first types.Type // the first lower bound, for an overloaded reference
 	for len(queue) > 0 {
 		v := queue[0]
 		queue = queue[1:]
@@ -52,12 +58,24 @@ func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 				continue
 			}
 			if !u.HasVars() && u.Flex().IsFunc() {
-				if b.lower {
+				switch {
+				case first.K != types.Invalid:
+					if b.lower && !s.c.sameInputs(first.Flex(), u.Flex()) {
+						return types.InvalidType, false
+					}
+					continue
+				case b.lower && overloaded:
+					first = u
+					continue
+				case b.lower:
 					u = s.openResult(u.Flex(), tv.pos)
 				}
 				return u, true
 			}
 		}
+	}
+	if first.K != types.Invalid {
+		return s.openResult(first.Flex(), tv.pos), true
 	}
 	return types.InvalidType, false
 }

@@ -851,17 +851,30 @@ func (c *Checker) unalias(v *types.VarSym) {
 // another value of v doesn't have: y.x of if (y.x != null) { y = My(null)
 // } is an Int? again.
 func (c *Checker) dropMembers(v *types.VarSym) {
-	var syms []*types.VarSym
+	var keys []flowKey
 	for sc := c.scope; sc != nil; sc = sc.parent {
 		for _, n := range sc.narrows {
-			if n.recv == v && !slices.Contains(syms, n.sym) {
-				syms = append(syms, n.sym)
+			// And of the paths through them, y.x.x and y.x of y?.x?.x.
+			k := flowKey{n.recv, n.sym}
+			if (n.recv == v || n.recv != nil && c.pathOf(n.recv, v) || n.recv == nil && c.pathOf(n.sym, v)) && !slices.Contains(keys, k) {
+				keys = append(keys, k)
 			}
 		}
 	}
-	for _, p := range syms {
-		c.scope.narrows = append(c.scope.narrows, narrow{recv: v, sym: p, t: p.Type})
+	for _, k := range keys {
+		c.scope.narrows = append(c.scope.narrows, narrow{recv: k.recv, sym: k.sym, t: k.sym.Type})
 	}
+}
+
+// pathOf reports whether p is the path of a property through v, v.a or
+// v.a.b, as narrowSym makes them.
+func (c *Checker) pathOf(p, v *types.VarSym) bool {
+	for k, q := range c.paths {
+		if q == p {
+			return k[0] == v || c.pathOf(k[0], v)
+		}
+	}
+	return false
 }
 
 // flowKey is a value that smart casts narrow: a variable, or a property

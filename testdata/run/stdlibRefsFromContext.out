@@ -1,0 +1,12 @@
+class
+ext
+selsel
+42
+2
+[1, 2, 2]
+foo(Int) 1
+foo(Int) 2
+foo(String) 3
+foo(Int) 4
+foo(String) 5
+resolve: resolve(Number, String) 6 x

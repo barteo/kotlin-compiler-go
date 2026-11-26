@@ -1947,12 +1947,16 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				// a && true is false where a is.
 				return t1, f1
 			}
-			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
+			// So did its casts: x of b && x as Boolean.
+			return append(append(t1[:len(t1):len(t1)], t2...), c.ranNarrows(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
 		case syntax.OR:
 			if isTrue(x.X) {
 				return nil, nil // as false && b
+			}
+			if lit, ok := x.X.(*syntax.BoolLit); ok && !lit.Val {
+				return c.narrowing(x.Y) // false || b is b
 			}
 			t1, f1 := c.narrowing(x.X)
 			c.push()
@@ -1965,7 +1969,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			if lit, ok := x.Y.(*syntax.BoolLit); ok && !lit.Val {
 				return t1, f1 // a || false is true where a is
 			}
-			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
+			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.ranNarrows(x.Y)...)
 		}
 	case *syntax.Unary:
 		if x.Op == syntax.NOT {
@@ -2395,7 +2399,9 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 			k.t = k.t.NonNull()
 			return append([]narrow{k}, c.impliedBy(k)...)
 		}
-		return nil
+		// Nor is a, nor the receivers of its safe calls: x of
+		// x?.bar as? String ?: return, as in K2.
+		return c.equalNonNull(as.X)
 	}
 	n := c.safeReceivers(x)
 	k, ok := c.narrowKeyOf(x)

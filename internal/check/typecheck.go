@@ -585,6 +585,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 	if obj := objectNamed(x); obj != nil {
 		return c.objectSym(obj) // an object is stable: Obj.y is Int
 	}
+	if e := c.entrySym(x); e != nil {
+		return e // so is an enum entry: E.A.text
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {
@@ -612,7 +615,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		if this, ok := x.X.(*syntax.This); ok && this.Recv == nil {
 			return prop // this.p is p, as in memberKey
 		}
-		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
+		// Or of a local var that no code nested in the function assigns,
+		// whose assignments undo the path's smart casts (see dropMembers).
+		if r := c.narrowSym(x.X); r != nil && (!r.Mutable || isVar(r) && c.varUntouched(r)) {
 			k := [2]*types.VarSym{r, prop}
 			if c.paths == nil {
 				c.paths = map[[2]*types.VarSym]*types.VarSym{}

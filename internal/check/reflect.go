@@ -312,13 +312,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		recv = func() syntax.Expr { return ident(r.Bound.Name) }
 	default:
 		if name, ok := c.typeName(r.X); ok {
-			if cls := c.lookupClass(name); cls != nil && ensured(cls).Object {
-				// An object's members are bound to it: Registry::find.
-				c.bindRef(r, c.value(r.X, noWant))
-				recv = func() syntax.Expr { return ident(r.Bound.Name) }
-				break
-			}
-			if cls := c.lookupClass(name + "." + r.Name); cls != nil && !ensured(cls).Object && !cls.Inner {
+			if cls := c.refNested(name, r.Name); cls != nil {
 				if e := c.lookupClass(name); r.Name == "entries" && e != nil && e.Entries != nil && c.u.ext.kotlin {
 					// An enum's entries and its nested class entries's
 					// constructor: as in K2, neither wins.
@@ -326,6 +320,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 					return nil, types.InvalidType, false
 				}
 				nested = cls
+				break
+			}
+			if cls := c.lookupClass(name); cls != nil && ensured(cls).Object {
+				// An object's members are bound to it: Registry::find.
+				c.bindRef(r, c.value(r.X, noWant))
+				recv = func() syntax.Expr { return ident(r.Bound.Name) }
 				break
 			}
 			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0 {
@@ -430,7 +430,24 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				ps = append(ps, q.Type)
 			}
 		}
-		forms = append(forms, staticForm(ps))
+		f := staticForm(ps)
+		if name, _ := c.typeName(r.X); c.lookupClass(name+"."+r.Name) == nil && nested.Outer != nil {
+			// Through a typealias, Alias::Nested: the class's own name,
+			// which a.b.Alias.Nested(...) isn't.
+			outer := strings.NewReplacer("/", ".", "$", ".").Replace(nested.Outer.Name)
+			f.body = func() syntax.Expr {
+				var x syntax.Expr
+				for i, n := range strings.Split(outer, ".") {
+					if i == 0 {
+						x = ident(n)
+					} else {
+						x = member(x, n)
+					}
+				}
+				return call(member(x, r.Name), ps, 0)
+			}
+		}
+		forms = append(forms, f)
 	case w.prop:
 		if staticProp && !w.prop1 {
 			return c.kpropLambda(x, staticPropForm, false)
@@ -532,7 +549,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				if recv != nil {
 					rt = r.Bound.Type
 				}
-				sub, _ = c.recvTypeArgs(f, rt)
+				var ok bool
+				if sub, ok = c.recvTypeArgs(f, rt); !ok && rt.K == types.Invalid && r.X == nil && r.Type == nil {
+					sub, _ = c.implicitRecvTypeArgs(f)
+				}
 			}
 			// A vararg's parameter takes its array, which the call spreads,
 			// as in Kotlin: ::f is a KFunction1<IntArray, R> for
@@ -733,7 +753,7 @@ func (c *Checker) refRecvType(r *syntax.CallableRef) (types.Type, bool) {
 		if cls != nil && (ensured(cls).Object || cls.Companion != nil && !c.hasCallable(cls, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0) {
 			return types.Type{}, false // may be bound to the object
 		}
-		if c.lookupClass(name+"."+r.Name) != nil {
+		if c.refNested(name, r.Name) != nil {
 			return types.Type{}, false // a nested class's constructor
 		}
 		ref = &syntax.TypeRef{P: r.X.Pos(), Name: name}
@@ -860,7 +880,7 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 	case len(fs) > 1:
 		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
 		return nil, false
-	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
+	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) && !c.implicitRecvTypeArgsOK(fs[0], r, recvType, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
 		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
 		return nil, false
 	}
@@ -1080,6 +1100,35 @@ func (c *Checker) recvTypeArgs(f *types.FunSym, rt types.Type) (types.Subst, boo
 		}
 	}
 	return sub, true
+}
+
+// implicitRecvTypeArgsOK reports whether f, the generic extension that a
+// reference without a receiver names, takes its type arguments from an
+// implicit receiver, to which the reference is then bound, as in K2: ::bar
+// in Box<String>.f() for fun <K> Box<K>.bar().
+func (c *Checker) implicitRecvTypeArgsOK(f *types.FunSym, r *syntax.CallableRef, recvType types.Type, bound bool) bool {
+	if bound || r.X != nil || r.Type != nil || recvType.K != types.Invalid {
+		return false
+	}
+	_, ok := c.implicitRecvTypeArgs(f)
+	return ok
+}
+
+// implicitRecvTypeArgs returns the type arguments of generic extension f
+// from the innermost implicit receiver that gives them (see recvTypeArgs).
+func (c *Checker) implicitRecvTypeArgs(f *types.FunSym) (types.Subst, bool) {
+	if !f.Ext {
+		return nil, false
+	}
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		if sub, ok := c.recvTypeArgs(f, c.scope.narrowed(c.recvs[i].sym)); ok {
+			return sub, true
+		}
+	}
+	if c.cls != nil {
+		return c.recvTypeArgs(f, c.cls.This())
+	}
+	return nil, false
 }
 
 // outerParams returns the number of the type parameters of cls that are
@@ -1416,6 +1465,26 @@ func refStateMachine(x *syntax.Lambda, f *types.FunSym) bool {
 
 // hasCallable reports whether cls has a member function or a property
 // named name.
+// refNested returns the nested class whose constructor Outer::Nested names,
+// or nil: a class nested in a class, or, as in K2, in an object or a
+// typealias's class, A::Wrapper, unless the object has a member of that
+// name.
+func (c *Checker) refNested(outer, name string) *types.ClassSym {
+	cls := c.lookupClass(outer + "." + name)
+	if cls == nil {
+		if o := c.lookupClass(outer); o != nil && c.lookupAlias(outer) != nil {
+			cls = c.nestedOf(o, name)
+		}
+	}
+	if cls == nil || ensured(cls).Object || cls.Inner {
+		return nil
+	}
+	if o := c.lookupClass(outer); o != nil && ensured(o).Object && c.hasCallable(o, name) {
+		return nil
+	}
+	return cls
+}
+
 func (c *Checker) hasCallable(cls *types.ClassSym, name string) bool {
 	return len(c.javaMethods(cls, name)) > 0 || c.hasProp(cls, name)
 }

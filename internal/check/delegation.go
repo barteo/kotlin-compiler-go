@@ -800,14 +800,17 @@ func delegableExtProps(s *types.ClassSym) []extProp {
 
 // checkDelegates checks the delegates of a class's delegated interfaces:
 // like the arguments of the superclass's constructor, they see the
-// primary constructor's parameters but not the class's members.
+// primary constructor's parameters and the class's nested classes and
+// companion, but not its members.
 func (c *Checker) checkDelegates(d *syntax.ClassDecl) {
+	defer func() { c.lookupCls = nil }()
 	for _, st := range d.Supers {
 		if st.Delegate == nil {
 			continue
 		}
 		c.state = state{scope: c.ctorScope(d.Sym), tparams: d.Sym.TypeParams, staticCls: d.Sym}
 		c.inAnon(d.Sym)
+		c.lookupCls = d.Sym
 		want := st.T
 		if want.K != types.Class || !want.C.Interface {
 			want = noWant

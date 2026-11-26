@@ -149,23 +149,18 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 137 |
+| `unresolved reference: _` | 120 |
 | `type mismatch: inferred type is _ but _ was expected` | 87 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 70 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 33 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 52 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 23 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `no function '_' takes n arguments` | 20 |
 | `unresolved or unsupported type: _` | 15 |
 | `variable '_' must be initialized` | 15 |
-| `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
-| `'_' expression must be exhaustive, add necessary '_' branch` | 12 |
-| `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `unresolved import: _` | 11 |
-| `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `operator '_' cannot be applied to A and Boolean` | 10 |
-| `overload resolution ambiguity for ::foo: specify the expected function type` | 10 |
+| `'_' expression must be exhaustive, add necessary '_' branch` | 9 |
 | `cannot access '_': it is private to this in '_'` | 9 |
-| `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
 | `'_' overrides nothing` | 8 |
 | `missing return statement in function '_'` | 7 |
 | `unexpected '_'` | 7 |
@@ -179,7 +174,12 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' is not allowed outside a loop` | 4 |
 | `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
 | `inheriting an annotation class is prohibited` | 4 |
-| *79 more* | |
+| `no context argument for '_' found` | 4 |
+| `one type argument expected for class Outer.Inner` | 4 |
+| `a property with an explicit backing field cannot have accessors` | 3 |
+| `expected '_', found '_'` | 3 |
+| `named arguments are not allowed for non-Kotlin functions` | 3 |
+| *71 more* | |
 
 ## Unsupported features
 

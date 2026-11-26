@@ -52,9 +52,11 @@ func (c *Checker) nestedClassifier(name string) classifier {
 				// A class path class's, as java.util.AbstractMap's
 				// SimpleEntry, or clikt's AbstractHelpFormatter's
 				// RenderedSection.
-				if n := c.nestedOf(s, name); n != nil && !privateClass(n) {
+				if n := c.nestedOf(s, name); n != nil && (!privateClass(n) || n.PackagePrivate && c.samePackage(n)) {
 					// A private one isn't inherited: AbstractList's
-					// SubList in a subclass's.
+					// SubList in a subclass's. A package-private one is,
+					// in its package: B_S of class X : D() for a Java
+					// class B { static class B_S {} } that D extends.
 					found = classifier{cls: n}
 				}
 			} else if n := s.Nested[name]; n != nil {

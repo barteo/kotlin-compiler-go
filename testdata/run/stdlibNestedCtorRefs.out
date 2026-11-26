@@ -1,0 +1,7 @@
+A.Wrapper
+A.Wrapper
+[Named(a), Named(b)]
+Outer.Companion.Wrapper
+[Plain(1), Plain(2)]
+E.Nested
+Plain(3)

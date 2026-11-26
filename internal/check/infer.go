@@ -701,6 +701,17 @@ func (s *system) addLower(tv *tvar, t types.Type) {
 	for _, u := range tv.upper {
 		s.sub(t, u)
 	}
+	if t.K == types.Class && t.HasVars() && !s.c.onlyStubs(t) {
+		// As K2's declared upper bound constraint, a proper declared
+		// bound is above a lower bound with variables in it: E of
+		// <E : Out<String>> foo(x: E) for foo(Out()) gives Out's X
+		// String.
+		for _, b := range tv.v.Bounds {
+			if !b.HasVars() && b.K == types.Class && !(b.C == types.AnyType.C && b.N) && !slices.Contains(tv.upper, b) {
+				s.sub(t, b)
+			}
+		}
+	}
 }
 
 // argUpper reports whether an upper bound added now is one of tv.argUp.
