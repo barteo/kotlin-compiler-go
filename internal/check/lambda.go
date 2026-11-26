@@ -804,7 +804,7 @@ func (c *Checker) unitTail(b *syntax.Block) types.Type {
 	// Unit is the expected type too, which a builder's call, whose
 	// variables only its lambdas would otherwise give, takes:
 	// coerceToUnit { builder {} } infers builder's K as Unit.
-	c.completeBranches(pending, target, target, false)
+	c.completeBranches(pending, target, target, false, false)
 	if t.K == types.Nothing {
 		return t
 	}
@@ -829,10 +829,10 @@ func (c *Checker) bareTail(b *syntax.Block) types.Type {
 			// be empty; kc, without intersection types, the bound:
 			// I of run { if (b) return@run; materializeI() }, whose
 			// value is dropped.
-			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true)
+			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true, false)
 		}
 	}
-	return c.completeBranches(pending, types.UnitType, noWant, true)
+	return c.completeBranches(pending, types.UnitType, noWant, true, false)
 }
 
 // unitExcludingBound returns a proper declared bound of t, a variable of

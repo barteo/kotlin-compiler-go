@@ -4459,7 +4459,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 			c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
 			return types.InvalidType
 		}
-		c.completeBranches(pending, types.NothingType, noWant, false)
+		c.completeBranches(pending, types.NothingType, noWant, false, false)
 		return types.UnitType
 	}
 	c.push()
@@ -4467,8 +4467,9 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	exits = append(exits, c.watchExit(vars))
 	elseT := c.ifBranch(x.Else, lambdaBranchWant(x.Else, thenT, want, valueUsed), valueUsed, sink == nil, &pending)
 	c.pop()
+	jumps := jumped(pending, []types.Type{thenT, elseT}, []*syntax.Block{x.Then, x.Else})
 	if !valueUsed {
-		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
+		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false, jumps)
 		c.noteBranchJoin(x, c.statementJoin(x.Then, x.Else))
 		thenT, elseT = inferredJump(thenT, x.Then), inferredJump(elseT, x.Else)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
@@ -4484,7 +4485,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	if sink != nil {
 		return c.sinkBranches(sink, pending, t)
 	}
-	t = c.completeBranches(pending, t, want, true)
+	t = c.completeBranches(pending, t, want, true, jumps)
 	if want.K == types.Invalid {
 		c.noteBranchJoin(x, t)
 	}
@@ -4672,7 +4673,12 @@ func (c *Checker) branchLambda(p pendingBranch, result, want types.Type) types.T
 // completeBranches completes the pending branches with the type of the
 // others, result, or the expected type, and returns the type of all. If
 // the value isn't used, only the open ones take the others' type.
-func (c *Checker) completeBranches(pending []pendingBranch, result, want types.Type, valueUsed bool) types.Type {
+//
+// jumps is set when one of the other branches is Nothing, as a jump: as
+// K2's synthetic call's K, which a Nothing or a null fixes when nothing
+// else does, a call's variables are then Nothing, or Nothing? with a
+// null: T of make() in if (c) make() else TODO().
+func (c *Checker) completeBranches(pending []pendingBranch, result, want types.Type, valueUsed, jumps bool) types.Type {
 	c.openLast(pending)
 	done := types.NothingType // the completed pending branches' type
 	for _, p := range pending {
@@ -4705,11 +4711,15 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			// Nothing, or null's Nothing?, which the branches join with.
 			target = want
 		}
+		jumpTarget := false
+		if target.K == types.Invalid && (jumps && result.K == types.Nothing || result.K == types.Null) && len(p.sys.lambdas) == 0 {
+			target, jumpTarget = result, true
+		}
 		forced := false
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
-			} else {
+			} else if !jumpTarget {
 				// Not the Unit that a lambda's unused last statement is
 				// coerced to: put("a", listOf(1)) at the end of buildMap's
 				// lambda doesn't make V? a Unit.
@@ -4745,6 +4755,17 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		}
 	}
 	return result
+}
+
+// jumped reports whether one of bodies, the branches of an if or when of
+// types ts, isn't pending and is Nothing: it jumps.
+func jumped(pending []pendingBranch, ts []types.Type, bodies []*syntax.Block) bool {
+	for i, b := range bodies {
+		if b != nil && ts[i].K == types.Nothing && !slices.ContainsFunc(pending, func(p pendingBranch) bool { return p.body == b }) {
+			return true
+		}
+	}
+	return false
 }
 
 // noteBranchJoin records t, the join of the types of the branches of
@@ -4926,6 +4947,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	nullFirst := true               // no branch so far matches null
 	funcBranch := types.InvalidType // see lambdaBranchWant
 	var bts []types.Type            // the branches' types
+	anyJump := false                // a branch that isn't pending jumps
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
@@ -5165,6 +5187,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		// A branch whose check is pending, as 2 of null -> 2, has type
 		// Nothing until then, but doesn't jump.
 		jumped := bt.K == types.Nothing && len(pending) == npending
+		anyJump = anyJump || jumped
 		if !jumped {
 			allJump = false
 		}
@@ -5223,7 +5246,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		// branches were checked as values.
 		x.Soft = false
 		valueUsed = false
-		c.completeBranches(pending, result, want, true)
+		c.completeBranches(pending, result, want, true, anyJump)
 		pending = nil
 	}
 	if c.u.rec != nil {
@@ -5241,7 +5264,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			c.errorf(x.P, "'when' expression must be exhaustive, add necessary 'else' branch")
 			return types.InvalidType
 		}
-		c.completeBranches(pending, types.NothingType, noWant, false)
+		c.completeBranches(pending, types.NothingType, noWant, false, false)
 		return types.UnitType
 	}
 	if !hasElse {
@@ -5253,7 +5276,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		}
 	}
 	if !valueUsed {
-		c.completeBranches(pending, unused, noWant, false)
+		c.completeBranches(pending, unused, noWant, false, anyJump)
 		bodies := make([]*syntax.Block, len(x.Branches))
 		for i, br := range x.Branches {
 			bodies[i] = br.Body
@@ -5276,7 +5299,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	if sink != nil {
 		return c.sinkBranches(sink, pending, result)
 	}
-	result = c.completeBranches(pending, result, want, true)
+	result = c.completeBranches(pending, result, want, true, anyJump)
 	if want.K == types.Invalid {
 		c.noteBranchJoin(x, result)
 	}

@@ -177,9 +177,12 @@ func (c *Checker) elvisRightFirst(y syntax.Expr) (types.Type, bool) {
 		return types.NothingType, true
 	case *syntax.NullLit:
 		return types.NothingType.Nullable(), true
-	}
-	if !simpleExpr(y) {
-		return types.InvalidType, false
+	case *syntax.StringLit, *syntax.IntLit, *syntax.DoubleLit, *syntax.FloatLit, *syntax.CharLit, *syntax.BoolLit:
+		// A literal's type is its own: T of nullable() ?: "d" is a String.
+	default:
+		if !simpleExpr(y) {
+			return types.InvalidType, false
+		}
 	}
 	m := len(c.errs)
 	t := c.value(y, noWant)
