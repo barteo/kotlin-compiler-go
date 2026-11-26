@@ -124,7 +124,7 @@ tests/inference/underscoredTypeInForbiddenPositions.kt	underscoredTypeInForbidde
 tests/inference/underscoredTypeInForbiddenPositions.kt	underscoredTypeInForbiddenPositions.kt:44	UNDERSCORE_USAGE_WITHOUT_BACKTICKS	syntax-error
 tests/inference/upperBounds/typeParameterAsUpperBound.kt	typeParameterAsUpperBound.kt:5	INVISIBLE_REFERENCE	nearby
 tests/inference/upperBounds/typeParameterAsUpperBound.kt	typeParameterAsUpperBound.kt:5	INVISIBLE_REFERENCE	nearby
-tests/inline/property/invoke.kt	invoke.kt:11	USAGE_IS_NOT_INLINABLE	nearby
+tests/inline/property/invoke.kt	invoke.kt:11	USAGE_IS_NOT_INLINABLE	missing-check
 tests/inline/property/invoke.kt	invoke.kt:20	USAGE_IS_NOT_INLINABLE	missing-check
 tests/inline/property/unsupportedConstruction.kt	unsupportedConstruction.kt:9	NOT_YET_SUPPORTED_IN_INLINE	syntax-error
 tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt	unsignedLiteralsWithoutArtifactOnClasspath.kt:2	UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH	accepted
