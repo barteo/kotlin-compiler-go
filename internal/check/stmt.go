@@ -746,6 +746,14 @@ func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
 			ns = append(ns, k)
 		}
 	}
+	if m, ok := x.(*syntax.Member); ok && m.Safe {
+		// Nor the stable property it reads: after val t = a?.b, t != null
+		// means a.b != null, as in K2.
+		if k, ok := c.memberKey(m, m.Type()); ok && types.MayBeNull(k.t) && c.aliasable(k) {
+			k.t = k.t.NonNull()
+			ns = append(ns, k)
+		}
+	}
 	if len(ns) == 0 {
 		return
 	}

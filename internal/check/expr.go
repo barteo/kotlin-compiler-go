@@ -2395,7 +2395,9 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 			k.t = k.t.NonNull()
 			return append([]narrow{k}, c.impliedBy(k)...)
 		}
-		return nil
+		// Nor is a, nor the receivers of its safe calls: x of
+		// x?.bar as? String ?: return, as in K2.
+		return c.equalNonNull(as.X)
 	}
 	n := c.safeReceivers(x)
 	k, ok := c.narrowKeyOf(x)
