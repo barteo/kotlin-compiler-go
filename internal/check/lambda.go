@@ -3536,6 +3536,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		trial := s.clone()
 		if trial.sub(bt, r); trial.ok || !declared {
 			s.sub(bt, r)
+			if tv := s.unfixedVar(r); tv != nil && bt == types.UnitType && !l.Anon && l.Body != nil && len(l.Body.Stmts) == 0 {
+				tv.coercedUnits++ // { }'s
+			}
 		}
 	}
 	s.fixups = append(s.fixups, func(s *system) {

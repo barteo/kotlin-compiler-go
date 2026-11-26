@@ -56,3 +56,21 @@ fun <T> params(inv: Inv<T>, t: T) {
     inv.has(t)
     inv.has(1) // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
 }
+
+// The Unit of an empty lambda isn't an input, nor is Unit a Nothing's.
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+fun <@kotlin.internal.OnlyInputTypes T> expect(expected: T, block: () -> T) {}
+
+@Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+fun <@kotlin.internal.OnlyInputTypes T> expect(block: () -> T) {}
+
+fun nothing(): Nothing = null!!
+fun anyValue(): Any = ""
+
+fun emptyLambdas() {
+    expect { Unit }
+    expect {} // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
+    expect(anyValue()) {}
+    expect(nothing()) { Unit }
+    expect(nothing()) {} // ERROR type inference failed. The value of the type parameter 'T' must be mentioned in input types
+}
