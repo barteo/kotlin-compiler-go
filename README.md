@@ -181,6 +181,7 @@ Arguments can be files or directories. Flags:
 | `-Xuse-fir-experimental-checkers` | also report the warnings of `kotlinc`'s experimental checkers (`REDUNDANT_INTERPOLATION_PREFIX`, `EMPTY_RANGE`), as in `kotlinc` |
 | `-Werror` | fail if there are warnings, as in `kotlinc` |
 | `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
+| `@file` | the arguments in `file`, separated by whitespace and grouped by quotes, as `kotlinc`'s and `java`'s argument files |
 
 `kc -serve` compiles again and again for a tool that runs many small
 compiles: each line of stdin is one compile's arguments as a JSON array,

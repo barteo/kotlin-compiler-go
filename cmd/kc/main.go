@@ -1,8 +1,12 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
+//	kc [@argfile] [-d outdir] [-cp path] [-module-name name] [-jvm-target version] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-Wextra] [-Xexplicit-api=mode] [-Xmulti-platform] [-j N] [-time] [-cpuprofile file] [-blockprofile file] [-features] files-or-dirs...
 //	kc -serve
 //	kc -version
+//
+// An argument @file stands for the arguments in the file, separated by
+// whitespace, which quotes ("a b" or 'a b') group, as kotlinc's and
+// java's argument files.
 //
 // kc -serve compiles again and again, as a tool that runs many small
 // compiles (bench/conformance) asks: see serve.go.
@@ -85,6 +89,11 @@ func printVersion(w io.Writer) {
 // libs, if set, keeps class paths for later compiles: see
 // driver.Libraries.
 func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, error) {
+	args, err := expandArgFiles(args)
+	if err != nil {
+		fmt.Fprintln(stderr, "kc:", err)
+		return 2, nil
+	}
 	flags := flag.NewFlagSet("kc", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	outDir := flags.String("d", ".", "output directory for class files")
@@ -269,4 +278,67 @@ func printFeatures(w io.Writer, err error) {
 // tabs, on a line.
 func printDiag(w io.Writer, d *syntax.Error) {
 	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", d.File, d.Pos, d.Severity, d.Name, d.Feature, strings.ReplaceAll(d.Msg, "\n", " "))
+}
+
+// expandArgFiles replaces each argument @file with the arguments in the
+// file, as kotlinc and java do.
+func expandArgFiles(args []string) ([]string, error) {
+	var out []string
+	for _, a := range args {
+		name, ok := strings.CutPrefix(a, "@")
+		if !ok || name == "" {
+			out = append(out, a)
+			continue
+		}
+		b, err := os.ReadFile(name)
+		if err != nil {
+			return nil, err
+		}
+		words, err := splitArgFile(string(b))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", name, err)
+		}
+		out = append(out, words...)
+	}
+	return out, nil
+}
+
+// splitArgFile returns the arguments in an argument file: words
+// separated by whitespace, where double or single quotes group and, in
+// them, a backslash escapes the next character.
+func splitArgFile(s string) ([]string, error) {
+	var out []string
+	var w strings.Builder
+	in := false // a word has begun
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case ' ', '\t', '\n', '\r', '\f':
+			if in {
+				out = append(out, w.String())
+				w.Reset()
+				in = false
+			}
+		case '"', '\'':
+			in = true
+			for i++; ; i++ {
+				if i >= len(s) {
+					return nil, errors.New("unterminated quote")
+				}
+				if s[i] == c {
+					break
+				}
+				if s[i] == '\\' && i+1 < len(s) {
+					i++
+				}
+				w.WriteByte(s[i])
+			}
+		default:
+			in = true
+			w.WriteByte(c)
+		}
+	}
+	if in {
+		out = append(out, w.String())
+	}
+	return out, nil
 }

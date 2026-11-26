@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -51,6 +52,25 @@ type Config struct {
 	// "warning" or "strict". Strict mode reports its errors among the
 	// diagnostics; warning mode's warnings aren't reported.
 	ExplicitAPIMode string
+	// Serialization, Parcelize and Compose check the sources as kotlinc
+	// does with those compiler plugins applied.
+	Serialization, Parcelize, Compose bool
+	// OptIns are the requirement markers the module opts in to, by
+	// qualified name, as kotlinc's -opt-in.
+	OptIns []string
+	// JVMTarget is the JVM version the module's class files are for, as
+	// kotlinc's -jvm-target ("1.8" if empty). Library.Analyze reports a
+	// call of an inline function built for a higher one.
+	JVMTarget string
+}
+
+// driverOptions returns the driver's options for the class path of cfg.
+func driverOptions(cfg Config) driver.Options {
+	return driver.Options{
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
+		Serialization: cfg.Serialization, Parcelize: cfg.Parcelize, Compose: cfg.Compose, OptIns: cfg.OptIns,
+	}
 }
 
 // ErrUnsupported is returned, wrapped, for input kc can't analyze at
@@ -73,6 +93,12 @@ type Diagnostic struct {
 	Column  int    `json:"column"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Severity is "error" or, from Library.Analyze with warnings,
+	// "warning". Name is kotlinc's name of the diagnostic, as
+	// UNRESOLVED_REFERENCE or DEPRECATION, if kc knows it: every warning
+	// has one.
+	Severity string `json:"severity,omitempty"`
+	Name     string `json:"name,omitempty"`
 }
 
 // Type is a resolved Kotlin type.
@@ -259,6 +285,9 @@ type Fact struct {
 	// implicit it if ImplicitParameter is set.
 	LambdaParameters  []uint32 `json:"lambdaParameters,omitempty"`
 	ImplicitParameter bool     `json:"implicitParameter,omitempty"`
+	// LambdaReceiver is the type of a lambda's receiver, the this in its
+	// body, if it has one.
+	LambdaReceiver *Type `json:"lambdaReceiver,omitempty"`
 	// ReturnTarget is the function or lambda a return leaves;
 	// ReceiverTarget the class, function or lambda whose receiver a this
 	// is.
@@ -335,6 +364,8 @@ type Result struct {
 	order   []ElementID
 	symbols []Symbol // by ID-1
 	diags   []Diagnostic
+	// completion is what Options.Complete asked for.
+	completion *Completion
 }
 
 // Fact returns the fact of the node id names.
@@ -515,6 +546,7 @@ func copyFact(f Fact) Fact {
 	}
 	f.LambdaParameters = slices.Clone(f.LambdaParameters)
 	f.ReturnTarget = copyID(f.ReturnTarget)
+	f.LambdaReceiver = copyType(f.LambdaReceiver)
 	f.ReceiverTarget = copyID(f.ReceiverTarget)
 	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)

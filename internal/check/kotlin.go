@@ -166,10 +166,13 @@ var mutators = map[string]bool{
 type kotlinTable struct {
 	builtinsOnce sync.Once
 	builtins     map[string]*kmeta.Class // the built-in classes, by class id
-	collections  map[string]*types.ClassSym
-	atomics      map[string]*types.ClassSym // kotlin.concurrent.atomics' types: see atomics.go
-	raw          map[string]*types.ClassSym // the Java collection interfaces themselves
-	kfuncs       map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
+	// probeBuiltins are the classes of built-in types' members that
+	// probes list (see builtinMembers), by class id, under mu.
+	probeBuiltins map[string]*types.ClassSym
+	collections   map[string]*types.ClassSym
+	atomics       map[string]*types.ClassSym // kotlin.concurrent.atomics' types: see atomics.go
+	raw           map[string]*types.ClassSym // the Java collection interfaces themselves
+	kfuncs        map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
 	moduleOnce sync.Once
 	parts      map[string][]kmeta.Part // by package name

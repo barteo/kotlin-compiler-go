@@ -53,7 +53,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+	rec := newRecorder()
 	// The errors only: the analysis reports no warnings.
 	mode, _ := check.ParseAPIMode(cfg.ExplicitAPIMode)
 	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{ExplicitAPI: mode})
@@ -100,7 +100,7 @@ func diagnostic(path string, e *syntax.Error) Diagnostic {
 	if e.Feature != "" {
 		code = "unsupported:" + e.Feature
 	}
-	return Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Message: e.Msg}
+	return Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Severity: e.Severity.String(), Name: e.Name, Message: e.Msg}
 }
 
 // duplicateClasses reports two files with the same facade class, which
@@ -113,7 +113,7 @@ func duplicateClasses(files []*syntax.File) *Diagnostic {
 			continue
 		}
 		if prev, dup := classes[f.Class()]; dup {
-			return &Diagnostic{Path: f.Path, Line: 1, Column: 1, Code: "source_error",
+			return &Diagnostic{Path: f.Path, Line: 1, Column: 1, Code: "source_error", Severity: "error",
 				Message: fmt.Sprintf("duplicate JVM class name %s (also from %s)", f.Class(), prev)}
 		}
 		classes[f.Class()] = f.Path
@@ -123,7 +123,7 @@ func duplicateClasses(files []*syntax.File) *Diagnostic {
 	}
 	for name := range multifile {
 		if prev, dup := classes[name]; dup {
-			return &Diagnostic{Path: prev, Line: 1, Column: 1, Code: "source_error",
+			return &Diagnostic{Path: prev, Line: 1, Column: 1, Code: "source_error", Severity: "error",
 				Message: fmt.Sprintf("duplicate JVM class name %s (also a multi-file class)", name)}
 		}
 	}
@@ -131,6 +131,10 @@ func duplicateClasses(files []*syntax.File) *Diagnostic {
 }
 
 type whenReport struct{ exhaustive, used bool }
+
+func newRecorder() *recorder {
+	return &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+}
 
 // recorder keeps what the checker reports, the last report of each node.
 type recorder struct {
@@ -241,6 +245,9 @@ type builder struct {
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
+	// probe is the completion's, if one is asked for.
+	probe *check.Probe
+
 	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
 	// -1 is the literal's statement.
 	negatedAt map[*syntax.IntLit]ElementID
@@ -328,6 +335,9 @@ func (b *builder) build() {
 	b.wrappers()
 	b.unreachable()
 	b.annotations()
+	if b.probe != nil {
+		b.res.completion = b.completion(b.probe)
+	}
 	b.symbols()
 
 	for id := range b.res.facts {
@@ -438,6 +448,9 @@ func merge(f *Fact, src Fact) {
 	f.SuspendOperation = f.SuspendOperation || src.SuspendOperation
 	if f.LambdaParameters == nil {
 		f.LambdaParameters, f.ImplicitParameter = src.LambdaParameters, src.ImplicitParameter
+	}
+	if f.LambdaReceiver == nil {
+		f.LambdaReceiver = src.LambdaReceiver
 	}
 	if f.ReturnTarget == nil {
 		f.ReturnTarget = src.ReturnTarget
@@ -569,6 +582,12 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Destructure:
 		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Sym != nil && x.Names == nil {
+			// The loop variable's declaration, VALUE_PARAMETER.
+			if p := b.node(el).ChildKind(psi.KindVALUE_PARAMETER); p.Valid() {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: p.ID()}, Fact{Role: "declaration", Symbol: b.sym(x.Sym)})
+			}
+		}
 		if x.Names != nil && x.Body != nil {
 			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
@@ -760,6 +779,7 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		if x.Recv != nil {
 			b.receivers[x.Recv] = el
+			f.LambdaReceiver = b.cv.typ(x.Recv.Type)
 		}
 		switch {
 		case x.Ref != nil:
