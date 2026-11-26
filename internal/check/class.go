@@ -157,6 +157,10 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		return t
 	case !cd.HasPrimary && st.Call != nil:
 		c.errorf(st.Type.P, "supertype initialization is impossible without a primary constructor")
+		if c.superCallNoPrimary == nil {
+			c.superCallNoPrimary = map[*syntax.ClassDecl]bool{}
+		}
+		c.superCallNoPrimary[cd] = true
 		for _, sc := range cd.Secondaries() {
 			if len(sc.Params) == 0 {
 				// kotlinc's class still has a primary constructor, which

@@ -2998,6 +2998,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		marks = append(marks, mark{len(r.cons), len(r.joined), len(r.extra)})
 	}
 	t := c.call1(x, want, sink)
+	if id, ok := x.Fun.(*syntax.Ident); ok && id.Underscore && x.Ctor != nil {
+		// _<Any>() of a class `_`, not the CHECK_TYPE helper.
+		c.errorf(id.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
 	if c.ambiguities > amb {
 		// An ambiguous call in a builder's lambda gives the builder's
 		// variables nothing, as in kotlinc: what its candidates

@@ -182,6 +182,11 @@ type loopCtx struct {
 // Checker checks one file. Only one goroutine uses a Checker at a time.
 type Checker struct {
 	u *Universe
+	// superCallNoPrimary are the classes without a primary constructor
+	// whose supertype is initialized (reported, and the call dropped):
+	// kotlinc's class still has a primary constructor without
+	// parameters, a candidate of this() in its secondary ones.
+	superCallNoPrimary map[*syntax.ClassDecl]bool
 	// orderDependent is the property whose type extFuncVar couldn't use
 	// because it is being inferred or its inference ran into a cycle.
 	orderDependent *types.VarSym
@@ -3546,7 +3551,10 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 			return
 		}
 	}
-	if c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) && !strings.Contains(v.Name, "$delegate") {
+	// A property its inference left an error for a cycle is reported in
+	// the inference of another one too, as kotlinc reports its type, the
+	// error: val z = y.a, for an a = y in y's object.
+	if (c.reportsRecursion(v.InProgress && !v.Resolved, v.Cyclic) || v.Cyclic && c.inferFrom > 0) && !strings.Contains(v.Name, "$delegate") {
 		v.ReentryReported++
 		if v.InProgress {
 			c.u.reentries.Add(1)

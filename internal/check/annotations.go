@@ -829,7 +829,11 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.TypeAliasDecl:
 		c.noAllTarget(d.Annotations, "elements other than properties")
 		c.noFileTarget(d.Annotations)
-		c.annotations(d.Annotations, owner, typealiasSite)
+		// An inner one, reported, sees the class's instance members, as
+		// in kotlinc: @Anno(CONST) inner typealias B, for a member CONST.
+		site := typealiasSite
+		site.outerThis = d.Inner
+		c.annotations(d.Annotations, owner, site)
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Type)
 	case *syntax.ClassDecl:
@@ -893,7 +897,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		for _, m := range d.Members {
 			switch m := m.(type) {
-			case *syntax.FunDecl, *syntax.PropDecl:
+			case *syntax.FunDecl, *syntax.PropDecl, *syntax.TypeAliasDecl:
 				c.declAnnotations(m, cls)
 			case *syntax.InitBlock:
 				c.annotations(m.Annotations, cls, initSite)

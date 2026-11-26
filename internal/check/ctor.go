@@ -257,6 +257,12 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 						cands = append(cands, callee{f: f, given: own})
 					}
 				}
+				if c.superCallNoPrimary[d] {
+					// The primary constructor kotlinc's class still has:
+					// this() is ambiguous with a constructor().
+					f := &types.FunSym{Name: "<init>", Owner: cls, Ret: cls.This(), Resolved: true, Decl: d}
+					cands = append(cands, callee{f: f, given: own})
+				}
 			} else {
 				x.Ctor = cls.Super
 				cands = superCtorCands(cls)
