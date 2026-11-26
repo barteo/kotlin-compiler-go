@@ -361,15 +361,11 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 			param.Type = l.typeRef(t)
 		}
 		if mods := child(vp, psi.KindMODIFIER_LIST); mods.Valid() {
-			for _, k := range kids(mods) {
-				if k.NumericKind() == psi.KindANNOTATION_ENTRY {
-					param.Annotations = append(param.Annotations, l.annotation(k))
-				} else if k.NumericKind() == psi.KindANNOTATION {
-					param.Annotations = append(param.Annotations, l.bracketAnnotations(k)...)
-				} else {
-					l.unexpected(k)
-				}
-			}
+			// The checker reports the modifiers a setter's parameter can't
+			// have, as kc's parser.
+			pm := l.modifiers(mods)
+			syntax.NoContexts(&pm, "value parameters", l)
+			param.Annotations, param.Vararg, param.Mods = pm.Annotations, pm.Vararg, pm.Written
 		}
 		fd.Params = []*syntax.Param{param}
 		if ret.Valid() {

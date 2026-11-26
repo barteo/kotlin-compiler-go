@@ -1811,13 +1811,10 @@ func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
 	st.External, st.ExternalP = m.External, m.ExternalP
 	p.expect(LPAREN)
 	p.skipNL()
-	var anns []Annotation
-	for p.at(AT) {
-		anns = append(anns, p.annotation())
-		p.skipNL()
-	}
+	pm := p.modifiers() // the checker reports those a setter's parameter can't have
+	NoContexts(&pm, "value parameters", p)
 	name := p.ident()
-	param := &Param{P: name.Pos, Name: name.Text, Annotations: anns}
+	param := &Param{P: name.Pos, Name: name.Text, Annotations: pm.Annotations, Vararg: pm.Vararg, Mods: pm.Written}
 	if p.at(COLON) {
 		p.next()
 		param.Type = p.parseType()

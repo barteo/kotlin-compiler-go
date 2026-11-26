@@ -4215,6 +4215,13 @@ func (c *Checker) getterRetType(d *syntax.PropDecl) {
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
 	p := d.Setter.Params[0]
+	if p.Vararg && p.Sym != nil && d.Sym != nil {
+		// set(vararg value), reported: an array in the setter's body,
+		// as in kotlinc.
+		v := *p.Sym
+		v.Type = types.VarargArray(d.Sym.Type)
+		p.Sym = &v
+	}
 	if p.Type == nil || d.Field != nil {
 		return
 	}

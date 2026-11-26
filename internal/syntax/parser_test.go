@@ -142,7 +142,6 @@ func TestParseErrors(t *testing.T) {
 		{"fun ((@receiver:A Int) -> Unit).f() {}", "1:7", "this annotation is not applicable to target 'type usage' and use-site target '@receiver'"},
 		{"val s = \"abc", "1:9", "unterminated string literal"},
 		{"fun f() { try { } }", "1:11", "'try' must have at least one 'catch' or 'finally' block"},
-		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
 		{"fun <T> f() where U : Any {}", "1:19", "'U' does not refer to a type parameter of this declaration"},
 		{"context(Int) fun f() = 1", "1:9", "context parameters must be named"},
 		{"context() fun f() = 1", "1:9", "expected a context parameter"},
@@ -185,6 +184,10 @@ func TestLaterErrors(t *testing.T) {
 		{"val c = '\U0001F600'", "1:9", "too many characters in a character literal"},
 		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"class C { public init {} }", "1:11", "modifier 'public' is not applicable to 'initializer'"},
+		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
+		{"val x = 1\n set", "2:2", "a 'val'-property cannot have a setter"},
+		{"class A private (x: Int)", "1:9", "use the 'constructor' keyword"},
+		{"class A<_>", "1:9", "are reserved in Kotlin"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {

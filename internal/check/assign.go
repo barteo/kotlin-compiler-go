@@ -529,7 +529,7 @@ func (a *assignment) trackInits(decls []syntax.Decl) {
 				a.delegated = map[*types.VarSym]bool{}
 			}
 			a.delegated[v] = true
-		case pd.Init == nil || pd.Getter != nil || pd.Field != nil:
+		case pd.Init == nil || pd.Field != nil:
 			continue
 		}
 		if v == nil || v.Deferred {
@@ -563,7 +563,7 @@ func (a *assignment) inits(decls []syntax.Decl, s *daState) {
 				// that it be initialized.
 				s.def[m.Sym] = true
 			}
-			if m.Init == nil || m.Getter != nil {
+			if m.Init == nil {
 				continue
 			}
 			a.constInit = m.Const

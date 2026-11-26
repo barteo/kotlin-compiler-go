@@ -440,13 +440,15 @@ func CheckLocalFun(fd *FunDecl, r Reporter) {
 }
 
 // CheckDelegated reports the accessors with bodies of delegated property
-// pd.
+// pd, each as kotlinc does, and drops them: the property is checked as
+// delegated.
 func CheckDelegated(pd *PropDecl, r Reporter) {
 	for _, a := range []*FunDecl{pd.Getter, pd.Setter} {
 		if a != nil {
-			r.Fail(a.P, "delegated property cannot have accessors with non-default implementations")
+			r.Later(a.P, "delegated property cannot have accessors with non-default implementations")
 		}
 	}
+	pd.Getter, pd.Setter = nil, nil
 }
 
 // AccessorMods records in property pd the modifiers m of its accessor
@@ -454,6 +456,10 @@ func CheckDelegated(pd *PropDecl, r Reporter) {
 // property's, with the accessor as their target, as @get:A is.
 func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) {
 	NoContexts(m, "property accessors", r)
+	if name == "set" && !pd.Mutable {
+		// Checked as kotlinc does, with the setter (VAL_WITH_SETTER).
+		r.Later(pos, "a 'val'-property cannot have a setter")
+	}
 	if pd.AccessorP.Line == 0 {
 		pd.AccessorP = pos
 	}
@@ -514,14 +520,12 @@ func VarianceMod(v *types.Variance, prevP *Pos, w types.Variance, p Pos, r Repor
 	}
 }
 
-// CheckAccessor reports a second getter or setter of property pd, or a
-// setter of a val, at accessor name written at pos.
+// CheckAccessor reports a second getter or setter of property pd at
+// accessor name written at pos.
 func CheckAccessor(pd *PropDecl, name string, pos Pos, r Reporter) {
 	switch {
 	case name == "get" && pd.Getter != nil:
 		r.Fail(pos, "property has two getters")
-	case name == "set" && !pd.Mutable:
-		r.Fail(pos, "a 'val'-property cannot have a setter")
 	case name == "set" && pd.Setter != nil:
 		r.Fail(pos, "property has two setters")
 	}
