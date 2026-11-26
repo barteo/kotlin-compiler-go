@@ -597,7 +597,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
   `get`, `getOrDefault` and both `remove`s; others keep Java's, though
-  named arguments take Kotlin's parameter names.
+  named arguments take Kotlin's parameter names. Only the collection
+  class's own methods are mapped: one it inherits from a superclass
+  that isn't a collection, as `remove(Object)` of
+  `class A extends AImpl implements List<String>`, keeps Java's.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
