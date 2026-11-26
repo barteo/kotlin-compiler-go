@@ -2137,7 +2137,10 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		if c.isVar(x.Name) {
 			return nil
 		}
-		return c.findClass(x.Name)
+		if cls := c.findClass(x.Name); cls != nil {
+			return cls
+		}
+		return c.rootQualifier(x.Name)
 	case *syntax.Member:
 		var parts []string
 		var e syntax.Expr = x
@@ -2187,6 +2190,14 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		if c.u.isPackage(strings.ReplaceAll(path, "/", ".")) {
 			return nil
 		}
+		if cls := c.rootQualifier(id.Name); cls != nil && !c.u.isPackage(id.Name) {
+			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
+				cls = c.nestedOf(cls, parts[i])
+			}
+			if cls != nil {
+				return cls // Klass.Nested of the root package's Klass
+			}
+		}
 		if c.binaryNestedName(names) {
 			return nil
 		}
@@ -2208,6 +2219,48 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 	}
 	return nil
+}
+
+// rootQualifier returns the class that name, the first name of a
+// qualified name, names in the root package, or that a typealias there
+// expands to, for a file of another package, which doesn't see the root
+// package's classifiers by their simple names: as in K2 (KT-69985),
+// Klass.Nested and Klass.companionFun() find the root package's Klass,
+// though Klass alone doesn't.
+func (c *Checker) rootQualifier(name string) *types.ClassSym {
+	if c.pkg == nil || c.pkg.Name == "" {
+		return nil
+	}
+	if p := c.u.Pkgs[""]; p != nil {
+		if cls := p.Classes[name]; cls != nil && !c.privateElsewhere(classifier{cls: cls}) {
+			return cls
+		}
+		if a := p.Aliases[name]; a != nil && !c.privateElsewhere(classifier{alias: a}) {
+			return c.aliasClass(a)
+		}
+	}
+	if cls := c.u.ext.class(name); cls != nil && !privateClass(cls) {
+		return cls
+	}
+	if c.u.ext.kotlin {
+		return c.u.ext.pkgClass("", name) // a typealias of another module's
+	}
+	return nil
+}
+
+// rootObject resolves x, the receiver of a member, to the object that a
+// class of the root package is or has as its companion, where x names
+// nothing else (see rootQualifier): Objekt.f(), Klass.companionF().
+func (c *Checker) rootObject(x syntax.Expr) {
+	id, ok := x.(*syntax.Ident)
+	if !ok || id.Object != nil || c.pkg == nil || c.pkg.Name == "" || c.isVar(id.Name) || c.findClass(id.Name) != nil || c.u.isPackage(id.Name) {
+		return
+	}
+	if cls := c.rootQualifier(id.Name); cls != nil {
+		if obj := objectOf(cls); obj != nil {
+			id.Object = obj
+		}
+	}
 }
 
 // defaultImported reports whether a simple name finds cls, a class on the

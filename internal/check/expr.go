@@ -2613,6 +2613,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if cls := c.classRef(x.X); cls != nil && (objectOf(cls) == nil || c.hasStatic(cls, x.Name)) {
 		return c.staticField(x, cls)
 	}
+	c.rootObject(x.X)
 	if id, ok := x.X.(*syntax.Ident); ok && !c.isVar(id.Name) {
 		// A constant of a built-in type's companion: Int.MAX_VALUE.
 		if obj := c.builtinCompanion(id.Name); obj != nil && c.hasStatic(obj, x.Name) {
@@ -3337,6 +3338,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if cls := c.classRef(fn.X); cls != nil && (objectOf(cls) == nil || len(javaStatics(cls, fn.Name)) > 0) {
 			return c.staticCall(x, fn, cls, want, sink)
 		}
+		c.rootObject(fn.X)
 		if s, ok := fn.X.(*syntax.Super); ok {
 			c.superSafeCall(fn)
 			return c.superCall(x, fn, s, want, sink)
