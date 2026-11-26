@@ -117,3 +117,19 @@ fun inner() {
     on(Named("w")) { hello() } // the receiver is nearer
     fun Named.local() = hello() // the local function's receiver is nearer
 }
+
+class CtxA
+interface CtxFirst {
+    context(a: CtxA)
+    val cb: String
+}
+interface CtxSecond {
+    context(a: Any)
+    val cb: String
+}
+interface CtxBoth : CtxFirst, CtxSecond
+
+context(x: CtxA)
+fun bothContexts(a: CtxBoth) {
+    a.cb // ERROR overload resolution ambiguity: cb
+}
