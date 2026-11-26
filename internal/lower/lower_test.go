@@ -162,3 +162,58 @@ func TestRedundantPrefixes(t *testing.T) {
 		t.Errorf("a file without syntax errors: errors %v, prefixes %v", errs, f.RedundantPrefixes)
 	}
 }
+
+// TestSignatures checks which block bodies Signatures lowers empty: not
+// an inline function's or accessor's, one that starts with a contract,
+// or an expression body.
+func TestSignatures(t *testing.T) {
+	src := `class A {
+    init { println(1) }
+    constructor(x: Int) { println(x) }
+    val p: Int get() { return 1 }
+    val q: Int inline get() { return 2 }
+    fun f(): Int { return 3 }
+    inline fun g(): Int { return 4 }
+    fun h() = 5
+}
+fun c(x: Any?): Boolean {
+    contract { returns(true) implies (x != null) }
+    return x != null
+}
+fun broken() { val y = (1 + ; }
+`
+	f, _, errs := Signatures(psi.Parse("A.kt", src))
+	if len(errs) > 0 {
+		t.Fatalf("lowering failed: %v", errs[0])
+	}
+	stmts := func(b *syntax.Block) int {
+		if b == nil {
+			return -1
+		}
+		return len(b.Stmts)
+	}
+	var got []string
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *syntax.ClassDecl:
+			for _, m := range d.Members {
+				switch m := m.(type) {
+				case *syntax.InitBlock:
+					got = append(got, fmt.Sprintf("init %d", stmts(m.Body)))
+				case *syntax.SecondaryCtor:
+					got = append(got, fmt.Sprintf("constructor %d", stmts(m.Body)))
+				case *syntax.PropDecl:
+					got = append(got, fmt.Sprintf("%s %d", m.Name, stmts(m.Getter.Body)))
+				case *syntax.FunDecl:
+					got = append(got, fmt.Sprintf("%s %d %v", m.Name, stmts(m.Body), m.ExprBody != nil))
+				}
+			}
+		case *syntax.FunDecl:
+			got = append(got, fmt.Sprintf("%s %d", d.Name, stmts(d.Body)))
+		}
+	}
+	want := "init 0, constructor 0, p 0, q 1, f 0 false, g 1 false, h -1 true, c 2, broken 0"
+	if got := strings.Join(got, ", "); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

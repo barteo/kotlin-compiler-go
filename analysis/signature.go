@@ -5,17 +5,19 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 // signatureHash returns a hash of what s declares: its tokens but for
-// whitespace, comments and the block bodies of functions, accessors,
-// initializers and secondary constructors, which the checks of the
-// other files don't need. A block body
-// doesn't make a declaration's type: a function with one and no written
-// return type returns Unit. Two parses with the same hash declare the
-// same, so the other files of a module don't need checking again when
-// only bodies change (an incremental update).
+// whitespace, comments and the block bodies isSkippedBody names, of
+// functions, accessors, initializers and secondary constructors, which
+// the checks of the other files don't read. A block body doesn't make a
+// declaration's type: a function with one and no written return type
+// returns Unit. An inline function's body and a body that starts with a
+// contract are hashed. Two parses with the same hash declare the same,
+// so the other files of a module don't need checking again when only
+// bodies change (an incremental update).
 func signatureHash(s *psi.Snapshot) uint64 {
 	return hashNodes(s, 1, psi.NodeID(s.NodeCount()+1))
 }
@@ -70,42 +72,9 @@ func hashNodes(s *psi.Snapshot, id, end psi.NodeID) uint64 {
 }
 
 // isSkippedBody reports whether n is a block body the hashes leave out:
-// that of a function, accessor, initializer or secondary constructor,
-// but for an inline function's, which the checker inlines into the
-// other files' code, and one that starts with a contract, which narrows
-// the callers' types.
-func isSkippedBody(n psi.NodeRef) bool {
-	if n.NumericKind() != psi.KindBLOCK {
-		return false
-	}
-	p := n.Parent()
-	if !isBodyOwner(p.NumericKind()) {
-		return false
-	}
-	if p.NumericKind() == psi.KindFUN && p.ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindINLINE_KEYWORD).Valid() {
-		return false
-	}
-	for c := n.FirstChild(); c.Valid(); c = c.NextSibling() {
-		if c.IsTrivia() || c.IsLeaf() {
-			continue // the brace
-		}
-		if c.NumericKind() == psi.KindCALL_EXPRESSION {
-			if callee := c.FirstChild(); callee.NumericKind() == psi.KindREFERENCE_EXPRESSION && callee.Text() == "contract" {
-				return false
-			}
-		}
-		break
-	}
-	return true
-}
-
-func isBodyOwner(k psi.Kind) bool {
-	switch k {
-	case psi.KindFUN, psi.KindPROPERTY_ACCESSOR, psi.KindCLASS_INITIALIZER, psi.KindSECONDARY_CONSTRUCTOR:
-		return true
-	}
-	return false
-}
+// those lower.Signatures lowers empty, as a check of the other files
+// doesn't read them.
+func isSkippedBody(n psi.NodeRef) bool { return lower.SkippedBody(n) }
 
 // signatureNodes returns the nodes signatureHash hashes, in order: the
 // nodes but for trivia and the insides of block bodies, whose blocks it

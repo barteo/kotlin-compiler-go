@@ -181,6 +181,24 @@ func lowerSnapshot(s *psi.Snapshot) lowered {
 	return lw
 }
 
+// lowerSignatures lowers s for a check that doesn't check it
+// (check.Options.Only), without the block bodies the check doesn't read
+// (lower.Signatures). Its errors, broken and lines aren't the file's:
+// those of a file checked are lowerSnapshot's.
+func lowerSignatures(s *psi.Snapshot) lowered {
+	var lw lowered
+	func() {
+		defer func() {
+			if recover() != nil {
+				lw.file, lw.prov = nil, nil
+			}
+		}()
+		lw.file, lw.prov, _ = lower.Signatures(s)
+	}()
+	lw.lost = lw.file == nil || lostDeclarations(s, lw.file)
+	return lw
+}
+
 // lostDeclarations reports whether f, lowered from s recovering from
 // errors, leaves out a declaration s has: a class, object, function,
 // property, typealias or enum entry of the file or of a class body, or
@@ -296,14 +314,30 @@ func finish(extra []Diagnostic, files [][]fileDiag, broken bool) []Diagnostic {
 func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, keep bool) (*Result, *state, error) {
 	jobs := max(l.cfg.Jobs, 1)
 	n := len(snaps)
-	low := make([]lowered, n)
-	parallel(n, jobs, func(i int) { low[i] = lowerSnapshot(snaps[i]) })
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
 	declOnly := declaredOf(snaps, opts.Declared)
 	isDeclared := func(i int) bool { return declOnly != nil && declOnly[i] }
 	stateful := keep && opts.Complete == nil
+	// unchecked are the files the check only declares, lowered without
+	// the bodies it doesn't read: Declared's, and with Complete, all but
+	// the completion's file. Their diagnostics and facts are left out.
+	completing := opts.Complete != nil && slices.ContainsFunc(snaps, func(s *psi.Snapshot) bool { return s.Path() == opts.Complete.Path })
+	unchecked := func(i int) bool {
+		if completing {
+			return snaps[i].Path() != opts.Complete.Path
+		}
+		return isDeclared(i)
+	}
+	low := make([]lowered, n)
+	parallel(n, jobs, func(i int) {
+		if unchecked(i) {
+			low[i] = lowerSignatures(snaps[i])
+		} else {
+			low[i] = lowerSnapshot(snaps[i])
+		}
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 
 	res := &Result{}
 	var (
@@ -316,16 +350,14 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 		dropped bool
 	)
 	for i, lw := range low {
-		if !isDeclared(i) {
-			for _, e := range lw.errs {
-				perFile[i] = append(perFile[i], fileDiag{diagnostic(snaps[i].Path(), e), diagLower})
-			}
+		for _, e := range lw.errs {
+			perFile[i] = append(perFile[i], fileDiag{diagnostic(snaps[i].Path(), e), diagLower})
 		}
 		if lw.file == nil {
 			dropped = true
 			continue
 		}
-		broken = broken || lw.broken && !isDeclared(i)
+		broken = broken || lw.broken
 		kept = append(kept, i)
 		files = append(files, lw.file)
 		provs = append(provs, lw.prov)
@@ -404,7 +436,7 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 			}
 			continue
 		}
-		if isDeclared(i) || !e.IsWarning() && low[i].lines[e.Pos.Line] {
+		if unchecked(i) || !e.IsWarning() && low[i].lines[e.Pos.Line] {
 			continue
 		}
 		perFile[i] = append(perFile[i], checkerDiag(snaps[i].Path(), e))
@@ -412,10 +444,10 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 	b := newBuilder(res, keptSnaps, files, provs, rec)
 	b.cp = cp
 	b.probe = probe
-	if declOnly != nil {
+	if declOnly != nil || probe != nil {
 		b.broken = make([]bool, len(kept))
 		for j, i := range kept {
-			b.broken[j] = isDeclared(i)
+			b.broken[j] = unchecked(i)
 		}
 	}
 	b.build()
@@ -438,7 +470,7 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 	}
 	st.diags, st.broken, st.lost, st.declared, st.extra = perFile, make([]bool, n), make([]bool, n), declOnly, extra
 	for i := range low {
-		st.broken[i] = low[i].broken && !isDeclared(i)
+		st.broken[i] = low[i].broken
 		st.lost[i] = low[i].lost
 	}
 	parallel(n, jobs, func(i int) {

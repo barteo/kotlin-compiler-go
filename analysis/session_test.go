@@ -246,6 +246,9 @@ func TestSessionDeclared(t *testing.T) {
 	ctx := context.Background()
 	m := newModule(map[string]string{"a.kt": sessA, "b.kt": sessB, "c.kt": sessC})
 	opts := Options{Warnings: true, ExtraWarnings: true, Declared: map[string]bool{"a.kt": true}}
+	// Compacted after every update, which keeps the classes too.
+	defer func(n int) { compactSlack = n }(compactSlack)
+	compactSlack = -1 << 30
 	s := lib.Session()
 	defer s.Close()
 	for i, edit := range []func(){
@@ -253,12 +256,28 @@ func TestSessionDeclared(t *testing.T) {
 		func() { m.replace(t, "a.kt", "return b.twice()", "return b.twice() + undefinedInDeclared") },
 		func() { m.replace(t, "a.kt", "fun helper(b: Box): Int", "fun helper(b: Box, k: Int): Int") },
 		func() { m.replace(t, "b.kt", "return b.n", "return b.n + 3") },
+		func() { m.set("a.kt", m.snaps["a.kt"].Source()+"\nclass Unused\n") },
 	} {
 		edit()
 		snaps := m.list()
 		res, err := s.Update(ctx, snaps, opts)
 		if err != nil {
 			t.Fatal(err)
+		}
+		// The symbols have the classes of the declared files, as those
+		// of the files checked.
+		classes := map[string]bool{}
+		for id := uint32(1); ; id++ {
+			sym, ok := res.Symbol(id)
+			if !ok {
+				break
+			}
+			if sym.Kind == "class" && sym.Declaration != nil && sym.Declaration.Snapshot == m.snaps["a.kt"].ID() {
+				classes[sym.QualifiedName] = true
+			}
+		}
+		if !classes["p.Box"] || i == 4 && !classes["p.Unused"] {
+			t.Errorf("step %d: classes of the declared file %v", i, classes)
 		}
 		for _, d := range res.Diagnostics() {
 			if d.Path == "a.kt" {
@@ -277,7 +296,7 @@ func TestSessionDeclared(t *testing.T) {
 		sameAsAnalyze(t, lib, res, snaps, opts, fmt.Sprintf("step %d", i))
 	}
 	if st := s.Stats(); st.Incremental < 2 {
-		t.Errorf("%d incremental updates of 4, want at least 2", st.Incremental)
+		t.Errorf("%d incremental updates of 5, want at least 2", st.Incremental)
 	}
 }
 

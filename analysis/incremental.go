@@ -385,9 +385,16 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		return nil, nil, false, whole("most files")
 	}
 
+	// The files checked are lowered whole, the others without the bodies
+	// the check doesn't read.
 	parallel(n, jobs, func(i int) {
-		if !c.changed[i] {
+		switch {
+		case c.changed[i]:
+		case dirty[i]:
 			low[i] = lowerSnapshot(snaps[i])
+		default:
+			low[i] = lowerSignatures(snaps[i])
+			low[i].lost = st.lost[c.old[i]]
 		}
 	})
 	if err := ctx.Err(); err != nil {
@@ -455,7 +462,13 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 	// named, or the same declaration in the sources; else added.
 	built := &Result{}
 	var builtSyms []any
-	if slices.Contains(dirty, true) {
+	// Also for a changed declared file, whose classes the symbols have
+	// (builder.build).
+	build := false
+	for i := range snaps {
+		build = build || dirty[i] || c.changed[i] && isDeclared(i)
+	}
+	if build {
 		b := newBuilder(built, snaps, files, provs, rec)
 		b.cp = cp
 		b.broken = make([]bool, n)
@@ -573,14 +586,24 @@ type declKey struct {
 	kind, name string
 }
 
-// compact numbers the symbols that facts name again, dropping the others:
-// those only the facts of changed files' earlier versions named.
+// compact numbers the symbols that facts name and the classes the sources
+// declare again, dropping the others: those only the facts of changed
+// files' earlier versions named.
 func (st *state) compact() {
 	res := st.res
 	ids := make([]uint32, len(res.symbols))
 	mark := func(id uint32) {
 		if id != 0 {
 			ids[id-1] = 1
+		}
+	}
+	current := make(map[psi.SnapshotID]bool, len(st.snaps))
+	for _, s := range st.snaps {
+		current[s.ID()] = true
+	}
+	for i, s := range res.symbols {
+		if s.Kind == "class" && s.Declaration != nil && current[s.Declaration.Snapshot] {
+			ids[i] = 1
 		}
 	}
 	for _, fs := range res.files {

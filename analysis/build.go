@@ -234,7 +234,9 @@ type builder struct {
 	provs []*lower.Provenance
 	rec   *recorder
 	where map[any]ElementID // AST nodes' psi nodes
-	cv    converter
+	// snapAt are the snapshots by ID.
+	snapAt map[psi.SnapshotID]*psi.Snapshot
+	cv     converter
 
 	// names are the fully qualified names of the functions the checker
 	// makes up for the standard library's preconditions.
@@ -277,6 +279,10 @@ func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs 
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec, facts: map[ElementID]*Fact{},
 		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
+	b.snapAt = make(map[psi.SnapshotID]*psi.Snapshot, len(snaps))
+	for _, s := range snaps {
+		b.snapAt[s.ID()] = s
+	}
 	return b
 }
 
@@ -305,8 +311,20 @@ func rank(n any) int {
 
 func (b *builder) build() {
 	entries := make([][]entry, len(b.snaps))
+	var classes []*types.ClassSym // the classes of the files left out
 	for i, p := range b.provs {
 		sid := b.snaps[i].ID()
+		if b.isBroken(i) {
+			// Only where its declarations are, which the facts name, and
+			// its classes, which the symbols have as the others' do.
+			p.Each(func(n any, id psi.NodeID) {
+				b.where[n] = ElementID{sid, id}
+				if d, ok := n.(*syntax.ClassDecl); ok && d.Sym != nil {
+					classes = append(classes, d.Sym)
+				}
+			})
+			continue
+		}
 		p.Each(func(n any, id psi.NodeID) {
 			b.where[n] = ElementID{sid, id}
 			entries[i] = append(entries[i], entry{n, id, rank(n)})
@@ -338,6 +356,9 @@ func (b *builder) build() {
 	}
 	for _, f := range b.later {
 		f()
+	}
+	for _, c := range classes {
+		b.sym(c)
 	}
 	b.packages(entries)
 	b.negated()
@@ -392,10 +413,8 @@ func (b *builder) decl(d any) *ElementID {
 }
 
 func (b *builder) node(el ElementID) psi.NodeRef {
-	for _, s := range b.snaps {
-		if s.ID() == el.Snapshot {
-			return s.Node(el.Node)
-		}
+	if s := b.snapAt[el.Snapshot]; s != nil {
+		return s.Node(el.Node)
 	}
 	return psi.NodeRef{}
 }
@@ -1187,6 +1206,9 @@ var textExtensions = map[types.Builtin]struct{ name, recv string }{
 // literals' facts, as calls of unaryMinus on the literals' values.
 func (b *builder) negated() {
 	for i, p := range b.provs {
+		if b.isBroken(i) {
+			continue
+		}
 		sid := b.snaps[i].ID()
 		p.Negated(func(id psi.NodeID, lit *syntax.IntLit) {
 			el, ok := b.where[lit]
@@ -1757,7 +1779,10 @@ func (b *builder) usedAsExpression() {
 // wrappers gives wrappers their inner expressions' facts, innermost
 // first.
 func (b *builder) wrappers() {
-	for _, s := range b.snaps {
+	for i, s := range b.snaps {
+		if b.isBroken(i) {
+			continue
+		}
 		for id := psi.NodeID(s.NodeCount()); id >= 1; id-- {
 			n := s.Node(id)
 			if !isWrapper(n.NumericKind()) {
@@ -1797,6 +1822,9 @@ func (b *builder) unreachable() {
 // the USER_TYPE and TYPE_REFERENCE of each entry's CONSTRUCTOR_CALLEE.
 func (b *builder) annotations() {
 	for i, f := range b.files {
+		if b.isBroken(i) {
+			continue
+		}
 		for at, cls := range b.rec.annots[f] {
 			id := b.provs[i].Annotation(at)
 			if id == 0 {
