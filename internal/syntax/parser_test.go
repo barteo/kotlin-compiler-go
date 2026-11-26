@@ -1238,3 +1238,26 @@ val e: Any field: Int = 1
 		t.Errorf("property a: %+v", props[0])
 	}
 }
+
+func TestCharValue(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		r    rune
+		msg  string
+	}{
+		{`'a'`, 'a', ""},
+		{`'\n'`, '\n', ""},
+		{`'\''`, '\'', ""},
+		{`'A'`, 'A', ""},
+		{`''`, 0, "empty character literal"},
+		{`'\x'`, 0, `illegal escape: \x`},
+		{`'\u000z'`, 0, "invalid unicode escape"},
+		{`'ab'`, 0, "too many characters in a character literal"},
+		// Unterminated at the end of a line, as psi lexes it.
+		{`'\'`, 0, `illegal escape: \`},
+	} {
+		if r, msg := CharValue(c.text); r != c.r || msg != c.msg {
+			t.Errorf("CharValue(%s) = %q, %q; want %q, %q", c.text, r, msg, c.r, c.msg)
+		}
+	}
+}

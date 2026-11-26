@@ -564,6 +564,8 @@ func charValue(text string) (rune, string) {
 			return r, ""
 		}
 		return 0, "invalid unicode escape"
+	case s == "\\":
+		return 0, "illegal escape: \\" // '\', unterminated
 	case s[0] == '\\':
 		if r, ok := escape(s[1]); ok && len(s) == 2 {
 			return r, ""
