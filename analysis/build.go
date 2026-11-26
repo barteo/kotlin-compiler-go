@@ -31,7 +31,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	res := &Result{facts: map[ElementID]*Fact{}}
+	res := &Result{}
 	for i, es := range errLists {
 		for _, e := range es {
 			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
@@ -139,6 +139,9 @@ func newRecorder() *recorder {
 // recorder keeps what the checker reports, the last report of each node.
 type recorder struct {
 	mu sync.Mutex
+	// lookups are the names each file looked up (check.LookupRecorder),
+	// for a Session's incremental updates.
+	lookups map[*syntax.File][]lookup
 	// overridden returns the functions a method overrides, directly.
 	overridden  func(*types.FunSym) []*types.FunSym
 	when        map[*syntax.When]whenReport
@@ -245,6 +248,13 @@ type builder struct {
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
+	// facts are the facts found, by element, which build sorts into the
+	// Result's files.
+	facts map[ElementID]*Fact
+	// broken, if it isn't nil, says whose facts the Result leaves out:
+	// the files an incremental update keeps the facts of.
+	broken []bool
+
 	// probe is the completion's, if one is asked for.
 	probe *check.Probe
 
@@ -264,7 +274,7 @@ type builder struct {
 }
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
-	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
+	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec, facts: map[ElementID]*Fact{},
 		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
@@ -340,27 +350,32 @@ func (b *builder) build() {
 	}
 	b.symbols()
 
-	for id := range b.res.facts {
-		b.res.order = append(b.res.order, id)
-	}
+	// The facts by file, in node order, but the broken files'.
+	files := make([][]*Fact, len(b.snaps))
 	index := map[psi.SnapshotID]int{}
 	for i, s := range b.snaps {
 		index[s.ID()] = i
 	}
-	slices.SortFunc(b.res.order, func(a, c ElementID) int {
-		if r := cmp.Compare(index[a.Snapshot], index[c.Snapshot]); r != 0 {
-			return r
+	for el, f := range b.facts {
+		if i, ok := index[el.Snapshot]; ok && !b.isBroken(i) {
+			files[i] = append(files[i], f)
 		}
-		return cmp.Compare(a.Node, c.Node)
-	})
+	}
+	for _, fs := range files {
+		slices.SortFunc(fs, func(a, c *Fact) int { return cmp.Compare(a.Element.Node, c.Element.Node) })
+	}
+	b.res.setFiles(b.snaps, files)
 }
+
+// isBroken reports whether the Result leaves out the ith file's facts.
+func (b *builder) isBroken(i int) bool { return b.broken != nil && b.broken[i] }
 
 // fact returns the fact of el, adding it.
 func (b *builder) fact(el ElementID) *Fact {
-	f := b.res.facts[el]
+	f := b.facts[el]
 	if f == nil {
 		f = &Fact{Element: el}
-		b.res.facts[el] = f
+		b.facts[el] = f
 	}
 	return f
 }
@@ -1178,7 +1193,7 @@ func (b *builder) negated() {
 			if !ok {
 				return
 			}
-			src, ok := b.res.facts[el]
+			src, ok := b.facts[el]
 			if !ok || src.Type == nil {
 				return
 			}
@@ -1725,7 +1740,7 @@ func (b *builder) usedAsExpression() {
 			reported[ElementID{el.Snapshot, t.ID()}] = used
 		}
 	}
-	for el, f := range b.res.facts {
+	for el, f := range b.facts {
 		if f.Role != "expression" && f.Role != "reference" {
 			continue
 		}
@@ -1752,7 +1767,7 @@ func (b *builder) wrappers() {
 			if !in.Valid() {
 				continue
 			}
-			src, ok := b.res.facts[ElementID{s.ID(), in.ID()}]
+			src, ok := b.facts[ElementID{s.ID(), in.ID()}]
 			if !ok {
 				continue
 			}

@@ -912,6 +912,12 @@ type Options struct {
 	// errors, as far as the parser recovered them: of the warnings, only
 	// recoveredWarnings are reported.
 	Recovered bool
+	// Raw keeps what the module's errors and syntax errors would filter
+	// out: the JVM backend's errors (dropBackendErrors) and, with
+	// Recovered unset, the warnings recoveredWarnings leaves out; for a
+	// caller that checks some files of a module and filters what all of
+	// them report (IsBackendError, RecoveredWarning).
+	Raw bool
 	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
 	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
 	ExtraWarnings bool
@@ -1054,7 +1060,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = append(errs, c.errs...)
 		warns = append(warns, c.warns...)
 	}
-	errs = dropBackendErrors(errs)
+	if !opts.Raw {
+		errs = dropBackendErrors(errs)
+	}
 	if opts.Recovered {
 		warns = slices.DeleteFunc(warns, func(w *syntax.Error) bool { return !recoveredWarnings[w.Name] })
 	}
@@ -1074,14 +1082,21 @@ var backendErrorPrefixes = []string{"platform declaration clash", "inherited pla
 // JVM backend if there are others: kotlinc doesn't run its backend on a
 // module its frontend reports errors in.
 func dropBackendErrors(errs []*syntax.Error) []*syntax.Error {
-	backend := func(e *syntax.Error) bool {
-		return slices.ContainsFunc(backendErrorPrefixes, func(p string) bool { return strings.HasPrefix(e.Msg, p) })
-	}
-	if !slices.ContainsFunc(errs, func(e *syntax.Error) bool { return e.Severity == syntax.SevError && !backend(e) }) {
+	if !slices.ContainsFunc(errs, func(e *syntax.Error) bool { return e.Severity == syntax.SevError && !IsBackendError(e) }) {
 		return errs
 	}
-	return slices.DeleteFunc(errs, backend)
+	return slices.DeleteFunc(errs, IsBackendError)
 }
+
+// IsBackendError reports whether e is an error of kotlinc's JVM backend,
+// which a module with other errors doesn't report (Options.Raw).
+func IsBackendError(e *syntax.Error) bool {
+	return slices.ContainsFunc(backendErrorPrefixes, func(p string) bool { return strings.HasPrefix(e.Msg, p) })
+}
+
+// RecoveredWarning reports whether a module with syntax errors reports
+// the warning kotlinc names name (Options.Recovered).
+func RecoveredWarning(name string) bool { return recoveredWarnings[name] }
 
 // signatures declares the files' declarations and resolves their
 // signatures: the phases of checking before bodies are checked, as opts
