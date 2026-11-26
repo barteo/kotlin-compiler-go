@@ -2547,6 +2547,52 @@ func signedIntLit(x syntax.Expr) bool {
 	return false
 }
 
+// intersectionView returns the type of an intersection t, of smart
+// casts, whose member or extension name a call or a property read on it
+// finds, where kc's
+// lookup in t itself wouldn't find it: a built-in type's, String's or
+// Int's, that none of its class types has, wherever it is in t, as
+// x.length after x is A and x is String, or of an Int & String x after
+// x is String and x is Int; and o.trim() of a String & T is a String,
+// not CharSequence.trim()'s CharSequence, but not o.compareTo(p) for
+// T : Comparable<T>, whose bound has it too. Of an intersection whose
+// first type is a built-in one without name, its first class type with
+// it: x.foo() after x is A and x is Int.
+func (c *Checker) intersectionView(t types.Type, name string) (types.Type, bool) {
+	if !t.IsIntersection() {
+		return types.InvalidType, false
+	}
+	bounds := t.Param().Bounds
+	others := func(i int) bool {
+		for j, b := range bounds {
+			if j != i && !finalBuiltin(b.NonNull()) && c.hasNamed(b, name) {
+				return true
+			}
+		}
+		return false
+	}
+	builtin := func(b types.Type) bool {
+		// String's length and Char's code are built-in properties.
+		return b == types.StringType && name == "length" || b == types.CharType && name == "code" || c.builtinNamed(b, name)
+	}
+	for i, b := range bounds {
+		if b = b.NonNull(); finalBuiltin(b) && builtin(b) {
+			if others(i) {
+				break
+			}
+			return b, true
+		}
+	}
+	if first := bounds[0].NonNull(); finalBuiltin(first) && !builtin(first) {
+		for _, b := range bounds[1:] {
+			if b.K == types.Class && c.hasNamed(b, name) {
+				return b.NonNull(), true
+			}
+		}
+	}
+	return types.InvalidType, false
+}
+
 // callReceiver checks the receiver of a member call, expecting want. A
 // nullable receiver can be called without ?. if extensions for nullable
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
@@ -2568,30 +2614,11 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		return types.InvalidType, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)
-	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
-		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
-		// A String & T, of a smart cast of a T, has String's built-in
-		// members and extensions, as the String did: o.trim() is a
-		// String, not CharSequence.trim()'s CharSequence. Not a name
-		// T's bounds have too: o.compareTo(p) for T : Comparable<T>.
-		st := types.StringType
+	if b, ok := c.intersectionView(t, fn.Name); ok {
 		if types.MayBeNull(t) {
-			st = st.Nullable()
+			b = b.Nullable()
 		}
-		fn.X, t = checked(fn.X, st), st
-	}
-	if t.IsIntersection() && finalBuiltin(t.Param().Bounds[0].NonNull()) && !c.builtinNamed(t.Param().Bounds[0].NonNull(), fn.Name) {
-		// An Int & A of a smart cast has A's members too: x.foo() after
-		// x is A and x is Int.
-		for _, b := range t.Param().Bounds[1:] {
-			if b.K == types.Class && c.hasNamed(b, fn.Name) {
-				if types.MayBeNull(t) {
-					b = b.Nullable()
-				}
-				fn.X, t = checked(fn.X, b), b
-				break
-			}
-		}
+		fn.X, t = checked(fn.X, b), b
 	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
@@ -2734,6 +2761,12 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return types.InvalidType
 	}
 	xt = c.castView(x.X, xt, x.Name)
+	if b, ok := c.intersectionView(xt, x.Name); ok {
+		if types.MayBeNull(xt) {
+			b = b.Nullable()
+		}
+		x.X, xt = checked(x.X, b), b
+	}
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {
 		// Only an extension property for nullable receivers takes it.
