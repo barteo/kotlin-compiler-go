@@ -23,3 +23,17 @@ annotation class R
 @receiver:R fun notExtension() {} // ERROR this annotation is not applicable to target 'declaration' and use-site target '@receiver'
 fun @receiver:R String.extension() {}
 val @receiver:R String.extension: Int get() = 1
+
+// A nested annotation's explicit type arguments must fit the expected
+// type, which an annotation call doesn't infer from.
+interface TI<T>
+class TC<T> : TI<T>
+annotation class TA1<T>(val x: Int)
+annotation class TA2<T1, T2 : TI<T1>>(val x: TA1<TI<T2>>)
+annotation class TA3(val x: TA2<Int, TC<Int>>)
+
+@TA3(TA2<String, TC<String>>(TA1(40))) // ERROR type mismatch
+fun wrongTypeArgs() {}
+
+@TA3(TA2<Int, TC<Int>>(TA1(40)))
+fun rightTypeArgs() {}

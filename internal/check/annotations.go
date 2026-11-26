@@ -700,6 +700,24 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 				}
 			}
 			values, ok := c.annotationValues(t.C, nil, args, call.Pos())
+			if ok && len(call.TypeArgs) > 0 && t.A != nil && len(call.TypeArgs) == len(t.C.TypeParams) && len(t.A.List) == len(call.TypeArgs) {
+				// Its explicit type arguments, which an annotation call
+				// doesn't infer: Test2<String, C<String>>(…) for a
+				// Test2<Int, C<Int>>.
+				targs := make([]types.Arg, len(call.TypeArgs))
+				for i, ta := range call.TypeArgs {
+					if ta.Type == nil || ta.Underscore {
+						targs = nil
+						break
+					}
+					targs[i] = types.Arg{V: ta.Variance, T: c.resolveType(ta.Type)}
+				}
+				if targs != nil {
+					n := len(c.errs)
+					c.assignable(types.GenericType(t.C, targs), t, call.Pos())
+					ok = len(c.errs) == n
+				}
+			}
 			nested := &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}
 			if rec := c.u.rec; rec != nil {
 				rec.Annotation(c.file, nested, t.C)
