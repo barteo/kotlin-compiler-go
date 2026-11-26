@@ -65,13 +65,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21831 of 22025 expected errors (99.1%) on their lines.
+kc reports 21834 of 22025 expected errors (99.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `UNRESOLVED_REFERENCE` | 2553 | 2513 | 40 |
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1468 | 23 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 616 | 19 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1470 | 21 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 618 | 17 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
@@ -126,9 +126,9 @@ kc reports 21831 of 22025 expected errors (99.1%) on their lines.
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 31 | 1 |
 | `TYPEALIAS_EXPANSION_CAPTURES_OUTER_TYPE_PARAMETERS` | 6 | 5 | 1 |
 | `UNSAFE_CALL` | 525 | 524 | 1 |
+| `UNSUPPORTED` | 233 | 232 | 1 |
 | `VAL_OR_VAR_ON_CATCH_PARAMETER` | 2 | 1 | 1 |
 | `VAL_REASSIGNMENT` | 231 | 230 | 1 |
-| `VAL_WITH_SETTER` | 2 | 1 | 1 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 13.4% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 68 | 35.1% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 26 | 13.6% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 68 | 35.6% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| environment | 13 | 6.7% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| nearby | 19 | 9.8% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 68 | 35.1% | `CANNOT_INFER_PARAMETER_TYPE` 14, `ARGUMENT_TYPE_MISMATCH` 13, `UNRESOLVED_REFERENCE` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `FUNCTION_CALL_EXPECTED` 3 |
+| environment | 13 | 6.8% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| nearby | 19 | 9.9% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 65 | 34.0% | `CANNOT_INFER_PARAMETER_TYPE` 12, `ARGUMENT_TYPE_MISMATCH` 11, `UNRESOLVED_REFERENCE` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `FUNCTION_CALL_EXPECTED` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,15 +151,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 120 |
-| `type mismatch: inferred type is _ but _ was expected` | 85 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 52 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 23 |
+| `type mismatch: inferred type is _ but _ was expected` | 84 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 50 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 21 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `no function '_' takes n arguments` | 20 |
 | `unresolved or unsupported type: _` | 15 |
-| `variable '_' must be initialized` | 15 |
 | `unresolved import: _` | 11 |
-| `operator '_' cannot be applied to A and Boolean` | 10 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 9 |
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `'_' overrides nothing` | 8 |
@@ -180,7 +178,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `a property with an explicit backing field cannot have accessors` | 3 |
 | `expected '_', found '_'` | 3 |
 | `named arguments are not allowed for non-Kotlin functions` | 3 |
-| *71 more* | |
+| `names _, __, ___, ..., can be used only in back-ticks ('_', '__', '___', ...)` | 3 |
+| `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 3 |
+| *69 more* | |
 
 ## Unsupported features
 
@@ -192,12 +192,12 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3553 of the 3667 warnings the tests expect (96.9%) on their lines, and 18 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3555 of the 3667 warnings the tests expect (96.9%) on their lines, and 15 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 355 | 0 |
-| `DEPRECATION` | 203 | 202 | 7 |
+| `DEPRECATION` | 203 | 202 | 5 |
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
@@ -207,7 +207,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 85 | 1 |
-| `USELESS_CAST` | 91 | 86 | 2 |
+| `USELESS_CAST` | 91 | 88 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
 | `UNCHECKED_CAST` | 88 | 84 | 1 |
 | `OPT_IN_USAGE` | 83 | 78 | 0 |

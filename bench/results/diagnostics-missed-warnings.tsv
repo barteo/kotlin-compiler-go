@@ -73,8 +73,6 @@ tests/operatorRem/numberRemConversions.kt	numberRemConversions.kt:16	EXTENSION_S
 tests/properties/extensionPropertyMustHaveAccessorsOrBeAbstract2.kt	extensionPropertyMustHaveAccessorsOrBeAbstract2.kt:31	UNNECESSARY_LATEINIT	missing-check
 tests/references/mutablePropertyWithCapturedType.kt	mutablePropertyWithCapturedType.kt:8	MUTABLE_PROPERTY_WITH_CAPTURED_TYPE	missing-check
 tests/regressions/kt307.kt	kt307.kt:10	UNCHECKED_CAST	missing-check
-tests/smartCasts/castchecks/basicOn.kt	basicOn.kt:32	USELESS_CAST	missing-check
-tests/smartCasts/castchecks/variables.kt	variables.kt:64	USELESS_CAST	missing-check
 tests/smartCasts/kt32358_2.kt	kt32358_2.kt:10	WRONG_INVOCATION_KIND	missing-check
 tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:19	SENSELESS_COMPARISON	missing-check
 tests/smartCasts/variables/staticJavaFieldFromSameModule.kt	Test.kt:4	USELESS_CAST	missing-check
