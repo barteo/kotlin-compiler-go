@@ -555,6 +555,9 @@ type Checker struct {
 	frameNodes  map[*syntax.Lambda]any
 	assignTypes map[*syntax.Assign]types.Type
 	frameMemo   map[frameName][]*syntax.Assign
+	// outsideMemo has the assignments outside a frame that may run while
+	// it does, of a local var it reads (see outsideAssigns).
+	outsideMemo map[varFrame][]*syntax.Assign
 	// siblingAssigns has, for a lambda argument, the names of the locals
 	// the call's other lambda arguments assign, which may run before it.
 	siblingAssigns map[*syntax.Lambda]map[string]bool

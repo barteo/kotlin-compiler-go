@@ -271,9 +271,11 @@ own tests.
 - A captured `var` is smart cast as in K2: not where a lambda or local
   function that may run later assigns it, nor where the outermost lambda
   entered since its declaration holds an assignment that isn't checked
-  yet or assigns another type. In a loop, `kc` is stricter: any
-  assignment in a lambda the loop holds counts, `x++` among them,
-  whatever type it assigns.
+  yet or assigns another type, nor where an assignment that may run
+  while the lambda does, in a loop around it among them, does; `x++` and
+  `x--` aren't assignments there. A lambda that may run more than once
+  is a loop: it drops the smart casts of the vars it assigns with `=` at
+  its start.
 - Two private classes or typealiases of one name in different files of
   a package aren't reported as a `CLASSIFIER_REDECLARATION`, and each
   file's uses resolve to its own, where K2 resolves them to the first
