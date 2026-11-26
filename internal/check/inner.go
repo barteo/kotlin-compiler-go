@@ -257,6 +257,18 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	}
 	if cls.Ensure(); !cls.Inner {
 		c.errorf(ref.P, "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
+		if ref.Outer == nil {
+			return types.InvalidType
+		}
+		// The nested class with its own arguments, as kotlinc goes on
+		// with it: a function returning it must still return.
+		r := *ref
+		r.Outer = nil
+		n := len(c.errs)
+		if t := c.resolveType(&r); len(c.errs) == n {
+			return t
+		}
+		c.errs = c.errs[:n]
 		return types.InvalidType
 	}
 	own := len(cls.TypeParams) - cls.OuterParams

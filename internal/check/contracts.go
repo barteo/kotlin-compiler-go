@@ -549,6 +549,11 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 		case syntax.Expr:
 			x = s
 		}
+		if p, ok := o.contextCallsInPlace(x); ok {
+			// As kotlinc, at the contract call.
+			c.errorf(call.P, "error in contract description: callsInPlace contract cannot be applied to context parameter '%s' because context arguments can never be lambdas", p)
+			continue
+		}
 		if x == nil || !o.effect(x) {
 			p := l.P
 			switch s := s.(type) {
@@ -569,6 +574,28 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 			c.errorf(p, "error in contract description: not an effect that a contract can declare")
 		}
 	}
+}
+
+// contextCallsInPlace returns the name of the context parameter x is a
+// callsInPlace of, if it is one.
+func (o contractOwner) contextCallsInPlace(x syntax.Expr) (string, bool) {
+	call, ok := x.(*syntax.Call)
+	if !ok || len(call.Args) == 0 {
+		return "", false
+	}
+	if f, ok := call.Fun.(*syntax.Ident); !ok || f.Name != "callsInPlace" {
+		return "", false
+	}
+	id, ok := call.Args[0].(*syntax.Ident)
+	if !ok {
+		return "", false
+	}
+	for _, p := range o.contexts {
+		if p.Name == id.Name {
+			return id.Name, true
+		}
+	}
+	return "", false
 }
 
 // effect says whether x declares an effect.

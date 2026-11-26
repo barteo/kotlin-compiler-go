@@ -519,7 +519,8 @@ func (c *Checker) unsignedLit(x *syntax.IntLit, want types.Type) types.Type {
 	}
 	cls := c.u.ext.class(name)
 	if cls == nil {
-		c.unsupported(x.P, "unsigned integers", "unsigned integers need the standard library")
+		// As kotlinc, without the standard library's unsigned types.
+		c.errorf(x.P, "type of the constant expression cannot be resolved. Please make sure you have the required dependencies for unsigned types in the classpath")
 		return types.InvalidType
 	}
 	if !cls.Value {

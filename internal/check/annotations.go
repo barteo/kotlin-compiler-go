@@ -708,7 +708,8 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 		}
 	}
 	before := len(c.errs)
-	c.assignable(c.value(x, t), t, x.Pos())
+	vt := c.value(x, t)
+	c.assignable(vt, t, x.Pos())
 	// The post-pass over the code doesn't enter annotations: their
 	// arguments' warnings, which don't depend on smart casts, are
 	// reported here, with an error too, as kotlinc does.
@@ -722,6 +723,16 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	if len(c.errs) == before {
 		if bad := c.nonConst(x); bad != nil {
 			c.errorf(bad.Pos(), nonConstArgMsg)
+		} else if lit, ok := x.(*syntax.ClassLit); ok && vt.K == types.Invalid {
+			// A::class of a typealias of an unresolved class, whose
+			// error is the alias's: kotlinc has no class to write.
+			p := lit.P
+			if lit.Ref != nil {
+				p = lit.Ref.P
+			} else if lit.X != nil {
+				p = syntax.StartPos(lit.X)
+			}
+			c.errorf(p, nonConstArgMsg)
 		}
 	}
 	return syntax.AnnotationElem{X: x}, len(c.errs) == before

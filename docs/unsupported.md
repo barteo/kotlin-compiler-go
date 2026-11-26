@@ -350,6 +350,10 @@ methods, and `require`, `check`, `error` and `TODO` (which throws an
 `toTypedArray()` and `String.trim()` need the standard library. Use the
 Java classes directly for the rest. Also:
 
+- Unsigned literals (`1u`) are an error, as with `kotlinc`
+  (`UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH`): the unsigned
+  types are the standard library's.
+
 - Ranges work only in `for` loops and `in` checks; they aren't values
   (`val r = 1..10` needs `IntRange`).
 - `X::class` isn't a `KClass`; `X::class.java` works.

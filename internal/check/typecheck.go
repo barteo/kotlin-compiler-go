@@ -413,7 +413,13 @@ func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject typ
 		c.bareSubject = subject
 	}
 	t, known, _ := c.bareArgs(cls, ref, subject)
-	if !known && ref == c.bareRef && ref != nil && subject.K != types.Invalid && !subject.IsParam() {
+	switch {
+	case known || ref != c.bareRef || ref == nil || subject.IsParam():
+	case subject.K == types.Invalid:
+		// As kotlinc, whose subject of an error type gives no arguments.
+		c.errorf(ref.P, "%s expected for %s; use %s if you don't want to pass type arguments",
+			countArgs(len(cls.TypeParams)), types.ClassType(cls), t.NonNull())
+	default:
 		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",
 			countArgs(len(cls.TypeParams)), types.ClassType(cls), subject, t.NonNull())
 	}
