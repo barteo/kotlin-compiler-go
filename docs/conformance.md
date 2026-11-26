@@ -373,15 +373,24 @@ by cause*), the first of these that applies:
   are missed.
 - *module-not-compiled*: the error is in a module after one that
   failed, which the harness doesn't compile.
+- *environment*: the test has no `WITH_STDLIB`, and the error is an
+  unsigned literal (`UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH`)
+  or an `UNRESOLVED_REFERENCE` of a name that the full standard library
+  declares at the top level and the test infrastructure's minimal one
+  (`libraries/stdlib/jvm-minimal-for-test`) doesn't: `listOf`,
+  `println`, `requireNotNull`, `map`, or `..` and `..<` of
+  `Comparable`s. The harness puts the full standard library on every
+  test's class path, so `kc` resolves them, as `kotlinc` does under the
+  harness. It reads the names from the standard library's file facades'
+  metadata.
 - *nearby*: `kc` reported an error within three lines of it, on a line
   the markup expects none on: most likely this error, at another
   position.
 - *missing-check*: none of those.
 
-Some *missing-check* errors are out of reach for the reason some
-*accepts invalid* tests are: the harness puts the full standard library
-and a real JDK on every test's class path. A test without
-`WITH_STDLIB` expects the names that only they declare to be
-unresolved: `listOf`, `println`, `requireNotNull`, `map` and `rangeTo`
-calls, `List.reversed`, `Method.parameters`. `kotlinc` resolves them
-under the harness too, as `kc` does.
+Some *missing-check* errors are out of reach for the same reason: the
+harness puts a real JDK on every test's class path, so `kc` resolves the
+members a test against the mock JDK, or JDK 17, expects to be
+unresolved, such as `Method.parameters`, and names of the standard
+library that aren't top-level, such as members a lambda's `it` of an
+unresolved call would have, stay *missing-check*.

@@ -173,6 +173,9 @@ type diagConfig struct {
 	// and missedWarns the expected warnings (missedWarningLines).
 	missed      []string
 	missedWarns []string
+	// stdlibOnly are the standard library's top-level names that the
+	// minimal one doesn't have (stdlibOnlyNames).
+	stdlibOnly map[string]bool
 }
 
 // missedLines returns the expected errors of the tests kc checked that
@@ -320,6 +323,10 @@ type diagTest struct {
 	// needs.
 	parseErrs bool
 	tried     map[string]bool
+	// stdlibOnly, for a test without WITH_STDLIB, are the top-level
+	// names of the standard library kc gets that kotlinc's minimal one
+	// doesn't have (environment), and nil otherwise.
+	stdlibOnly map[string]bool
 }
 
 // The causes of an expected error that kc doesn't report on its line.
@@ -327,13 +334,14 @@ const (
 	causeAccepted     = "accepted"            // kc compiled the test
 	causeParse        = "syntax-error"        // kc's parser rejected it, and checked only what it recovered
 	causeModule       = "module-not-compiled" // it is in a module after one that failed
+	causeEnvironment  = "environment"         // kc has a declaration kotlinc's test infrastructure leaves out (environment)
 	causeNearby       = "nearby"              // kc reported an error within cascadeLines of it, on a line without a mark
 	causeMissingCheck = "missing-check"       // none of those
 	cascadeLines      = 3
 )
 
 // causes are the causes in the order the report lists them.
-var causes = []string{causeAccepted, causeParse, causeModule, causeNearby, causeMissingCheck}
+var causes = []string{causeAccepted, causeParse, causeModule, causeEnvironment, causeNearby, causeMissingCheck}
 
 // missCause returns why kc didn't report the expected error e on its
 // line, given the test's category: the first of the causes that applies.
@@ -345,6 +353,8 @@ func (dt *diagTest) missCause(category string, e mark) string {
 		return causeParse
 	case dt.tried != nil && !dt.tried[e.file]:
 		return causeModule
+	case dt.environment(e):
+		return causeEnvironment
 	}
 	// An error on a line the markup expects another one on is most
 	// likely that one.
@@ -519,6 +529,9 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		dt.pipeline = vs[0]
 	}
 	stdlib := t.has("WITH_STDLIB") || strings.HasPrefix(t.path, "testsWithStdLib/")
+	if !stdlib {
+		dt.stdlibOnly = c.stdlibOnly
+	}
 	for _, f := range t.files() {
 		if !stdlib && strings.HasSuffix(f.name, ".kt") {
 			f.text = nonNullAnyCalls(f.text)
@@ -890,8 +903,8 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 // (missCause), each with the diagnostics it misses most.
 func reportMissCauses(sb *strings.Builder, missed map[string]map[string]int, total int) {
 	fmt.Fprintf(sb, "### Missed errors by cause\n\n")
-	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
-		causeAccepted, causeParse, causeModule, causeNearby, cascadeLines, causeMissingCheck)
+	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal or a name that only the full one, which kc gets, declares at the top level (`println`, `listOf`); *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
+		causeAccepted, causeParse, causeModule, causeEnvironment, causeNearby, cascadeLines, causeMissingCheck)
 	fmt.Fprintf(sb, "| Cause | Missed | Share | Most missed |\n|:---|---:|---:|:---|\n")
 	for _, cause := range causes {
 		byName := missed[cause]
