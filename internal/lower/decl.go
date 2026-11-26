@@ -473,9 +473,15 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	}
 	cd.TypeParams = l.typeParams(child(n, psi.KindTYPE_PARAMETER_LIST))
 	if pc := child(n, psi.KindPRIMARY_CONSTRUCTOR); pc.Valid() {
-		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
+		ml := child(pc, psi.KindMODIFIER_LIST)
+		cd.CtorMods = l.modifiers(ml)
 		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
-		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
+		ps := child(pc, psi.KindVALUE_PARAMETER_LIST)
+		if ml.Valid() && ps.Valid() && !has(pc, psi.KindCONSTRUCTOR_KEYWORD) {
+			// As kc's parser: class A private (x: Int).
+			l.errorLater(l.pos(ml), "use the 'constructor' keyword after the modifiers of the primary constructor")
+		}
+		if ps.Valid() {
 			cd.HasPrimary, cd.WrittenPrimary = true, true
 			cd.CtorParams = l.ctorParams(ps)
 		}

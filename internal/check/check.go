@@ -1624,6 +1624,11 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
+		if a.Underscore && args[i].T.K == types.TypeParam {
+			// Foo<_> of a type parameter named _, which K2 makes write
+			// in backticks (UNDERSCORE_USAGE_WITHOUT_BACKTICKS).
+			c.errorf(a.Type.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+		}
 		c.projection(a, ps[i], cls)
 	}
 	t := types.GenericType(cls, append(args, hidden...))

@@ -27,6 +27,10 @@ type parser struct {
 	// noTrailing is set while parsing a delegate in a class header, where a
 	// brace starts the class body rather than a trailing lambda.
 	noTrailing bool
+	// ctorMods is set while parsing the modifiers of a primary
+	// constructor, which can come right before its parameters when the
+	// constructor keyword is missing: class A private (x: Int).
+	ctorMods bool
 	// typeArgs is the depth of type argument lists being parsed, in which
 	// a qualified type name goes on past newlines: List<a.b
 	// .C>.
@@ -405,7 +409,7 @@ func (p *parser) modifiers() Modifiers {
 			}
 			m.Contexts, m.ContextP = p.contextParams(), t.Pos
 			p.skipNL()
-		case !declStart(p.toks[p.i+1].Kind):
+		case !declStart(p.toks[p.i+1].Kind) && !(p.ctorMods && p.toks[p.i+1].Kind == LPAREN):
 			return m
 		case m.Set(t.Text, t.Pos):
 			p.next()
@@ -1158,6 +1162,9 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		tp := &TypeParam{Variance: p.variance(), Reified: reified, Annotations: as, OnlyInput: onlyInput}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
+		if strings.Trim(name.Text, "_") == "" && !name.Quoted {
+			p.errorLater(name.Pos, "names _, __, ___, ... are reserved in Kotlin")
+		}
 		if p.peekPastNL() == COLON {
 			p.op()
 			tp.Bounds = []*TypeRef{p.parseType()}
@@ -1907,7 +1914,10 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 	// The primary constructor's modifiers, as in
 	// class A private constructor(...).
 	if t := p.tok(); t.Kind == AT || t.Kind == IDENT && t.Text != "where" {
+		start := p.i
+		p.ctorMods = true
 		cd.CtorMods = p.modifiers()
+		p.ctorMods = false
 		NoContexts(&cd.CtorMods, "primary constructors", p)
 		if t := p.tok(); t.Kind == IDENT && t.Text == "constructor" {
 			p.next()
@@ -1915,6 +1925,10 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 				p.failAt(p.tok().Pos, "expected '(' after 'constructor'")
 			}
 			p.skipNL()
+		} else if p.i > start && p.at(LPAREN) {
+			// class A private (x: Int), which kotlinc parses as the
+			// primary constructor (MISSING_CONSTRUCTOR_KEYWORD).
+			p.errorLater(p.toks[start].Pos, "use the 'constructor' keyword after the modifiers of the primary constructor")
 		}
 	}
 	if p.at(LPAREN) {

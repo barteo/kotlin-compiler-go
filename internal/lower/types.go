@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
@@ -350,6 +352,9 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		}
 		name := child(c, psi.KindIDENTIFIER)
 		tp := record(l, &syntax.TypeParam{P: l.pos(name), Name: ident(name)}, c)
+		if s := name.Text(); s != "" && strings.Trim(s, "_") == "" {
+			l.errorLater(l.pos(name), "names _, __, ___, ... are reserved in Kotlin")
+		}
 		if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
 			var vp syntax.Pos
 			for _, k := range kids(m) {
