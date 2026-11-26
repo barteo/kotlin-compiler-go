@@ -585,6 +585,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 	if obj := objectNamed(x); obj != nil {
 		return c.objectSym(obj) // an object is stable: Obj.y is Int
 	}
+	if e := c.entrySym(x); e != nil {
+		return e // so is an enum entry: E.A.text
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {

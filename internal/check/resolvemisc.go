@@ -112,6 +112,37 @@ func (c *Checker) objectSym(obj *types.ClassSym) *types.VarSym {
 	return v
 }
 
+// entrySym returns the symbol that smart casts of the stable properties
+// of an enum entry are keyed by, or nil if x doesn't name one:
+// Message.HELLO.text, and HELLO.text where the entry is imported.
+func (c *Checker) entrySym(x syntax.Expr) *types.VarSym {
+	var v *types.VarSym
+	switch x := x.(type) {
+	case *syntax.Ident:
+		if x.Member != nil {
+			return c.entrySym(x.Member)
+		}
+		if x.Sym != nil && x.Sym.Kind == types.Static {
+			v = x.Sym
+		}
+	case *syntax.Member:
+		v = x.Field
+	}
+	if v == nil || v.Owner == nil || !isEnumEntry(v.Owner, v.Name) {
+		return nil
+	}
+	key := v.Owner.Name + "." + v.Name
+	if e := c.entrySyms[key]; e != nil {
+		return e
+	}
+	if c.entrySyms == nil {
+		c.entrySyms = map[string]*types.VarSym{}
+	}
+	e := &types.VarSym{Name: key, Type: v.Type, Kind: types.Global}
+	c.entrySyms[key] = e
+	return e
+}
+
 // delegateSetter reports whether d is the setter of a delegated property,
 // which calls the delegate's setValue: it may return anything.
 func delegateSetter(d *syntax.FunDecl) bool {

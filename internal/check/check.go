@@ -583,6 +583,7 @@ type Checker struct {
 	// a.b of a.b.c, that smart casts are of.
 	paths      map[[2]*types.VarSym]*types.VarSym
 	objectSyms map[*types.ClassSym]*types.VarSym // see objectSym
+	entrySyms  map[string]*types.VarSym          // see entrySym
 	// blockScope is the scope of the block checked last, after it.
 	blockScope *scope
 	exitWatch  *branchExit
