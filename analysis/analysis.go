@@ -73,6 +73,12 @@ type Diagnostic struct {
 	Column  int    `json:"column"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Severity is "error" or, from Library.Analyze with warnings,
+	// "warning". Name is kotlinc's name of the diagnostic, as
+	// UNRESOLVED_REFERENCE or DEPRECATION, if kc knows it: every warning
+	// has one.
+	Severity string `json:"severity,omitempty"`
+	Name     string `json:"name,omitempty"`
 }
 
 // Type is a resolved Kotlin type.
