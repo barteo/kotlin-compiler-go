@@ -4346,6 +4346,16 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			// String.subSequence(start, end).
 			return c.resolve(x, c.memberCallees(c.javaMethods(str, fn.Name), types.StringType), want, sink)
 		}
+		if str := c.u.ext.class("java/lang/String"); str != nil && rt == types.StringType && fn.Name == "compareTo" && x.Names == nil && len(x.Args) == 1 && !x.Infix && !hasLambda(x.Args) {
+			// String's member compareTo(other: String), which wins over
+			// extensions when it takes the argument, also a call's:
+			// a.compareTo(name()) isn't an operator String.compareTo(Version).
+			at := c.value(x.Args[0], noWant)
+			x.Args[0] = checked(x.Args[0], at)
+			if at.K != types.Invalid && c.subtype(at, types.StringType) {
+				return c.resolve(x, c.memberCallees(c.javaMethods(str, fn.Name), types.StringType), want, sink)
+			}
+		}
 		if cands := c.extCalleesFor(fn.Name, rt, x); len(cands) > 0 {
 			return c.resolve(x, cands, want, sink)
 		}

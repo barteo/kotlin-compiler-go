@@ -3422,7 +3422,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	if !cls.External {
 		c.checkClassVisible(cls, p)
 		ctors := c.visibleCtors(cls)
-		if comp := cls.Companion; comp != nil && !c.anyMayTake(ctors, x) && c.companionInvokes(comp, x) {
+		if comp := cls.Companion; comp != nil && c.companionInvokes(comp, x) && !c.ctorsTakeArgs(ctors, x) {
 			// The companion's invoke operator, as kotlinc calls it when
 			// no constructor it sees takes the arguments: A(x) is
 			// A.Companion.invoke(x), a member or an extension, also for
@@ -3503,7 +3503,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			}
 		}
 	}
-	if comp := cls.Companion; comp != nil && !c.anyMayTake(ctors, x) && c.companionInvokes(comp, x) {
+	if comp := cls.Companion; comp != nil && c.companionInvokes(comp, x) && !c.ctorsTakeArgs(ctors, x) {
 		// A library's companion invoke operator: TypeVariableName("T").
 		m := &syntax.Member{X: objectIdent(comp, p), Name: "invoke"}
 		m.P = p
