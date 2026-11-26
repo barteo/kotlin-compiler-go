@@ -92,9 +92,9 @@ Even without its checkers, `kotlinc` would take 67 s, 9x as long as
 ### Install a release
 
 The [releases](https://github.com/barteo/kotlin-compiler-go/releases) have
-`kc` for Linux and macOS, on x86_64 (`amd64`) and arm64. Each archive holds
-the binary, this README, the license and the [Gradle init
-script](#use-it-in-a-gradle-build). `kc` still needs a JDK, and
+`kc` for Linux, macOS and Windows, on x86_64 (`amd64`) and arm64. Each
+archive (a `.zip` for Windows, a `.tar.gz` otherwise) holds the binary, this
+README, the license and the [Gradle init script](#use-it-in-a-gradle-build). `kc` still needs a JDK, and
 `kotlin-stdlib.jar` on the class path for most programs (below).
 
 Set `V` to the release's name, as the releases page lists it:
@@ -110,6 +110,22 @@ kc -version
 
 The macOS binaries aren't signed. If macOS refuses to run one that a browser
 downloaded, clear its quarantine with `xattr -d com.apple.quarantine kc`.
+
+On Windows, in PowerShell (`windows_arm64` for arm64), compare the archive's
+hash with its line in `SHA256SUMS` before you unpack it, and add the
+unpacked folder to `PATH` to run `kc` from anywhere:
+
+```powershell
+$V = "<release>"; $P = "windows_amd64"
+Invoke-WebRequest -OutFile "kc_${V}_$P.zip" "https://github.com/barteo/kotlin-compiler-go/releases/download/$V/kc_${V}_$P.zip"
+Invoke-WebRequest -OutFile SHA256SUMS "https://github.com/barteo/kotlin-compiler-go/releases/download/$V/SHA256SUMS"
+(Get-FileHash "kc_${V}_$P.zip").Hash; Select-String "kc_${V}_$P.zip" SHA256SUMS
+Expand-Archive "kc_${V}_$P.zip" .
+.\kc_${V}_$P\kc.exe -version
+```
+
+The Windows binaries aren't signed either, so SmartScreen may warn about
+them. On Windows, `-cp` entries are separated by `;`.
 
 ### Build from source
 
@@ -320,9 +336,9 @@ checks passed:
 git tag -a <kotlin>-<n> -m "kc <kotlin>-<n>" && git push origin <kotlin>-<n>
 ```
 
-[.github/workflows/release.yml](.github/workflows/release.yml) builds the four
-archives, runs each binary on its own platform, and publishes them with
-`SHA256SUMS` and notes generated from the merged pull requests. It fails on a
+[.github/workflows/release.yml](.github/workflows/release.yml) builds the six
+archives (Linux, macOS and Windows, on amd64 and arm64), runs each binary on
+its own platform, and publishes them with `SHA256SUMS` and notes generated from the merged pull requests. It fails on a
 tag whose Kotlin release isn't `KOTLIN_VERSION`. A suffix after `<n>`, such
 as `-rc.1`, makes a prerelease. Running the workflow by hand
 builds and tests the archives without publishing them.
