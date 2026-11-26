@@ -131,3 +131,22 @@ func TestLibraryJavaSources(t *testing.T) {
 		t.Errorf("size(): call %+v", f.Call)
 	}
 }
+
+// TestLibraryDuplicateFacades checks that a file with another's facade
+// class is left out with a diagnostic, and the rest keep their facts.
+func TestLibraryDuplicateFacades(t *testing.T) {
+	lib := openLib(t, Config{NoJDK: true})
+	a := psi.Parse("x/A.kt", "fun a(): Int = 1\n")
+	b := psi.Parse("y/A.kt", "fun b(): Int = 2\n")
+	c := psi.Parse("C.kt", "fun c(): Int = a()\n")
+	r, err := lib.Analyze(context.Background(), []*psi.Snapshot{a, b, c}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := r.Diagnostics(); len(d) != 1 || d[0].Path != "y/A.kt" {
+		t.Fatalf("diagnostics: %+v", d)
+	}
+	if f := fact(t, r, at(t, c, "CALL_EXPRESSION", "a()", 0)); f.Call == nil || f.Call.Declaration == nil {
+		t.Errorf("a(): %+v", f.Call)
+	}
+}

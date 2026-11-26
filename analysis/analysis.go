@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -51,6 +52,25 @@ type Config struct {
 	// "warning" or "strict". Strict mode reports its errors among the
 	// diagnostics; warning mode's warnings aren't reported.
 	ExplicitAPIMode string
+	// Serialization, Parcelize and Compose check the sources as kotlinc
+	// does with those compiler plugins applied.
+	Serialization, Parcelize, Compose bool
+	// OptIns are the requirement markers the module opts in to, by
+	// qualified name, as kotlinc's -opt-in.
+	OptIns []string
+	// JVMTarget is the JVM version the module's class files are for, as
+	// kotlinc's -jvm-target ("1.8" if empty). Library.Analyze reports a
+	// call of an inline function built for a higher one.
+	JVMTarget string
+}
+
+// driverOptions returns the driver's options for the class path of cfg.
+func driverOptions(cfg Config) driver.Options {
+	return driver.Options{
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
+		Serialization: cfg.Serialization, Parcelize: cfg.Parcelize, Compose: cfg.Compose, OptIns: cfg.OptIns,
+	}
 }
 
 // ErrUnsupported is returned, wrapped, for input kc can't analyze at

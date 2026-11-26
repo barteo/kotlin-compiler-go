@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/check"
+	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
@@ -22,9 +24,10 @@ import (
 // later analysis doesn't read them again; analyses may run at the same
 // time. Close releases it.
 type Library struct {
-	cfg Config
-	cp  *classpath.Path
-	lib *check.Library
+	cfg   Config
+	cp    *classpath.Path
+	lib   *check.Library
+	major uint16 // the class file version of cfg.JVMTarget
 }
 
 // OpenLibrary opens the class path of the module cfg describes.
@@ -34,14 +37,15 @@ func OpenLibrary(cfg Config) (*Library, error) {
 	default:
 		return nil, fmt.Errorf("analysis: invalid explicit API mode %q", cfg.ExplicitAPIMode)
 	}
-	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
-		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
-	})
+	major, ok := cf.TargetMajor(cfg.JVMTarget)
+	if !ok {
+		return nil, fmt.Errorf("analysis: unsupported JVM target %q: 1.8, or 9 to 25", cfg.JVMTarget)
+	}
+	cp, lib, err := driver.OpenLibrary(driverOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
-	return &Library{cfg: cfg, cp: cp, lib: lib}, nil
+	return &Library{cfg: cfg, cp: cp, lib: lib, major: major}, nil
 }
 
 // Close releases the class path.
@@ -181,9 +185,21 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 		files = append(files, lw.file)
 		provs = append(provs, lw.prov)
 	}
-	if d := duplicateClasses(files); d != nil {
+	// A file whose facade class another file already has is left out, as
+	// the checker assumes there are no duplicates; the others go on.
+	for {
+		d := duplicateClasses(files)
+		if d == nil {
+			break
+		}
 		res.diags = append(res.diags, *d)
-		return res, nil
+		i := slices.IndexFunc(files, func(f *syntax.File) bool { return f.Path == d.Path })
+		if i < 0 {
+			break
+		}
+		keptSnaps = slices.Delete(keptSnaps, i, i+1)
+		files = slices.Delete(files, i, i+1)
+		provs = slices.Delete(provs, i, i+1)
 	}
 
 	cp, lib := l.cp, l.lib
@@ -207,7 +223,7 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 	rec := newRecorder()
 	mode, _ := check.ParseAPIMode(l.cfg.ExplicitAPIMode)
 	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{
-		ExplicitAPI: mode, Warnings: opts.Warnings, Recovered: broken,
+		ExplicitAPI: mode, Warnings: opts.Warnings, Recovered: broken, JVMTarget: l.major,
 	})
 	if err != nil {
 		return nil, err
