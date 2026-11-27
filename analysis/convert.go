@@ -150,10 +150,13 @@ func supertypes(c *types.ClassSym) []string {
 }
 
 // converter converts kc's types, resolving declarations through decl.
+// The types it returns are interned in types: shared, and never to be
+// changed.
 type converter struct {
 	decl func(any) *ElementID
 	// supers caches classes' supertypes.
 	supers map[*types.ClassSym][]string
+	types  *typeTable
 }
 
 func (cv *converter) supertypesOf(c *types.ClassSym) []string {
@@ -170,12 +173,15 @@ func (cv *converter) typ(t types.Type) *Type {
 	if t.K == types.Invalid || t.K == types.TypeVar {
 		return nil
 	}
-	v := cv.value(t, 0)
-	return &v
+	return cv.value(t, 0, "")
 }
 
-func (cv *converter) value(t types.Type, depth int) Type {
-	var out Type
+// star is a star projection's type argument.
+var star = Type{Name: "*", Projection: "*"}
+
+func (cv *converter) value(t types.Type, depth int, projection string) *Type {
+	out := Type{Projection: projection}
+	var args []*Type
 	switch t.K {
 	case types.Class:
 		c := t.C
@@ -190,14 +196,11 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		}
 		if t.A != nil && depth < 8 {
 			for _, a := range t.A.List {
-				var arg Type
 				if a.V == types.Star {
-					arg = Type{Name: "*", Projection: "*"}
+					args = append(args, cv.types.make(star, nil))
 				} else {
-					arg = cv.value(a.T, depth+1)
-					arg.Projection = a.V.String()
+					args = append(args, cv.value(a.T, depth+1, a.V.String()))
 				}
-				out.Arguments = append(out.Arguments, arg)
 			}
 		}
 	case types.Range:
@@ -241,7 +244,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		// TypeUtils.isNullableType says.
 		out.Nullable = true
 	}
-	return out
+	return cv.types.make(out, args)
 }
 
 // functionName returns the name of a function type's interface as

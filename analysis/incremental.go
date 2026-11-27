@@ -100,7 +100,7 @@ func keyOf(opts Options) optionsKey {
 // path. The caller sets diags, broken, extra and declared.
 func newState(res *Result, snaps []*psi.Snapshot, syms []any, opts Options) *state {
 	if res.files == nil {
-		res.setFiles(snaps, make([][]*Fact, len(snaps)))
+		res.setFiles(snaps, make([]fileFacts, len(snaps)))
 	}
 	if len(res.files) != len(snaps) {
 		return nil // a file was left out
@@ -116,23 +116,65 @@ func newState(res *Result, snaps []*psi.Snapshot, syms []any, opts Options) *sta
 			return nil
 		}
 		seen[s.Path()] = true
-		st.refs[i] = fileRefs(s.ID(), res.files[i])
+		st.refs[i] = fileRefs(s.ID(), &res.files[i])
 		st.hashes[i] = signatureHash(s)
 	}
 	return st
 }
 
-// fileRefs returns the snapshots but own that facts refer to.
-func fileRefs(own psi.SnapshotID, facts []*Fact) []psi.SnapshotID {
+// fileRefs returns the snapshots but own that the facts of ff refer to.
+func fileRefs(own psi.SnapshotID, ff *fileFacts) []psi.SnapshotID {
 	var refs []psi.SnapshotID
-	for _, f := range facts {
-		factIDs(f, func(id *ElementID) {
+	var f Fact
+	var v view
+	for i := range ff.facts {
+		ff.load(i, &f, &v)
+		factIDs(&f, func(id *ElementID) {
 			if id.Snapshot != own && !slices.Contains(refs, id.Snapshot) {
 				refs = append(refs, id.Snapshot)
 			}
 		})
 	}
 	return refs
+}
+
+// anySymbol reports whether a fact of ff names a symbol pred reports.
+func (ff *fileFacts) anySymbol(pred func(uint32) bool) bool {
+	for i := range ff.facts {
+		if pred(ff.facts[i].symbol) {
+			return true
+		}
+	}
+	for i := range ff.extras {
+		if slices.ContainsFunc(ff.extras[i].lambdaParameters, pred) {
+			return true
+		}
+	}
+	return false
+}
+
+// own returns a copy of ff that its caller may change.
+func (ff *fileFacts) own() fileFacts {
+	return fileFacts{snap: ff.snap, facts: slices.Clone(ff.facts), extras: slices.Clone(ff.extras)}
+}
+
+// renumber changes the symbols the facts of ff name by fn, in place: ff
+// must be its own, but the lambdas' parameters, which may be shared, are
+// set anew.
+func (ff *fileFacts) renumber(fn func(uint32) uint32) {
+	for i := range ff.facts {
+		ff.facts[i].symbol = fn(ff.facts[i].symbol)
+	}
+	for i := range ff.extras {
+		x := &ff.extras[i]
+		if x.lambdaParameters != nil {
+			ps := make([]uint32, len(x.lambdaParameters))
+			for k, p := range x.lambdaParameters {
+				ps[k] = fn(p)
+			}
+			x.lambdaParameters = ps
+		}
+	}
 }
 
 // nodeMap maps the nodes outside block bodies of a changed file's last
@@ -333,18 +375,17 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		syms[i] = s
 	}
 	isDead := func(id uint32) bool { return id != 0 && dead[id-1] }
-	kept := make([][]*Fact, n)
+	kept := make([]fileFacts, n)
 	refs := make([][]psi.SnapshotID, n)
+	var remapped *store // stores the facts mapped, which share no values with the last Result's
 	for i := range snaps {
 		if dirty[i] || isDeclared(i) {
 			continue
 		}
 		j := c.old[i]
-		fs := st.res.files[j]
-		kept[i], refs[i] = fs, st.refs[j]
-		if slices.ContainsFunc(fs, func(f *Fact) bool {
-			return isDead(f.Symbol) || slices.ContainsFunc(f.LambdaParameters, isDead)
-		}) {
+		ff := &st.res.files[j]
+		kept[i], refs[i] = *ff, st.refs[j]
+		if ff.anySymbol(isDead) {
 			dirty[i] = true
 			continue
 		}
@@ -352,20 +393,32 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 			continue // shared
 		}
 		m.ok = true
-		mapped := make([]*Fact, len(fs))
-		for k, f := range fs {
-			if touches(func(fn func(*ElementID)) { factIDs(f, fn) }) {
-				c := copyFact(*f)
-				factIDs(&c, m.element)
-				f = &c
+		var mapped *fileFacts
+		var f Fact
+		var v view
+		for k := range ff.facts {
+			ff.load(k, &f, &v)
+			if !touches(func(fn func(*ElementID)) { factIDs(&f, fn) }) {
+				continue
 			}
-			mapped[k] = f
+			c := copyFact(f)
+			factIDs(&c, m.element)
+			if mapped == nil {
+				o := ff.own()
+				mapped = &o
+			}
+			if remapped == nil {
+				remapped = newStore(nil)
+			}
+			mapped.set(k, &c, remapped)
 		}
 		if !m.ok {
 			dirty[i] = true // it refers to what a changed file no longer declares
 			continue
 		}
-		kept[i] = mapped
+		if mapped != nil {
+			kept[i] = *mapped
+		}
 		refs[i] = slices.Clone(refs[i])
 		for k, id := range refs[i] {
 			if nm := nodes[id]; nm != nil {
@@ -531,12 +584,13 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		next.syms[id-1] = p
 		ids[k] = id
 	}
-	renumber := func(id *uint32) {
-		if *id != 0 {
-			*id = ids[*id-1]
+	renumber := func(id uint32) uint32 {
+		if id != 0 {
+			return ids[id-1]
 		}
+		return 0
 	}
-	all := make([][]*Fact, n)
+	all := make([]fileFacts, n)
 	for i := range snaps {
 		switch {
 		case isDeclared(i):
@@ -546,15 +600,10 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		default:
 			next.lookups[i] = rec.fileLookups(files[i])
 			if built.files != nil {
-				all[i] = built.files[i]
-				for _, f := range all[i] {
-					renumber(&f.Symbol)
-					for k := range f.LambdaParameters {
-						renumber(&f.LambdaParameters[k])
-					}
-				}
+				all[i] = built.files[i] // this update's own
+				all[i].renumber(renumber)
 			}
-			refs[i] = fileRefs(snaps[i].ID(), all[i])
+			refs[i] = fileRefs(snaps[i].ID(), &all[i])
 		}
 	}
 	res.setFiles(snaps, all)
@@ -606,13 +655,11 @@ func (st *state) compact() {
 			ids[i] = 1
 		}
 	}
-	for _, fs := range res.files {
-		for _, f := range fs {
-			mark(f.Symbol)
-			for _, p := range f.LambdaParameters {
-				mark(p)
-			}
-		}
+	for i := range res.files {
+		res.files[i].anySymbol(func(id uint32) bool {
+			mark(id)
+			return false
+		})
 	}
 	var syms []Symbol
 	var ptrs []any
@@ -627,25 +674,19 @@ func (st *state) compact() {
 		ptrs = append(ptrs, st.syms[i])
 	}
 	moved := func(id uint32) bool { return id != 0 && ids[id-1] != id }
-	for i, fs := range res.files {
-		cloned := false
-		for j, f := range fs {
-			if !moved(f.Symbol) && !slices.ContainsFunc(f.LambdaParameters, moved) {
-				continue
-			}
-			if !cloned { // it may be an earlier Result's
-				fs, cloned = slices.Clone(fs), true
-				res.files[i] = fs
-			}
-			c := copyFact(*f)
-			if c.Symbol != 0 {
-				c.Symbol = ids[c.Symbol-1]
-			}
-			for k, p := range c.LambdaParameters {
-				c.LambdaParameters[k] = ids[p-1]
-			}
-			fs[j] = &c
+	for i := range res.files {
+		ff := &res.files[i]
+		if !ff.anySymbol(moved) {
+			continue
 		}
+		// A copy: the files may be an earlier Result's.
+		*ff = ff.own()
+		ff.renumber(func(id uint32) uint32 {
+			if id != 0 {
+				return ids[id-1]
+			}
+			return 0
+		})
 	}
 	res.symbols, st.syms, st.base = syms, ptrs, len(syms)
 }

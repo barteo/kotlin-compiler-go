@@ -18,7 +18,6 @@
 package analysis
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -358,13 +357,13 @@ type Data struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-// Result is the outcome of analyzing a module. Its methods return copies
-// that callers may change, and are safe for concurrent use.
+// Result is the outcome of analyzing a module. Its methods but Facts
+// return copies that callers may change, and are safe for concurrent use.
 type Result struct {
 	// files are the facts of each snapshot, as passed, in node order.
 	// A Result doesn't change: a Session's update shares the files it
 	// keeps with the last.
-	files   [][]*Fact
+	files   []fileFacts
 	index   map[psi.SnapshotID]int // of files
 	symbols []Symbol               // by ID-1
 	diags   []Diagnostic
@@ -381,20 +380,47 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 	if !ok {
 		return Fact{}, false
 	}
-	fs := r.files[i]
-	j, ok := slices.BinarySearchFunc(fs, id.Node, func(f *Fact, n psi.NodeID) int { return cmp.Compare(f.Element.Node, n) })
+	ff := &r.files[i]
+	j, ok := ff.find(id.Node)
 	if !ok {
 		return Fact{}, false
 	}
-	return copyFact(*fs[j]), true
+	return ff.fact(j), true
+}
+
+// Facts calls fn with each fact of the snapshot's file, in node order,
+// until fn returns false. Unlike Fact, it doesn't copy: *f and all it
+// points to are the Result's, shared with other facts, and reused for the
+// next fact, so they are only valid until fn returns and must not be
+// changed. Fact returns a copy to keep.
+func (r *Result) Facts(snapshot psi.SnapshotID, fn func(f *Fact) bool) {
+	if r == nil {
+		return
+	}
+	i, ok := r.index[snapshot]
+	if !ok {
+		return
+	}
+	ff := &r.files[i]
+	var f Fact
+	// Room for a property's accessors and a delegate's calls, which are
+	// at most two each but for their overridden ones.
+	v := view{accessors: make([]Call, 0, 4), delegatedCalls: make([]Call, 0, 2)}
+	for j := range ff.facts {
+		ff.load(j, &f, &v)
+		if !fn(&f) {
+			return
+		}
+	}
 }
 
 // setFiles makes files the facts of snaps.
-func (r *Result) setFiles(snaps []*psi.Snapshot, files [][]*Fact) {
+func (r *Result) setFiles(snaps []*psi.Snapshot, files []fileFacts) {
 	r.files = files
 	r.index = make(map[psi.SnapshotID]int, len(snaps))
 	for i, s := range snaps {
 		r.index[s.ID()] = i
+		files[i].snap = s.ID()
 	}
 }
 
@@ -424,9 +450,15 @@ func (r *Result) Data() Data {
 	if r == nil {
 		return d
 	}
-	for _, fs := range r.files {
-		for _, f := range fs {
-			d.Facts = append(d.Facts, copyFact(*f))
+	n := 0
+	for i := range r.files {
+		n += len(r.files[i].facts)
+	}
+	d.Facts = make([]Fact, 0, n)
+	for i := range r.files {
+		ff := &r.files[i]
+		for j := range ff.facts {
+			d.Facts = append(d.Facts, ff.fact(j))
 		}
 	}
 	for _, s := range r.symbols {
