@@ -18,7 +18,6 @@
 package analysis
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -364,7 +363,7 @@ type Result struct {
 	// files are the facts of each snapshot, as passed, in node order.
 	// A Result doesn't change: a Session's update shares the files it
 	// keeps with the last.
-	files   [][]*Fact
+	files   []fileFacts
 	index   map[psi.SnapshotID]int // of files
 	symbols []Symbol               // by ID-1
 	diags   []Diagnostic
@@ -381,20 +380,21 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 	if !ok {
 		return Fact{}, false
 	}
-	fs := r.files[i]
-	j, ok := slices.BinarySearchFunc(fs, id.Node, func(f *Fact, n psi.NodeID) int { return cmp.Compare(f.Element.Node, n) })
+	ff := &r.files[i]
+	j, ok := ff.find(id.Node)
 	if !ok {
 		return Fact{}, false
 	}
-	return copyFact(*fs[j]), true
+	return ff.fact(j), true
 }
 
 // setFiles makes files the facts of snaps.
-func (r *Result) setFiles(snaps []*psi.Snapshot, files [][]*Fact) {
+func (r *Result) setFiles(snaps []*psi.Snapshot, files []fileFacts) {
 	r.files = files
 	r.index = make(map[psi.SnapshotID]int, len(snaps))
 	for i, s := range snaps {
 		r.index[s.ID()] = i
+		files[i].snap = s.ID()
 	}
 }
 
@@ -424,9 +424,15 @@ func (r *Result) Data() Data {
 	if r == nil {
 		return d
 	}
-	for _, fs := range r.files {
-		for _, f := range fs {
-			d.Facts = append(d.Facts, copyFact(*f))
+	n := 0
+	for i := range r.files {
+		n += len(r.files[i].facts)
+	}
+	d.Facts = make([]Fact, 0, n)
+	for i := range r.files {
+		ff := &r.files[i]
+		for j := range ff.facts {
+			d.Facts = append(d.Facts, ff.fact(j))
 		}
 	}
 	for _, s := range r.symbols {

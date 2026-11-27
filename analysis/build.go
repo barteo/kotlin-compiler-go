@@ -371,19 +371,22 @@ func (b *builder) build() {
 	}
 	b.symbols()
 
-	// The facts by file, in node order, but the broken files'.
-	files := make([][]*Fact, len(b.snaps))
+	// The facts by file, in node order, but the broken files', stored.
+	byFile := make([][]*Fact, len(b.snaps))
 	index := map[psi.SnapshotID]int{}
 	for i, s := range b.snaps {
 		index[s.ID()] = i
 	}
 	for el, f := range b.facts {
 		if i, ok := index[el.Snapshot]; ok && !b.isBroken(i) {
-			files[i] = append(files[i], f)
+			byFile[i] = append(byFile[i], f)
 		}
 	}
-	for _, fs := range files {
+	st := newStore(b.cv.types)
+	files := make([]fileFacts, len(b.snaps))
+	for i, fs := range byFile {
 		slices.SortFunc(fs, func(a, c *Fact) int { return cmp.Compare(a.Element.Node, c.Element.Node) })
+		files[i] = st.freezeFile(b.snaps[i].ID(), fs)
 	}
 	b.res.setFiles(b.snaps, files)
 }
