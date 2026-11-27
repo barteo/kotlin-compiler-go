@@ -268,6 +268,13 @@ func (c *Checker) objectTaking(name string, x *syntax.Call) *types.ClassSym {
 	return nil
 }
 
+// ctorsTakeArgs reports whether one of a class's constructors fs may take
+// x's arguments, also by the types of those it checks ahead: V(name())
+// calls the companion's invoke(String) when the constructor takes an Int.
+func (c *Checker) ctorsTakeArgs(fs []*types.FunSym, x *syntax.Call) bool {
+	return c.anyMayTake(fs, x) && c.takeTypes(fs, x, c.argTypes(x))
+}
+
 // anyMayTake reports whether one of fs may take x's arguments.
 func (c *Checker) anyMayTake(fs []*types.FunSym, x *syntax.Call) bool {
 	for _, f := range fs {
