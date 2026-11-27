@@ -28,7 +28,6 @@ tests/diagnostics/upperBoundViolated.kt	upperBoundViolated.kt:50	UPPER_BOUND_VIO
 tests/enum/equalityOfFlexibleTypeParameters.kt	B.kt:3	FORBIDDEN_IDENTITY_EQUALS_WARNING	missing-check
 tests/extraCheckers/RedundantVisibilityModifierChecker.kt	RedundantVisibilityModifierChecker.kt:3	REDUNDANT_VISIBILITY_MODIFIER	missing-check
 tests/extraCheckers/unused/LocalFunction.kt	LocalFunction.kt:195	ASSIGNED_VALUE_IS_NEVER_READ	missing-check
-tests/generics/innerClasses/bareTypesComplex.kt	bareTypesComplex.kt:11	USELESS_IS_CHECK	missing-check
 tests/incompleteCode/diagnosticWithSyntaxError/declarationAfterIncompleteElvis.kt	declarationAfterIncompleteElvis.kt:10	USELESS_ELVIS_LEFT_IS_NULL	syntax-error
 tests/incompleteCode/diagnosticWithSyntaxError/declarationAfterIncompleteElvis.kt	declarationAfterIncompleteElvis.kt:21	USELESS_ELVIS_LEFT_IS_NULL	syntax-error
 tests/inference/callableReferences/adaptation/varargAdaptationWithTypeVariables.kt	varargAdaptationWithTypeVariables.kt:65	INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING	missing-check
@@ -67,7 +66,6 @@ tests/references/mutablePropertyWithCapturedType.kt	mutablePropertyWithCapturedT
 tests/regressions/kt307.kt	kt307.kt:10	UNCHECKED_CAST	missing-check
 tests/smartCasts/kt32358_2.kt	kt32358_2.kt:10	WRONG_INVOCATION_KIND	missing-check
 tests/smartCasts/variables/objectMembers.kt	objectMembers.kt:19	SENSELESS_COMPARISON	missing-check
-tests/smartCasts/variables/staticJavaFieldFromSameModule.kt	Test.kt:4	USELESS_CAST	missing-check
 tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt	main.kt:21	REDUNDANT_ELSE_IN_WHEN	missing-check
 tests/thisAndSuper/Super.kt	Super.kt:53	TYPE_ARGUMENTS_REDUNDANT_IN_SUPER_QUALIFIER	syntax-error
 tests/tooLargeFunctionNThroughACallableReference.kt	tooLargeFunctionNThroughACallableReference.kt:40	K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY	missing-check

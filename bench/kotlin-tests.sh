@@ -4,7 +4,8 @@
 # the tag of the Kotlin that KOTLIN_HOME is. Writes bench/results/MODE.md
 # and bench/results/MODE.tsv, one line per test, and for the diagnostics
 # tests the expected errors and warnings kc misses (diagnostics-missed.tsv,
-# diagnostics-missed-warnings.tsv).
+# diagnostics-missed-warnings.tsv) and the errors it reports where kotlinc
+# reports none (diagnostics-stray.tsv).
 #
 #   bench/kotlin-tests.sh box               # the box tests: compile, run, box() == "OK"
 #   bench/kotlin-tests.sh diagnostics       # the diagnostics tests: reject what kotlinc rejects
@@ -45,16 +46,19 @@ go build -o bin/kc ./cmd/kc
 go build -o "$TMPDIR/kc-conformance-harness" ./bench/conformance
 # The diagnostics mode also lists the expected errors and warnings kc
 # misses, which -missed-baseline and -missed-warnings-baseline compare a
-# later run with.
+# later run with, and the errors kc reports on lines where the markup
+# expects none.
 missed=
 missed_warnings=
+stray=
 if [ "$mode" = diagnostics ]; then
 	missed=bench/results/diagnostics-missed.tsv
 	missed_warnings=bench/results/diagnostics-missed-warnings.tsv
+	stray=bench/results/diagnostics-stray.tsv
 fi
 "$TMPDIR/kc-conformance-harness" -mode "$mode" -kotlin "$repo" -tag "$tag" -kc bin/kc \
 	-stdlib "$kotlin_home/lib/kotlin-stdlib.jar" -test "$kotlin_home/lib/kotlin-test.jar" -reflect "$kotlin_home/lib/kotlin-reflect.jar" \
 	-annotations "$kotlin_home/lib/annotations-13.0.jar" \
 	-java "$JAVA_HOME/bin/java" -javac "$JAVA_HOME/bin/javac" \
 	-o "bench/results/$mode.md" -tsv "bench/results/$mode.tsv" ${missed:+-missed "$missed"} \
-	${missed_warnings:+-missed-warnings "$missed_warnings"} "$@"
+	${missed_warnings:+-missed-warnings "$missed_warnings"} ${stray:+-errors "$stray"} "$@"
