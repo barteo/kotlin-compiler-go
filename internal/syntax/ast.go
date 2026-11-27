@@ -1092,9 +1092,14 @@ type For struct {
 	Names []string   // for ((a, b) in xs): the names of a destructuring declaration
 	Types []*TypeRef // and their types, nil where omitted
 	Type  *TypeRef   // for (x: T in xs): the variable's type, nil if omitted
-	Sym   *types.VarSym
-	Range Expr // *Binary with RANGE, RANGE_LT, UNTIL, DOWN_TO or STEP, or a collection
-	Body  *Block
+	// Annotations are the variable's, for (@A x in xs), and Entries
+	// those of the names of a destructuring declaration, nil where there
+	// are none. The checker checks them; class files don't keep them.
+	Annotations []Annotation
+	Entries     [][]Annotation
+	Sym         *types.VarSym
+	Range       Expr // *Binary with RANGE, RANGE_LT, UNTIL, DOWN_TO or STEP, or a collection
+	Body        *Block
 
 	// A loop over a collection calls Range's iterator(), and the
 	// iterator's hasNext() and next(). Iter is nil for a range, and for
@@ -1672,6 +1677,10 @@ type Lambda struct {
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
 	Once bool
+	// AtMostOnce is set by the checker on a lambda passed to a function
+	// that calls it at most once, callsInPlace(f, AT_MOST_ONCE): like
+	// Once, the vars it assigns keep their narrowing at its start.
+	AtMostOnce bool
 	// InPlace is set by the checker on a lambda passed to a function
 	// whose contract says it calls it in place, any number of times.
 	InPlace bool

@@ -20,6 +20,7 @@ func (c *Checker) inlineCall(x *syntax.Call, cl *callee) {
 		if l, ok := a.(*syntax.Lambda); ok {
 			i := cl.paramIndex(k)
 			l.Once = i >= 0 && i < len(cl.f.Once) && cl.f.Once[i]
+			l.AtMostOnce = i >= 0 && i < len(cl.f.AtMostOnce) && cl.f.AtMostOnce[i]
 			l.InPlace = i >= 0 && i < len(cl.f.InPlace) && cl.f.InPlace[i]
 			l.InlineArg = inlineParam(cl.f, i)
 			lambdas = append(lambdas, l)

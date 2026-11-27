@@ -284,8 +284,9 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 		return t.Nullable()
 	}
 	if k, ok := c.castNarrow(x); ok {
-		// x is a T from here on: in (x as T).f(x), (x as T) + x.
-		c.scope.narrows = append(c.scope.narrows, k)
+		// x is a T from here on: in (x as T).f(x), (x as T) + x, and so
+		// are the values that hold x's.
+		c.scope.narrows = append(append(c.scope.narrows, k), c.impliedBy(k)...)
 	}
 	if !types.MayBeNull(t) {
 		// a?.b as T, for a T that isn't nullable: a isn't null.
@@ -582,6 +583,11 @@ func (c *Checker) stable(v *types.VarSym) bool {
 		return c.stableOn(v, c.thisType())
 	case types.Global:
 		return v.Getter == nil
+	case types.Static:
+		// A final static field of the program's Java sources, as K2 has
+		// it; not of the class path's, which another version of the
+		// class may make a var.
+		return v.Owner != nil && v.Owner.External && c.u.ext.javaSource(v.Owner)
 	}
 	return false
 }
@@ -849,8 +855,18 @@ func (c *Checker) thisMethods(name string) bool {
 	if !ok {
 		return false
 	}
-	cls := c.classOf(t)
-	return cls != nil && len(c.javaMethods(cls, name)) > 0
+	ts := []types.Type{t}
+	if nn := t.NonNull(); nn.IsIntersection() {
+		// Any of an intersection's components, A & B after this is A
+		// and this is B.
+		ts = nn.Param().Bounds
+	}
+	for _, t := range ts {
+		if cls := c.classOf(t); cls != nil && len(c.javaMethods(cls, name)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // coverage is what the branches of a when with a subject cover, for its
@@ -971,6 +987,16 @@ func (c *Checker) covers(t types.Type, cv *coverage) bool {
 	case t.IsIntersection():
 		// A subject smart cast to A & B is covered as an A or a B: as a
 		// sealed I1 after require(x is I2).
+		for _, b := range t.Param().Bounds {
+			if c.covers(b, cv) {
+				return true
+			}
+		}
+		return false
+	case t.K == types.TypeParam:
+		// A value of a type parameter's type is a value of each of its
+		// bounds, as in K2: when (e) over a T : MyEnum covers its
+		// entries.
 		for _, b := range t.Param().Bounds {
 			if c.covers(b, cv) {
 				return true

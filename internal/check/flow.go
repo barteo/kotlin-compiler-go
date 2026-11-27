@@ -1232,6 +1232,14 @@ func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 		if m.Safe {
 			return narrow{}, false
 		}
+		if m.Field != nil {
+			// A Java class's static field: J.f, stable if final and of
+			// the program's Java sources.
+			if !c.stable(m.Field) {
+				return narrow{}, false
+			}
+			return narrow{sym: m.Field, t: c.scope.narrowed(m.Field)}, true
+		}
 		return c.memberKey(m, m.T)
 	}
 	if id, ok := x.(*syntax.Ident); ok && id.Member != nil && !id.Member.Safe {

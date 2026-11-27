@@ -45,6 +45,10 @@ type parser struct {
 	// suppressInvisible is set once an annotation suppresses
 	// INVISIBLE_MEMBER or INVISIBLE_REFERENCE (see File.SuppressInvisible).
 	suppressInvisible bool
+	// typeAnnotation is set while parseType reads a type's annotations,
+	// whose arguments may follow a space, as kotlinc has it (see
+	// annotation).
+	typeAnnotation bool
 	// suppressShadowed is set once an annotation suppresses
 	// RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER (see File.SuppressShadowed).
 	suppressShadowed bool
@@ -879,7 +883,9 @@ func (p *parser) parseType() *TypeRef {
 	var wild Wildcards
 	var as []Annotation
 	for p.at(AT) {
+		p.typeAnnotation = true
 		a := p.annotation()
+		p.typeAnnotation = false
 		p.skipNL()
 		as = append(as, a)
 		if a.Target == "receiver" {
@@ -1477,7 +1483,9 @@ func (p *parser) receiver(fun bool) (*TypeRef, []Annotation) {
 	}
 	start := p.i
 	for p.at(AT) {
+		p.typeAnnotation = true
 		p.annotation() // parseType's
+		p.typeAnnotation = false
 	}
 	dot := p.receiverDot(fun)
 	p.i = start
@@ -2246,8 +2254,14 @@ func (p *parser) annotation() Annotation {
 		last = p.toks[p.i-1]
 	}
 	// Arguments follow the name with no space between: @A(x), not @A (x),
-	// but for one on a declaration, on its line: @A (x) fun f().
-	if t := p.tok(); t.Kind == LPAREN && t.Pos.Line == last.Pos.Line && (t.Pos.Col == last.Pos.Col+utf8.RuneCountInString(last.Text) || p.declAfter(p.matching(p.i)+1)) {
+	// but for one on a declaration, on its line: @A (x) fun f(). On a
+	// type, kotlinc takes them after a space too, unless an arrow
+	// follows, which makes them a function type's parameters, or they
+	// aren't arguments, as a parenthesized function type:
+	// @A () @A () -> Unit is @A() on @A () -> Unit, and @A (() -> Unit)
+	// is @A on (() -> Unit).
+	if t := p.tok(); t.Kind == LPAREN && t.Pos.Line == last.Pos.Line && (t.Pos.Col == last.Pos.Col+utf8.RuneCountInString(last.Text) || p.declAfter(p.matching(p.i)+1) ||
+		p.typeAnnotation && p.toks[p.matching(p.i)+1].Kind != ARROW && !p.arrowIn(p.i)) {
 		end := p.matching(p.i)
 		a.Args = p.annotationArgs(p.i+1, end)
 		p.i = end + 1
@@ -2257,6 +2271,25 @@ func (p *parser) annotation() Annotation {
 	p.suppressShadowed = p.suppressShadowed || sh
 	p.suppressDSL = p.suppressDSL || dsl
 	return a
+}
+
+// arrowIn reports whether the parentheses that open at i hold an arrow
+// outside other brackets, which no argument list does: (() -> Unit).
+func (p *parser) arrowIn(i int) bool {
+	end, depth := p.matching(i), 0
+	for j := i + 1; j < end; j++ {
+		switch p.toks[j].Kind {
+		case LPAREN, LBRACK, LBRACE:
+			depth++
+		case RPAREN, RBRACK, RBRACE:
+			depth--
+		case ARROW:
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // declAfter reports whether the token at i, after an annotation, starts
@@ -2540,8 +2573,12 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 		p.next()
 		p.expect(LPAREN)
 		f := &For{P: t.Pos}
+		for p.at(AT) {
+			f.Annotations = append(f.Annotations, p.annotation()) // for (@A i in r)
+			p.skipNL()
+		}
 		if p.at(LPAREN) {
-			f.Names, f.Types = p.destructuringNames() // for ((k, v) in m)
+			f.Names, f.Types, f.Entries = p.destructuringEntries() // for ((k, v) in m)
 		} else {
 			f.Var = p.ident().Text
 			if p.at(COLON) {

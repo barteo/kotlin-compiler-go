@@ -31,7 +31,9 @@ key and detail. Flags after the mode go to the harness:
   markup expects no diagnostic to a TSV file: the test, its category, the
   file and line, and the message. It leaves out errors of a kind the
   test's `DIAGNOSTICS` directive switches off, where `kc`'s message names
-  the kind (`check.IsNamed`).
+  the kind (`check.IsNamed`). `bench/kotlin-tests.sh diagnostics` writes
+  it to [bench/results/diagnostics-stray.tsv](../bench/results/diagnostics-stray.tsv),
+  the backlog of errors `kotlinc` doesn't report.
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
   diagnostic and its severity, and `hit` if `kc` reported on its line an
@@ -337,9 +339,11 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,873 of the 22,025 expected errors (99.3%) on their lines, and 3,578 of
+21,873 of the 22,025 expected errors (99.3%) on their lines, and 3,580 of
 the 3,667 expected warnings (97.6%), with 13 warnings on lines that expect
-none. Tests with Java sources are 1,221 of the run, and 5 of the 15
+none. It reports 451 errors on lines that expect none, in 245 tests, all
+of which `kotlinc` rejects for another error
+([diagnostics-stray.tsv](../bench/results/diagnostics-stray.tsv)). Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 

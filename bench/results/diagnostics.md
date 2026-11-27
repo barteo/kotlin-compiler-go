@@ -150,37 +150,37 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 103 |
+| `unresolved reference: _` | 90 |
 | `type mismatch: inferred type is _ but _ was expected` | 84 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 46 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 21 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 18 |
 | `unresolved or unsupported type: _` | 14 |
 | `no function '_' takes n arguments` | 11 |
 | `unresolved import: _` | 11 |
-| `'_' expression must be exhaustive, add necessary '_' branch` | 9 |
-| `cannot access '_': it is private to this in '_'` | 9 |
 | `'_' overrides nothing` | 8 |
 | `missing return statement in function '_'` | 7 |
-| `unexpected '_'` | 7 |
 | `cannot use '_' as reified type parameter` | 6 |
 | `captured values cannot be initialized because of possible reassignments` | 6 |
-| `this lambda must return a value of type _` | 6 |
 | `val cannot be reassigned` | 6 |
 | `'_' modifier is required on '_'` | 5 |
 | `ambiguous call: n candidates for '_' take (_)` | 5 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 5 |
+| `'_' expression must be exhaustive, add necessary '_' branch` | 4 |
 | `'_' is not allowed outside a loop` | 4 |
 | `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
 | `inheriting an annotation class is prohibited` | 4 |
 | `no context argument for '_' found` | 4 |
-| `one type argument expected for class Outer.Inner` | 4 |
-| `a property with an explicit backing field cannot have accessors` | 3 |
 | `named arguments are not allowed for non-Kotlin functions` | 3 |
 | `names _, __, ___, ..., can be used only in back-ticks ('_', '__', '___', ...)` | 3 |
 | `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 3 |
 | `there'_'B.Bn'` | 3 |
-| *68 more* | |
+| `'_' annotation is applicable only to value classes` | 2 |
+| `conflicting overloads: _` | 2 |
+| `expected a name` | 2 |
+| `expected parameter of type _` | 2 |
+| `incompatible types Int and Nothing` | 2 |
+| *57 more* | |
 
 ## Unsupported features
 
@@ -192,7 +192,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3578 of the 3667 warnings the tests expect (97.6%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3580 of the 3667 warnings the tests expect (97.6%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -201,13 +201,13 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
-| `USELESS_IS_CHECK` | 127 | 119 | 0 |
+| `USELESS_IS_CHECK` | 127 | 120 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 102 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 88 | 1 |
-| `USELESS_CAST` | 91 | 88 | 1 |
+| `USELESS_CAST` | 91 | 89 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
 | `UNCHECKED_CAST` | 88 | 84 | 1 |
 | `OPT_IN_USAGE` | 83 | 78 | 0 |

@@ -33,10 +33,14 @@ type lambdaWant struct {
 	composable bool         // the expected type is a composable function type
 	ret        types.Type   // expected result type, or noWant
 	check      bool         // the body must have type ret; otherwise ret is only a hint
-	recover    bool         // checking after an error: unknown parameters are not reported
-	prop       bool         // a callable reference must name a property: see kpropRef
-	prop1      bool         // with prop: the expected type is a KProperty1, which has a receiver
-	kprop      bool         // a callable reference to a property may be a KProperty object
+	// varRet is set when ret is a call's type variable, fixed already:
+	// R of run<Any> { ... }. As K2 constrains the variable with a bare
+	// return's Unit, rather than check it, one is fine then.
+	varRet  bool
+	recover bool // checking after an error: unknown parameters are not reported
+	prop    bool // a callable reference must name a property: see kpropRef
+	prop1   bool // with prop: the expected type is a KProperty1, which has a receiver
+	kprop   bool // a callable reference to a property may be a KProperty object
 	// stars are the parameters whose type is a star projection, which
 	// any declared type takes, as the captured type's Nothing below it.
 	stars []bool
@@ -47,9 +51,11 @@ type lambdaResult struct {
 	label string
 	want  types.Type // noWant if unknown
 	check bool       // the values must have type want
-	types []types.Type
-	vals  []syntax.Expr // the values of types, nil for a bare return's Unit
-	bare  bool          // a return@label without a value: the result is Unit
+	// varRet: a bare return is fine if Unit is a want (see lambdaWant).
+	varRet bool
+	types  []types.Type
+	vals   []syntax.Expr // the values of types, nil for a bare return's Unit
+	bare   bool          // a return@label without a value: the result is Unit
 	// postponed are the values whose type arguments only the lambda's
 	// result can give: return@flatMap emptyList(), with the state where
 	// they are.
@@ -541,7 +547,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	syms = append(x.Ctx[:len(x.Ctx):len(x.Ctx)], syms...)
 	unkeep := func() {}
-	if !x.Once {
+	if !x.Once && !x.AtMostOnce {
 		// As in a loop, the vars it assigns lose their narrowing at its
 		// start: it may run again after it assigns them. As K2 has it, a
 		// lambda that may run again is a loop: those it only increments,
@@ -570,7 +576,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		// unused.
 		w.ret = types.UnitType
 	}
-	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, nothingTail: whenTailReturn(x)}
+	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, varRet: w.varRet, nothingTail: whenTailReturn(x)}
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], lr)
 	unit := w.ret.K == types.Unit
 	x.UnitCoerced = unit && !w.ret.N && x.Ref == nil && !x.Anon && !platUnit
@@ -1057,7 +1063,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 			}
 		}
 	case x.X == nil:
-		if lr.check && lr.want.K != types.Invalid {
+		if lr.check && lr.want.K != types.Invalid && !(lr.varRet && c.subtype(types.UnitType, lr.want)) {
 			c.errorf(x.P, "this lambda must return a value of type %s", lr.want)
 		}
 		lr.types = append(lr.types, types.UnitType)
@@ -2029,6 +2035,9 @@ type pendingLambda struct {
 	// deferred marks a nested call's lambda that waits for a lambda
 	// written before it: see afterOpenLambda.
 	deferred bool
+	// varRet marks one whose result is the callee's type parameter (see
+	// lambdaWant.varRet).
+	varRet bool
 }
 
 // afterOpenLambda reports whether call x, an argument whose inference
@@ -2213,7 +2222,7 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		if _, _, fn := funcParts(pl.p); fn && pl.l.Ref != nil {
 			c.adaptedRef = pl.l // see unitRefVar
 		}
-		c.postponedLambda(s, pl.l, p, pl.noSAM)
+		c.postponedLambda(s, pl.l, p, pl.noSAM, pl.varRet)
 		c.scope, c.adaptedRef = saved, savedRef
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && shape.K != types.Invalid && s.unfixedVar(shape) == nil {
 			// The lambda's type is below the variable too, as K2's
@@ -3295,8 +3304,9 @@ func declaredIn(l *syntax.Lambda) map[string]bool {
 // postponedLambda checks a lambda argument of a call being inferred, for
 // a parameter of type p. The variables in its parameter types are fixed
 // first; its result then constrains the variables in the result type.
-// With noSAM it isn't converted to a fun interface p is.
-func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noSAM bool) {
+// With noSAM it isn't converted to a fun interface p is. varRet is set
+// when its result is the callee's type parameter.
+func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noSAM, varRet bool) {
 	pt := s.apply(p)
 	if wantsKProp(l, pt) {
 		// Its type doesn't depend on the parameter's.
@@ -3489,7 +3499,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 	r := c.nullableUnit(ret, s.apply(ret))
 	switch {
 	case !r.HasVars():
-		w.ret, w.check = r, true
+		w.ret, w.check, w.varRet = r, true, varRet || ret.K == types.TypeVar
 	case r.K == types.TypeVar:
 		// R? that the expected type makes Unit is Unit?, whose result
 		// isn't coerced to Unit: foo { if (c) Unit else null }.

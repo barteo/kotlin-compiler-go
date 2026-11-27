@@ -237,7 +237,9 @@ func (c *Checker) returnNarrows(call *syntax.Call) []narrow {
 func (c *Checker) narrowAfter(s syntax.Stmt) {
 	cast := func(as *syntax.As) {
 		if k, ok := c.castNarrow(as); ok {
-			c.scope.narrows = append(c.scope.narrows, k)
+			// And the values that hold x's: after val a = d.any; a as A,
+			// d.any is an A, as in K2.
+			c.scope.narrows = append(append(c.scope.narrows, k), c.impliedBy(k)...)
 		}
 	}
 	// A call anywhere in the statement that always returns before the
@@ -471,13 +473,14 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.While:
 		return c.while(s)
 	case *syntax.For:
+		c.localAnnotations(s.Annotations, localVarSite)
 		if len(s.Names) > 0 && s.Var == "" {
 			// for ((k, v) in m) is for (e in m) { val (k, v) = e }.
 			c.temps++
 			s.Var = fmt.Sprintf("<element%d>", c.temps)
 			id := &syntax.Ident{Name: s.Var}
 			id.P = s.P
-			d := &syntax.Destructure{P: s.P, Names: s.Names, Types: s.Types, Init: id}
+			d := &syntax.Destructure{P: s.P, Names: s.Names, Types: s.Types, Annotations: s.Entries, Init: id}
 			s.Body.Stmts = append([]syntax.Stmt{d}, s.Body.Stmts...)
 		}
 		elem := types.IntType
@@ -552,11 +555,15 @@ func (c *Checker) while(s *syntax.While) types.Type {
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
 		c.loops = c.loops[:len(c.loops)-1]
-		_, whenFalse := c.narrowing(s.Cond)
-		c.push()
-		c.scope.narrows = append(c.scope.narrows, whenFalse...)
-		exits = append(exits, c.flowState())
-		c.pop()
+		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val || !loop.hasBreak {
+			// do { … } while (true) ends only at its breaks; without
+			// any, what follows is dead, and sees the body's smart casts.
+			_, whenFalse := c.narrowing(s.Cond)
+			c.push()
+			c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			exits = append(exits, c.flowState())
+			c.pop()
+		}
 		c.pop()
 	} else {
 		pre := c.loopEntry(vars)
