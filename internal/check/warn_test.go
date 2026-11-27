@@ -321,6 +321,21 @@ fun <T> h(a: Any, t: T?) {
 	}
 }
 
+func TestWarningsUncheckedCastFixedSupertypeArg(t *testing.T) {
+	// KTest's K doesn't follow from KI<String>: KTest<K> : KI<String>.
+	got := checkWarnings(t, `interface KI<K>
+interface KTest<K> : KI<String>
+interface KSame<K> : KI<K>
+fun m(z: KI<String>) {
+    z as KTest<Int>
+    z as KSame<String>
+}
+`)
+	if want := "5:UNCHECKED_CAST"; strings.Join(got, ",") != want {
+		t.Errorf("got %v, want %s", got, want)
+	}
+}
+
 func TestWarningsFileSuppress(t *testing.T) {
 	got := checkWarnings(t, `@file:Suppress("UNNECESSARY_SAFE_CALL")
 fun f(s: String) = s?.length

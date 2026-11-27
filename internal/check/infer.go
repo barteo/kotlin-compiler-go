@@ -77,6 +77,16 @@ type tvar struct {
 	// call's own type parameters, R <: T of <T : A, R : T>: a variable
 	// with no other constraints can't be inferred, as K2 has it.
 	declUp []types.Type
+	// uninferred is set when the variable was fixed without a value, as
+	// its call's error: a bound that is it says nothing of another
+	// variable, which can't be inferred either, as K of id(materialize())
+	// (see fix).
+	uninferred bool
+	// tailLow are the variables that a lambda's result variable has as
+	// lower bounds from the last expression of its body, checked before
+	// the variable's expected type was known: T of materializeNumber() in
+	// run { materializeNumber() } (see dropTailLowers).
+	tailLow []types.Type
 	// wantUp are the upper bounds added from the type expected of the
 	// call, T <: String of val s: String = run { }, which a lambda's
 	// result that contradicts them is reported against (see
@@ -267,6 +277,7 @@ func (s *system) clone() *system {
 		c.lower = append([]types.Type{}, tv.lower...)
 		c.upper = append([]types.Type{}, tv.upper...)
 		c.wantUp = slices.Clip(tv.wantUp)
+		c.tailLow = slices.Clip(tv.tailLow)
 		c.typeArgUp = slices.Clip(tv.typeArgUp)
 		c.flexLower = slices.Clip(tv.flexLower)
 		c.argUp, c.argTopUp = slices.Clip(tv.argUp), slices.Clip(tv.argTopUp)
@@ -1057,6 +1068,7 @@ func (s *system) fix(tv *tvar) {
 		s.resolveForks()
 		tv = s.byVar[tv.v] // a clone's, if a branch was taken
 	}
+	s.dropTailLowers(tv)
 	// An unfixed variable below it with only integer literals passes
 	// them on, as K2 incorporates ILT <: T1 and T1 <: T: T of both(id(1),
 	// id("")) has 1 and "" below.
@@ -1072,7 +1084,20 @@ func (s *system) fix(tv *tvar) {
 	c := s.c
 	var lowers, uppers []types.Type
 	var stubs []types.Type
+	// A variable that couldn't be inferred, with the error reported, is
+	// no bound: as in K2, the others it bounds can't be inferred either,
+	// and are reported too, as each of id(id(materialize())).
+	uninferred := func(t types.Type) bool {
+		if t.K != types.TypeVar {
+			return false
+		}
+		w := s.byVar[t.Param()]
+		return w != nil && w != tv && w.uninferred
+	}
 	for _, l := range tv.lower {
+		if uninferred(l) {
+			continue
+		}
 		if l = s.apply(l); !l.HasVars() {
 			// listOf(set(key, null)) is a List<Nothing?>.
 			lowers = append(lowers, types.ApproxFlexNothing(l))
@@ -1086,6 +1111,9 @@ func (s *system) fix(tv *tvar) {
 	}
 	var upperStubs []types.Type
 	for _, u := range tv.upper {
+		if uninferred(u) {
+			continue
+		}
 		if u = s.apply(u); !u.HasVars() {
 			uppers = append(uppers, u)
 		} else if s.c.onlyStubs(u) {
@@ -1144,6 +1172,7 @@ func (s *system) fix(tv *tvar) {
 		// Only its declared bounds: R of <T : A, R : T> in a call that
 		// gives neither.
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		tv.uninferred = true
 	case len(lowers) > 0:
 		val = lowers[0]
 		for _, l := range lowers[1:] {
@@ -1287,6 +1316,7 @@ func (s *system) fix(tv *tvar) {
 			break
 		}
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		tv.uninferred = true
 		if s.nothingFix {
 			val = types.NothingType
 		}
@@ -1916,6 +1946,35 @@ func (s *system) unitBound(v types.Type) bool {
 		return false
 	}
 	return slices.ContainsFunc(tv.v.Bounds, func(b types.Type) bool { b = s.apply(b); return b.K == types.Unit && !b.N })
+}
+
+// dropTailLowers drops the lower bounds of lambda's result variable tv
+// that the last expression of its body gave (tailLow), where an upper
+// bound Unit, from the type expected of tv's call, makes the lambda one
+// coerced to Unit, and the expression's variable's declared bounds a
+// Unit can't be within. As K2 adds the last expression's type as a
+// constraint of a lambda coerced to Unit only if it is compatible, the
+// expression is then a statement, and its variable not inferred: T of
+// materializeNumber<T : Number>() in run { run { materializeNumber() } }
+// where a Unit is expected, which is that of the outer lambda coerced
+// to Unit.
+func (s *system) dropTailLowers(tv *tvar) {
+	if len(tv.tailLow) == 0 || !slices.ContainsFunc(tv.upper, func(u types.Type) bool { u = s.apply(u); return u.K == types.Unit && !u.N }) {
+		return
+	}
+	for _, l := range tv.tailLow {
+		w := s.unfixedVar(l)
+		if w == nil || w == tv || !s.boundExcludes(l, types.UnitType) {
+			continue
+		}
+		tv.lower = slices.DeleteFunc(tv.lower, func(t types.Type) bool { return s.unfixedVar(t) == w })
+		// With the Unit that the bound through tv gave it, which the
+		// bounds exclude.
+		w.upper = slices.DeleteFunc(w.upper, func(t types.Type) bool {
+			return s.unfixedVar(t) == tv || s.apply(t) == types.UnitType
+		})
+	}
+	tv.tailLow = nil
 }
 
 // boundExcludes reports whether t is an unfixed variable whose declared

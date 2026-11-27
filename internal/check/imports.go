@@ -289,6 +289,18 @@ func (c *Checker) importMembers(owner *types.ClassSym, imp *syntax.Import) {
 			add("values")
 			add("valueOf")
 		}
+		if d, ok := owner.Decl.(*syntax.ClassDecl); ok && owner.Object {
+			// An object's members, which a star import of it, reported,
+			// imports all the same, as K2 does.
+			for _, m := range d.Members {
+				switch m := m.(type) {
+				case *syntax.FunDecl:
+					add(m.Name)
+				case *syntax.PropDecl:
+					add(m.Name)
+				}
+			}
+		}
 		return
 	}
 	for name := range owner.Fields {
@@ -332,6 +344,7 @@ func (c *Checker) resolveAliasStars() {
 	for _, s := range c.aliasStars {
 		if owner := c.aliasClass(s.alias); owner != nil && owner.Object && !owner.External {
 			c.errorf(s.imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+			c.importMembers(owner, s.imp) // all the same, as K2 does
 		} else if owner != nil {
 			c.importMembers(owner, s.imp)
 		} else {

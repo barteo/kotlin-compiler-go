@@ -1624,6 +1624,11 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
+		if a.Underscore && args[i].T.K == types.TypeParam {
+			// Foo<_> of a type parameter named _, which K2 makes write
+			// in backticks (UNDERSCORE_USAGE_WITHOUT_BACKTICKS).
+			c.errorf(a.Type.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+		}
 		c.projection(a, ps[i], cls)
 	}
 	t := types.GenericType(cls, append(args, hidden...))
@@ -2839,7 +2844,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	if d.Interface && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "an interface may not have a constructor")
 	}
-	if d.Object && len(d.CtorParams) > 0 {
+	if d.Object && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
 		c.errorf(d.P, "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {
@@ -4210,6 +4215,13 @@ func (c *Checker) getterRetType(d *syntax.PropDecl) {
 // T), which must be the property's.
 func (c *Checker) setterParamType(d *syntax.PropDecl) {
 	p := d.Setter.Params[0]
+	if p.Vararg && p.Sym != nil && d.Sym != nil {
+		// set(vararg value), reported: an array in the setter's body,
+		// as in kotlinc.
+		v := *p.Sym
+		v.Type = types.VarargArray(d.Sym.Type)
+		p.Sym = &v
+	}
 	if p.Type == nil || d.Field != nil {
 		return
 	}

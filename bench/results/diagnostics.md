@@ -65,70 +65,70 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21834 of 22025 expected errors (99.1%) on their lines.
+kc reports 21873 of 22025 expected errors (99.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2553 | 2513 | 40 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2516 | 37 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1470 | 21 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 618 | 17 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 624 | 11 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
-| `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 24 | 4 |
-| `FUNCTION_CALL_EXPECTED` | 29 | 26 | 3 |
-| `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 1 | 3 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 156 | 3 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 58 | 3 |
-| `TYPE_MISMATCH` | 33 | 30 | 3 |
-| `UNDERSCORE_IS_RESERVED` | 13 | 10 | 3 |
 | `UNRESOLVED_IMPORT` | 57 | 54 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 2 |
-| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 112 | 2 |
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
-| `ILLEGAL_ESCAPE` | 20 | 18 | 2 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
 | `INVISIBLE_REFERENCE` | 525 | 523 | 2 |
 | `MEMBER_PROJECTED_OUT` | 50 | 48 | 2 |
 | `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
 | `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
-| `REDECLARATION` | 196 | 194 | 2 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 157 | 2 |
 | `REPEATED_ANNOTATION` | 69 | 67 | 2 |
 | `RETURN_NOT_ALLOWED` | 63 | 61 | 2 |
 | `TYPEOF_SUSPEND_TYPE` | 4 | 2 | 2 |
 | `TYPE_ARGUMENTS_NOT_ALLOWED` | 11 | 9 | 2 |
-| `UNINITIALIZED_VARIABLE` | 213 | 211 | 2 |
+| `TYPE_MISMATCH` | 33 | 31 | 2 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 161 | 2 |
-| `ACCESSOR_FOR_DELEGATED_PROPERTY` | 6 | 5 | 1 |
 | `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 0 | 1 |
 | `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
-| `COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT` | 5 | 4 | 1 |
-| `CONSTRUCTOR_IN_OBJECT` | 13 | 12 | 1 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 114 | 113 | 1 |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 44 | 1 |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
-| `DEPRECATED_TYPE_PARAMETER_SYNTAX` | 2 | 1 | 1 |
-| `EMPTY_CHARACTER_LITERAL` | 9 | 8 | 1 |
-| `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD` | 2 | 1 | 1 |
+| `FUNCTION_CALL_EXPECTED` | 29 | 28 | 1 |
 | `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE` | 7 | 6 | 1 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 13 | 1 |
 | `ITERATOR_MISSING` | 10 | 9 | 1 |
+| `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 3 | 1 |
 | `NOTHING_TO_OVERRIDE` | 93 | 92 | 1 |
-| `NOT_A_SUPERTYPE` | 14 | 13 | 1 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 24 | 1 |
 | `NO_ELSE_IN_WHEN` | 217 | 216 | 1 |
 | `NO_SET_METHOD` | 11 | 10 | 1 |
-| `NO_TYPE_ARGUMENTS_ON_RHS` | 26 | 25 | 1 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 174 | 1 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 154 | 1 |
 | `PRIVATE_CLASS_MEMBER_FROM_INLINE` | 9 | 8 | 1 |
-| `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 31 | 1 |
 | `TYPEALIAS_EXPANSION_CAPTURES_OUTER_TYPE_PARAMETERS` | 6 | 5 | 1 |
+| `UNINITIALIZED_VARIABLE` | 213 | 212 | 1 |
 | `UNSAFE_CALL` | 525 | 524 | 1 |
 | `UNSUPPORTED` | 233 | 232 | 1 |
-| `VAL_OR_VAR_ON_CATCH_PARAMETER` | 2 | 1 | 1 |
 | `VAL_REASSIGNMENT` | 231 | 230 | 1 |
+| `WRONG_ANNOTATION_TARGET` | 403 | 402 | 1 |
+| `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 97 | 96 | 1 |
+| `ABBREVIATED_NOTHING_PROPERTY_TYPE` | 2 | 2 | 0 |
+| `ABBREVIATED_NOTHING_RETURN_TYPE` | 1 | 1 | 0 |
+| `ABSENCE_OF_PRIMARY_CONSTRUCTOR_FOR_VALUE_CLASS` | 2 | 2 | 0 |
+| `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 23 | 23 | 0 |
+| `ABSTRACT_DELEGATED_PROPERTY` | 2 | 2 | 0 |
+| `ABSTRACT_FUNCTION_IN_NON_ABSTRACT_CLASS` | 3 | 3 | 0 |
+| `ABSTRACT_FUNCTION_WITH_BODY` | 4 | 4 | 0 |
+| `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 69 | 69 | 0 |
+| `ABSTRACT_MEMBER_NOT_IMPLEMENTED_BY_ENUM_ENTRY` | 6 | 6 | 0 |
+| `ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS` | 8 | 8 | 0 |
+| `ABSTRACT_PROPERTY_IN_PRIMARY_CONSTRUCTOR_PARAMETERS` | 1 | 1 | 0 |
+| `ABSTRACT_PROPERTY_WITHOUT_TYPE` | 2 | 2 | 0 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 13.6% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 68 | 35.6% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` 4, `MISSING_CONSTRUCTOR_KEYWORD` 3 |
+| accepted | 26 | 17.1% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 41 | 27.0% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_IMPORT` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| environment | 13 | 6.8% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| nearby | 19 | 9.9% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 65 | 34.0% | `CANNOT_INFER_PARAMETER_TYPE` 12, `ARGUMENT_TYPE_MISMATCH` 11, `UNRESOLVED_REFERENCE` 11, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `FUNCTION_CALL_EXPECTED` 3 |
+| environment | 13 | 8.6% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| nearby | 18 | 11.8% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 54 | 35.5% | `ARGUMENT_TYPE_MISMATCH` 11, `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 6, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -150,13 +150,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 120 |
+| `unresolved reference: _` | 103 |
 | `type mismatch: inferred type is _ but _ was expected` | 84 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 50 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 46 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 21 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
-| `no function '_' takes n arguments` | 20 |
-| `unresolved or unsupported type: _` | 15 |
+| `unresolved or unsupported type: _` | 14 |
+| `no function '_' takes n arguments` | 11 |
 | `unresolved import: _` | 11 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 9 |
 | `cannot access '_': it is private to this in '_'` | 9 |
@@ -176,11 +176,11 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `no context argument for '_' found` | 4 |
 | `one type argument expected for class Outer.Inner` | 4 |
 | `a property with an explicit backing field cannot have accessors` | 3 |
-| `expected '_', found '_'` | 3 |
 | `named arguments are not allowed for non-Kotlin functions` | 3 |
 | `names _, __, ___, ..., can be used only in back-ticks ('_', '__', '___', ...)` | 3 |
 | `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 3 |
-| *69 more* | |
+| `there'_'B.Bn'` | 3 |
+| *68 more* | |
 
 ## Unsupported features
 
@@ -192,12 +192,12 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3555 of the 3667 warnings the tests expect (96.9%) on their lines, and 15 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3555 of the 3667 warnings the tests expect (96.9%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
 | `REDUNDANT_INTERPOLATION_PREFIX` | 355 | 355 | 0 |
-| `DEPRECATION` | 203 | 202 | 5 |
+| `DEPRECATION` | 203 | 202 | 3 |
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |

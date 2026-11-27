@@ -293,6 +293,11 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 			m.getterVisibility(d)
 		}
 		m.expr(d.Init, s)
+		if d.Setter != nil {
+			for _, p := range d.Setter.Params {
+				m.mods(p.Mods, tValueParam, tSetter, false)
+			}
+		}
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
 				m.body(acc.Body, acc.ExprBody, s, tFunction)

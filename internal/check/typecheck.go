@@ -413,7 +413,14 @@ func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject typ
 		c.bareSubject = subject
 	}
 	t, known, _ := c.bareArgs(cls, ref, subject)
+	own, hidden := localOwnParams(cls)
 	switch {
+	case known && hidden != nil && len(own) > 0 && ref == c.bareRef && ref != nil:
+		// A local class that captures its function's type parameters,
+		// whose bare type K2 doesn't infer (NO_TYPE_ARGUMENTS_ON_RHS).
+		star := types.GenericType(cls, append(slices.Repeat([]types.Arg{{V: types.Star}}, len(own)), hidden...))
+		c.errorf(ref.P, "%s expected for %s; use %s if you don't want to pass type arguments",
+			countArgs(len(own)), types.ClassType(cls), star)
 	case known || ref != c.bareRef || ref == nil || subject.IsParam():
 	case subject.K == types.Invalid:
 		// As kotlinc, whose subject of an error type gives no arguments.

@@ -256,7 +256,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	n := len(x.Args)
 	simple := n == len(ps)
 	for _, p := range ps {
-		simple = simple && !p.Vararg && p.Type.K != types.Invalid
+		simple = simple && !p.Vararg
 	}
 	for _, a := range x.Args {
 		simple = simple && !isSpread(a)
@@ -267,7 +267,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	amap := make([]int, n)
 	limit, positional := len(ps), n
 	if x.Trailing() && n > 0 && len(ps) > 0 {
-		if ps[len(ps)-1].Type.K == types.Invalid || ps[len(ps)-1].Vararg {
+		if ps[len(ps)-1].Vararg {
 			// A trailing lambda isn't a vararg's argument
 			// (VARARG_OUTSIDE_PARENTHESES, see arityError).
 			return nil, false
@@ -277,7 +277,9 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	}
 	pi := 0
 	for i := range positional {
-		if pi >= limit || ps[pi].Type.K == types.Invalid || isSpread(x.Args[i]) && !ps[pi].Vararg {
+		// A parameter of a type that couldn't be resolved takes any
+		// argument, as K2's error type does.
+		if pi >= limit || isSpread(x.Args[i]) && !ps[pi].Vararg {
 			return nil, false
 		}
 		amap[i] = pi
@@ -983,6 +985,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
 			c.noContextArg(x.P, noCtx)
+			if ensureFun(noCtx); noCtx.Resolved && !noCtx.Ret.HasParams() && !noCtx.Ret.HasVars() {
+				// As K2, the call has its function's type all the same,
+				// for the code around it: run { f() } is no less a T.
+				c.args(x, nil)
+				return noCtx.Ret
+			}
 		case unsupported && c.javaMissingClass(x, cands):
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)

@@ -151,6 +151,10 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindTYPE_PARAMETER_LIST:
+			if seenName && !tpl.Valid() {
+				// As kc's parser: fun f<T>().
+				l.errorLater(l.pos(c), "type parameters must be placed before the name of the function")
+			}
 			tpl = c
 		case psi.KindTYPE_REFERENCE:
 			switch {
@@ -361,15 +365,12 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 			param.Type = l.typeRef(t)
 		}
 		if mods := child(vp, psi.KindMODIFIER_LIST); mods.Valid() {
-			for _, k := range kids(mods) {
-				if k.NumericKind() == psi.KindANNOTATION_ENTRY {
-					param.Annotations = append(param.Annotations, l.annotation(k))
-				} else if k.NumericKind() == psi.KindANNOTATION {
-					param.Annotations = append(param.Annotations, l.bracketAnnotations(k)...)
-				} else {
-					l.unexpected(k)
-				}
-			}
+			// The checker reports the modifiers a setter's parameter can't
+			// have, as kc's parser.
+			pm := l.modifiers(mods)
+			syntax.NoContexts(&pm, "value parameters", l)
+			param.Annotations, param.Vararg, param.Mods = pm.Annotations, pm.Vararg, pm.Written
+			param.Noinline, param.Crossinline = pm.Noinline, pm.Crossinline
 		}
 		fd.Params = []*syntax.Param{param}
 		if ret.Valid() {
@@ -473,9 +474,15 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	}
 	cd.TypeParams = l.typeParams(child(n, psi.KindTYPE_PARAMETER_LIST))
 	if pc := child(n, psi.KindPRIMARY_CONSTRUCTOR); pc.Valid() {
-		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
+		ml := child(pc, psi.KindMODIFIER_LIST)
+		cd.CtorMods = l.modifiers(ml)
 		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
-		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
+		ps := child(pc, psi.KindVALUE_PARAMETER_LIST)
+		if ml.Valid() && ps.Valid() && !has(pc, psi.KindCONSTRUCTOR_KEYWORD) {
+			// As kc's parser: class A private (x: Int).
+			l.errorLater(l.pos(ml), "use the 'constructor' keyword after the modifiers of the primary constructor")
+		}
+		if ps.Valid() {
 			cd.HasPrimary, cd.WrittenPrimary = true, true
 			cd.CtorParams = l.ctorParams(ps)
 		}

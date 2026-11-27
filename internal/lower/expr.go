@@ -1066,6 +1066,11 @@ func (l *lowerer) whenEntry(w *syntax.When, e psi.NodeRef) *syntax.WhenBranch {
 		default:
 			continue
 		}
+		if len(br.Conds) > 0 && w.Subject == nil {
+			if comma := prev(c); comma.NumericKind() == psi.KindCOMMA {
+				l.errorLater(l.pos(comma), "%s", syntax.WhenCommaMsg)
+			}
+		}
 		br.Conds = append(br.Conds, wc)
 	}
 	body := exprAfter(e, psi.KindARROW)
@@ -1121,6 +1126,11 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 				l.failAt(l.end(c), "expected a name")
 			}
 			ct := &syntax.Catch{P: l.pos(c), Name: ident(child(p, psi.KindIDENTIFIER))}
+			if k := child(p, psi.KindVAL_KEYWORD); k.Valid() {
+				l.errorLater(l.pos(k), "'val' on catch parameter is not allowed")
+			} else if k := child(p, psi.KindVAR_KEYWORD); k.Valid() {
+				l.errorLater(l.pos(k), "'var' on catch parameter is not allowed")
+			}
 			if m := child(p, psi.KindMODIFIER_LIST); m.Valid() {
 				for _, a := range kids(m) {
 					switch a.NumericKind() {
