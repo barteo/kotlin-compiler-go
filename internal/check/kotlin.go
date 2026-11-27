@@ -724,7 +724,7 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if !raw {
 		cls = t.arityMismatch(cls, kt)
 	}
-	if len(kt.Args) == 0 || raw {
+	if len(kt.Args) == 0 && !outerArgs(kt) || raw {
 		// A non-generic class, or a raw Java type.
 		return nullable(types.ClassType(cls)), true
 	}
@@ -763,6 +763,17 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		r = r.WithContexts(kt.Contexts)
 	}
 	return nullable(r), true
+}
+
+// outerArgs reports whether a type of an inner class has its outer
+// classes' type arguments: Outer<S>.Inner.
+func outerArgs(kt *kmeta.Type) bool {
+	for o := kt.Outer; o != nil; o = o.Outer {
+		if len(o.Args) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // arityMismatch returns cls, the class kt names, or a stand-in of its name
@@ -1585,13 +1596,20 @@ func (t *classTable) companionFields(name string) (map[string]*kmeta.Type, map[s
 	if err != nil {
 		return nil, nil
 	}
+	return fieldProps(kc), accessorFields(kc)
+}
+
+// fieldProps returns the types of a class's properties that are fields
+// without a getter, its const and @JvmField properties, by their field
+// names.
+func fieldProps(kc *kmeta.Class) map[string]*kmeta.Type {
 	m := map[string]*kmeta.Type{}
 	for _, p := range kc.Props {
 		if p.Getter == nil && p.Field != nil && p.Recv == nil && len(p.TypeParams) == 0 {
 			m[p.Field.Name] = p.Type
 		}
 	}
-	return m, accessorFields(kc)
+	return m
 }
 
 // accessorFields returns the names of the fields of a class's properties
@@ -2050,13 +2068,20 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	}
 	if k := kc.Kind(); k == kmeta.KindObject || k == kmeta.KindCompanion && builtinCompanions[cls.Name] {
 		// An object's const and @JvmField properties are its public static
-		// fields: IntCompanionObject.MAX_VALUE.
-		accessors := accessorFields(kc)
+		// fields, of the types its metadata gives them:
+		// IntCompanionObject.MAX_VALUE.
+		props, accessors := fieldProps(kc), accessorFields(kc)
 		for _, fd := range info.Fields {
 			if fd.Access&classfile.AccPublic == 0 || fd.Access&classfile.AccStatic == 0 || fd.Access&classfile.AccSynthetic != 0 || fd.Name == "INSTANCE" || accessors[fd.Name] {
 				continue
 			}
-			if ft, ok := t.fieldType(fd.Desc); ok && ft.K != types.Unit {
+			ft, ok := t.fieldType(fd.Desc)
+			if kt := props[fd.Name]; kt != nil {
+				if pt, pok := t.ktype(kt, tscope{}); pok {
+					ft, ok = pt, true
+				}
+			}
+			if ok && ft.K != types.Unit {
 				cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft, Kind: types.Static, Owner: cls, Resolved: true,
 					Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0}
 			}
