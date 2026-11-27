@@ -1092,9 +1092,14 @@ type For struct {
 	Names []string   // for ((a, b) in xs): the names of a destructuring declaration
 	Types []*TypeRef // and their types, nil where omitted
 	Type  *TypeRef   // for (x: T in xs): the variable's type, nil if omitted
-	Sym   *types.VarSym
-	Range Expr // *Binary with RANGE, RANGE_LT, UNTIL, DOWN_TO or STEP, or a collection
-	Body  *Block
+	// Annotations are the variable's, for (@A x in xs), and Entries
+	// those of the names of a destructuring declaration, nil where there
+	// are none. The checker checks them; class files don't keep them.
+	Annotations []Annotation
+	Entries     [][]Annotation
+	Sym         *types.VarSym
+	Range       Expr // *Binary with RANGE, RANGE_LT, UNTIL, DOWN_TO or STEP, or a collection
+	Body        *Block
 
 	// A loop over a collection calls Range's iterator(), and the
 	// iterator's hasNext() and next(). Iter is nil for a range, and for

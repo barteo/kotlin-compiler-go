@@ -107,6 +107,12 @@ func (lx *lexer) advance(n int) {
 	}
 }
 
+// afterAt reports whether the last token is an @ right before p.
+func (lx *lexer) afterAt(p Pos) bool {
+	n := len(lx.toks)
+	return n > 0 && lx.toks[n-1].Kind == AT && lx.toks[n-1].Pos == Pos{p.Line, p.Col - 1}
+}
+
 func (lx *lexer) emit(k Kind, p Pos, text string) {
 	lx.toks = append(lx.toks, Token{Kind: k, Pos: p, Text: text})
 }
@@ -281,8 +287,9 @@ func (lx *lexer) next() {
 		word := lx.src[start:lx.off]
 		k, ok := keywords[word]
 		switch {
-		case !ok && lx.peekByte(0) == '@':
-			// A label: loop@ for (...), lit@{ ... }.
+		case !ok && lx.peekByte(0) == '@' && !lx.afterAt(p):
+			// A label: loop@ for (...), lit@{ ... }, but not the name of
+			// an annotation followed by another: @A@B.
 			lx.advance(1)
 			if strings.Trim(word, "_") == "" {
 				lx.errorf(p, "names _, __, ___, ... are reserved in Kotlin")

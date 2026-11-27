@@ -439,7 +439,7 @@ func (l *lowerer) annotation(n psi.NodeRef) syntax.Annotation {
 		}
 	}
 	if args := child(n, psi.KindVALUE_ARGUMENT_LIST); args.Valid() {
-		if pv := args.PreviousSibling(); pv.Valid() && pv.IsTrivia() {
+		if pv := args.PreviousSibling(); pv.Valid() && pv.IsTrivia() && !onType(n) {
 			l.fail(args, "unexpected '('")
 		}
 		a.Args = l.annotationArgs(args)
@@ -449,6 +449,17 @@ func (l *lowerer) annotation(n psi.NodeRef) syntax.Annotation {
 	l.suppressShadowed = l.suppressShadowed || sh
 	l.suppressDSL = l.suppressDSL || dsl
 	return a
+}
+
+// onType reports whether annotation entry n is on a type, where kotlinc
+// takes arguments after a space: @A () @B () -> Unit is @A() on @B () ->
+// Unit.
+func onType(n psi.NodeRef) bool {
+	m := n.Parent()
+	if m.NumericKind() == psi.KindANNOTATION { // @[A B]
+		m = m.Parent()
+	}
+	return m.NumericKind() == psi.KindMODIFIER_LIST && m.Parent().NumericKind() == psi.KindTYPE_REFERENCE
 }
 
 // segments returns the REFERENCE_EXPRESSIONs of a USER_TYPE's names, in

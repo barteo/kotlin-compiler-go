@@ -473,13 +473,14 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.While:
 		return c.while(s)
 	case *syntax.For:
+		c.localAnnotations(s.Annotations, localVarSite)
 		if len(s.Names) > 0 && s.Var == "" {
 			// for ((k, v) in m) is for (e in m) { val (k, v) = e }.
 			c.temps++
 			s.Var = fmt.Sprintf("<element%d>", c.temps)
 			id := &syntax.Ident{Name: s.Var}
 			id.P = s.P
-			d := &syntax.Destructure{P: s.P, Names: s.Names, Types: s.Types, Init: id}
+			d := &syntax.Destructure{P: s.P, Names: s.Names, Types: s.Types, Annotations: s.Entries, Init: id}
 			s.Body.Stmts = append([]syntax.Stmt{d}, s.Body.Stmts...)
 		}
 		elem := types.IntType

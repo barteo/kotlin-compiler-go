@@ -895,12 +895,25 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 	}
 	if m := child(n, psi.KindMODIFIER_LIST); m.Valid() {
 		// context(a: A) fun () = a: an anonymous function with context
-		// parameters.
-		cs := kids(m)
-		if label != "" || len(cs) != 1 || cs[0].NumericKind() != psi.KindCONTEXT_PARAMETER_LIST {
-			l.unexpected(m)
+		// parameters; @A fun () {}: an annotated one, which psi takes as
+		// a local function's modifiers.
+		as := l.annotationsOf(m)
+		for _, c := range kids(m) {
+			switch c.NumericKind() {
+			case psi.KindANNOTATION_ENTRY, psi.KindANNOTATION:
+			case psi.KindCONTEXT_PARAMETER_LIST:
+				if label != "" || lam.AnonCtx != nil {
+					l.unexpected(m)
+				}
+				lam.P, lam.AnonCtx = l.pos(c), l.contextParams(c)
+			default:
+				l.unexpected(m)
+			}
 		}
-		lam.P, lam.AnonCtx = l.pos(m), l.contextParams(cs[0])
+		for _, a := range as {
+			syntax.AnnotateLambda(lam, a)
+		}
+		syntax.Annotate(&l.annotated, lam, as)
 	}
 	if tps := child(n, psi.KindTYPE_PARAMETER_LIST); tps.Valid() {
 		// As kotlinc, the function is kept, without them.

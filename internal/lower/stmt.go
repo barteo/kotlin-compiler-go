@@ -283,10 +283,16 @@ func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {
 			l.failAt(l.end(n), "expected a name")
 		}
 		if m := child(vp, psi.KindMODIFIER_LIST); m.Valid() {
-			l.unexpected(m)
+			// Only annotations: for (@A x in xs).
+			for _, c := range kids(m) {
+				if k := c.NumericKind(); k != psi.KindANNOTATION_ENTRY && k != psi.KindANNOTATION {
+					l.unexpected(m)
+				}
+			}
+			f.Annotations = l.annotationsOf(m)
 		}
 		if d := child(vp, psi.KindDESTRUCTURING_DECLARATION); d.Valid() {
-			f.Names, f.Types = l.destructuringNames(d)
+			f.Names, f.Types, f.Entries = l.destructuringEntries(d)
 		} else {
 			f.Var = ident(child(vp, psi.KindIDENTIFIER))
 			if t := child(vp, psi.KindTYPE_REFERENCE); t.Valid() {
