@@ -549,6 +549,9 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 				all[i] = built.files[i]
 				for _, f := range all[i] {
 					renumber(&f.Symbol)
+					// Into a new slice: a wrapper's fact shares its inner
+					// expression's.
+					f.LambdaParameters = slices.Clone(f.LambdaParameters)
 					for k := range f.LambdaParameters {
 						renumber(&f.LambdaParameters[k])
 					}

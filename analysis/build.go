@@ -278,7 +278,7 @@ type builder struct {
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec, facts: map[ElementID]*Fact{},
 		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
-	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
+	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}, types: newTypeTable()}
 	b.snapAt = make(map[psi.SnapshotID]*psi.Snapshot, len(snaps))
 	for _, s := range snaps {
 		b.snapAt[s.ID()] = s
@@ -545,7 +545,7 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 			break
 		}
 		if k == "TYPE_REFERENCE" {
-			b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: copyType(ct), ImportableName: f.ImportableName})
+			b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: ct, ImportableName: f.ImportableName})
 			break
 		}
 	}
@@ -1088,7 +1088,8 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	if !ok || fe == el {
 		return
 	}
-	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin, ImplicitReceiver: copyID(f.ImplicitReceiver)}
+	// The call is shared: no fact's call changes once it is set.
+	cf := Fact{Role: "reference", Symbol: s, Call: f.Call, Builtin: f.Builtin, ImplicitReceiver: f.ImplicitReceiver}
 	if x.Sym != nil {
 		cf.Deprecated = deprecated(symDeprecation(x.Sym))
 	}
@@ -1219,7 +1220,7 @@ func (b *builder) negated() {
 			if !ok || src.Type == nil {
 				return
 			}
-			cp := copyFact(*src)
+			cp := *src // what it points to is shared: it doesn't change once set
 			cp.Element = ElementID{sid, id}
 			b.negatedAt[lit] = cp.Element
 			// -128 as a Byte is still Int.unaryMinus of 128.
@@ -1797,7 +1798,7 @@ func (b *builder) wrappers() {
 				continue
 			}
 			el := ElementID{s.ID(), id}
-			cp := copyFact(*src)
+			cp := *src // what it points to is shared: it doesn't change once set
 			cp.Element = el
 			merge(b.fact(el), cp)
 		}
@@ -1851,7 +1852,7 @@ func (b *builder) annotations() {
 			}
 			b.set(ElementID{sid, ref.ID()}, Fact{Role: "type", Type: ct})
 			if u := ref.ChildKind(psi.KindUSER_TYPE); u.Valid() {
-				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: copyType(ct)})
+				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: ct})
 			}
 		}
 	}
@@ -2090,7 +2091,7 @@ func (b *builder) suspendCall(l *syntax.Lambda, el ElementID) {
 	call := ElementID{el.Snapshot, n.ID()}
 	b.set(call, Fact{Role: "expression", Type: t, Call: c, Builtin: c.Name})
 	if callee := n.ChildKind(psi.KindREFERENCE_EXPRESSION); callee.Valid() {
-		b.set(ElementID{el.Snapshot, callee.ID()}, Fact{Role: "reference", Call: copyCall(c), Builtin: c.Name, ImportableName: c.Name})
+		b.set(ElementID{el.Snapshot, callee.ID()}, Fact{Role: "reference", Call: c, Builtin: c.Name, ImportableName: c.Name})
 	}
 }
 

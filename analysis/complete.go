@@ -141,6 +141,14 @@ func (b *builder) completion(p *check.Probe) *Completion {
 		}
 		c.Items = append(c.Items, ci)
 	}
+	// The Completion is the caller's: none of the interned types.
+	c.Receiver, c.Expected = copyType(c.Receiver), copyType(c.Expected)
+	for i := range c.Items {
+		it := &c.Items[i]
+		it.Type = copyType(it.Type)
+		it.Call = copyCall(it.Call)
+		it.Constructors = copyCalls(it.Constructors)
+	}
 	return c
 }
 
