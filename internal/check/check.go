@@ -257,11 +257,15 @@ type Checker struct {
 	// functions, returns, implies, callsInPlace and the like, which are
 	// @ExperimentalContracts too.
 	contractCalls map[*syntax.Block][]syntax.Pos
-	classes       []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases       []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps         int                     // temporaries named so far, for unique names
-	inlineCalls   []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls   []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	classes       []*syntax.ClassDecl // the file's classes, nested ones too
+	// suspendReified are the calls of the program's inline functions
+	// with a suspend function type in a reified type argument, which
+	// typeOfSuspend checks.
+	suspendReified []*syntax.Call
+	aliases        []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps          int                     // temporaries named so far, for unique names
+	inlineCalls    []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls    []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
@@ -1050,6 +1054,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.checkExplicitAPI()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
+		c.typeOfSuspend()
 		if !opts.Signatures {
 			c.localWarnings()
 		}

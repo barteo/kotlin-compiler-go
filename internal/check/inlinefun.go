@@ -431,6 +431,9 @@ func hasReified(f *types.FunSym) bool {
 // not type parameters, which are erased, unless reified in turn.
 func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, s *system) {
 	x.Reified = c.reifiedTypes(x.P, f, sub, s, x.TypeArgs)
+	if _, ok := f.Decl.(*syntax.FunDecl); ok && slices.ContainsFunc(x.Reified, hasSuspendFunc) {
+		c.suspendReified = append(c.suspendReified, x)
+	}
 	c.serializerOf(x, f)
 	c.reifiedSerializers(x, f)
 }
@@ -684,6 +687,57 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 
 // hasSuspendFunc reports whether t is or has as a type argument a suspend
 // function type.
+// typeOfSuspend reports the calls of the program's inline functions that
+// pass a suspend function type for a reified type parameter that reaches
+// typeOf, there or through other inline functions: f<suspend () -> Unit>()
+// for inline fun <reified X> f() = typeOf<List<X>>(), as kotlinc's
+// backend does (TYPEOF_SUSPEND_TYPE). The bodies are all checked.
+func (c *Checker) typeOfSuspend() {
+	for _, x := range c.suspendReified {
+		for i, t := range x.Reified {
+			if i < len(x.Sym.TypeParams) && x.Sym.TypeParams[i].Reified && hasSuspendFunc(t) && reachesTypeOf(x.Sym, x.Sym.TypeParams[i], map[*types.TypeParamSym]bool{}) {
+				c.errorf(x.P, "suspend function types can't be used in 'typeOf'")
+				break
+			}
+		}
+	}
+}
+
+// reachesTypeOf reports whether the program's inline function f passes
+// its reified type parameter tp to typeOf, or to another such parameter
+// that does.
+func reachesTypeOf(f *types.FunSym, tp *types.TypeParamSym, seen map[*types.TypeParamSym]bool) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	if !ok || seen[tp] {
+		return false
+	}
+	seen[tp] = true
+	found := false
+	visit := func(n any) bool {
+		x, ok := n.(*syntax.Call)
+		if found || !ok || x.Sym == nil {
+			return !found
+		}
+		for j, t := range x.Reified {
+			if j >= len(x.Sym.TypeParams) || !mentionsParam(t, tp) {
+				continue
+			}
+			if x.Sym.Builtin == types.TypeOf || x.Sym.TypeParams[j].Reified && reachesTypeOf(x.Sym, x.Sym.TypeParams[j], seen) {
+				found = true
+				return false
+			}
+		}
+		return true
+	}
+	if d.Body != nil {
+		syntax.Inspect(d.Body, visit)
+	}
+	if d.ExprBody != nil {
+		syntax.Inspect(d.ExprBody, visit)
+	}
+	return found
+}
+
 func hasSuspendFunc(t types.Type) bool {
 	if t.IsSuspendFunc() {
 		return true
