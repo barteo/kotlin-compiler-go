@@ -122,8 +122,11 @@ func funcParts(t types.Type) ([]types.Type, types.Type, bool) {
 			ps[i] = a.T
 		}
 	}
+	// A result that is an in projection, Function0<in Int>, can only be
+	// written (CONFLICTING_PROJECTION): as K2, a lambda still returns
+	// its type.
 	ret := t.A.Get(n).T
-	if v := t.A.Get(n).V; v == types.In || v == types.Star {
+	if t.A.Get(n).V == types.Star {
 		ret = types.AnyType.Nullable()
 	}
 	return ps, ret, true
@@ -762,6 +765,14 @@ func (c *Checker) lambdaBody(b *syntax.Block, want types.Type) types.Type {
 	t := c.block(b, want, valueUsed)
 	if !valueUsed && t.K != types.Nothing {
 		return types.UnitType
+	}
+	if valueUsed && t.K == types.Nothing {
+		// A last statement after a jump whose value has an error type
+		// is the lambda's result, as K2's, which infers nothing from
+		// it: run { return; x.unresolved() }.
+		if xt := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt).X.Type(); xt.K == types.Invalid {
+			return xt
+		}
 	}
 	return t
 }
@@ -1565,8 +1576,8 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 // cyclicParamType is the type samTarget gives a lambda's parameter for
 // which a cycle of star-projected bounds leaves none (see
 // starBoundCycle): an invalid type, which no other check makes definitely
-// non-null, for checkLambda to report.
-var cyclicParamType = types.Type{K: types.Invalid, D: true}
+// non-null, for checkLambda to report. B tells it from errorNotNull.
+var cyclicParamType = types.Type{K: types.Invalid, D: true, B: true}
 
 // starBoundCycle reports whether type parameter p of class type t's
 // class is star-projected in t, and its first bound, through other

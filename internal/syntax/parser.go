@@ -3709,11 +3709,14 @@ func (p *parser) parseWhen() Expr {
 }
 
 // Parenthesized marks x, a safe call a?.b or a?.f() or an index of one,
-// a?.b[i], as written in parentheses (see exprBase.Paren).
+// a?.b[i], as written in parentheses (see exprBase.Paren), and an
+// identifier or a member access, which a call then invokes.
 func Parenthesized(x Expr) {
 	switch x := x.(type) {
+	case *Ident:
+		x.Grouped = true
 	case *Member:
-		x.Paren, x.Written = x.Safe, false
+		x.Paren, x.Written, x.Grouped = x.Safe, false, true
 	case *Call:
 		x.Paren = true
 	case *Index:

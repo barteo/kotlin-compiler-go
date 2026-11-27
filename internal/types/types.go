@@ -919,6 +919,10 @@ type ClassSym struct {
 	// JavaOuter is set on a protected or private nested Java class that
 	// isn't inner, whose Outer isn't: the class it is nested in.
 	JavaOuter *ClassSym
+	// SourceOuter is set on a nested class of the program's Java sources
+	// that isn't inner, whose Outer isn't: the class it is nested in,
+	// whose supertypes a Kotlin supertype written through it depends on.
+	SourceOuter *ClassSym
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

@@ -452,6 +452,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 			outer = o.TypeParams
 		}
 	}
+	if info.Inner != nil && info.Inner.Outer != "" && cls.Outer == nil && t.cp != nil && t.cp.IsSource(cls.Name) {
+		cls.SourceOuter = t.class(info.Inner.Outer)
+	}
 	if info.Sig != "" || len(outer) > 0 {
 		t.classSignature(cls, info.Sig, outer, info.BoundAnnotations)
 	}

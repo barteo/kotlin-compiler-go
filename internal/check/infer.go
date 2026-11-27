@@ -34,7 +34,12 @@ type tvar struct {
 	// coercedUnits counts the lower bounds Unit that empty lambdas gave,
 	// which aren't input types (see onlyInputOK).
 	coercedUnits int
-	fixed        bool
+	// inCapt are the lower bounds that are only the types of arguments
+	// with an in projection among their type arguments, Inv<in Number>
+	// for T of contains(element: T): in K2 the argument's type is
+	// captured, which is never what the call infers (see onlyInputOK).
+	inCapt []types.Type
+	fixed  bool
 	// star is set when the variable stands for a captured star
 	// projection, as T in KClass<T>.java for a KClass<*>: without other
 	// bounds, it is its declared bound.
@@ -174,6 +179,10 @@ type system struct {
 	// argParams is set while an argument is constrained by its
 	// parameter's type (see tvar.argUp).
 	argParams int
+	// inArgs is set while an argument whose type has an in projection
+	// among its type arguments is constrained by its parameter's type
+	// (see tvar.inCapt).
+	inArgs int
 	// strictArgs is set while an argument is constrained by a parameter's
 	// type in which explicit type arguments are not flexible (see
 	// tvar.strictArg).
@@ -282,6 +291,7 @@ func (s *system) clone() *system {
 		c.flexLower = slices.Clip(tv.flexLower)
 		c.argUp, c.argTopUp = slices.Clip(tv.argUp), slices.Clip(tv.argTopUp)
 		c.strictArg = slices.Clip(tv.strictArg)
+		c.inCapt = slices.Clone(tv.inCapt)
 		// declUp is edited in place (see addUpper), and boundUp appended to:
 		// a clone that shared them would change the system it is a copy of.
 		c.declUp = slices.Clone(tv.declUp)
@@ -710,6 +720,13 @@ func (s *system) unfixedVar(t types.Type) *tvar {
 }
 
 func (s *system) addLower(tv *tvar, t types.Type) {
+	if s.inArgs > 0 && s.nest == 0 {
+		if !slices.Contains(tv.lower, t) {
+			tv.inCapt = append(tv.inCapt, t)
+		}
+	} else {
+		tv.inCapt = slices.DeleteFunc(tv.inCapt, func(c types.Type) bool { return c == t })
+	}
 	for _, l := range tv.lower {
 		if l == t {
 			// Passed for a type that isn't flexible too.

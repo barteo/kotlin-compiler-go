@@ -65,21 +65,19 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21873 of 22025 expected errors (99.3%) on their lines.
+kc reports 21896 of 22025 expected errors (99.4%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2553 | 2516 | 37 |
-| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1470 | 21 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 624 | 11 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2521 | 32 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1472 | 19 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 626 | 9 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
-| `RETURN_TYPE_MISMATCH` | 418 | 412 | 6 |
-| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 58 | 3 |
+| `RETURN_TYPE_MISMATCH` | 418 | 413 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 54 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 2 |
-| `CANNOT_CHECK_FOR_ERASED` | 27 | 25 | 2 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
 | `INVISIBLE_REFERENCE` | 525 | 523 | 2 |
@@ -87,19 +85,14 @@ kc reports 21873 of 22025 expected errors (99.3%) on their lines.
 | `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
 | `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 157 | 2 |
-| `REPEATED_ANNOTATION` | 69 | 67 | 2 |
 | `RETURN_NOT_ALLOWED` | 63 | 61 | 2 |
-| `TYPEOF_SUSPEND_TYPE` | 4 | 2 | 2 |
 | `TYPE_ARGUMENTS_NOT_ALLOWED` | 11 | 9 | 2 |
 | `TYPE_MISMATCH` | 33 | 31 | 2 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 161 | 2 |
-| `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 0 | 1 |
 | `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 113 | 1 |
-| `CYCLIC_INHERITANCE_HIERARCHY` | 45 | 44 | 1 |
+| `CANNOT_CHECK_FOR_ERASED` | 27 | 26 | 1 |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
-| `FUNCTION_CALL_EXPECTED` | 29 | 28 | 1 |
-| `INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE` | 7 | 6 | 1 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 13 | 1 |
 | `ITERATOR_MISSING` | 10 | 9 | 1 |
 | `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 3 | 1 |
@@ -109,13 +102,12 @@ kc reports 21873 of 22025 expected errors (99.3%) on their lines.
 | `NO_SET_METHOD` | 11 | 10 | 1 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 174 | 1 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 154 | 1 |
-| `PRIVATE_CLASS_MEMBER_FROM_INLINE` | 9 | 8 | 1 |
+| `REPEATED_ANNOTATION` | 69 | 68 | 1 |
 | `TYPEALIAS_EXPANSION_CAPTURES_OUTER_TYPE_PARAMETERS` | 6 | 5 | 1 |
 | `UNINITIALIZED_VARIABLE` | 213 | 212 | 1 |
 | `UNSAFE_CALL` | 525 | 524 | 1 |
 | `UNSUPPORTED` | 233 | 232 | 1 |
 | `VAL_REASSIGNMENT` | 231 | 230 | 1 |
-| `WRONG_ANNOTATION_TARGET` | 403 | 402 | 1 |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 97 | 96 | 1 |
 | `ABBREVIATED_NOTHING_PROPERTY_TYPE` | 2 | 2 | 0 |
 | `ABBREVIATED_NOTHING_RETURN_TYPE` | 1 | 1 | 0 |
@@ -129,6 +121,14 @@ kc reports 21873 of 22025 expected errors (99.3%) on their lines.
 | `ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS` | 8 | 8 | 0 |
 | `ABSTRACT_PROPERTY_IN_PRIMARY_CONSTRUCTOR_PARAMETERS` | 1 | 1 | 0 |
 | `ABSTRACT_PROPERTY_WITHOUT_TYPE` | 2 | 2 | 0 |
+| `ABSTRACT_PROPERTY_WITH_GETTER` | 10 | 10 | 0 |
+| `ABSTRACT_PROPERTY_WITH_INITIALIZER` | 14 | 14 | 0 |
+| `ABSTRACT_PROPERTY_WITH_SETTER` | 9 | 9 | 0 |
+| `ABSTRACT_SUPER_CALL` | 19 | 19 | 0 |
+| `ACCESSOR_FOR_DELEGATED_PROPERTY` | 6 | 6 | 0 |
+| `ACCIDENTAL_OVERRIDE` | 56 | 56 | 0 |
+| `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 1 | 0 |
+| `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 2 | 2 | 0 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one: *accepted*, it compiled 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 17.1% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 41 | 27.0% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_IMPORT` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3 |
+| accepted | 26 | 20.2% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| syntax-error | 41 | 31.8% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_IMPORT` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3 |
 | module-not-compiled | 0 | 0.0% |  |
-| environment | 13 | 8.6% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| nearby | 18 | 11.8% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 54 | 35.5% | `ARGUMENT_TYPE_MISMATCH` 11, `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 6, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` 3 |
+| environment | 13 | 10.1% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| nearby | 18 | 14.0% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 31 | 24.0% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 3, `OVERLOAD_RESOLUTION_AMBIGUITY` 2 |
 
 ## Errors kotlinc doesn't report
 
@@ -173,13 +173,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `no context argument for '_' found` | 4 |
 | `named arguments are not allowed for non-Kotlin functions` | 3 |
 | `names _, __, ___, ..., can be used only in back-ticks ('_', '__', '___', ...)` | 3 |
-| `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 3 |
 | `there'_'B.Bn'` | 3 |
 | `'_' annotation is applicable only to value classes` | 2 |
 | `conflicting overloads: _` | 2 |
 | `expected a name` | 2 |
 | `expected parameter of type _` | 2 |
 | `incompatible types Int and Nothing` | 2 |
+| `multiple vararg-parameters are prohibited` | 2 |
 | *57 more* | |
 
 ## Unsupported features

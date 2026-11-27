@@ -1198,7 +1198,8 @@ func (c *Checker) notNullOf(x syntax.Expr) []narrow {
 // errorNotNull is an error type whose members are reported unresolved
 // (see reportedError): K2's ConeErrorType & Any of an error type
 // smart-cast to non-null, or an error type of another diagnostic than an
-// unresolved name's, as that of Outer.Inner() without an outer instance.
+// unresolved name's, as that of Outer.Inner() without an outer instance
+// or of a written type that doesn't resolve.
 var errorNotNull = types.Type{K: types.Invalid, D: true}
 
 // reportedError reports whether t is an error type whose members are

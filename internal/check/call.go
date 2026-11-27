@@ -2560,15 +2560,26 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			}
 			continue
 		}
+		if inProjected(t) {
+			cd.sys.inArgs++
+		}
 		if c.plainArgs(x) {
 			cd.sys.argParams++
 			cd.sys.sub(t, p)
 			cd.sys.argParams--
-			continue
+		} else {
+			cd.sys.sub(t, p)
 		}
-		cd.sys.sub(t, p)
+		cd.sys.inArgs = 0
 	}
 	c.constrainContexts(cd, x)
+}
+
+// inProjected reports whether type t has an in projection among its own
+// type arguments, which an argument of type t is a capture of.
+func inProjected(t types.Type) bool {
+	t = t.Flex()
+	return t.K == types.Class && t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V == types.In })
 }
 
 // typeArgParam reports whether the type of cd's parameter for argument

@@ -257,11 +257,15 @@ type Checker struct {
 	// functions, returns, implies, callsInPlace and the like, which are
 	// @ExperimentalContracts too.
 	contractCalls map[*syntax.Block][]syntax.Pos
-	classes       []*syntax.ClassDecl     // the file's classes, nested ones too
-	aliases       []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
-	temps         int                     // temporaries named so far, for unique names
-	inlineCalls   []inlineCall            // calls among the program's inline functions, for cycles
-	inlineDecls   []*syntax.FunDecl       // the file's inline functions that are copied into callers
+	classes       []*syntax.ClassDecl // the file's classes, nested ones too
+	// suspendReified are the calls of the program's inline functions
+	// with a suspend function type in a reified type argument, which
+	// typeOfSuspend checks.
+	suspendReified []*syntax.Call
+	aliases        []*syntax.TypeAliasDecl // the file's typealiases, nested ones too
+	temps          int                     // temporaries named so far, for unique names
+	inlineCalls    []inlineCall            // calls among the program's inline functions, for cycles
+	inlineDecls    []*syntax.FunDecl       // the file's inline functions that are copied into callers
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
@@ -1050,6 +1054,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.checkExplicitAPI()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
+		c.typeOfSuspend()
 		if !opts.Signatures {
 			c.localWarnings()
 		}
@@ -1173,6 +1178,10 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	}
 	for _, c := range checkers {
 		c.resolveClassBounds()
+	}
+	// Before the parallel phase reads them.
+	for _, c := range checkers {
+		c.resolveAnnotationTargets()
 	}
 	for _, c := range checkers {
 		c.findCycles()
@@ -1427,7 +1436,9 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				} else {
 					c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
 				}
-				return types.InvalidType
+				// As in K2, the members of a value of the type are
+				// unresolved: c.isInstance(x) for a c: j.Class<T>.
+				return errorNotNull
 			}
 			if !c.usable(cls, ref.P) {
 				if cls.Missing || !cls.PackagePrivate {
@@ -1439,6 +1450,11 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				c.checkClassVisible(cls, ref.P)
 			}
 			c.u.typeUses.Store(ref, cls)
+			if c.hiddenOnly(ref.Name, cls) {
+				// As in K2, which finds no applicable classifier, the
+				// members of a value of the type are unresolved.
+				return errorNotNull
+			}
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {
@@ -1593,6 +1609,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
+	var extra []*syntax.TypeArg // written for hidden, by position
 	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 {
 		// A local class on a callable reference's left side, Local::f:
 		// kotlinc 2.4 wants type arguments for its own type parameters
@@ -1608,18 +1625,26 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		if len(ref.Args) != n {
 			c.errorf(ref.P, "%s expected for class %s", countArgs(n), cls.DisplayName())
-			return types.InvalidType
-		}
-		if n > len(ps) {
-			if c.refLHS && ref.ArgsP.Line > 0 {
-				// Its own arguments don't fit its own type parameters:
-				// kotlinc warns, as of misplaced ones (see lhsArgsWarning).
-				c.warnf(ref.ArgsP, "WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING",
-					"%s expected for '%s'. Try to use a lambda expression instead. This will become an error in language version 2.5. See https://youtrack.jetbrains.com/issue/KTLC-388.",
-					countArgs(len(ps)), classSymText(cls))
+			if len(ref.Args) < len(ps) {
+				return types.InvalidType
 			}
+		} else if n > len(ps) && c.refLHS && ref.ArgsP.Line > 0 {
+			// Its own arguments don't fit its own type parameters:
+			// kotlinc warns, as of misplaced ones (see lhsArgsWarning).
+			c.warnf(ref.ArgsP, "WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING",
+				"%s expected for '%s'. Try to use a lambda expression instead. This will become an error in language version 2.5. See https://youtrack.jetbrains.com/issue/KTLC-388.",
+				countArgs(len(ps)), classSymText(cls))
+		}
+		// The arguments after its own are those of the parameters it
+		// captures, in order, the rest stars, whether or not their number
+		// is right, as K2 has it: L<Int> is L<Int, *> for an L<T, U>.
+		if len(ref.Args) > len(ps) {
+			extra = ref.Args[len(ps):]
 			r := *ref
 			r.Args = ref.Args[:len(ps)]
+			if len(r.Args) == 0 {
+				r.Args = nil
+			}
 			ref = &r
 		}
 	}
@@ -1657,6 +1682,16 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.Type.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
 		}
 		c.projection(a, ps[i], cls)
+	}
+	if extra != nil {
+		hidden = slices.Clone(hidden)
+		for i := range hidden {
+			if i >= len(extra) || extra[i].Variance == types.Star {
+				hidden[i] = types.Arg{V: types.Star}
+				continue
+			}
+			hidden[i] = types.Arg{V: extra[i].Variance, T: c.resolveType(extra[i].Type)}
+		}
 	}
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {

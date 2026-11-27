@@ -1,6 +1,10 @@
 package check
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"slices"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // The standard library's @kotlin.internal.OnlyInputTypes, on T of
 // Iterable<T>.contains(element: T), Map<out K, V>.get(key: K) and
@@ -60,6 +64,12 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 				// expect {} of expect(block: () -> T) infers a Unit that
 				// no input has.
 				coerced--
+				continue
+			}
+			if i == 0 && slices.Contains(tv.inCapt, t) {
+				// The capture of an argument's in projection, which a
+				// common supertype never is: as K2, list.contains(x) for
+				// an x: Inv<in Number> of a List<Inv<Number>>.
 				continue
 			}
 			t = s.apply(t)

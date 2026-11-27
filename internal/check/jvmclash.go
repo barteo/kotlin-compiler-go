@@ -484,6 +484,9 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 		if m.private || m.field() {
 			continue
 		}
+		if m.fun != nil && !m.accessor() && !m.static && !m.synth && c.mixedOverrideClash(cls, m) {
+			continue
+		}
 		if !cls.Interface && !m.static && objectFinals[m.sig] {
 			c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 			continue
@@ -723,4 +726,85 @@ func jvmDesc(f *types.FunSym) string {
 		}
 	}
 	return memberDesc(f)
+}
+
+// erasedCollectionMethod reports whether f, a Java method, implements a
+// member of Kotlin's collections that takes an element or a key with a
+// parameter of type Object, which Kotlin sees as of that type:
+// contains(Object) of a Java class that implements Collection<String> is
+// its contains(String!) (see mapCollectionMembers).
+func erasedCollectionMethod(f *types.FunSym) bool {
+	switch f.Name {
+	case "contains", "remove", "indexOf", "lastIndexOf", "containsKey", "containsValue", "get":
+	default:
+		return false
+	}
+	return len(f.Params) == 1 && f.Params[0].Type.K != types.Any && strings.HasPrefix(jvmDesc(f), "(Ljava/lang/Object;)")
+}
+
+// mixedOverrideClash reports whether own function m of class cls, an
+// override, overrides both a method of the program's Java sources and an
+// open one of another JVM signature that implements the same member of a
+// Kotlin built-in type, which it reports: KA's contains(x: String) of
+// class KA : A(), for a Java class A implements Collection<String> with
+// contains(String) and contains(Object), or a get(index: Int) of a
+// CharSequence's with get(int) and charAt(int). kotlinc compiles one
+// method for both, which the JVM sees as overriding only one.
+func (c *Checker) mixedOverrideClash(cls *types.ClassSym, m *jvmMember) bool {
+	f := m.fun
+	if fd, ok := f.Decl.(*syntax.FunDecl); !ok || !fd.Override || cls.Interface {
+		return false
+	}
+	java := func(g *types.FunSym) bool {
+		return g.Decl == nil && !g.Static && !g.Private && g.Owner != nil && c.u.ext.javaSource(g.Owner)
+	}
+	var plain, special *types.FunSym
+	kind := "a function with erased parameters"
+	for _, g := range c.overridden(cls, f) {
+		switch {
+		case !java(g):
+		case erasedCollectionMethod(g):
+			if !g.Final {
+				special = g
+			}
+		case plain == nil:
+			plain = g
+		}
+	}
+	if plain == nil {
+		return false
+	}
+	if special == nil {
+		// The Java method of another name that implements f's member:
+		// CharSequence's get is charAt, MutableList's removeAt remove.
+		name, base, desc := "", "", ""
+		switch {
+		case len(f.Params) != 1 || f.Params[0].Type != types.IntType:
+		case f.Name == "get":
+			name, base, desc = "charAt", charSequence, "(I)C"
+		case f.Name == "removeAt":
+			name, base, desc = "remove", "java/util/List", "(I)"
+		}
+		if name == "" {
+			return false
+		}
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == cls || !c.u.ext.javaSource(s) || !c.isSubclassOf(s, base) {
+				return true
+			}
+			for _, g := range s.Methods[name] {
+				if java(g) && !g.Final && g.Owner == s && strings.HasPrefix(jvmDesc(g), desc) {
+					special = g
+				}
+			}
+			return special == nil
+		})
+		kind = "a renamed function"
+	}
+	if special == nil || special.JVM()+jvmDesc(special) == plain.JVM()+jvmDesc(plain) {
+		return false
+	}
+	c.errorf(m.pos, "this function accidentally overrides both '%s' defined in '%s' and %s '%s' defined in '%s' from JVM point of view because of mixed Java/Kotlin hierarchy",
+		plain.Name, plain.Owner.DisplayName(), kind, special.Name, special.Owner.DisplayName())
+	return true
 }

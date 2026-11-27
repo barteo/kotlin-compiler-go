@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
 // Classifiers of star imports.
@@ -111,7 +112,14 @@ func (c *Checker) starAmbiguity(name string, p syntax.Pos) bool {
 	if c.starFallback {
 		return false
 	}
-	if ks := c.starClassifiers(name); len(ks) > 1 {
+	// A class deprecated with level HIDDEN gives way to the others.
+	n := 0
+	for _, k := range c.starClassifiers(name) {
+		if !hiddenClass(k.cls) {
+			n++
+		}
+	}
+	if n > 1 {
 		c.errorf(p, "overload resolution ambiguity: %s is a classifier of more than one star import", name)
 		return true
 	}
@@ -190,4 +198,34 @@ func (c *Checker) starVisible(k classifier) bool {
 	}
 	cls.Ensure()
 	return !cls.Missing && (!cls.Private || cls.PackagePrivate && c.samePackage(cls) || cls.Internal && c.file.SuppressInvisible)
+}
+
+// hiddenOnly reports whether simple name name, which resolves to class
+// cls, does so only because every classifier the file's imports and
+// package give of it is a class deprecated with level HIDDEN, and there
+// are several: K2 finds none applicable. Within such a class, its name
+// is its own.
+func (c *Checker) hiddenOnly(name string, cls *types.ClassSym) bool {
+	if strings.Contains(name, ".") || !hiddenClass(cls) {
+		return false
+	}
+	for _, k := range []*types.ClassSym{c.cls, c.lookupCls} {
+		for ; k != nil; k = k.Outer {
+			if k == cls {
+				return false
+			}
+		}
+	}
+	seen := map[*types.ClassSym]bool{}
+	add := func(k *types.ClassSym) {
+		if hiddenClass(k) {
+			seen[k] = true
+		}
+	}
+	add(c.imports[name])
+	add(c.pkg.Classes[name])
+	for _, k := range c.starClassifiers1(name) {
+		add(k.cls)
+	}
+	return len(seen) > 1
 }

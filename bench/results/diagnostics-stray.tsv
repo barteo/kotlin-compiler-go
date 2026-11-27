@@ -311,8 +311,6 @@ tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMa
 tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMarkerWithTypealiasRecursion.kt:19	unresolved reference: zbar
 tests/resolve/dslMarker/threeImplicitReceivers2.kt	rejects invalid	threeImplicitReceivers2.kt:58	unresolved reference: x
 tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt:7	reference has a nullable type '(String.() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
-tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt:8	reference has a nullable type '(String.() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
-tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt:19	reference has a nullable type '(String.() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	rejects invalid	1.kt:14	unresolved reference: foo
 tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:19	unresolved reference: extensionProperty
 tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:31	unresolved reference: extensionProperty
