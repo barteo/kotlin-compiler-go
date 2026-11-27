@@ -375,6 +375,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 		t := c.value(r.X, noWant)
 		if t.K == types.Invalid {
+			if reportedError(t) {
+				c.errorf(p, "unresolved reference: %s", r.Name)
+			}
 			return nil, types.InvalidType, false
 		}
 		c.bindRef(r, t)

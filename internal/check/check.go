@@ -1427,7 +1427,9 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				} else {
 					c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
 				}
-				return types.InvalidType
+				// As in K2, the members of a value of the type are
+				// unresolved: c.isInstance(x) for a c: j.Class<T>.
+				return errorNotNull
 			}
 			if !c.usable(cls, ref.P) {
 				if cls.Missing || !cls.PackagePrivate {

@@ -661,8 +661,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A value of an error type has members without errors where K2
   reports some of them unresolved: an element of an array of such a
   type, or a property whose delegate has no `getValue`. (The members
-  of such a value smart-cast to non-null, or of an inner class
-  constructed without an outer instance, are reported.)
+  of such a value smart-cast to non-null, of a variable whose written
+  type doesn't resolve, or of an inner class constructed without an
+  outer instance, are reported.)
 - Where annotations are written isn't checked for Java annotations
   without `@Target` or from Java sources, nor whether they repeat on a
   property or with a use-site target, nor, for any annotation, for
