@@ -272,6 +272,13 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		return types.InvalidType
 	}
 	own := len(cls.TypeParams) - cls.OuterParams
+	if ref == c.bareRef && bareRef(ref) && (own > 0 || ref.Outer != nil || strings.Contains(ref.Name, ".")) && !inLocal(cls) {
+		// x is Inner, x as Outer.Inner.Inner2: a bare type, whose
+		// arguments, the outer classes' too, follow from x's type. Not
+		// in a local class, which K2 doesn't infer
+		// (NO_TYPE_ARGUMENTS_ON_RHS).
+		return c.bareType(cls, ref, c.bareSubject)
+	}
 	lhsOuter := c.refLHSOuter
 	c.refLHSOuter = false
 	defer func() { c.refLHSOuter = lhsOuter }()
@@ -574,4 +581,25 @@ func (c *Checker) aliasOuter(a *types.AliasSym, n *types.ClassSym) types.Type {
 func (c *Checker) aliasOuterFits(a *types.AliasSym, n *types.ClassSym, rt types.Type) bool {
 	ot := c.aliasOuter(a, n)
 	return ot.K == types.Invalid || c.subtype(rt.NonNull(), ot)
+}
+
+// bareRef reports whether type ref is written without type arguments,
+// its outer classes too: Outer.Inner.
+func bareRef(ref *syntax.TypeRef) bool {
+	for r := ref; r != nil; r = r.Outer {
+		if r.Args != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// inLocal reports whether cls is a local class or in one.
+func inLocal(cls *types.ClassSym) bool {
+	for k := cls; k != nil; k = k.Outer {
+		if k.Local {
+			return true
+		}
+	}
+	return false
 }

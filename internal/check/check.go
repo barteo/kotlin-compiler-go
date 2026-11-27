@@ -3136,7 +3136,7 @@ func (c *Checker) propVariance(v *types.VarSym, ref *syntax.TypeRef, mutable, re
 	if mutable {
 		pos = types.Inv
 	}
-	if !c.checkVariance(v.Type, ref, pos, report) {
+	if !c.checkVariance(v.Type, ref, pos, report) && !report {
 		v.PrivateToThis = true
 	}
 }
@@ -3156,7 +3156,7 @@ func (c *Checker) funVariance(d *syntax.FunDecl, report bool) {
 	if d.Ret != nil || !report {
 		ok = c.checkVariance(d.Sym.Ret, d.Ret, types.Out, report) && ok
 	}
-	if !ok {
+	if !ok && !report {
 		d.Sym.PrivateToThis = true
 	}
 }
