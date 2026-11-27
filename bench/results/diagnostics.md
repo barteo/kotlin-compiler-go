@@ -192,7 +192,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3555 of the 3667 warnings the tests expect (96.9%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3578 of the 3667 warnings the tests expect (97.6%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -202,11 +202,11 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
 | `USELESS_IS_CHECK` | 127 | 119 | 0 |
-| `ERROR_SUPPRESSION` | 102 | 98 | 0 |
+| `ERROR_SUPPRESSION` | 102 | 102 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
-| `SENSELESS_COMPARISON` | 91 | 85 | 1 |
+| `SENSELESS_COMPARISON` | 91 | 88 | 1 |
 | `USELESS_CAST` | 91 | 88 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
 | `UNCHECKED_CAST` | 88 | 84 | 1 |
@@ -217,14 +217,14 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 60 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 49 | 0 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 | 57 | 0 |
 | `REDUNDANT_PROJECTION` | 49 | 49 | 0 |
 | `USELESS_ELVIS` | 44 | 43 | 0 |
 | `NO_REFLECTION_IN_CLASS_PATH` | 36 | 36 | 1 |
 | `UNUSED_VARIABLE` | 35 | 35 | 3 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 | 33 | 0 |
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 30 | 0 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 | 27 | 0 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 | 30 | 0 |
 | `OVERRIDE_DEPRECATION` | 30 | 30 | 0 |
 | `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
 | `OVERRIDE_BY_INLINE` | 28 | 28 | 0 |
@@ -247,7 +247,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `DIFFERENT_NAMES_FOR_THE_SAME_PARAMETER_IN_SUPERTYPES` | 16 | 15 | 0 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING` | 15 | 15 | 0 |
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 15 | 0 |
-| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 | 7 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 | 8 | 0 |
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 15 | 0 |
 | `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
@@ -261,7 +261,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `REDUNDANT_SPREAD_OPERATOR_IN_NAMED_FORM_IN_FUNCTION` | 11 | 11 | 0 |
 | `INFERRED_INVISIBLE_REIFIED_TYPE_ARGUMENT_WARNING` | 10 | 10 | 0 |
 | `INFERRED_INVISIBLE_WHEN_TYPE_WARNING` | 10 | 10 | 0 |
-| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 | 9 | 0 |
+| `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` | 10 | 10 | 0 |
 | `UNUSED_LAMBDA_EXPRESSION` | 10 | 10 | 0 |
 | `UPPER_BOUND_VIOLATED_DEPRECATION_WARNING` | 10 | 2 | 0 |
 | `USELESS_VARARG_ON_PARAMETER` | 10 | 10 | 0 |
@@ -295,7 +295,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `TRIM_MARGIN_BLANK_PREFIX` | 4 | 4 | 0 |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 | 3 | 0 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 | 2 | 0 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 | 4 | 0 |
 | `CAN_BE_VAL` | 3 | 3 | 0 |
 | `DEPRECATED_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |
 | `OPERATOR_RENAMED_ON_IMPORT` | 3 | 3 | 0 |
@@ -321,6 +321,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `NEWER_VERSION_IN_SINCE_KOTLIN` | 1 | 1 | 0 |
 | `OPT_IN_WITHOUT_ARGUMENTS` | 1 | 1 | 0 |
 | `OVERLOADS_PRIVATE` | 1 | 1 | 0 |
+| `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING` | 1 | 1 | 0 |
 | `UNSAFE_CAST_RELYING_ON_NULL` | 1 | 1 | 0 |
 
 The warnings the tests expect that kc doesn't report, as a backlog.
@@ -335,5 +336,4 @@ The warnings the tests expect that kc doesn't report, as a backlog.
 | `FINITE_BOUNDS_VIOLATION_IN_JAVA` | 1 |
 | `K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY` | 1 |
 | `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE` | 1 |
-| `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING` | 1 |
 
