@@ -2665,7 +2665,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	}
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
-		if reportedError(t) {
+		if reportedError(t) && !anyMember[fn.Name] { // K2 finds Any's members
 			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		}
 		return types.InvalidType, nil, false

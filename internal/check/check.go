@@ -1450,6 +1450,11 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				c.checkClassVisible(cls, ref.P)
 			}
 			c.u.typeUses.Store(ref, cls)
+			if c.hiddenOnly(ref.Name, cls) {
+				// As in K2, which finds no applicable classifier, the
+				// members of a value of the type are unresolved.
+				return errorNotNull
+			}
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {
