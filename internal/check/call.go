@@ -3069,22 +3069,22 @@ func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 	if len(cs) < 2 {
 		return cs
 	}
-	sameParams := func(f, g *types.FunSym) bool {
-		return f.Ext == g.Ext && slices.EqualFunc(f.Params, g.Params, func(p, q *types.VarSym) bool { return p.Vararg == q.Vararg })
-	}
 	var out []*candidate
 	for _, f := range cs {
-		overridden := slices.ContainsFunc(cs, func(g *candidate) bool {
-			// A Java static method overrides none: C.foo(Runnable) hides
-			// A.foo(Runnable), not A.foo(Function0<Unit>).
-			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
-				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f) && !c.notOverridden(g.f, f.f)
-		})
-		if !overridden {
+		if !slices.ContainsFunc(cs, func(g *candidate) bool { return c.overrides(g.f, f.f) }) {
 			out = append(out, f)
 		}
 	}
 	return out
+}
+
+// overrides reports whether g, declared in a subclass of f's owner with
+// the same parameters, overrides f. A Java static method overrides none:
+// C.foo(Runnable) hides A.foo(Runnable), not A.foo(Function0<Unit>).
+func (c *Checker) overrides(g, f *types.FunSym) bool {
+	sameParams := f.Ext == g.Ext && slices.EqualFunc(f.Params, g.Params, func(p, q *types.VarSym) bool { return p.Vararg == q.Vararg })
+	return f.Owner != nil && g.Owner != nil && g.Owner != f.Owner && g.Name == f.Name && !g.Static &&
+		g.Owner.IsSubclassOf(f.Owner) && sameParams && !c.notOverridden(g, f)
 }
 
 // numberMoreSpecific reports whether a parameter of built-in number type

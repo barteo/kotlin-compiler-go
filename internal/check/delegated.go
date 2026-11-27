@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -171,6 +172,11 @@ func (c *Checker) delegateOp(s *system, rt types.Type, name string, pos syntax.P
 				fs = append(fs, f)
 			}
 		}
+		// An override hides the method it overrides also when their JVM
+		// descriptors differ: ReadOnlyProperty<Owner<V>, T>'s getValue.
+		fs = slices.DeleteFunc(fs, func(f *types.FunSym) bool {
+			return slices.ContainsFunc(fs, func(g *types.FunSym) bool { return c.overrides(g, f) })
+		})
 	}
 	ext := len(fs) == 0
 	if ext {
