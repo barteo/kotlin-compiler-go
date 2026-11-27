@@ -3085,10 +3085,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 }
 
 func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
-	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
+	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && (m.Paren || m.Grouped) {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
-		// its chain.
+		// its chain. So does (a.b)(v), of a property b, not a function.
 		return c.invoke(x, want, sink)
+	}
+	if id, ok := x.Fun.(*syntax.Ident); ok && id.Grouped {
+		return c.invoke(x, want, sink) // (a)(v): the value of a, not a function a
 	}
 	if t, ok := c.safeChainInvoke(x, want, sink); ok {
 		return t

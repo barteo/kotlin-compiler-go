@@ -1206,6 +1206,9 @@ type Ident struct {
 	// CHECK_TYPE helper of kotlinc's tests is a function of that name.
 	// The checker reports it where it calls a constructor.
 	Underscore bool
+	// Grouped is set on an identifier written in parentheses: (a)() calls
+	// invoke on the value of a, not a function a.
+	Grouped bool
 	// Getter is set for a property inherited from a Java or Kotlin class,
 	// read through this: message in a subclass of Exception.
 	Getter *types.FunSym
@@ -1451,6 +1454,9 @@ type Member struct {
 	// B.() -> Unit, isn't invoked with an implicit B, as (x.f)() is. The
 	// checker's own member accesses, this.f() for f(), don't have it.
 	Written bool
+	// Grouped is set on x.f written in parentheses: (x.f)() calls invoke
+	// on the value of x.f, not a function f.
+	Grouped bool
 	// Groups is set by the checker on a safe call in composable code that
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.
