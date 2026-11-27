@@ -159,9 +159,12 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 					case psi.KindCONTEXT_RECEIVER:
 						ft.Contexts = append(ft.Contexts, l.typeRef(child(k, psi.KindTYPE_REFERENCE)))
 					case psi.KindVALUE_PARAMETER:
-						// kc reads only types here: context(a: A) () -> R
-						// fails at the colon.
-						l.fail(child(k, psi.KindCOLON), "expected ')', found ':'")
+						tr := child(k, psi.KindTYPE_REFERENCE)
+						if !tr.Valid() {
+							l.fail(k, "expected a context parameter type")
+						}
+						l.errorLater(l.pos(k), syntax.NamedContextInTypeMsg)
+						ft.Contexts = append(ft.Contexts, l.typeRef(tr))
 					}
 				}
 				if len(ft.Contexts) == 0 {
@@ -585,8 +588,11 @@ func (l *lowerer) contextParams(n psi.NodeRef) []*syntax.Param {
 			}
 		}
 		name := child(c, psi.KindIDENTIFIER)
-		if !name.Valid() || prev(name).NumericKind() == psi.KindVAL_KEYWORD || prev(name).NumericKind() == psi.KindVAR_KEYWORD {
+		if !name.Valid() {
 			l.fail(c, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
+		}
+		if k := prev(name); k.NumericKind() == psi.KindVAL_KEYWORD || k.NumericKind() == psi.KindVAR_KEYWORD {
+			syntax.ValOnParam(k.Text(), "function", l.pos(k), l)
 		}
 		tr := child(c, psi.KindTYPE_REFERENCE)
 		if !tr.Valid() {

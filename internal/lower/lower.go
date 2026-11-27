@@ -364,11 +364,72 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
 	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
 		e := l.s.Node(l.errorIDs[i])
-		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n)) {
+		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n) || missingRange(e) || missingCtorKeyword(e) || emptyArgument(e) || emptySelector(e) || missingRParen(e)) {
 			continue
 		}
 		l.failSyntax(e)
 	}
+}
+
+// missingRange reports whether the psi error element e is where a for
+// loop's range is missing, for (x in ) or for (x, with stray tokens
+// only, which the loop's lowering replaces as FIR does.
+func missingRange(e psi.NodeRef) bool {
+	p := e.Parent()
+	if p.NumericKind() == psi.KindLOOP_RANGE {
+		return p.Parent().NumericKind() == psi.KindFOR && !next(e).Valid() && !prev(e).Valid() && inertError(e)
+	}
+	return p.NumericKind() == psi.KindFOR && !has(p, psi.KindLOOP_RANGE) && inertError(e)
+}
+
+// emptyArgument reports whether the psi node e is an empty error element
+// that is all of a value argument, f(g( at the end of a block, which a
+// call's lowering replaces with an argument of no type, as FIR does.
+func emptyArgument(e psi.NodeRef) bool {
+	return e.NumericKind() == psi.KindERROR_ELEMENT && !first(e).Valid() && e.Parent().NumericKind() == psi.KindVALUE_ARGUMENT &&
+		!prev(e).Valid() && !next(e).Valid()
+}
+
+// missingRParen reports whether the psi node e is the empty error
+// element where a parenthesized expression's closing parenthesis is
+// missing, (a at the end of an argument list, which changes nothing.
+func missingRParen(e psi.NodeRef) bool {
+	return e.NumericKind() == psi.KindERROR_ELEMENT && !first(e).Valid() && e.Parent().NumericKind() == psi.KindPARENTHESIZED &&
+		!next(e).Valid() && isExpr(prev(e))
+}
+
+// emptySelector reports whether the psi node e is the empty error element
+// of a qualified expression without its selector, f()., whose lowering
+// keeps the receiver as FIR does. A receiver of names only may be a
+// package or a class, which FIR resolves differently, and isn't kept.
+func emptySelector(e psi.NodeRef) bool {
+	p := e.Parent()
+	if e.NumericKind() != psi.KindERROR_ELEMENT || first(e).Valid() || next(e).Valid() ||
+		p.NumericKind() != psi.KindDOT_QUALIFIED_EXPRESSION && p.NumericKind() != psi.KindSAFE_ACCESS_EXPRESSION {
+		return false
+	}
+	if k := prev(e).NumericKind(); k != psi.KindDOT && k != psi.KindSAFE_ACCESS {
+		return false
+	}
+	x := exprChild(p)
+	for x.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION {
+		ops := operands(x)
+		if len(ops) != 2 || ops[1].NumericKind() != psi.KindREFERENCE_EXPRESSION {
+			return true
+		}
+		x = ops[0]
+	}
+	return x.Valid() && x.NumericKind() != psi.KindREFERENCE_EXPRESSION
+}
+
+// missingCtorKeyword reports whether the psi error element e is where
+// a primary constructor's constructor keyword and parameters are
+// missing after its modifiers, class A @Anno {}, which the class's
+// lowering keeps as FIR does.
+func missingCtorKeyword(e psi.NodeRef) bool {
+	pc := prev(e)
+	return e.Parent().NumericKind() == psi.KindCLASS && !first(e).Valid() && pc.NumericKind() == psi.KindPRIMARY_CONSTRUCTOR &&
+		!has(pc, psi.KindVALUE_PARAMETER_LIST) && !has(pc, psi.KindCONSTRUCTOR_KEYWORD) && has(pc, psi.KindMODIFIER_LIST)
 }
 
 // recoverable reports whether the psi error element e leaves its

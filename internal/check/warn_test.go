@@ -221,7 +221,13 @@ class K { tailrec fun Int.t6(): Int = (this - 1).t6() }
 @Suppress("x")
 tailrec
 fun t7(n: Int) {}
-`, []string{"3:NO_TAIL_CALLS_FOUND", "4:NON_TAIL_RECURSIVE_CALL", "4:NO_TAIL_CALLS_FOUND", "5:NON_TAIL_RECURSIVE_CALL", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
+val t8 = tailrec fun() {}
+fun t9() {
+    tailrec fun() {}
+    fun() {}
+}
+`, []string{"10:NO_TAIL_CALLS_FOUND", "12:NO_TAIL_CALLS_FOUND", "12:UNUSED_EXPRESSION", "13:UNUSED_EXPRESSION",
+			"3:NO_TAIL_CALLS_FOUND", "4:NON_TAIL_RECURSIVE_CALL", "4:NO_TAIL_CALLS_FOUND", "5:NON_TAIL_RECURSIVE_CALL", "5:NO_TAIL_CALLS_FOUND", "8:NO_TAIL_CALLS_FOUND"}},
 		{"useless cast", `
 fun <T> g(): T = TODO()
 fun f(s: String, a: Any) {

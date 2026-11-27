@@ -1077,9 +1077,12 @@ type VarStmt struct {
 	LateinitP Pos
 	// Mods are the modifiers written on a local variable.
 	Mods []Mod
-	Type *TypeRef
-	Init Expr // nil for a variable assigned later
-	Sym  *types.VarSym
+	// TypeParams are those written on a local variable, val <T> x,
+	// an error: their bounds are checked, but they aren't in scope.
+	TypeParams []*TypeParam
+	Type       *TypeRef
+	Init       Expr // nil for a variable assigned later
+	Sym        *types.VarSym
 
 	// A local delegated property, val x by d, keeps d in Delegate, which
 	// the checker puts in a hidden local, DelegateSym: reading x is Get,
@@ -1768,6 +1771,9 @@ type Lambda struct {
 	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
 	// names a lambda's it makes too, without types: see suspendConverted.
 	AnonCtx []*Param
+	// AnonMods are the modifier keywords written on an anonymous
+	// function, tailrec fun () {}: none applies, as the checker reports.
+	AnonMods []Mod
 	// Annotated is set on a lambda annotated @Composable, which is
 	// composable whatever its expected type, with -compose.
 	Annotated bool

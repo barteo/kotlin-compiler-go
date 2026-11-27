@@ -543,6 +543,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			c.errorf(p.P, "conflicting declarations: %s", p.Name)
 		}
 	}
+	c.anonModifiers(x.AnonMods)
 	c.pushContexts(x.Ctx, x)
 	if x.Recv != nil {
 		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: x.Recv, label: x.Label, depth: len(c.lambdas), owner: x})
@@ -4063,4 +4064,28 @@ func projected(t types.Type) bool {
 		}
 	}
 	return false
+}
+
+// anonModifiers reports the modifiers written on an anonymous function,
+// as kotlinc's declaration checkers do for one: it has no name, so it
+// can't call itself, be an operator or infix function, or be expected.
+func (c *Checker) anonModifiers(mods []syntax.Mod) {
+	for _, m := range mods {
+		switch m.Name {
+		case "inline":
+			c.errorf(m.P, "local inline functions are not yet supported")
+		case "tailrec":
+			c.warnf(m.P, "NO_TAIL_CALLS_FOUND", "a function is marked as tail-recursive but no tail calls are found")
+		case "operator":
+			c.errorf(m.P, "'operator' modifier is inapplicable on this function: illegal function name")
+		case "infix":
+			c.errorf(m.P, "'infix' modifier is inapplicable on this function: must be a member or an extension function")
+		case "external":
+			c.errorf(m.P, "external declaration cannot have a body")
+		case "suspend":
+			c.errorf(m.P, "anonymous suspend functions are prohibited")
+		default:
+			c.errorf(m.P, "modifier '%s' is not applicable to 'anonymous function'", m.Name)
+		}
+	}
 }

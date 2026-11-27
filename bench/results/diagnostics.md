@@ -65,15 +65,15 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21898 of 22025 expected errors (99.4%) on their lines.
+kc reports 21907 of 22025 expected errors (99.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2553 | 2521 | 32 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2524 | 29 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1472 | 19 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 626 | 9 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 630 | 5 |
 | `RETURN_TYPE_MISMATCH` | 418 | 413 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 54 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
@@ -93,8 +93,6 @@ kc reports 21898 of 22025 expected errors (99.4%) on their lines.
 | `CANNOT_CHECK_FOR_ERASED` | 27 | 26 | 1 |
 | `DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR` | 1 | 0 | 1 |
 | `INCORRECT_LEFT_COMPONENT_OF_INTERSECTION` | 14 | 13 | 1 |
-| `ITERATOR_MISSING` | 10 | 9 | 1 |
-| `MISSING_CONSTRUCTOR_KEYWORD` | 4 | 3 | 1 |
 | `NOTHING_TO_OVERRIDE` | 93 | 92 | 1 |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 25 | 24 | 1 |
 | `NO_ELSE_IN_WHEN` | 217 | 216 | 1 |
@@ -129,6 +127,8 @@ kc reports 21898 of 22025 expected errors (99.4%) on their lines.
 | `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 1 | 0 |
 | `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 2 | 2 | 0 |
 | `AMBIGUOUS_ANNOTATION_ARGUMENT` | 4 | 4 | 0 |
+| `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 38 | 0 |
+| `AMBIGUOUS_CONTEXT_ARGUMENT` | 19 | 19 | 0 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one, the first that applies: 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 20.5% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| environment | 19 | 15.0% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| syntax-error | 21 | 16.5% | `UNRESOLVED_REFERENCE` 6, `CANNOT_INFER_PARAMETER_TYPE` 4, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2 |
+| accepted | 26 | 22.0% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| environment | 19 | 16.1% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| syntax-error | 12 | 10.2% | `UNRESOLVED_REFERENCE` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2, `RETURN_TYPE_MISMATCH` 1 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 19 | 15.0% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 42 | 33.1% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
+| nearby | 19 | 16.1% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 42 | 35.6% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -151,7 +151,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 90 |
-| `type mismatch: inferred type is _ but _ was expected` | 84 |
+| `type mismatch: inferred type is _ but _ was expected` | 83 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 46 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 18 |
@@ -192,7 +192,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3592 of the 3667 warnings the tests expect (98.0%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3600 of the 3667 warnings the tests expect (98.2%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -210,10 +210,10 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `USELESS_CAST` | 91 | 89 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
 | `UNCHECKED_CAST` | 88 | 87 | 1 |
-| `OPT_IN_USAGE` | 83 | 79 | 0 |
-| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 71 | 0 |
+| `OPT_IN_USAGE` | 83 | 80 | 0 |
+| `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 75 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
-| `FINAL_UPPER_BOUND` | 69 | 67 | 0 |
+| `FINAL_UPPER_BOUND` | 69 | 68 | 0 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 67 | 65 | 0 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 62 | 60 | 0 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 | 59 | 0 |
@@ -226,7 +226,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `ASSIGNED_VALUE_IS_NEVER_READ` | 32 | 30 | 0 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` | 31 | 30 | 0 |
 | `OVERRIDE_DEPRECATION` | 30 | 30 | 0 |
-| `NO_TAIL_CALLS_FOUND` | 29 | 27 | 0 |
+| `NO_TAIL_CALLS_FOUND` | 29 | 29 | 0 |
 | `OVERRIDE_BY_INLINE` | 28 | 28 | 0 |
 | `DEPRECATED_IDENTITY_EQUALS` | 26 | 26 | 0 |
 | `INCOMPATIBLE_ENUM_COMPARISON` | 26 | 26 | 0 |

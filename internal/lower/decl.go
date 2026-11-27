@@ -478,9 +478,14 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		cd.CtorMods = l.modifiers(ml)
 		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
 		ps := child(pc, psi.KindVALUE_PARAMETER_LIST)
-		if ml.Valid() && ps.Valid() && !has(pc, psi.KindCONSTRUCTOR_KEYWORD) {
-			// As kc's parser: class A private (x: Int).
+		// As kc's parser: class A private (x: Int). Recovering, as FIR,
+		// class A private {} too, with a primary constructor.
+		bare := l.recovering && missingCtorKeyword(next(pc))
+		if ml.Valid() && !has(pc, psi.KindCONSTRUCTOR_KEYWORD) && (ps.Valid() || bare) {
 			l.errorLater(l.pos(ml), "use the 'constructor' keyword after the modifiers of the primary constructor")
+		}
+		if bare {
+			cd.HasPrimary, cd.WrittenPrimary = true, true
 		}
 		if ps.Valid() {
 			cd.HasPrimary, cd.WrittenPrimary = true, true

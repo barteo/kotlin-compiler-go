@@ -520,6 +520,33 @@ func VarianceMod(v *types.Variance, prevP *Pos, w types.Variance, p Pos, r Repor
 	}
 }
 
+// Invalid returns an expression of no type, at p, for one an error
+// replaced, which the checker reports nothing more about.
+func Invalid(p Pos) Expr {
+	n := &NullLit{}
+	n.P = p
+	x := &As{X: n, Ref: &TypeRef{P: p, Known: &types.InvalidType}}
+	x.P = p
+	return x
+}
+
+// IsInvalid reports whether x is an expression Invalid made.
+func IsInvalid(x Expr) bool {
+	a, ok := x.(*As)
+	if !ok || a.Ref == nil || a.Ref.Known == nil || a.Ref.Known.K != types.Invalid {
+		return false
+	}
+	_, null := a.X.(*NullLit)
+	return null
+}
+
+// LocalTypeParamsMsg is kotlinc's LOCAL_VARIABLE_WITH_TYPE_PARAMETERS.
+const LocalTypeParamsMsg = "local variables are not allowed to have type parameters"
+
+// NamedContextInTypeMsg is kotlinc's NAMED_CONTEXT_PARAMETER_IN_FUNCTION_TYPE,
+// for context(a: A) () -> R, whose name nothing can use.
+const NamedContextInTypeMsg = "named context parameters in function types are unsupported: use the syntax 'context(Type)' instead"
+
 // WhenCommaMsg is kotlinc's COMMA_IN_WHEN_CONDITION_WITHOUT_ARGUMENT,
 // for a, b -> in a when without a subject.
 const WhenCommaMsg = "deprecated syntax: use '||' instead of commas in a when-condition for 'when' without an argument"

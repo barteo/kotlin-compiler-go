@@ -124,7 +124,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
-			l.fail(t, "the value is out of range")
+			// As kotlinc, an error that leaves the code around it checked.
+			l.errorLater(l.pos(t), "the value is out of range")
+			return syntax.Invalid(l.pos(t))
 		}
 		return lit
 	case psi.KindFLOAT_CONSTANT:
@@ -413,6 +415,12 @@ func (l *lowerer) lastLeaf(n psi.NodeRef) psi.NodeRef {
 // qualified lowers a DOT_QUALIFIED_EXPRESSION or SAFE_ACCESS_EXPRESSION.
 func (l *lowerer) qualified(n psi.NodeRef) syntax.Expr {
 	ops := operands(n)
+	if len(ops) == 1 && l.recovering && emptySelector(child(n, psi.KindERROR_ELEMENT)) {
+		// a.b(). with no selector: as FIR, the receiver is checked, and
+		// the expression has no type.
+		x := l.expr(ops[0])
+		return &syntax.As{P: syntax.StartPos(x), X: x, Ref: &syntax.TypeRef{P: syntax.StartPos(x), Known: &types.InvalidType}}
+	}
 	if len(ops) != 2 {
 		l.failAt(l.end(n), "expected a name")
 	}
@@ -492,6 +500,11 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 				continue
 			}
 			v := first(a)
+			if l.recovering && emptyArgument(v) {
+				// f(g( with no argument: as FIR, one of no type.
+				c.Args = append(c.Args, syntax.Invalid(l.pos(v)))
+				continue
+			}
 			if v.NumericKind() == psi.KindVALUE_ARGUMENT_NAME {
 				for len(c.Names) < len(c.Args) {
 					c.Names = append(c.Names, "")
@@ -907,7 +920,17 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 				}
 				lam.P, lam.AnonCtx = l.pos(c), l.contextParams(c)
 			default:
-				l.unexpected(m)
+				if !c.IsLeaf() {
+					l.unexpected(m)
+				}
+				// tailrec fun () {}: the checker reports it. The function
+				// starts at its modifiers, as at its context parameters.
+				if lam.AnonMods == nil && lam.AnonCtx == nil {
+					lam.P = l.pos(c)
+				}
+				lam.AnonMods = append(lam.AnonMods, syntax.Mod{Name: c.Text(), P: l.pos(c)})
+				// As kotlinc, a suspend one's body is checked as suspend.
+				lam.SuspendMod = lam.SuspendMod || c.Text() == "suspend"
 			}
 		}
 		for _, a := range as {
