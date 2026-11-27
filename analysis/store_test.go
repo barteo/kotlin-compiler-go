@@ -122,8 +122,9 @@ func TestFacts(t *testing.T) {
 				t.Errorf("%s: %d facts visited after false", name, n)
 			}
 		}
-		// The fact, its calls and their buffers, however many facts.
-		if allocs := testing.AllocsPerRun(5, func() { r.Facts(s.ID(), func(*Fact) bool { return true }) }); allocs > 8 {
+		// The fact, its calls and their buffers, however many facts: a few,
+		// more with -race, where an allocation a fact would be hundreds.
+		if allocs := testing.AllocsPerRun(5, func() { r.Facts(s.ID(), func(*Fact) bool { return true }) }); allocs > 16 {
 			t.Errorf("%s: Facts makes %v allocations over %d facts", name, allocs, len(want))
 		}
 	})

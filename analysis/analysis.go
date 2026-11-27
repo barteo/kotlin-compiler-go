@@ -403,7 +403,9 @@ func (r *Result) Facts(snapshot psi.SnapshotID, fn func(f *Fact) bool) {
 	}
 	ff := &r.files[i]
 	var f Fact
-	var v view
+	// Room for a property's accessors and a delegate's calls, which are
+	// at most two each but for their overridden ones.
+	v := view{accessors: make([]Call, 0, 4), delegatedCalls: make([]Call, 0, 2)}
 	for j := range ff.facts {
 		ff.load(j, &f, &v)
 		if !fn(&f) {
