@@ -268,7 +268,18 @@ func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annot
 				target = "field"
 			}
 		case siteCtorProp:
-			target = "param"
+			// A constructor property's go to the parameter, or else to
+			// the property, or else to its field.
+			switch {
+			case cls.Targets&types.TargetValueParameter != 0:
+				target = "param"
+			case cls.Targets&types.TargetProperty != 0:
+				target = "property"
+			case cls.Targets&types.TargetField != 0:
+				target = "field"
+			default:
+				target = "param"
+			}
 		}
 	}
 	k := repeatKey{cls, target}

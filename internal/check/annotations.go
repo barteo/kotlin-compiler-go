@@ -887,6 +887,13 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			if cp.IsProp && !cp.Mutable {
 				c.setOnImmutable(cp.Modifiers.Annotations)
 			}
+			if cp.IsProp {
+				for _, a := range cp.Modifiers.Annotations {
+					if a.Target == "delegate" {
+						c.errorf(a.P, delegateNoDelegate)
+					}
+				}
+			}
 		}
 		c.headerParams = nil
 		c.annotations(d.Dangling, cls, annotSite{kind: siteUnchecked})
@@ -1051,9 +1058,21 @@ func (c *Checker) localUseSite(a *syntax.Annotation, site annotSite) {
 // fieldless reports the annotations of property d with the use-site
 // target field when it has no backing field: a delegated property's
 // (INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD), or one whose
-// accessors don't use one (WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET).
+// accessors don't use one (WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET);
+// and those with the use-site target delegate when it isn't delegated
+// (INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE).
 func (c *Checker) fieldless(d *syntax.PropDecl) {
-	if d.Sym == nil || d.Expect || d.BackingField != nil || d.Lateinit || d.Const {
+	if d.Sym == nil || d.Expect {
+		return
+	}
+	if d.Field == nil {
+		for _, a := range d.Annotations {
+			if a.Target == "delegate" {
+				c.errorf(a.P, delegateNoDelegate)
+			}
+		}
+	}
+	if d.BackingField != nil || d.Lateinit || d.Const {
 		return
 	}
 	if externalAccessors(d) {
@@ -1071,6 +1090,9 @@ func (c *Checker) fieldless(d *syntax.PropDecl) {
 		}
 	}
 }
+
+// delegateNoDelegate is kotlinc's INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE.
+const delegateNoDelegate = "'@delegate:' annotations can only be applied to delegated properties"
 
 // externalAccessors reports whether property d has an external accessor,
 // whose field is the native code's business.
