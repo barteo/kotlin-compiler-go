@@ -41,6 +41,18 @@ type callee struct {
 }
 
 // param returns the parameter argument i is passed to.
+// varResult reports whether the parameter of argument i is a function
+// type whose result is one of the call's type parameters: R of run's
+// block: () -> R.
+func (cl *callee) varResult(i int) bool {
+	p := cl.param(i)
+	if p == nil {
+		return false
+	}
+	_, r, ok := funcParts(p.Type)
+	return ok && r.IsParam() && slices.Contains(cl.tparams, r.Param())
+}
+
 func (cl *callee) param(i int) *types.VarSym {
 	if cl.amap == nil {
 		return cl.f.Params[i]
@@ -1410,7 +1422,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i), false})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i), c.ownParamArg(&best.callee, x, i), false, best.varResult(i)})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
