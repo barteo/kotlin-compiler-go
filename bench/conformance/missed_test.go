@@ -14,7 +14,8 @@ func TestMissCause(t *testing.T) {
 		want     string
 	}{
 		{"accepted", diagTest{}, catAcceptsInvalid, causeAccepted},
-		{"parse", diagTest{parseErrs: true, kc: []diag{{file: "a.kt", line: 1}}}, catRejectsInvalid, causeParse},
+		{"dropped", diagTest{dropped: map[string][]lineSpan{"a.kt": {{9, 11}}}, kc: []diag{{file: "a.kt", line: 1}}}, catRejectsInvalid, causeParse},
+		{"dropped elsewhere", diagTest{dropped: map[string][]lineSpan{"a.kt": {{1, 3}}, "b.kt": {{10, 10}}}, kc: []diag{{file: "a.kt", line: 1}}}, catRejectsInvalid, causeMissingCheck},
 		{"module", diagTest{tried: map[string]bool{"b.kt": true}, kc: []diag{{file: "b.kt", line: 1}}}, catRejectsInvalid, causeModule},
 		{"nearby", diagTest{kc: []diag{{file: "a.kt", line: 12}}}, catRejectsInvalid, causeNearby},
 		{"other file", diagTest{kc: []diag{{file: "b.kt", line: 10}}}, catRejectsInvalid, causeMissingCheck},
@@ -40,9 +41,27 @@ func TestMissCause(t *testing.T) {
 		{diagTest{stdlibOnly: only}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "foo"}, causeMissingCheck},
 		{diagTest{stdlibOnly: only}, expected{name: "ARGUMENT_TYPE_MISMATCH", line: 10, text: "println"}, causeMissingCheck},
 		{diagTest{}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "println"}, causeMissingCheck},
+		{diagTest{stdlibOnly: only, dropped: map[string][]lineSpan{"a.kt": {{10, 10}}}}, expected{name: "UNRESOLVED_REFERENCE", line: 10, text: "println"}, causeEnvironment},
+		{diagTest{stdlibOnly: only, stdlibOnlyPackages: map[string]bool{"kotlin.math": true}}, expected{name: "UNRESOLVED_IMPORT", line: 10, text: "math", imported: "kotlin.math"}, causeEnvironment},
+		{diagTest{stdlibOnly: only, stdlibOnlyPackages: map[string]bool{"kotlin.math": true}}, expected{name: "UNRESOLVED_IMPORT", line: 10, text: "foo", imported: "kotlin.foo"}, causeMissingCheck},
+		{diagTest{mockJDK: true}, expected{name: "UNRESOLVED_IMPORT", line: 10, text: "function", imported: "java.util.function"}, causeEnvironment},
+		{diagTest{}, expected{name: "UNRESOLVED_IMPORT", line: 10, text: "function", imported: "java.util.function"}, causeMissingCheck},
 	} {
 		if got := tt.dt.missCause(catRejectsInvalid, mark{"a.kt", tt.e}); got != tt.want {
 			t.Errorf("%+v: missCause = %s, want %s", tt.e, got, tt.want)
+		}
+	}
+}
+
+func TestImportedPrefix(t *testing.T) {
+	for _, tt := range []struct{ line, elem, want string }{
+		{"import kotlin.math.*", "math", "kotlin.math"},
+		{"import java.util.function.Supplier;", "function", "java.util.function"},
+		{"  import a.`b`.c as d", "b", "a.b"},
+		{"val x = 1", "x", ""},
+	} {
+		if got := importedPrefix(tt.line, tt.elem); got != tt.want {
+			t.Errorf("importedPrefix(%q, %q) = %q, want %q", tt.line, tt.elem, got, tt.want)
 		}
 	}
 }
@@ -87,7 +106,7 @@ func TestMissedWarningLines(t *testing.T) {
 		// warning of another name on the missed one's line.
 		{marks: []mark{w("a.kt", 1), w("a.kt", 2), {"a.kt", expected{name: "E", line: 3}}},
 			kcWarns: []diag{{file: "a.kt", line: 1, name: "W"}, {file: "a.kt", line: 2, name: "V"}}},
-		{marks: []mark{w("b.kt", 4)}, parseErrs: true},
+		{marks: []mark{w("b.kt", 4)}, dropped: map[string][]lineSpan{"b.kt": {{3, 5}}}},
 		{marks: []mark{w("c.kt", 5), w("d.kt", 6)}, tried: map[string]bool{"c.kt": true}},
 		{marks: []mark{w("e.kt", 7)}},
 	}

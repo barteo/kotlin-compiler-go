@@ -1045,6 +1045,7 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 			l.syntaxError(e)
 			br = l.whenEntry(w, e)
 		}) {
+			l.lose(e)
 			br = l.placeholderEntry(e)
 		}
 		w.Branches = append(w.Branches, record(l, br, e))

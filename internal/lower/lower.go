@@ -125,6 +125,10 @@ type lowerer struct {
 	// recovering is set by FileRecovering: an error in a statement of a
 	// block drops only that statement (see stmts).
 	recovering bool
+	// lost is what recovery left out of the file, and lostTops the
+	// declarations of lost.Bodies (see lose).
+	lost     syntax.Lost
+	lostTops map[psi.NodeID]bool
 	// signatures is set by Signatures: the bodies SkippedBody names are
 	// lowered empty.
 	signatures bool
@@ -218,8 +222,9 @@ func lowerFile(s *psi.Snapshot, recovering, signatures bool) (*syntax.File, *Pro
 		// Every error element is under a declaration that reports it;
 		// this keeps a file with one from ever lowering cleanly.
 		for _, id := range l.errorIDs {
-			if !l.recoverable(s.Node(id)) {
-				l.decl(s.RootNode(), func() { l.failSyntax(s.Node(id)) })
+			if e := s.Node(id); !l.recoverable(e) {
+				l.attempt(func() { l.failSyntax(e) })
+				l.lose(e)
 				break
 			}
 		}
@@ -227,6 +232,10 @@ func lowerFile(s *psi.Snapshot, recovering, signatures bool) (*syntax.File, *Pro
 	f.Errors = l.later
 	if recovering {
 		f.RedundantPrefixes = l.redundantPrefixes()
+		if l.lost.Decls || len(l.lost.Dropped) > 0 {
+			lost := l.lost
+			f.Lost = &lost
+		}
 	}
 	f.SuppressInvisible = l.suppressInvisible
 	f.SuppressShadowed = l.suppressShadowed
@@ -519,10 +528,68 @@ func (l *lowerer) syntaxMessage(e psi.NodeRef) (syntax.Pos, string) {
 // decl lowers one declaration with lower. An error is recorded, and
 // lowering goes on after the declaration.
 func (l *lowerer) decl(n psi.NodeRef, lower func()) {
-	l.attempt(func() {
+	if !l.attempt(func() {
 		l.syntaxError(n)
 		lower()
-	})
+	}) {
+		l.lose(n)
+	}
+}
+
+// lose records, when recovering, that node n, a statement or
+// declaration, is left out of the file (syntax.Lost): in the body of the
+// outermost declaration around it, if every body around it is one that
+// no other declaration sees into (SkippedBody), or else as code that can
+// change what the module sees. An error element of tokens alone, such
+// as a stray brace, loses nothing: kotlinc builds nothing of it either.
+func (l *lowerer) lose(n psi.NodeRef) {
+	if !l.recovering || inertError(n) {
+		return
+	}
+	l.lost.Dropped = append(l.lost.Dropped, syntax.Span{From: l.pos(n), To: l.end(n)})
+	var top, body psi.NodeRef
+	for p := n.Parent(); p.Valid(); p = p.Parent() {
+		switch p.NumericKind() {
+		case psi.KindFUN, psi.KindPROPERTY, psi.KindCLASS_INITIALIZER, psi.KindSECONDARY_CONSTRUCTOR:
+			top = p
+		case psi.KindBLOCK:
+			switch p.Parent().NumericKind() {
+			case psi.KindFUN, psi.KindPROPERTY_ACCESSOR, psi.KindCLASS_INITIALIZER, psi.KindSECONDARY_CONSTRUCTOR:
+				body = p
+			}
+		}
+	}
+	// The outermost body decides: a local declaration's callers are all
+	// inside it.
+	if !top.Valid() || !body.Valid() || !SkippedBody(body) {
+		l.lost.Decls = true
+		return
+	}
+	if top.NumericKind() == psi.KindCLASS_INITIALIZER {
+		// An init block shares the control flow of the class's property
+		// initializers.
+		top = top.Parent().Parent()
+	}
+	if l.lostTops == nil {
+		l.lostTops = map[psi.NodeID]bool{}
+	}
+	if !l.lostTops[top.ID()] {
+		l.lostTops[top.ID()] = true
+		l.lost.Bodies = append(l.lost.Bodies, syntax.Span{From: l.pos(top), To: l.end(top)})
+	}
+}
+
+// inertError reports whether n is an error element of tokens alone.
+func inertError(n psi.NodeRef) bool {
+	if n.NumericKind() != psi.KindERROR_ELEMENT {
+		return false
+	}
+	for id := n.ID() + 1; id < n.SubtreeEnd(); id++ {
+		if !n.ContainingFile().Node(id).IsLeaf() {
+			return false
+		}
+	}
+	return true
 }
 
 // attempt runs lower, and reports whether it finished. If it bails out,

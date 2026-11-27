@@ -35,7 +35,14 @@ type compileResult struct {
 	// tried are the names of the files of the modules it compiled, or
 	// tried to: the modules after one that failed aren't compiled.
 	tried map[string]bool
+	// dropped are the lines of the code kc's recovery from syntax errors
+	// left out, and so didn't check, by file (kc -features's dropped
+	// lines).
+	dropped map[string][]lineSpan
 }
+
+// lineSpan is the lines from one to another, both included.
+type lineSpan struct{ from, to int }
 
 // compiler compiles the test's modules into dir, each against the ones
 // before it, with kc, or with kotlinc for the harness's self-check.
@@ -278,10 +285,36 @@ func parseKcOutput(out string, byPath map[string]string, res *compileResult) {
 		if d, warning, ok := parseKcLine(line, byPath); ok && !warning {
 			res.diags = append(res.diags, d)
 		}
+		parseDropped(line, byPath, res)
 	}
 	if len(res.diags) == 0 {
 		res.other = lines[len(lines)-1]
 	}
+}
+
+// parseDropped reads a line kc -features printed of code that recovery
+// from syntax errors left out: the path, the span, from-to, and
+// "dropped".
+func parseDropped(line string, byPath map[string]string, res *compileResult) {
+	f := strings.Split(line, "\t")
+	if len(f) != 3 || f[2] != "dropped" {
+		return
+	}
+	var from, fromCol, to, toCol int
+	if n, _ := fmt.Sscanf(f[1], "%d:%d-%d:%d", &from, &fromCol, &to, &toCol); n != 4 {
+		return
+	}
+	if toCol == 1 && to > from {
+		to-- // the span ends at the start of the line
+	}
+	file := byPath[f[0]]
+	if file == "" {
+		file = filepath.Base(f[0])
+	}
+	if res.dropped == nil {
+		res.dropped = map[string][]lineSpan{}
+	}
+	res.dropped[file] = append(res.dropped[file], lineSpan{from, to})
 }
 
 // panicWhere returns a panic's message and the innermost function of

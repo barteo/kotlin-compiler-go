@@ -133,16 +133,16 @@ kc reports 21896 of 22025 expected errors (99.4%) on their lines.
 
 ### Missed errors by cause
 
-Why kc reports no error on the line of an expected one: *accepted*, it compiled the test; *syntax-error*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *module-not-compiled*, the error is in a module after one that failed, which isn't compiled; *environment*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal or a name that only the full one, which kc gets, declares at the top level (`println`, `listOf`); *nearby*, kc reported an error within 3 lines of it on a line the markup expects none on (most likely the error, at another position); *missing-check*, none of those.
+Why kc reports no error on the line of an expected one, the first that applies: *accepted*, it compiled the test; *environment*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal, a name, index operator or package that only the full one, which kc gets, declares (`println`, `listOf`, `MutableMap.set`, `kotlin.math`), or the test has no `FULL_JDK`, which gives kotlinc the mock JDK, and the error is an import of a package that only the real one has (`java.util.function`); *syntax-error*, kc's parser rejected the code, and kc checked it as recovered from kotlinc's grammar, and the error is in a statement or declaration that recovery left out; *module-not-compiled*, the error is in a module after one that failed, which isn't compiled; *nearby*, kc reported an error within 3 lines of it on a line the markup expects none on (most likely the error, at another position); *missing-check*, none of those.
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
 | accepted | 26 | 20.2% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| syntax-error | 41 | 31.8% | `UNRESOLVED_REFERENCE` 8, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_IMPORT` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3 |
+| environment | 19 | 14.7% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| syntax-error | 21 | 16.3% | `UNRESOLVED_REFERENCE` 6, `CANNOT_INFER_PARAMETER_TYPE` 4, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2 |
 | module-not-compiled | 0 | 0.0% |  |
-| environment | 13 | 10.1% | `UNRESOLVED_REFERENCE` 12, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| nearby | 18 | 14.0% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 31 | 24.0% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 5, `CANNOT_INFER_PARAMETER_TYPE` 4, `UNRESOLVED_REFERENCE` 3, `OVERLOAD_RESOLUTION_AMBIGUITY` 2 |
+| nearby | 19 | 14.7% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 44 | 34.1% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
 
 ## Errors kotlinc doesn't report
 

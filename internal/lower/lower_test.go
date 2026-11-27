@@ -217,3 +217,45 @@ fun broken() { val y = (1 + ; }
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// TestLost checks what FileRecovering records of what it leaves out of a
+// file: declarations, or the bodies of the outermost declarations that
+// lost only statements nothing else sees, by their lines.
+func TestLost(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		decls     bool
+		bodies    string // the lines of each span, "from-to", space separated
+	}{
+		{"statement", "fun f() {\n    val x = 1 +\n}\n", false, "1-3"},
+		{"member", "class C {\n    fun g() {\n        1 +\n    }\n}\n", false, "2-4"},
+		{"local fun", "fun f() {\n    fun g() {\n        1 +\n    }\n}\n", false, "1-5"},
+		{"init block", "class C {\n    val a = 1\n    init {\n        1 +\n    }\n}\n", false, "1-6"},
+		{"accessor", "val p: Int\n    get() {\n        val x = 1 +\n    }\n", false, "1-4"},
+		{"inline", "inline fun f() {\n    1 +\n}\n", true, ""},
+		{"contract", "fun f() {\n    contract { }\n    1 +\n}\n", true, ""},
+		{"expression body", "fun f() = run {\n    1 +\n}\n", true, ""},
+		{"initializer", "val p by lazy {\n    1 +\n}\n", true, ""},
+		{"declaration", "fun f( {\n}\nfun g() {}\n", true, ""},
+		{"import", "import a.\nfun f() {}\n", true, ""},
+		{"stray brace", "fun f() {}\n}\n", false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, errs := FileRecovering(psi.Parse("A.kt", tc.src))
+			if len(errs) == 0 && f.Lost != nil {
+				t.Errorf("lost %+v without an error", *f.Lost)
+			}
+			var lost syntax.Lost
+			if f.Lost != nil {
+				lost = *f.Lost
+			}
+			var bodies []string
+			for _, s := range lost.Bodies {
+				bodies = append(bodies, fmt.Sprintf("%d-%d", s.From.Line, s.To.Line))
+			}
+			if lost.Decls != tc.decls || strings.Join(bodies, " ") != tc.bodies {
+				t.Errorf("got Decls %v, bodies %q (errors %v); want %v, %q", lost.Decls, strings.Join(bodies, " "), errs, tc.decls, tc.bodies)
+			}
+		})
+	}
+}

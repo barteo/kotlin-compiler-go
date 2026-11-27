@@ -46,6 +46,9 @@ type File struct {
 	// the statements and declarations left out of the file, which
 	// kotlinc reports all the same (REDUNDANT_INTERPOLATION_PREFIX).
 	RedundantPrefixes []Pos
+	// Lost is what recovery from syntax errors left out of the file that
+	// kotlinc's tree keeps (lower.FileRecovering); nil if nothing.
+	Lost *Lost
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
@@ -79,6 +82,38 @@ type File struct {
 	// level and local, whose delegates use them, in the facade's
 	// $$delegatedProperties array.
 	KProps []*PropRef
+}
+
+// Lost is what recovery from syntax errors left out of a file: the
+// statements and declarations with a syntax error, or that lowering
+// can't lower (lower.FileRecovering).
+type Lost struct {
+	// Decls is set if what was left out can change what the rest of the
+	// module sees: a declaration, an import, the package directive, a
+	// file annotation, or a statement in a body whose callers see into
+	// it, such as an inline function's, a contract's, or an initializer
+	// or expression body with an inferred type.
+	Decls bool
+	// Bodies are the top-level and member declarations whose bodies lost
+	// only statements, which nothing outside them sees: the outermost
+	// declaration around each, or the class of an init block, which
+	// shares its property initializers' control flow.
+	Bodies []Span
+	// Dropped are the statements and declarations left out.
+	Dropped []Span
+}
+
+// Span is the source between two positions, To exclusive.
+type Span struct{ From, To Pos }
+
+// Contains reports whether p is in s.
+func (s Span) Contains(p Pos) bool {
+	return !p.Before(s.From) && p.Before(s.To)
+}
+
+// Before reports whether p is before q.
+func (p Pos) Before(q Pos) bool {
+	return p.Line < q.Line || p.Line == q.Line && p.Col < q.Col
 }
 
 // Class returns the class that holds the file's top-level declarations:

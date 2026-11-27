@@ -102,6 +102,10 @@ type Options struct {
 	// compiles of the same configuration, and gives this compile those
 	// of an earlier one: see Libraries.
 	Libraries *Libraries
+	// Lost, if set, is told what recovery from syntax errors left out of
+	// each file that has them, and so wasn't checked (syntax.Lost): all
+	// of each file, if a file can't be recovered.
+	Lost func(path string, lost *syntax.Lost)
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
@@ -352,6 +356,9 @@ func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 		for _, e := range es {
 			early = append(early, e)
 		}
+	}
+	if opts.Lost != nil {
+		reportLost(opts.Lost, paths, srcs, files, unrecovered)
 	}
 	if unrecovered {
 		return errors.Join(early...)
@@ -867,6 +874,20 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 	}
 	lib.MetroPlan = plan
 	return again, nil
+}
+
+// reportLost tells lost what recovery left out of files: all of every
+// file if one can't be recovered, as none is then checked.
+func reportLost(lost func(string, *syntax.Lost), paths, srcs []string, files []*syntax.File, unrecovered bool) {
+	for i, f := range files {
+		switch {
+		case unrecovered:
+			end := syntax.Pos{Line: strings.Count(srcs[i], "\n") + 2, Col: 1}
+			lost(paths[i], &syntax.Lost{Decls: true, Dropped: []syntax.Span{{From: syntax.Pos{Line: 1, Col: 1}, To: end}}})
+		case f.Lost != nil:
+			lost(paths[i], f.Lost)
+		}
+	}
 }
 
 // parse parses a source file with frontend. If it has syntax errors, it

@@ -12,6 +12,9 @@ type expected struct {
 	name string
 	line int    // of the element's start, counting from 1
 	text string // the element, without the markup inside it
+	// imported is, for an UNRESOLVED_IMPORT, the import's path up to
+	// the element: kotlin.math of import kotlin.math.*.
+	imported string
 }
 
 // stripMarkup removes the diagnostic markup from src, which keeps its

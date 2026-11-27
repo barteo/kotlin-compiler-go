@@ -76,6 +76,7 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 			e2.Pos = l.pos(c)
 			l.errs[len(l.errs)-1] = &e2
 		}
+		l.lose(c)
 		if v := l.placeholderVar(c); v != nil {
 			out = append(out, v)
 		}
