@@ -111,6 +111,16 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
+	if o := ref.Outer; o != nil && o.Outer == nil && c.packageQualifierArgs(ref) {
+		// org.example<Int>.foo.A::class: kotlinc warns of the type
+		// arguments of a package that another package follows, and goes
+		// on without them.
+		c.warnf(o.ArgsP, "TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING",
+			"type arguments are not allowed in a package qualifier. This will become an error in language version 2.5.")
+		r := *ref
+		r.Outer = nil
+		return c.classLitType(&r, callable)
+	}
 	written := ref.Args != nil || ref.Outer != nil
 	args := ref.Args   // as written, before stars are added
 	starAlias := false // a generic typealias written without arguments, given stars
@@ -168,6 +178,27 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	return t
+}
+
+// packageQualifierArgs reports whether the type arguments of ref's outer
+// segment, of a class literal's or a callable reference's left side, are
+// on a package that another package follows: org.example<Int> of
+// org.example<Int>.foo.A, where neither org.example nor org.example.foo
+// is a class and the class is org.example.foo.A.
+func (c *Checker) packageQualifierArgs(ref *syntax.TypeRef) bool {
+	o := ref.Outer
+	if o.ArgsP.Line == 0 || !strings.HasPrefix(ref.Name, o.Name+".") || c.lookupClass(o.Name) != nil || c.lookupAlias(o.Name) != nil {
+		return false
+	}
+	if !strings.Contains(o.Name, ".") && c.lookupTypeParam(o.Name) != nil {
+		return false
+	}
+	rest := ref.Name[len(o.Name)+1:]
+	next, _, more := strings.Cut(rest, ".")
+	if !more || c.lookupClass(o.Name+"."+next) != nil {
+		return false // a class follows it: kotlinc's error
+	}
+	return c.lookupClass(ref.Name) != nil
 }
 
 // classLitArray reports whether array type t may be on the left of a class
