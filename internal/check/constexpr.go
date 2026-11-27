@@ -26,7 +26,8 @@ func (c *Checker) nonConst(x syntax.Expr) syntax.Expr {
 // compile-time constant, as kotlinc's CONST_VAL_WITH_NON_CONST_INITIALIZER
 // and NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION.
 func (c *Checker) constInit(d *syntax.PropDecl) {
-	if !d.Const || d.Sym == nil || d.DelegateOf != nil || d.Mutable {
+	if !d.Const || d.Sym == nil || d.DelegateOf != nil || d.Mutable || d.BackingField != nil {
+		// One with an explicit backing field is reported as such.
 		return
 	}
 	if t := d.Sym.Type; t.K != types.Invalid && (!constType(t) || t.N || t.K == types.Null || t.K == types.Nothing) {

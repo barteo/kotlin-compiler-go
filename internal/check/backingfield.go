@@ -20,10 +20,11 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 		return
 	}
 	bf.Checked = true
-	n := len(c.errs)
 	for _, m := range bf.Mods {
+		// As in kotlinc, the field is kept: private field = 1.
 		c.errorf(m.P, "modifier '%s' is not applicable to 'backing field'", m.Name)
 	}
+	n := len(c.errs)
 	if d.Mutable {
 		c.errorf(d.P, "a 'var' property cannot have an explicit backing field")
 	}
@@ -39,13 +40,15 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 	case d.Expect:
 		c.errorf(bf.P, "an expect property cannot have an explicit backing field")
 	case d.Const:
-		c.errorf(bf.P, "a const property cannot have an explicit backing field")
+		c.errorf(modPos(d.Written, "const", bf.P), "a const property cannot have an explicit backing field")
 	case len(d.Contexts) > 0:
 		c.contextsWithField(d)
 	case d.Open || d.Override && !d.Final && owner != nil && !owner.Final:
 		c.errorf(bf.P, "a property with an explicit backing field must be final")
 	}
-	if d.Getter != nil || d.Setter != nil || d.AccessorP.Line != 0 {
+	if (d.Getter != nil || d.Setter != nil || d.AccessorP.Line != 0) && !(d.Mutable && d.Getter == nil) && d.Field == nil {
+		// But for a var's setter, as kotlinc has it: the var is reported;
+		// and a delegated property's, which kc makes.
 		p := d.AccessorP
 		if p.Line == 0 {
 			p = bf.P
@@ -55,7 +58,7 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.Init != nil {
 		c.errorf(d.Init.Pos(), "a property with an explicit backing field cannot have an initializer")
 	}
-	if d.Type == nil {
+	if d.Type == nil && d.Field == nil {
 		c.errorf(d.P, "the type of a property with an explicit backing field must be written")
 	}
 	if d.Visibility == syntax.Private {
@@ -349,7 +352,11 @@ func (c *Checker) inPublicInline(at syntax.Pos) bool {
 			case *syntax.PropDecl:
 				for _, a := range []*syntax.FunDecl{x.Getter, x.Setter} {
 					inline := x.Inline || a == x.Getter && x.InlineGetter || a == x.Setter && x.InlineSetter
-					if a != nil && inline && publicAPIInline(&syntax.FunDecl{Modifiers: x.Modifiers}, cls) && within(at, a.P, a.End) {
+					mods := x.Modifiers
+					if a == x.Setter && x.SetterVisP.Line != 0 {
+						mods.Visibility = x.SetterVis // private set(v) { ... }
+					}
+					if a != nil && inline && publicAPIInline(&syntax.FunDecl{Modifiers: mods}, cls) && within(at, a.P, a.End) {
 						return true
 					}
 				}
