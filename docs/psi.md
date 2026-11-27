@@ -74,8 +74,16 @@ Medians of 6 runs, Go 1.27.2, 4-core Intel Xeon (linux/amd64), on
   it**, to report every syntax error as `kotlinc` does, with those of
   `lower.TreeErrors`: code `kotlinc`'s grammar accepts and its FIR builder
   rejects. The file is then checked as `lower.FileRecovering` lowers that
-  tree, which leaves out only the statements with an error, so the type
-  errors around them are reported too. Parsing every file with both would add about 35 ms, 5%, to
+  tree. It keeps what FIR keeps of broken code: a construct `kotlinc`'s
+  grammar accepts and FIR rejects, with that error reported, such as a
+  local variable's type parameters; a placeholder of no type for a
+  missing argument, selector, callee or loop range; a class where an
+  expression is expected, checked as a local class. It leaves out only
+  the statements, or declarations, it still can't lower, and records
+  them in `syntax.File.Lost`, which scopes the warnings reported (see
+  [unsupported.md](unsupported.md)) and which `kc -features` prints as
+  `dropped` lines. So the type errors around a syntax error are
+  reported too. Parsing every file with both would add about 35 ms, 5%, to
   compiling kotlinx-coroutines-core: the parse ends after the class path's
   index, so nothing hides it.
 

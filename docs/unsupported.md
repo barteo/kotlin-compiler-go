@@ -105,14 +105,21 @@ own tests.
     `RETURN_VALUE_NOT_USED_COERCION` and
     `OVERRIDING_IGNORABLE_WITH_MUST_USE`.
 
-  Of a program with a syntax error, which `kc` checks without the
-  statements and declarations that have the errors, only the warnings
-  that what is left out can't be the reason for are reported: those
-  judged by the syntax and modifiers of what is kept, by the types of a
-  declaration's header, or by two declarations that are both kept, such
-  as `REDUNDANT_MODIFIER` and `FINAL_UPPER_BOUND`; not those of what
-  isn't used or reached, of an expression's type, of what a name
-  resolves to, or of overrides. `kotlinc`'s command line prints no
+  Of a program with a syntax error, `kc` checks what `kotlinc`'s FIR
+  keeps of the broken code, but leaves out the statements and
+  declarations it can't lower. Where it left something out, only the
+  warnings that what is left out can't be the reason for are reported:
+  those judged by the syntax and modifiers of what is kept, by literals
+  alone, by the types of a declaration's header, or by two declarations
+  that are both kept, such as `REDUNDANT_MODIFIER`, `FINAL_UPPER_BOUND`
+  and a `USELESS_IS_CHECK` of a literal; not those of what isn't used or
+  reached, of an expression's type, of what a name resolves to, or of
+  overrides. That is so in the whole module if it left out a
+  declaration, or code other declarations see (an inline function's
+  body, a contract, an expression body or initializer whose type is
+  inferred); else only in the outermost declarations whose bodies lost
+  statements, with a class's whole body for an `init` block. The other
+  warnings are all reported. `kotlinc`'s command line prints no
   warnings at all with an error.
 
   These are reported only in part:

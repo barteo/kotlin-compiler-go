@@ -69,8 +69,9 @@ key and detail. Flags after the mode go to the harness:
   on their lines, by their names.
   `bench/kotlin-tests.sh diagnostics` writes them to
   [bench/results/diagnostics-missed-warnings.tsv](../bench/results/diagnostics-missed-warnings.tsv),
-  the backlog of missed warnings. A warning's cause is *syntax-error*,
-  *module-not-compiled* or *missing-check*.
+  the backlog of missed warnings. A warning's cause is *syntax-error*
+  (in a range recovery left out), *module-not-compiled* or
+  *missing-check*.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -339,9 +340,9 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,873 of the 22,025 expected errors (99.3%) on their lines, and 3,580 of
-the 3,667 expected warnings (97.6%), with 13 warnings on lines that expect
-none. It reports 451 errors on lines that expect none, in 245 tests, all
+21,910 of the 22,025 expected errors (99.5%) on their lines, and 3,600 of
+the 3,667 expected warnings (98.2%), with 13 warnings on lines that expect
+none. It reports 447 errors on lines that expect none, in 243 tests, all
 of which `kotlinc` rejects for another error
 ([diagnostics-stray.tsv](../bench/results/diagnostics-stray.tsv)). Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the
@@ -370,23 +371,29 @@ The diagnostics report sorts the missed errors by cause (*Missed errors
 by cause*), the first of these that applies:
 
 - *accepted*: `kc` compiled the test.
-- *syntax-error*: `kc`'s parser rejected the code. `kc` then checks
-  it as `psi`, which has `kotlinc`'s grammar, parses it, leaving out
-  only the statements, or declarations outside function bodies, that
-  have a syntax error or that it can't lower, so the errors in those
-  are missed.
+- *environment*: the test runs `kotlinc` with less of a library than the
+  harness gives `kc`, which then resolves what `kotlinc` reports
+  unresolved. With no `WITH_STDLIB`, `kotlinc` has the test
+  infrastructure's minimal standard library
+  (`libraries/stdlib/jvm-minimal-for-test`), and the error is an
+  unsigned literal (`UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH`),
+  an `UNRESOLVED_REFERENCE` of a name that only the full standard
+  library declares at the top level (`listOf`, `println`,
+  `requireNotNull`, `map`, or `..` and `..<` of `Comparable`s), an
+  index operator only it declares (`NO_GET_METHOD`, `NO_SET_METHOD`:
+  `MutableMap.set`), or an `UNRESOLVED_IMPORT` of a package only it has
+  (`kotlin.math`). The harness reads these names from the standard
+  library's file facades' metadata. With no `FULL_JDK`, `kotlinc` has
+  the mock JDK, and the error is an `UNRESOLVED_IMPORT` of a package it
+  leaves out (`java.util.function`, `java.util.stream`, `java.time`).
+- *syntax-error*: `kc`'s parser rejected the code, and the error is in
+  code that recovery left out. `kc` checks such a file as `psi`, which
+  has `kotlinc`'s grammar, parses it, keeping what FIR keeps of the
+  broken constructs, and leaving out the statements, or declarations,
+  that it can't lower (see [psi.md](psi.md)). `kc -features` prints each
+  range it left out as a `dropped` line, which the harness reads.
 - *module-not-compiled*: the error is in a module after one that
   failed, which the harness doesn't compile.
-- *environment*: the test has no `WITH_STDLIB`, and the error is an
-  unsigned literal (`UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH`)
-  or an `UNRESOLVED_REFERENCE` of a name that the full standard library
-  declares at the top level and the test infrastructure's minimal one
-  (`libraries/stdlib/jvm-minimal-for-test`) doesn't: `listOf`,
-  `println`, `requireNotNull`, `map`, or `..` and `..<` of
-  `Comparable`s. The harness puts the full standard library on every
-  test's class path, so `kc` resolves them, as `kotlinc` does under the
-  harness. It reads the names from the standard library's file facades'
-  metadata.
 - *nearby*: `kc` reported an error within three lines of it, on a line
   the markup expects none on: most likely this error, at another
   position.
