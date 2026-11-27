@@ -766,6 +766,14 @@ func (c *Checker) lambdaBody(b *syntax.Block, want types.Type) types.Type {
 	if !valueUsed && t.K != types.Nothing {
 		return types.UnitType
 	}
+	if valueUsed && t.K == types.Nothing {
+		// A last statement after a jump whose value has an error type
+		// is the lambda's result, as K2's, which infers nothing from
+		// it: run { return; x.unresolved() }.
+		if xt := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt).X.Type(); xt.K == types.Invalid {
+			return xt
+		}
+	}
 	return t
 }
 
