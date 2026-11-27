@@ -364,7 +364,7 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
 	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
 		e := l.s.Node(l.errorIDs[i])
-		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n) || missingRange(e) || missingCtorKeyword(e) || emptyArgument(e) || emptySelector(e) || missingRParen(e)) {
+		if l.inBody(e, n) || l.recoverable(e) || l.recovering && (l.inBlock(e, n) || l.inWhenEntry(e, n) || missingRange(e) || missingCtorKeyword(e) || emptyArgument(e) || emptySelector(e) || missingRParen(e) || errorCallee(e) || namelessFun(e.Parent()) && !prev(e).Valid() && !first(e).Valid()) {
 			continue
 		}
 		l.failSyntax(e)
@@ -391,11 +391,40 @@ func emptyArgument(e psi.NodeRef) bool {
 }
 
 // missingRParen reports whether the psi node e is the empty error
-// element where a parenthesized expression's closing parenthesis is
-// missing, (a at the end of an argument list, which changes nothing.
+// element where the closing parenthesis of a parenthesized expression or
+// of an argument list is missing, f((a at the end of a block, which
+// changes nothing.
 func missingRParen(e psi.NodeRef) bool {
-	return e.NumericKind() == psi.KindERROR_ELEMENT && !first(e).Valid() && e.Parent().NumericKind() == psi.KindPARENTHESIZED &&
-		!next(e).Valid() && isExpr(prev(e))
+	if !inertError(e) || next(e).Valid() {
+		return false
+	}
+	switch e.Parent().NumericKind() {
+	case psi.KindPARENTHESIZED:
+		return isExpr(prev(e)) && !first(e).Valid()
+	case psi.KindVALUE_ARGUMENT_LIST:
+		// Or tokens where it is missing, f(x val, which FIR leaves out.
+		return prev(e).NumericKind() == psi.KindVALUE_ARGUMENT
+	}
+	return false
+}
+
+// errorCallee reports whether the psi node e is an error element of
+// tokens where a call's callee is missing, = { x } after an operand,
+// which the call's lowering replaces with an expression of no type, as
+// FIR does.
+func errorCallee(e psi.NodeRef) bool {
+	c := e.Parent()
+	return inertError(e) && !prev(e).Valid() && c.NumericKind() == psi.KindCALL_EXPRESSION && !exprChild(c).Valid() &&
+		(has(c, psi.KindVALUE_ARGUMENT_LIST) || has(c, psi.KindLAMBDA_ARGUMENT))
+}
+
+// namelessFun reports whether the psi node n is the function psi makes
+// of a block where a declaration is expected, { ... } at the top level:
+// an empty error element, then the block.
+func namelessFun(n psi.NodeRef) bool {
+	e := first(n)
+	return n.NumericKind() == psi.KindFUN && e.NumericKind() == psi.KindERROR_ELEMENT && !first(e).Valid() &&
+		next(e).NumericKind() == psi.KindBLOCK && !next(next(e)).Valid()
 }
 
 // emptySelector reports whether the psi node e is the empty error element
@@ -766,6 +795,8 @@ var exprKinds = func() map[psi.Kind]bool {
 		psi.KindLABELED_EXPRESSION, psi.KindARRAY_ACCESS_EXPRESSION, psi.KindCLASS_LITERAL_EXPRESSION,
 		psi.KindCALLABLE_REFERENCE_EXPRESSION, psi.KindOBJECT_LITERAL, psi.KindCOLLECTION_LITERAL_EXPRESSION,
 		psi.KindFUN, psi.KindBLOCK, psi.KindENUM_ENTRY_SUPERCLASS_REFERENCE_EXPRESSION,
+		// Declarations where an expression is expected: see declExpr.
+		psi.KindCLASS, psi.KindOBJECT_DECLARATION,
 	} {
 		m[k] = true
 	}

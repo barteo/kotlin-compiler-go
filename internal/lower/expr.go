@@ -51,11 +51,32 @@ func (l *lowerer) expr(n psi.NodeRef) syntax.Expr {
 	if !n.Valid() {
 		l.failAt(l.posAt(len(l.src)), "expected an expression")
 	}
+	if k := n.NumericKind(); k == psi.KindCLASS || k == psi.KindOBJECT_DECLARATION {
+		return l.declExpr(n) // whose wrapper is no psi node's
+	}
 	x := l.expr1(n)
 	if _, ok := l.prov[x]; !ok {
 		l.prov[x] = n.ID()
 	}
 	return x
+}
+
+// declExpr lowers a class or object declaration where an expression is
+// expected, fun f() = class C {}, which TreeErrors reports. Recovering,
+// it is kept as FIR keeps it, and checked as a local class: in a lambda,
+// the expression of no type.
+func (l *lowerer) declExpr(n psi.NodeRef) syntax.Expr {
+	if !l.recovering {
+		l.fail(n, "expected an expression, found a declaration")
+	}
+	as, m, _, _ := l.stmtModifiers(n)
+	lc := l.localClass(n, m)
+	lc.Annotations = append(as, lc.Annotations...)
+	record(l, lc, n)
+	p := l.pos(n)
+	lam := &syntax.Lambda{Body: &syntax.Block{P: p, Stmts: []syntax.Stmt{lc}}}
+	lam.P = p
+	return &syntax.As{P: p, X: lam, Ref: &syntax.TypeRef{P: p, Known: &types.InvalidType}}
 }
 
 func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
@@ -474,6 +495,9 @@ func (l *lowerer) typeArgsOf(n psi.NodeRef) []*syntax.TypeArg {
 
 // call lowers a CALL_EXPRESSION.
 func (l *lowerer) call(n psi.NodeRef) syntax.Expr {
+	if e := first(n); l.recovering && errorCallee(e) {
+		return l.callOn(syntax.Invalid(l.pos(e)), nil, n)
+	}
 	callee := exprChild(n)
 	if callee.NumericKind() == psi.KindREFERENCE_EXPRESSION && first(callee).Text() == "suspend" &&
 		!has(n, psi.KindTYPE_ARGUMENT_LIST) && !has(n, psi.KindVALUE_ARGUMENT_LIST) {

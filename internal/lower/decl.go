@@ -184,6 +184,12 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 			l.whereClause(where, fd.TypeParams)
 		}
 	}
+	if !seenName && l.recovering && namelessFun(n) {
+		// { ... } where a declaration is expected: as FIR, a function
+		// named as a nameless object is, with no parameters.
+		fd.Name = NoNameProvided
+		return fd
+	}
 	if !seenName {
 		l.fail(child(n, psi.KindVALUE_PARAMETER_LIST), "expected a name")
 	}

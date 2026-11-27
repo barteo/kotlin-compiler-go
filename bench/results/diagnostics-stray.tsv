@@ -7,7 +7,6 @@ tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	KotlinActualA
 tests/PackageQualified.kt	rejects invalid	a.kt:3	unresolved import: java.*
 tests/ResolveToJava.kt	rejects invalid	a.kt:2	unresolved import: java.*
 tests/TraitOverrideObjectMethods.kt	rejects invalid	TraitOverrideObjectMethods.kt:6	'finalize' overrides nothing
-tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	rejects invalid	annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt:16	expected an expression
 tests/annotations/AnnotationInContract.kt	rejects invalid	AnnotationInContract.kt:6	error in contract description: the contract is empty
 tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:6	inheriting an annotation class is prohibited
 tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	inheriting an annotation class is prohibited

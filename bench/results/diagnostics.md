@@ -65,18 +65,17 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21907 of 22025 expected errors (99.5%) on their lines.
+kc reports 21910 of 22025 expected errors (99.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `UNRESOLVED_REFERENCE` | 2553 | 2524 | 29 |
+| `UNRESOLVED_REFERENCE` | 2553 | 2525 | 28 |
 | `ARGUMENT_TYPE_MISMATCH` | 1491 | 1472 | 19 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 7 |
 | `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 10 | 3 | 7 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 635 | 630 | 5 |
 | `RETURN_TYPE_MISMATCH` | 418 | 413 | 5 |
 | `UNRESOLVED_IMPORT` | 57 | 54 | 3 |
-| `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 2 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
 | `INVISIBLE_REFERENCE` | 525 | 523 | 2 |
@@ -84,9 +83,9 @@ kc reports 21907 of 22025 expected errors (99.5%) on their lines.
 | `MISSING_DEPENDENCY_CLASS` | 75 | 73 | 2 |
 | `OTHER_ERROR_WITH_REASON` | 2 | 0 | 2 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 157 | 2 |
-| `RETURN_NOT_ALLOWED` | 63 | 61 | 2 |
 | `TYPE_ARGUMENTS_NOT_ALLOWED` | 11 | 9 | 2 |
 | `TYPE_MISMATCH` | 33 | 31 | 2 |
+| `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 54 | 2 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 161 | 2 |
 | `ARGUMENT_PASSED_TWICE` | 16 | 15 | 1 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 113 | 1 |
@@ -100,6 +99,7 @@ kc reports 21907 of 22025 expected errors (99.5%) on their lines.
 | `NO_VALUE_FOR_PARAMETER` | 175 | 174 | 1 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 154 | 1 |
 | `REPEATED_ANNOTATION` | 69 | 68 | 1 |
+| `RETURN_NOT_ALLOWED` | 63 | 62 | 1 |
 | `TYPEALIAS_EXPANSION_CAPTURES_OUTER_TYPE_PARAMETERS` | 6 | 5 | 1 |
 | `UNINITIALIZED_VARIABLE` | 213 | 212 | 1 |
 | `UNSAFE_CALL` | 525 | 524 | 1 |
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one, the first that applies: 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 22.0% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| environment | 19 | 16.1% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| syntax-error | 12 | 10.2% | `UNRESOLVED_REFERENCE` 3, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2, `RETURN_TYPE_MISMATCH` 1 |
+| accepted | 26 | 22.6% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| environment | 19 | 16.5% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| syntax-error | 5 | 4.3% | `UNRESOLVED_REFERENCE` 2, `RETURN_NOT_ALLOWED` 1, `RETURN_TYPE_MISMATCH` 1, `UNINITIALIZED_VARIABLE` 1 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 19 | 16.1% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 42 | 35.6% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
+| nearby | 19 | 16.5% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 46 | 40.0% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -180,7 +180,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected parameter of type _` | 2 |
 | `incompatible types Int and Nothing` | 2 |
 | `multiple vararg-parameters are prohibited` | 2 |
-| *57 more* | |
+| *56 more* | |
 
 ## Unsupported features
 

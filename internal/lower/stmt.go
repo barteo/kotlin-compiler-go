@@ -12,15 +12,21 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 		l.failAt(l.posAt(len(l.src)), "expected '{'")
 	}
 	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	p := l.pos(lb)
 	if !lb.Valid() {
-		l.fail(n, "expected '{'")
+		// finally x: as FIR, recovering, the block of what follows,
+		// which psi starts with an empty error element.
+		if e := first(n); !l.recovering || e.NumericKind() != psi.KindERROR_ELEMENT || first(e).Valid() {
+			l.fail(n, "expected '{'")
+		}
+		p = l.pos(n)
 	}
 	end := l.pos(rb)
 	if !rb.Valid() {
 		l.missingBrace(n)
 		end = l.end(n)
 	}
-	b := &syntax.Block{P: l.pos(lb), End: end, Stmts: l.stmts(n)}
+	b := &syntax.Block{P: p, End: end, Stmts: l.stmts(n)}
 	return record(l, b, n)
 }
 

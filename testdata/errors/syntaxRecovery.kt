@@ -33,3 +33,20 @@ private // ERROR use the 'constructor' keyword after the modifiers of the primar
 @Suppress("x") { // ERROR Expecting 'constructor' keyword
     fun f(): String = 1 // ERROR type mismatch: inferred type is Int but String was expected
 }
+
+// A class where an expression is expected is checked as a local class.
+fun declBody(): Any = @Suppress("x") class InBody { // ERROR expected an expression, found a declaration
+    companion object // ERROR modifier 'companion' is not applicable inside 'local class'
+}
+
+val beforeBlock = 1
+{ // ERROR Expecting a top level declaration
+    // A block where a declaration is expected is a function without a
+    // name.
+    val s: String = 1 // ERROR type mismatch: inferred type is Int but String was expected
+}
+
+// An argument list cut short swallows what follows, as with kotlinc.
+val unclosed = { missing }( // ERROR unresolved reference: missing
+
+val after = { 1 } // ERROR Expecting an argument
