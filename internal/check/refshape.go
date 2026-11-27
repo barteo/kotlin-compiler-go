@@ -33,7 +33,7 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 		return c.boundRefShapes(rt, r.Name)
 	}
 	if r.X == nil {
-		if ts := c.ctorRefShapes(r.Name); ts != nil {
+		if ts := c.ctorRefShapes(r.Name, false); ts != nil {
 			return ts
 		}
 		return c.topRefShapes(r.Name)
@@ -223,11 +223,16 @@ func (c *Checker) topRefShapes(name string) []types.Type {
 	return out
 }
 
-// ctorRefShapes returns the types of ::name, naming only a class of the
-// program without type parameters: those of its constructors.
-func (c *Checker) ctorRefShapes(name string) []types.Type {
+// ctorRefShapes returns the types of ::name, naming only a class without
+// type parameters: those of its constructors, or, if
+// adapted is set, those that leave out trailing parameters with default
+// values, as K2 adapts a reference to a function type that takes fewer.
+func (c *Checker) ctorRefShapes(name string, adapted bool) []types.Type {
 	cls := c.lookupClass(name)
-	if cls == nil || cls.External || cls.Inner || cls.Interface || cls.Object || len(cls.TypeParams) > 0 || c.isVar(name) ||
+	if cls != nil && cls.External {
+		cls.Ensure()
+	}
+	if cls == nil || cls.Inner || cls.Interface || cls.Object || len(cls.TypeParams) > 0 || c.isVar(name) ||
 		c.cls != nil && c.hasCallable(c.cls, name) {
 		return nil
 	}
@@ -247,9 +252,32 @@ func (c *Checker) ctorRefShapes(name string) []types.Type {
 			}
 			ps = append(ps, q.Type)
 		}
-		out = append(out, c.u.ext.funcs.Type(ps, cls.This()))
+		if !adapted {
+			out = append(out, c.u.ext.funcs.Type(ps, cls.This()))
+			continue
+		}
+		for n := len(ps) - 1; n >= 0 && f.Params[n].Default; n-- {
+			out = append(out, c.u.ext.funcs.Type(ps[:n], cls.This()))
+		}
 	}
 	return out
+}
+
+// adaptedRefShapes returns the types reference l may have that leave out
+// parameters with default values, for a reference to a constructor (see
+// ctorRefShapes), nil if none.
+func (c *Checker) adaptedRefShapes(l *syntax.Lambda) []types.Type {
+	r := l.Ref
+	if r == nil || r.Type != nil || r.Bound != nil || r.X != nil {
+		return nil
+	}
+	if _, ok := c.eagerRefType(l); ok {
+		return nil
+	}
+	if _, ok := c.peekRefRecv(r); ok {
+		return nil
+	}
+	return c.ctorRefShapes(r.Name, true)
 }
 
 // memberRefShapes returns the types of C::name for a class cls.

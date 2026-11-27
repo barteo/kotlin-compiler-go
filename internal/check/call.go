@@ -1750,7 +1750,25 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	if best := c.byRefShape1(x, match, refs, false); best != nil {
 		return best
 	}
-	return c.byRefShape1(x, match, refs, true)
+	if best := c.byRefShape1(x, match, refs, true); best != nil {
+		return best
+	}
+	// One that takes a reference that leaves out parameters with default
+	// values, which K2 adapts only when no candidate takes it as it is:
+	// use(::H) for H(s: S, off: Boolean = false) is use(vararg (S) -> H),
+	// not use(vararg (S, K) -> H).
+	adapted := map[int][]types.Type{}
+	for i, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok {
+			if ts := c.adaptedRefShapes(l); len(ts) > 0 {
+				adapted[i] = ts
+			}
+		}
+	}
+	if len(adapted) == 0 {
+		return nil
+	}
+	return c.byRefShape1(x, match, adapted, false)
 }
 
 // argRefShapes returns the types each argument of x that is a callable
