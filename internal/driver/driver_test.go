@@ -1002,6 +1002,72 @@ fun main() {
 	}
 }
 
+// TestInterfaceCasts checks that a value used as an interface its class
+// implements is cast to it, as kotlinc does: R8 checks the types where
+// branches join, and if (b) c else Impl() of an interface its library
+// classes lack doesn't type check without the cast, so R8 makes the
+// method throw.
+func TestInterfaceCasts(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "casts.kt")
+	if err := os.WriteFile(src, []byte(`interface Collector {
+    fun report(message: String)
+}
+
+class Printing : Collector {
+    override fun report(message: String) = println(message)
+}
+
+class Casts {
+    fun branch(b: Boolean, c: Collector): Collector = if (b) c else Printing()
+
+    fun choice(i: Int, c: Collector): Collector = when (i) {
+        0 -> Printing()
+        else -> c
+    }
+
+    fun fallback(c: Collector?): Collector = c ?: Printing()
+
+    fun direct(): Collector = Printing()
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(tmp, "out")
+	if err := Compile([]string{src}, Options{OutDir: out, Jobs: 1, ClassPath: []string{lib}}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "Casts.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, err := classfile.ReadMethods(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"branch": true, "choice": true, "fallback": true, "direct": true}
+	for _, m := range ms {
+		if !want[m.Name] {
+			continue
+		}
+		insns, err := m.Decode()
+		if err != nil {
+			t.Fatalf("%s: %v", m.Name, err)
+		}
+		if !slices.ContainsFunc(insns, func(in classfile.Insn) bool { return in.Op == classfile.CHECKCAST && in.Class == "Collector" }) {
+			t.Errorf("%s doesn't cast its Printing to Collector", m.Name)
+		}
+		delete(want, m.Name)
+	}
+	if len(want) > 0 {
+		t.Errorf("methods not found: %v", want)
+	}
+}
+
 // TestCompanionAccessors checks that a companion object's code reads and
 // writes its properties whose fields the outer class holds through their
 // accessors, as kotlinc's does, so a mock of the companion answers for

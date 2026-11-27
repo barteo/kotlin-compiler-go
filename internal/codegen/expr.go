@@ -105,28 +105,38 @@ func (g *gen) coerce(from, to types.Type) {
 			g.coerce(from.NonNull(), to) // Int! to Long
 		}
 	default:
-		g.castToSuper(to)
+		g.castToSuper(from, to)
 	}
 }
 
-// castToSuper casts the value on the stack, of a subclass of class type
-// to, to that class, as kotlinc does where a value is used as another
-// class: the verifier then takes the value as that class without
-// loading the two to compare them, so the code still verifies against a
-// version of the value's class that no longer extends it, and fails
-// only where it runs. A value used as an interface needs no cast, which
-// the verifier doesn't check.
-func (g *gen) castToSuper(to types.Type) {
-	if to.K != types.Class || to.C == nil || to.C.Interface || !g.code.Reachable() {
+// castToSuper casts the value on the stack, of type from, to a class or
+// interface type to that it is a subtype of, as kotlinc does where a
+// value is used as another type: the verifier then takes the value as
+// that class without loading the two to compare them, so the code still
+// verifies against a version of the value's class that no longer extends
+// it, and fails only where it runs. R8 checks the types where branches
+// join, as the verifier doesn't for interfaces: without the cast, the
+// result of if (b) c else Impl() for an interface Impl implements, and
+// which R8's library classes lack, doesn't type check, and R8 makes the
+// method throw. A value is cast to an interface only if it is of a class
+// known to implement it: a lambda's class may implement only its
+// function type.
+func (g *gen) castToSuper(from, to types.Type) {
+	if to.K != types.Class || to.C == nil || !g.code.Reachable() {
 		return
 	}
 	d := desc(to)
 	if d[0] != 'L' || d == objectDesc {
 		return
 	}
-	if top := g.code.StackTop(); top.Tag() == cf.VObject && top.Class() != className(d) {
-		g.code.Checkcast(className(d))
+	top := g.code.StackTop()
+	if top.Tag() != cf.VObject || top.Class() == className(d) {
+		return
 	}
+	if to.C.Interface && (from.K != types.Class || from.C == nil || from.C.Interface || top.Class() != className(desc(from)) || !from.C.IsSubclassOf(to.C)) {
+		return
+	}
+	g.code.Checkcast(className(d))
 }
 
 // castErased converts a value read as the erasure of a type parameter to
