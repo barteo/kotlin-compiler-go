@@ -65,7 +65,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 21896 of 22025 expected errors (99.4%) on their lines.
+kc reports 21898 of 22025 expected errors (99.4%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -78,7 +78,6 @@ kc reports 21896 of 22025 expected errors (99.4%) on their lines.
 | `UNRESOLVED_IMPORT` | 57 | 54 | 3 |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 56 | 53 | 3 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 2 |
-| `IMPOSSIBLE_IS_CHECK_ERROR` | 84 | 82 | 2 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 2 |
 | `INVISIBLE_REFERENCE` | 525 | 523 | 2 |
 | `MEMBER_PROJECTED_OUT` | 50 | 48 | 2 |
@@ -129,6 +128,7 @@ kc reports 21896 of 22025 expected errors (99.4%) on their lines.
 | `ACCIDENTAL_OVERRIDE` | 56 | 56 | 0 |
 | `ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE` | 1 | 1 | 0 |
 | `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 2 | 2 | 0 |
+| `AMBIGUOUS_ANNOTATION_ARGUMENT` | 4 | 4 | 0 |
 | *539 more* | | | |
 
 ### Missed errors by cause
@@ -137,12 +137,12 @@ Why kc reports no error on the line of an expected one, the first that applies: 
 
 | Cause | Missed | Share | Most missed |
 |:---|---:|---:|:---|
-| accepted | 26 | 20.2% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
-| environment | 19 | 14.7% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
-| syntax-error | 21 | 16.3% | `UNRESOLVED_REFERENCE` 6, `CANNOT_INFER_PARAMETER_TYPE` 4, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2 |
+| accepted | 26 | 20.5% | `ARGUMENT_TYPE_MISMATCH` 8, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 6, `UNRESOLVED_REFERENCE` 5, `MEMBER_PROJECTED_OUT` 2, `MISSING_DEPENDENCY_CLASS` 2 |
+| environment | 19 | 15.0% | `UNRESOLVED_REFERENCE` 14, `UNRESOLVED_IMPORT` 3, `NO_SET_METHOD` 1, `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` 1 |
+| syntax-error | 21 | 16.5% | `UNRESOLVED_REFERENCE` 6, `CANNOT_INFER_PARAMETER_TYPE` 4, `WRONG_MODIFIER_CONTAINING_DECLARATION` 3, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 2, `RETURN_NOT_ALLOWED` 2 |
 | module-not-compiled | 0 | 0.0% |  |
-| nearby | 19 | 14.7% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
-| missing-check | 44 | 34.1% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
+| nearby | 19 | 15.0% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
+| missing-check | 42 | 33.1% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
 
 ## Errors kotlinc doesn't report
 
@@ -192,7 +192,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3580 of the 3667 warnings the tests expect (97.6%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3592 of the 3667 warnings the tests expect (98.0%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 | Warning kc reports | Expected | On their lines | Elsewhere |
 |:---|---:|---:|---:|
@@ -201,7 +201,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `IMPLICIT_BOXING_IN_IDENTITY_EQUALS` | 152 | 152 | 0 |
 | `UNUSED_EXPRESSION` | 136 | 136 | 0 |
-| `USELESS_IS_CHECK` | 127 | 120 | 0 |
+| `USELESS_IS_CHECK` | 127 | 125 | 0 |
 | `ERROR_SUPPRESSION` | 102 | 102 | 0 |
 | `NOTHING_TO_INLINE` | 100 | 100 | 0 |
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
@@ -209,8 +209,8 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `SENSELESS_COMPARISON` | 91 | 88 | 1 |
 | `USELESS_CAST` | 91 | 89 | 1 |
 | `UNNECESSARY_SAFE_CALL` | 90 | 89 | 1 |
-| `UNCHECKED_CAST` | 88 | 84 | 1 |
-| `OPT_IN_USAGE` | 83 | 78 | 0 |
+| `UNCHECKED_CAST` | 88 | 87 | 1 |
+| `OPT_IN_USAGE` | 83 | 79 | 0 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 | 71 | 0 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 | 70 | 0 |
 | `FINAL_UPPER_BOUND` | 69 | 67 | 0 |
@@ -249,7 +249,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `EQUALITY_NOT_APPLICABLE_WARNING` | 15 | 15 | 0 |
 | `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` | 15 | 8 | 0 |
 | `PARAMETER_NAME_CHANGED_ON_OVERRIDE` | 15 | 15 | 0 |
-| `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 13 | 0 |
+| `USELESS_ELVIS_LEFT_IS_NULL` | 15 | 15 | 0 |
 | `ARRAY_EQUALITY_OPERATOR_CAN_BE_REPLACED_WITH_CONTENT_EQUALS` | 13 | 12 | 0 |
 | `RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING` | 13 | 13 | 0 |
 | `VARIABLE_INITIALIZER_IS_REDUNDANT` | 13 | 13 | 0 |
@@ -294,7 +294,7 @@ Of the tests kc compiled, warnings don't decide the category: those are about er
 | `DSL_MARKER_PROPAGATES_TO_MANY` | 4 | 4 | 0 |
 | `EXTENSION_FUNCTION_SHADOWED_BY_MEMBER_PROPERTY_WITH_INVOKE` | 4 | 4 | 0 |
 | `TRIM_MARGIN_BLANK_PREFIX` | 4 | 4 | 0 |
-| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 | 3 | 0 |
+| `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING` | 4 | 4 | 0 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` | 4 | 4 | 0 |
 | `CAN_BE_VAL` | 3 | 3 | 0 |
 | `DEPRECATED_MODIFIER_FOR_TARGET` | 3 | 3 | 0 |

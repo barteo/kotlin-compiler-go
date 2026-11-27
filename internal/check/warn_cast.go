@@ -33,7 +33,7 @@ func (c *Checker) whenIsWarnings(x *syntax.When) {
 			// branches before it must.
 			last := i == len(x.Branches)-1 && len(x.Branches) > 1 && len(br.Conds) == 1
 			last = last && (cond.NotIs && c.coveredWhens[x] || cond.Is && br.Guard == nil)
-			c.isWarnings(cond, cond.P, cond.Target, cond.NotIs, last)
+			c.isWarnings(cond, x.Subject, cond.P, cond.Target, cond.NotIs, last)
 		}
 	}
 }
@@ -42,11 +42,15 @@ func (c *Checker) whenIsWarnings(x *syntax.When) {
 // x's type decides: USELESS_IS_CHECK if x is always a T, unless last is
 // set, and IMPOSSIBLE_IS_CHECK_WARNING if its smart casts make it never
 // one. If its type before smart casts does, the check is the error
-// IMPOSSIBLE_IS_CHECK (see impossibleIs).
-func (c *Checker) isWarnings(n any, p syntax.Pos, t types.Type, not, last bool) {
+// IMPOSSIBLE_IS_CHECK (see impossibleIs). x is the value checked.
+func (c *Checker) isWarnings(n any, x syntax.Expr, p syntax.Pos, t types.Type, not, last bool) {
 	f, ok := c.typeFacts[n]
 	useless := func() {
-		if !last {
+		switch {
+		case last:
+		case isLiteral(x):
+			c.robustWarnf(p, "USELESS_IS_CHECK", "check for instance is always '%v'", !not)
+		default:
 			c.warnf(p, "USELESS_IS_CHECK", "check for instance is always '%v'", !not)
 		}
 	}

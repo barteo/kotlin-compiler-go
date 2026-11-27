@@ -413,3 +413,49 @@ func TestSessionRandomEdits(t *testing.T) {
 		t.Errorf("only %d of %d updates incremental", st.Incremental, st.Updates)
 	}
 }
+
+// TestSessionLostWarnings checks that a syntax error in one file keeps the
+// warnings of another when lowering left out only a statement, hides them
+// when it left out a declaration, and that fixing the error brings them
+// back.
+func TestSessionLostWarnings(t *testing.T) {
+	lib := openLib(t, withStdlib(t))
+	ctx := context.Background()
+	opts := Options{Warnings: true}
+	m := newModule(map[string]string{
+		"a.kt": "fun f(s: String) = s?.length\n",
+		"b.kt": "fun g(): Int {\n    val y = 1\n    return y\n}\n",
+	})
+	s := lib.Session()
+	defer s.Close()
+	for _, st := range []struct {
+		name string
+		edit func()
+		want bool
+	}{
+		{"clean", func() {}, true},
+		{"statement dropped", func() { m.replace(t, "b.kt", "val y = 1", "val y = 1\n    1 +") }, true},
+		{"declaration dropped", func() { m.replace(t, "b.kt", "fun g(): Int {", "fun g(: Int {") }, false},
+		{"fixed", func() {
+			m.replace(t, "b.kt", "fun g(: Int {", "fun g(): Int {")
+			m.replace(t, "b.kt", "\n    1 +", "")
+		}, true},
+	} {
+		st.edit()
+		snaps := m.list()
+		res, err := s.Update(ctx, snaps, opts)
+		if err != nil {
+			t.Fatalf("%s: %v", st.name, err)
+		}
+		got := false
+		for _, d := range res.Diagnostics() {
+			if d.Name == "UNNECESSARY_SAFE_CALL" && filepath.Base(d.Path) == "a.kt" {
+				got = true
+			}
+		}
+		if got != st.want {
+			t.Errorf("%s: a.kt's UNNECESSARY_SAFE_CALL reported %v, want %v; diagnostics %+v", st.name, got, st.want, res.Diagnostics())
+		}
+		sameAsAnalyze(t, lib, res, snaps, opts, st.name)
+	}
+}

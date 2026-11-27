@@ -1008,10 +1008,12 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w.P = l.pos(n)
 	if has(n, psi.KindLPAR) {
 		if dd := child(n, psi.KindDESTRUCTURING_DECLARATION); dd.Valid() && has(dd, psi.KindEQ) {
-			// As kotlinc, the initializer is the subject, and the names
-			// aren't declared.
+			// As kotlinc, the names aren't declared, and the subject is
+			// the declaration, of type Unit, which evaluates the
+			// initializer.
 			l.errorLater(l.pos(dd), "illegal variable declaration in 'when' subject: destructuring declaration; only 'val' variables with initializers are allowed")
-			w.Subject = l.expr(exprAfter(dd, psi.KindEQ))
+			x := l.expr(exprAfter(dd, psi.KindEQ))
+			w.Subject = &syntax.As{P: syntax.StartPos(x), X: x, Ref: &syntax.TypeRef{P: syntax.StartPos(x), Known: &types.UnitType}}
 		} else if pd := child(n, psi.KindPROPERTY); pd.Valid() {
 			if m := child(pd, psi.KindMODIFIER_LIST); m.Valid() || has(pd, psi.KindVAR_KEYWORD) {
 				if !has(pd, psi.KindEQ) || has(pd, psi.KindPROPERTY_DELEGATE) || has(pd, psi.KindTYPE_REFERENCE) && has(pd, psi.KindDOT) {

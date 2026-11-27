@@ -1,14 +1,17 @@
 package check
 
-// recoveredWarnings are the warnings reported of a file with syntax
-// errors, which is checked as far as the parser recovered it: without
-// the statements and declarations that have a syntax error
-// (Options.Recovered). What is left out may use, assign or jump from
-// what is kept, so only the warnings are reported that a statement or
-// declaration left out can't be the reason for: those judged by the
-// syntax and modifiers of a declaration or expression that is kept, by
-// the types written in its header, or by two declarations that are both
-// kept.
+// recoveredWarnings are the warnings reported of a module with syntax
+// errors wherever they are. It is checked as far as the parser recovered
+// it: without the statements and declarations that have a syntax error
+// (Options.Recovered, syntax.File.Lost). What is left out may use,
+// assign or jump from what is kept, so in the body of a declaration
+// that lost statements, or anywhere if a declaration was lost, only the
+// warnings are reported that what is left out can't be the reason for:
+// those judged by the syntax and modifiers of a declaration or
+// expression that is kept, by the types written in its header, by two
+// declarations that are both kept, or by literals alone
+// (syntax.Error.Robust). Elsewhere every warning is: statements left
+// out of a body nothing outside it sees into change nothing outside it.
 //
 // Not the warnings of what isn't used or read, of code that can't be
 // reached, or of calls that aren't made (UNUSED_VARIABLE,
@@ -22,6 +25,7 @@ package check
 var recoveredWarnings = map[string]bool{
 	// Literals and syntax.
 	"REDUNDANT_INTERPOLATION_PREFIX":                        true,
+	"USELESS_ELVIS_LEFT_IS_NULL":                            true, // null ?: y
 	"NOT_NULL_ASSERTION_ON_LAMBDA_EXPRESSION":               true,
 	"NOT_NULL_ASSERTION_ON_CALLABLE_REFERENCE":              true,
 	"RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_WARNING":       true,
@@ -55,6 +59,8 @@ var recoveredWarnings = map[string]bool{
 	"REDUNDANT_NULLABLE":                   true,
 	"REDUNDANT_PROJECTION":                 true,
 	"PLATFORM_CLASS_MAPPED_TO_KOTLIN":      true,
+	// The type arguments written for a type alias, and its declaration.
+	"UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION_DEPRECATION_WARNING": true,
 	// Annotations.
 	"DEPRECATED_JAVA_ANNOTATION":         true,
 	"ANNOTATION_TARGETS_ONLY_IN_JAVA":    true,

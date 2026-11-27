@@ -150,11 +150,14 @@ func (c *Checker) localWarnings() {
 				c.classDeadCode(n.Decl, deadClasses)
 			}
 		case *syntax.As:
+			if n.Ref != nil && n.Ref.Known != nil {
+				break // lowering's, recovering from a syntax error: no cast written
+			}
 			c.castWarnings(n)
 			c.uncheckedCast(n)
 			c.castNeverSucceeds(n)
 		case *syntax.Is:
-			c.isWarnings(n, syntax.StartPos(n), n.Target, n.Not, false)
+			c.isWarnings(n, n.X, syntax.StartPos(n), n.Target, n.Not, false)
 		case *syntax.When:
 			c.whenIsWarnings(n)
 			c.whenNullWarnings(n)
@@ -223,6 +226,16 @@ func unchecked(e syntax.Expr) syntax.Expr {
 }
 
 // isNullLit reports whether e is the literal null.
+// isLiteral reports whether e is a literal, whose type no smart cast
+// changes.
+func isLiteral(e syntax.Expr) bool {
+	switch unchecked(e).(type) {
+	case *syntax.IntLit, *syntax.DoubleLit, *syntax.FloatLit, *syntax.CharLit, *syntax.BoolLit, *syntax.NullLit, *syntax.StringLit:
+		return true
+	}
+	return false
+}
+
 func isNullLit(e syntax.Expr) bool {
 	_, ok := unchecked(e).(*syntax.NullLit)
 	return ok
@@ -562,6 +575,10 @@ func (c *Checker) uncheckedCast(x *syntax.As) {
 			return
 		}
 	default:
+		return
+	}
+	if isLiteral(x.X) {
+		c.robustWarnf(x.P, "UNCHECKED_CAST", "unchecked cast of '%s' to '%s'", t, target)
 		return
 	}
 	c.warnf(x.P, "UNCHECKED_CAST", "unchecked cast of '%s' to '%s'", t, target)
