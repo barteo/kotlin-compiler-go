@@ -562,7 +562,7 @@ func (g *gen) valueOverride(f *types.FunSym, final bool) {
 	params := bridgeParams(f)
 	for _, b := range f.Bridges {
 		if !g.cache().collectionBridge(g.owner, b) { // a collection's own bridge, as remove(int)
-			g.bridge(b, name, params, f.Ret, slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
+			g.bridge(b, name, params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 		}
 	}
 }
