@@ -2299,6 +2299,14 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			out = append(out, whenTrue...)
 			continue
 		}
+		if e.Null {
+			// The argument is null: of type Nothing?, as after x == null.
+			if k, ok := c.chainKeyOf(arg); ok && types.MayBeNull(k.t) {
+				k.t = types.NullType
+				out = append(out, k)
+			}
+			continue
+		}
 		if e.Is == nil {
 			// The argument isn't null, nor are the receivers of its safe
 			// calls: !x?.y.isNullOrEmpty() means x isn't null either.

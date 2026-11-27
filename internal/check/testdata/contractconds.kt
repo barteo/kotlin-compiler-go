@@ -27,3 +27,29 @@ fun c4(x: Any?): Boolean {
     }
     return x is String
 }
+fun nullWhenNull(x: Int?): Int? {
+    contract {
+        returns(null) implies (x == null)
+    }
+    return x?.inc()
+}
+fun useNullWhenNull(x: Int?) {
+    if (nullWhenNull(x) == null) {
+        if (x == null) x.toString() // SENSELESS_COMPARISON
+    }
+    if (nullWhenNull(x) != null) {
+        if (x == null) x.toString()
+    }
+}
+fun Any?.notNullReceiver(): Boolean {
+    contract {
+        returns(true) implies (this@notNullReceiver != null)
+    }
+    return this != null
+}
+fun Any?.unlabeled(): Boolean {
+    contract {
+        returns(true) implies (this != null) // SENSELESS_COMPARISON error
+    }
+    return this != null
+}

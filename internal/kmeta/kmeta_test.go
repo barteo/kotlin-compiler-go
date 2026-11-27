@@ -543,7 +543,7 @@ func TestEncodeD1(t *testing.T) {
 }
 
 // TestContractEffects checks that the effects kc writes, returnsNotNull()
-// among them, decode as they were, and that a conclusion with an or,
+// and returns(null) implies (w == null) among them, decode as they were, and that a conclusion with an or,
 // which kc can't read, gives no effect.
 func TestContractEffects(t *testing.T) {
 	intN := &Type{Class: "kotlin/Int", Nullable: true}
@@ -553,6 +553,7 @@ func TestContractEffects(t *testing.T) {
 		{Returns: ReturnsNotNull, Param: 0},
 		{Returns: ReturnsTrue, Param: 1},
 		{Returns: ReturnsAny, Param: 0, Is: &Type{Class: "kotlin/Int"}},
+		{Returns: ReturnsNull, Param: 1, Null: true},
 	}
 	h := WritePackage(&PackageData{Funcs: []*Function{f}})
 	p, err := ReadPackage(&classfile.KotlinMeta{K: h.K, MV: h.MV, XI: h.XI, D1: h.D1, D2: h.D2})
@@ -564,7 +565,7 @@ func TestContractEffects(t *testing.T) {
 		t.Fatalf("functions: %v, %d", err, len(fs))
 	}
 	got := fs[0].Implies
-	if len(got) != 3 || got[2].Is == nil || got[2].Is.Class != "kotlin/Int" {
+	if len(got) != 4 || got[2].Is == nil || got[2].Is.Class != "kotlin/Int" {
 		t.Fatalf("effects decoded as %+v, want %+v", got, f.Implies)
 	}
 	got[2].Is, f.Implies[2].Is = nil, nil

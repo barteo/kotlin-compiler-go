@@ -1122,7 +1122,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			case kmeta.ReturnsNull:
 				r = 3
 			}
-			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds, Negated: im.Negated}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds, Negated: im.Negated, Null: im.Null}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {

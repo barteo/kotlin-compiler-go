@@ -250,6 +250,9 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 				conds = append(conds, c.Args[0])
 			case o.condition(m.X) && o.simpleEffect(c.Args[0]):
 				conds = append(conds, m.X)
+			case o.simpleEffect(m.X) && builderNullCheck(c.Args[0]):
+				// this != null: not a condition, but checked as one.
+				conds = append(conds, c.Args[0])
 			}
 		}
 		if ims, ok := contractImplies(c); ok {
@@ -346,12 +349,18 @@ func contractImplies(c *syntax.Call) ([]syntax.Implies, bool) {
 }
 
 // impliedCondition reads one condition of a contract's implies, im with
-// its Returns set: p != null, p is T or p.
+// its Returns set: p != null, p == null, p is T or p.
 func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool) {
 	var p syntax.Expr
 	switch x := cond.(type) {
 	case *syntax.Binary:
-		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE && x.Op != syntax.NOT_EQ_EQ {
+		_, null := x.Y.(*syntax.NullLit)
+		switch {
+		case !null:
+			return im, false
+		case x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ:
+			im.Null = true // p == null
+		case x.Op != syntax.NE && x.Op != syntax.NOT_EQ_EQ:
 			return im, false
 		}
 		p = x.X
@@ -395,7 +404,7 @@ func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool
 // symbol, once its parameters are declared.
 func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 	for _, im := range d.Implies {
-		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds, Negated: im.Negated}
+		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds, Negated: im.Negated, Null: im.Null}
 		if im.Param == "this" {
 			if d.Recv != nil {
 				e.Param = -1
@@ -482,6 +491,11 @@ func (c *Checker) contractCondWarnings(x syntax.Expr, env map[string]types.Type,
 			_, rf := c.contractCondWarnings(x.Y, with(env, lf), sym)
 			return nil, with(lf, rf)
 		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			if builderNullCheck(x) {
+				// The builder, never null.
+				c.warnf(x.X.Pos(), "SENSELESS_COMPARISON", "condition is always '%v'", x.Op == syntax.NE || x.Op == syntax.NOT_EQ_EQ)
+				return nil, nil
+			}
 			id, ok := x.X.(*syntax.Ident)
 			if _, null := x.Y.(*syntax.NullLit); !ok || !null {
 				return nil, nil
@@ -530,6 +544,24 @@ func (c *Checker) contractCondWarnings(x syntax.Expr, env map[string]types.Type,
 		return narrowed, nil
 	}
 	return nil, nil
+}
+
+// builderNullCheck reports whether x compares an unlabeled this with
+// null in a contract: this is the ContractBuilder there, which kotlinc
+// reports the comparison of as senseless.
+func builderNullCheck(x syntax.Expr) bool {
+	b, ok := x.(*syntax.Binary)
+	if !ok {
+		return false
+	}
+	switch b.Op {
+	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+	default:
+		return false
+	}
+	th, ok := b.X.(*syntax.This)
+	_, null := b.Y.(*syntax.NullLit)
+	return ok && null && th.Label == ""
 }
 
 // contractOwner is the function, or property accessor, a contract
