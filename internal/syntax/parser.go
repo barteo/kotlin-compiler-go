@@ -2256,10 +2256,12 @@ func (p *parser) annotation() Annotation {
 	// Arguments follow the name with no space between: @A(x), not @A (x),
 	// but for one on a declaration, on its line: @A (x) fun f(). On a
 	// type, kotlinc takes them after a space too, unless an arrow
-	// follows, which makes them a function type's parameters:
-	// @A () @A () -> Unit is @A() on @A () -> Unit.
+	// follows, which makes them a function type's parameters, or they
+	// aren't arguments, as a parenthesized function type:
+	// @A () @A () -> Unit is @A() on @A () -> Unit, and @A (() -> Unit)
+	// is @A on (() -> Unit).
 	if t := p.tok(); t.Kind == LPAREN && t.Pos.Line == last.Pos.Line && (t.Pos.Col == last.Pos.Col+utf8.RuneCountInString(last.Text) || p.declAfter(p.matching(p.i)+1) ||
-		p.typeAnnotation && p.toks[p.matching(p.i)+1].Kind != ARROW) {
+		p.typeAnnotation && p.toks[p.matching(p.i)+1].Kind != ARROW && !p.arrowIn(p.i)) {
 		end := p.matching(p.i)
 		a.Args = p.annotationArgs(p.i+1, end)
 		p.i = end + 1
@@ -2269,6 +2271,25 @@ func (p *parser) annotation() Annotation {
 	p.suppressShadowed = p.suppressShadowed || sh
 	p.suppressDSL = p.suppressDSL || dsl
 	return a
+}
+
+// arrowIn reports whether the parentheses that open at i hold an arrow
+// outside other brackets, which no argument list does: (() -> Unit).
+func (p *parser) arrowIn(i int) bool {
+	end, depth := p.matching(i), 0
+	for j := i + 1; j < end; j++ {
+		switch p.toks[j].Kind {
+		case LPAREN, LBRACK, LBRACE:
+			depth++
+		case RPAREN, RBRACK, RBRACE:
+			depth--
+		case ARROW:
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // declAfter reports whether the token at i, after an annotation, starts

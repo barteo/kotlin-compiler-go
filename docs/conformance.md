@@ -341,7 +341,7 @@ Kotlin 2.4.21's tests on `kc`:
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
 21,873 of the 22,025 expected errors (99.3%) on their lines, and 3,580 of
 the 3,667 expected warnings (97.6%), with 13 warnings on lines that expect
-none. It reports 452 errors on lines that expect none, in 246 tests, all
+none. It reports 451 errors on lines that expect none, in 245 tests, all
 of which `kotlinc` rejects for another error
 ([diagnostics-stray.tsv](../bench/results/diagnostics-stray.tsv)). Tests with Java sources are 1,221 of the run, and 5 of the 15
 that *accept invalid* code. The reports break the failures down; the

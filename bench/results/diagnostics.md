@@ -180,7 +180,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected a name` | 2 |
 | `expected parameter of type _` | 2 |
 | `incompatible types Int and Nothing` | 2 |
-| *58 more* | |
+| *57 more* | |
 
 ## Unsupported features
 

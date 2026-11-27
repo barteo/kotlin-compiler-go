@@ -36,7 +36,6 @@ tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects
 tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	contextInCompanionObject.kt:16	unresolved reference: b
 tests/contextParameters/declarationAndUsages/onConstructor.kt	rejects invalid	onConstructor.kt:17	this type has a constructor, and thus must be initialized here
 tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	rejects invalid	coroutineContextIsReserved.kt:38	context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use
-tests/contextParameters/dslMarker.kt	rejects invalid	dslMarker.kt:29	expected identifier, found ')'
 tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:15	no context argument for 't: T' found
 tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	type mismatch: inferred type is O.FooImpl.Bar but O was expected
 tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	type argument is not within its bounds: inferred type O.FooImpl.Bar of type parameter 'T' is not a subtype of Foo
