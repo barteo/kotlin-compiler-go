@@ -832,10 +832,27 @@ func (c *Checker) bareTail(b *syntax.Block) types.Type {
 			// be empty; kc, without intersection types, the bound:
 			// I of run { if (b) return@run; materializeI() }, whose
 			// value is dropped.
-			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true, false)
+			bound := unitExcludingBound(p.sys, p.t)
+			tv := p.sys.unfixedVar(p.t)
+			t := c.completeBranches(pending, bound, noWant, true, false)
+			if call := lastCall(p.body); call != nil && tv != nil {
+				c.noteUnitIntersection(call, tv.v, bound)
+			}
+			return t
 		}
 	}
 	return c.completeBranches(pending, types.UnitType, noWant, true, false)
+}
+
+// lastCall returns the call b ends with, or nil.
+func lastCall(b *syntax.Block) *syntax.Call {
+	if n := len(b.Stmts); n > 0 {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			call, _ := unchecked(es.X).(*syntax.Call)
+			return call
+		}
+	}
+	return nil
 }
 
 // unitExcludingBound returns a proper declared bound of t, a variable of

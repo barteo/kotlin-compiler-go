@@ -334,6 +334,11 @@ type Checker struct {
 	// an intersection that is or may be empty: see
 	// noteEmptyIntersection.
 	emptyInters map[*syntax.Call]emptyInter
+	// unitInters are the calls a lambda ends with that a bare return
+	// leaves it too, whose type argument K2 infers as the intersection of
+	// Unit and its bound, if it is or may be empty (see
+	// noteUnitIntersection).
+	unitInters map[*syntax.Call]emptyInter
 	// deadClasses are the local classes and object expressions in code
 	// reported unreachable, which classDeadCode doesn't judge.
 	deadClasses map[*syntax.ClassDecl]bool

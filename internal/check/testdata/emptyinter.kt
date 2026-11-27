@@ -35,3 +35,30 @@ fun test(f: (NotBase) -> Unit, m: Map<String, Int>, i: In<Int>) {
 val strings: Map<String, Int> = mapOf()
 val top: String by strings // INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING
 class Holder { val member: String by strings } // INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING
+
+interface BareI
+open class BareC
+fun <T> bareAny(): T = null!!
+fun <T : BareI> bareI(): T = null!!
+fun <T : BareC> bareC(): T = null!!
+fun <T : Any> bareNonNull(): T = null!!
+val bareP = false
+fun bare1() = run {
+    if (bareP) return@run
+    bareI() // INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION
+}
+fun bare2() = run {
+    if (bareP) return@run
+    bareC() // INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING
+}
+fun bare3() = run {
+    if (bareP) return@run
+    bareAny<Unit>()
+}
+fun bare4() = run {
+    if (bareP) return@run
+    bareNonNull()
+}
+fun bare5() = run {
+    bareI<BareI>()
+}

@@ -174,9 +174,10 @@ own tests.
   - `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` and
     `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` of a call's
     type argument that `kc` infers as an intersection, or that only
-    upper constraints and its declared bounds give, and of a delegated
-    property's `getValue`; not of a callable reference's vararg
-    adaptation or a lambda's last expression after a bare `return`.
+    upper constraints and its declared bounds give, of a delegated
+    property's `getValue`, and of a lambda's last call after a bare
+    `return`, with Unit; not of a callable reference's vararg
+    adaptation.
   - `DSL_MARKER_APPLIED_TO_WRONG_TARGET` not on a lambda.
   - `REDUNDANT_EXPLICIT_BACKING_FIELD` not of a field the property
     can't have.
