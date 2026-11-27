@@ -31,7 +31,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	res := &Result{facts: map[ElementID]*Fact{}}
+	res := &Result{}
 	for i, es := range errLists {
 		for _, e := range es {
 			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
@@ -139,6 +139,9 @@ func newRecorder() *recorder {
 // recorder keeps what the checker reports, the last report of each node.
 type recorder struct {
 	mu sync.Mutex
+	// lookups are the names each file looked up (check.LookupRecorder),
+	// for a Session's incremental updates.
+	lookups map[*syntax.File][]lookup
 	// overridden returns the functions a method overrides, directly.
 	overridden  func(*types.FunSym) []*types.FunSym
 	when        map[*syntax.When]whenReport
@@ -231,7 +234,9 @@ type builder struct {
 	provs []*lower.Provenance
 	rec   *recorder
 	where map[any]ElementID // AST nodes' psi nodes
-	cv    converter
+	// snapAt are the snapshots by ID.
+	snapAt map[psi.SnapshotID]*psi.Snapshot
+	cv     converter
 
 	// names are the fully qualified names of the functions the checker
 	// makes up for the standard library's preconditions.
@@ -244,6 +249,13 @@ type builder struct {
 
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
+
+	// facts are the facts found, by element, which build sorts into the
+	// Result's files.
+	facts map[ElementID]*Fact
+	// broken, if it isn't nil, says whose facts the Result leaves out:
+	// the files an incremental update keeps the facts of.
+	broken []bool
 
 	// probe is the completion's, if one is asked for.
 	probe *check.Probe
@@ -264,9 +276,13 @@ type builder struct {
 }
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
-	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
+	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec, facts: map[ElementID]*Fact{},
 		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
+	b.snapAt = make(map[psi.SnapshotID]*psi.Snapshot, len(snaps))
+	for _, s := range snaps {
+		b.snapAt[s.ID()] = s
+	}
 	return b
 }
 
@@ -295,8 +311,20 @@ func rank(n any) int {
 
 func (b *builder) build() {
 	entries := make([][]entry, len(b.snaps))
+	var classes []*types.ClassSym // the classes of the files left out
 	for i, p := range b.provs {
 		sid := b.snaps[i].ID()
+		if b.isBroken(i) {
+			// Only where its declarations are, which the facts name, and
+			// its classes, which the symbols have as the others' do.
+			p.Each(func(n any, id psi.NodeID) {
+				b.where[n] = ElementID{sid, id}
+				if d, ok := n.(*syntax.ClassDecl); ok && d.Sym != nil {
+					classes = append(classes, d.Sym)
+				}
+			})
+			continue
+		}
 		p.Each(func(n any, id psi.NodeID) {
 			b.where[n] = ElementID{sid, id}
 			entries[i] = append(entries[i], entry{n, id, rank(n)})
@@ -329,6 +357,9 @@ func (b *builder) build() {
 	for _, f := range b.later {
 		f()
 	}
+	for _, c := range classes {
+		b.sym(c)
+	}
 	b.packages(entries)
 	b.negated()
 	b.usedAsExpression()
@@ -340,27 +371,32 @@ func (b *builder) build() {
 	}
 	b.symbols()
 
-	for id := range b.res.facts {
-		b.res.order = append(b.res.order, id)
-	}
+	// The facts by file, in node order, but the broken files'.
+	files := make([][]*Fact, len(b.snaps))
 	index := map[psi.SnapshotID]int{}
 	for i, s := range b.snaps {
 		index[s.ID()] = i
 	}
-	slices.SortFunc(b.res.order, func(a, c ElementID) int {
-		if r := cmp.Compare(index[a.Snapshot], index[c.Snapshot]); r != 0 {
-			return r
+	for el, f := range b.facts {
+		if i, ok := index[el.Snapshot]; ok && !b.isBroken(i) {
+			files[i] = append(files[i], f)
 		}
-		return cmp.Compare(a.Node, c.Node)
-	})
+	}
+	for _, fs := range files {
+		slices.SortFunc(fs, func(a, c *Fact) int { return cmp.Compare(a.Element.Node, c.Element.Node) })
+	}
+	b.res.setFiles(b.snaps, files)
 }
+
+// isBroken reports whether the Result leaves out the ith file's facts.
+func (b *builder) isBroken(i int) bool { return b.broken != nil && b.broken[i] }
 
 // fact returns the fact of el, adding it.
 func (b *builder) fact(el ElementID) *Fact {
-	f := b.res.facts[el]
+	f := b.facts[el]
 	if f == nil {
 		f = &Fact{Element: el}
-		b.res.facts[el] = f
+		b.facts[el] = f
 	}
 	return f
 }
@@ -377,10 +413,8 @@ func (b *builder) decl(d any) *ElementID {
 }
 
 func (b *builder) node(el ElementID) psi.NodeRef {
-	for _, s := range b.snaps {
-		if s.ID() == el.Snapshot {
-			return s.Node(el.Node)
-		}
+	if s := b.snapAt[el.Snapshot]; s != nil {
+		return s.Node(el.Node)
 	}
 	return psi.NodeRef{}
 }
@@ -1172,13 +1206,16 @@ var textExtensions = map[types.Builtin]struct{ name, recv string }{
 // literals' facts, as calls of unaryMinus on the literals' values.
 func (b *builder) negated() {
 	for i, p := range b.provs {
+		if b.isBroken(i) {
+			continue
+		}
 		sid := b.snaps[i].ID()
 		p.Negated(func(id psi.NodeID, lit *syntax.IntLit) {
 			el, ok := b.where[lit]
 			if !ok {
 				return
 			}
-			src, ok := b.res.facts[el]
+			src, ok := b.facts[el]
 			if !ok || src.Type == nil {
 				return
 			}
@@ -1725,7 +1762,7 @@ func (b *builder) usedAsExpression() {
 			reported[ElementID{el.Snapshot, t.ID()}] = used
 		}
 	}
-	for el, f := range b.res.facts {
+	for el, f := range b.facts {
 		if f.Role != "expression" && f.Role != "reference" {
 			continue
 		}
@@ -1742,7 +1779,10 @@ func (b *builder) usedAsExpression() {
 // wrappers gives wrappers their inner expressions' facts, innermost
 // first.
 func (b *builder) wrappers() {
-	for _, s := range b.snaps {
+	for i, s := range b.snaps {
+		if b.isBroken(i) {
+			continue
+		}
 		for id := psi.NodeID(s.NodeCount()); id >= 1; id-- {
 			n := s.Node(id)
 			if !isWrapper(n.NumericKind()) {
@@ -1752,7 +1792,7 @@ func (b *builder) wrappers() {
 			if !in.Valid() {
 				continue
 			}
-			src, ok := b.res.facts[ElementID{s.ID(), in.ID()}]
+			src, ok := b.facts[ElementID{s.ID(), in.ID()}]
 			if !ok {
 				continue
 			}
@@ -1782,6 +1822,9 @@ func (b *builder) unreachable() {
 // the USER_TYPE and TYPE_REFERENCE of each entry's CONSTRUCTOR_CALLEE.
 func (b *builder) annotations() {
 	for i, f := range b.files {
+		if b.isBroken(i) {
+			continue
+		}
 		for at, cls := range b.rec.annots[f] {
 			id := b.provs[i].Annotation(at)
 			if id == 0 {

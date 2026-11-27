@@ -24,6 +24,20 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	return record(l, b, n)
 }
 
+// bodyBlock lowers the BLOCK body of a function, property accessor,
+// class initializer or secondary constructor: empty if Signatures skips
+// it (SkippedBody).
+func (l *lowerer) bodyBlock(n psi.NodeRef) *syntax.Block {
+	if !l.signatures || !n.Valid() || !SkippedBody(n) {
+		return l.block(n)
+	}
+	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	if !lb.Valid() || !rb.Valid() {
+		return l.block(n)
+	}
+	return record(l, &syntax.Block{P: l.pos(lb), End: l.pos(rb)}, n)
+}
+
 // missingBrace reports the closing brace missing at the end of n. When
 // recovering, n is kept, as FIR keeps it, and checked for errors of its
 // own; the error is reported with them.

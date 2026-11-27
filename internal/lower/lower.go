@@ -125,13 +125,16 @@ type lowerer struct {
 	// recovering is set by FileRecovering: an error in a statement of a
 	// block drops only that statement (see stmts).
 	recovering bool
+	// signatures is set by Signatures: the bodies SkippedBody names are
+	// lowered empty.
+	signatures bool
 }
 
 // File lowers a psi snapshot to kc's AST, as syntax.ParseAll parses the
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	return lowerFile(s, false)
+	return lowerFile(s, false, false)
 }
 
 // FileRecovering lowers a file with syntax errors to check as much of it
@@ -141,11 +144,64 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 // this way is kept with an invalid type, so its uses resolve without
 // errors of their own. The file is for checking only, never for code.
 func FileRecovering(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	return lowerFile(s, true)
+	return lowerFile(s, true, false)
 }
 
-func lowerFile(s *psi.Snapshot, recovering bool) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{recovering: recovering, s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+// Signatures lowers a file as FileRecovering does, but for the block
+// bodies SkippedBody names, which are lowered empty: what a check of the
+// other files that doesn't check this one (check.Options.Only) needs of
+// it. The errors in the bodies it leaves out aren't found.
+func Signatures(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, true, true)
+}
+
+// SkippedBody reports whether n is a block body that Signatures lowers
+// empty: that of a function, property accessor, class initializer or
+// secondary constructor, but for an inline function's or accessor's,
+// which the checker inlines into its callers, and one that starts with a
+// contract, which narrows its callers' types.
+func SkippedBody(n psi.NodeRef) bool {
+	if n.NumericKind() != psi.KindBLOCK {
+		return false
+	}
+	p := n.Parent()
+	inline := func(n psi.NodeRef) bool {
+		return n.ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindINLINE_KEYWORD).Valid()
+	}
+	switch p.NumericKind() {
+	case psi.KindFUN:
+		if inline(p) {
+			return false
+		}
+	case psi.KindPROPERTY_ACCESSOR:
+		if inline(p) || inline(p.Parent()) {
+			return false
+		}
+	case psi.KindCLASS_INITIALIZER, psi.KindSECONDARY_CONSTRUCTOR:
+	default:
+		return false
+	}
+	for c := n.FirstChild(); c.Valid(); c = c.NextSibling() {
+		if c.IsTrivia() || c.IsLeaf() {
+			continue // the brace
+		}
+		switch c.NumericKind() {
+		case psi.KindCALL_EXPRESSION:
+			if callee := c.FirstChild(); callee.NumericKind() == psi.KindREFERENCE_EXPRESSION && callee.Text() == "contract" {
+				return false
+			}
+		case psi.KindDOT_QUALIFIED_EXPRESSION:
+			if strings.HasPrefix(c.Text(), "kotlin.contracts.contract") {
+				return false
+			}
+		}
+		break
+	}
+	return true
+}
+
+func lowerFile(s *psi.Snapshot, recovering, signatures bool) (*syntax.File, *Provenance, []*syntax.Error) {
+	l := &lowerer{recovering: recovering, signatures: signatures, s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -158,7 +214,7 @@ func lowerFile(s *psi.Snapshot, recovering bool) (*syntax.File, *Provenance, []*
 		}
 	}
 	f := l.file(s.RootNode())
-	if len(l.errs) == 0 {
+	if len(l.errs) == 0 && !signatures {
 		// Every error element is under a declaration that reports it;
 		// this keeps a file with one from ever lowering cleanly.
 		for _, id := range l.errorIDs {

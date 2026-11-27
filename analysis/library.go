@@ -77,6 +77,11 @@ type Options struct {
 	// Complete asks what the code could name at a completion's caret:
 	// see Result.Completion.
 	Complete *Complete
+	// Declared are the paths of snapshots that are only declared: the
+	// sources of modules this one depends on, which their own analyses
+	// check. Their declarations are this module's to use, as a library's
+	// are; they aren't checked, and have no facts and no diagnostics.
+	Declared map[string]bool
 }
 
 // Analyze analyzes snapshots as the Kotlin sources of the library's
@@ -114,81 +119,246 @@ func (l *Library) Analyze(ctx context.Context, snapshots []*psi.Snapshot, opts O
 }
 
 func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Options) (*Result, error) {
-	jobs := max(l.cfg.Jobs, 1)
-	n := len(snaps)
-	type lowered struct {
-		file   *syntax.File
-		prov   *lower.Provenance
-		errs   []*syntax.Error
-		broken bool
-		lines  map[int]bool // lines with syntax errors
-	}
-	low := make([]lowered, n)
-	parallel(n, jobs, func(i int) {
-		s := snaps[i]
-		lw := &low[i]
-		for _, d := range s.Diagnostics() {
-			if line, _, err := s.Position(d.Range.Start); err == nil {
-				if lw.lines == nil {
-					lw.lines = map[int]bool{}
-				}
-				lw.lines[line] = true
-			}
-		}
-		var errs []*syntax.Error
-		if len(s.Diagnostics()) == 0 {
-			lw.file, lw.prov, errs = lowerSafely(s, false)
-			if len(errs) == 0 && lw.file != nil {
-				return
-			}
-		}
-		lw.broken = true
-		var rerrs []*syntax.Error
-		lw.file, lw.prov, rerrs = lowerSafely(s, true)
-		if len(s.Diagnostics()) == 0 {
-			// Errors psi's grammar doesn't find, as kotlinc's FIR builder
-			// reports them, and constructs kc doesn't lower.
-			lw.errs = errs
-		} else {
-			// Lowering's errors repeat psi's syntax errors, but for
-			// constructs kc doesn't support away from them.
-			for _, e := range rerrs {
-				if e.Feature != "" && !lw.lines[e.Pos.Line] {
-					lw.errs = append(lw.errs, e)
-				}
-			}
-		}
-		for _, e := range lw.errs {
+	res, _, err := l.run(ctx, snaps, opts, false)
+	return res, err
+}
+
+// lowered is a snapshot lowered for checking.
+type lowered struct {
+	file   *syntax.File
+	prov   *lower.Provenance
+	errs   []*syntax.Error
+	broken bool         // lowered recovering from syntax errors
+	lines  map[int]bool // lines with syntax errors
+	// lost is set if lowering may have left out a declaration, rather
+	// than statements of a closed body: the other files were checked
+	// without it.
+	lost bool
+}
+
+// lowerSnapshot lowers s, recovering from its syntax errors as kotlinc
+// does.
+func lowerSnapshot(s *psi.Snapshot) lowered {
+	var lw lowered
+	for _, d := range s.Diagnostics() {
+		if line, _, err := s.Position(d.Range.Start); err == nil {
 			if lw.lines == nil {
 				lw.lines = map[int]bool{}
 			}
-			lw.lines[e.Pos.Line] = true
+			lw.lines[line] = true
+		}
+	}
+	var errs []*syntax.Error
+	if len(s.Diagnostics()) == 0 {
+		lw.file, lw.prov, errs = lowerSafely(s, false)
+		if len(errs) == 0 && lw.file != nil {
+			return lw
+		}
+	}
+	lw.broken = true
+	var rerrs []*syntax.Error
+	lw.file, lw.prov, rerrs = lowerSafely(s, true)
+	if len(s.Diagnostics()) == 0 {
+		// Errors psi's grammar doesn't find, as kotlinc's FIR builder
+		// reports them, and constructs kc doesn't lower.
+		lw.errs = errs
+	} else {
+		// Lowering's errors repeat psi's syntax errors, but for
+		// constructs kc doesn't support away from them.
+		for _, e := range rerrs {
+			if e.Feature != "" && !lw.lines[e.Pos.Line] {
+				lw.errs = append(lw.errs, e)
+			}
+		}
+	}
+	for _, e := range lw.errs {
+		if lw.lines == nil {
+			lw.lines = map[int]bool{}
+		}
+		lw.lines[e.Pos.Line] = true
+	}
+	lw.lost = lw.file == nil || lostDeclarations(s, lw.file)
+	return lw
+}
+
+// lowerSignatures lowers s for a check that doesn't check it
+// (check.Options.Only), without the block bodies the check doesn't read
+// (lower.Signatures). Its errors, broken and lines aren't the file's:
+// those of a file checked are lowerSnapshot's.
+func lowerSignatures(s *psi.Snapshot) lowered {
+	var lw lowered
+	func() {
+		defer func() {
+			if recover() != nil {
+				lw.file, lw.prov = nil, nil
+			}
+		}()
+		lw.file, lw.prov, _ = lower.Signatures(s)
+	}()
+	lw.lost = lw.file == nil || lostDeclarations(s, lw.file)
+	return lw
+}
+
+// lostDeclarations reports whether f, lowered from s recovering from
+// errors, leaves out a declaration s has: a class, object, function,
+// property, typealias or enum entry of the file or of a class body, or
+// a property of a primary constructor.
+func lostDeclarations(s *psi.Snapshot, f *syntax.File) bool {
+	have := map[string]int{}
+	var decls func(ds []syntax.Decl)
+	decls = func(ds []syntax.Decl) {
+		for _, d := range ds {
+			switch d := d.(type) {
+			case *syntax.FunDecl:
+				have[d.Name]++
+			case *syntax.PropDecl:
+				have[d.Name]++
+			case *syntax.TypeAliasDecl:
+				have[d.Name]++
+			case *syntax.ClassDecl:
+				have[d.Name]++
+				for _, p := range d.CtorParams {
+					if p.IsProp {
+						have[p.Name]++
+					}
+				}
+				for _, e := range d.Entries {
+					have[e.Name]++
+				}
+				decls(d.Members)
+			}
+		}
+	}
+	decls(f.Decls)
+	want := map[string]int{}
+	var walk func(n psi.NodeRef)
+	walk = func(n psi.NodeRef) {
+		for c := n.FirstChild(); c.Valid(); c = c.NextSibling() {
+			switch c.NumericKind() {
+			case psi.KindFUN, psi.KindPROPERTY, psi.KindTYPEALIAS, psi.KindENUM_ENTRY:
+				want[c.Name()]++
+			case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+				want[c.Name()]++
+				for _, p := range c.ChildKind(psi.KindPRIMARY_CONSTRUCTOR).Parameters() {
+					if p.ChildKind(psi.KindVAL_KEYWORD).Valid() || p.ChildKind(psi.KindVAR_KEYWORD).Valid() {
+						want[p.Name()]++
+					}
+				}
+				walk(c.ChildKind(psi.KindCLASS_BODY))
+			}
+		}
+	}
+	walk(s.RootNode())
+	for name, n := range want {
+		if name != "" && have[name] < n {
+			return true
+		}
+	}
+	return false
+}
+
+// diagKind is what a file's diagnostic is, for the filters of the
+// module's diagnostics (finish).
+type diagKind uint8
+
+const (
+	diagLower   diagKind = iota // lowering's
+	diagError                   // the checker's
+	diagBackend                 // the checker's, of kotlinc's JVM backend
+	diagWarning                 // the checker's
+)
+
+// fileDiag is a diagnostic of one file.
+type fileDiag struct {
+	Diagnostic
+	kind diagKind
+}
+
+// checkerDiag returns the fileDiag of the checker's error e.
+func checkerDiag(path string, e *syntax.Error) fileDiag {
+	k := diagError
+	switch {
+	case e.IsWarning():
+		k = diagWarning
+	case check.IsBackendError(e):
+		k = diagBackend
+	}
+	return fileDiag{diagnostic(path, e), k}
+}
+
+// finish returns the module's diagnostics: extra, then each file's, as
+// kotlinc reports them: the JVM backend's errors only if there are no
+// others, and of the warnings of a module with syntax errors only those
+// check.RecoveredWarning says.
+func finish(extra []Diagnostic, files [][]fileDiag, broken bool) []Diagnostic {
+	others := false
+	for _, ds := range files {
+		for _, d := range ds {
+			others = others || d.kind == diagError
+		}
+	}
+	out := slices.Clone(extra)
+	for _, ds := range files {
+		for _, d := range ds {
+			if d.kind == diagBackend && others || d.kind == diagWarning && broken && !check.RecoveredWarning(d.Name) {
+				continue
+			}
+			out = append(out, d.Diagnostic)
+		}
+	}
+	return out
+}
+
+// run analyzes snaps; with keep, it also returns the state a Session's
+// incremental update starts from, or nil if one can't.
+func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, keep bool) (*Result, *state, error) {
+	jobs := max(l.cfg.Jobs, 1)
+	n := len(snaps)
+	declOnly := declaredOf(snaps, opts.Declared)
+	isDeclared := func(i int) bool { return declOnly != nil && declOnly[i] }
+	stateful := keep && opts.Complete == nil
+	// unchecked are the files the check only declares, lowered without
+	// the bodies it doesn't read: Declared's, and with Complete, all but
+	// the completion's file. Their diagnostics and facts are left out.
+	completing := opts.Complete != nil && slices.ContainsFunc(snaps, func(s *psi.Snapshot) bool { return s.Path() == opts.Complete.Path })
+	unchecked := func(i int) bool {
+		if completing {
+			return snaps[i].Path() != opts.Complete.Path
+		}
+		return isDeclared(i)
+	}
+	low := make([]lowered, n)
+	parallel(n, jobs, func(i int) {
+		if unchecked(i) {
+			low[i] = lowerSignatures(snaps[i])
+		} else {
+			low[i] = lowerSnapshot(snaps[i])
 		}
 	})
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	res := &Result{facts: map[ElementID]*Fact{}}
+	res := &Result{}
 	var (
-		keptSnaps []*psi.Snapshot
-		files     []*syntax.File
-		provs     []*lower.Provenance
-		broken    bool
-		lines     = map[string]map[int]bool{}
+		kept    []int // the indexes of the snapshots checked
+		files   []*syntax.File
+		provs   []*lower.Provenance
+		extra   []Diagnostic
+		broken  bool
+		perFile = make([][]fileDiag, n)
+		dropped bool
 	)
 	for i, lw := range low {
 		for _, e := range lw.errs {
-			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
-		}
-		if lw.lines != nil {
-			lines[snaps[i].Path()] = lw.lines
+			perFile[i] = append(perFile[i], fileDiag{diagnostic(snaps[i].Path(), e), diagLower})
 		}
 		if lw.file == nil {
+			dropped = true
 			continue
 		}
 		broken = broken || lw.broken
-		keptSnaps = append(keptSnaps, snaps[i])
+		kept = append(kept, i)
 		files = append(files, lw.file)
 		provs = append(provs, lw.prov)
 	}
@@ -199,35 +369,29 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 		if d == nil {
 			break
 		}
-		res.diags = append(res.diags, *d)
-		i := slices.IndexFunc(files, func(f *syntax.File) bool { return f.Path == d.Path })
-		if i < 0 {
+		extra = append(extra, *d)
+		dropped = true
+		j := slices.IndexFunc(files, func(f *syntax.File) bool { return f.Path == d.Path })
+		if j < 0 {
 			break
 		}
-		keptSnaps = slices.Delete(keptSnaps, i, i+1)
-		files = slices.Delete(files, i, i+1)
-		provs = slices.Delete(provs, i, i+1)
+		kept = slices.Delete(kept, j, j+1)
+		files = slices.Delete(files, j, j+1)
+		provs = slices.Delete(provs, j, j+1)
+	}
+	keptSnaps := make([]*psi.Snapshot, len(kept))
+	for j, i := range kept {
+		keptSnaps[j] = snaps[i]
 	}
 
-	cp, lib := l.cp, l.lib
-	var java *driver.JavaSources
-	if len(opts.Java) > 0 {
-		var parsed []*javasrc.File
-		for _, src := range opts.Java {
-			f, err := javasrc.Parse(src.Path, src.Text)
-			if f != nil {
-				parsed = append(parsed, f)
-			}
-			if err != nil {
-				res.diags = append(res.diags, Diagnostic{Path: src.Path, Line: 1, Column: 1, Code: "source_error", Severity: "error", Message: err.Error()})
-			}
-		}
-		java = driver.AddJavaSources(l.cp, parsed)
-		java.SetKotlin(files)
-		cp, lib = java.Path, l.lib.WithSources(java.Path)
-	}
+	cp, lib, javaDiags := l.withJava(opts.Java, files)
+	extra = append(extra, javaDiags...)
 
 	rec := newRecorder()
+	var r check.Recorder = rec
+	if stateful {
+		r = lookupRecorder{rec}
+	}
 	mode, _ := check.ParseAPIMode(l.cfg.ExplicitAPIMode)
 	var probe *check.Probe
 	if cp := opts.Complete; cp != nil {
@@ -238,31 +402,132 @@ func (l *Library) analyze(ctx context.Context, snaps []*psi.Snapshot, opts Optio
 		}
 	}
 	copts := check.Options{
-		ExplicitAPI: mode, Warnings: opts.Warnings, ExtraWarnings: opts.Warnings && opts.ExtraWarnings, Recovered: broken, JVMTarget: l.major, Probe: probe,
+		ExplicitAPI: mode, Warnings: opts.Warnings, ExtraWarnings: opts.Warnings && opts.ExtraWarnings, Raw: true, JVMTarget: l.major, Probe: probe,
 	}
-	if probe != nil {
+	switch {
+	case probe != nil:
 		// A completion needs the bodies of its file only: the other files'
 		// omitted types are inferred as it needs them.
 		copts.Only = map[*syntax.File]bool{probe.File: true}
+	case declOnly != nil:
+		copts.Only = map[*syntax.File]bool{}
+		for j, i := range kept {
+			if !isDeclared(i) {
+				copts.Only[files[j]] = true
+			}
+		}
 	}
-	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, copts)
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, r, copts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	index := make(map[string]int, n)
+	for i, s := range snaps {
+		index[s.Path()] = i
+	}
+	whole := true // every error is one file's
 	for _, e := range errs {
-		if !e.IsWarning() && lines[e.File][e.Pos.Line] {
+		i, ok := index[e.File]
+		if !ok {
+			whole = false
+			d := checkerDiag(e.File, e)
+			if !(d.kind == diagWarning && broken && !check.RecoveredWarning(d.Name)) {
+				extra = append(extra, d.Diagnostic)
+			}
 			continue
 		}
-		res.diags = append(res.diags, diagnostic(e.File, e))
+		if unchecked(i) || !e.IsWarning() && low[i].lines[e.Pos.Line] {
+			continue
+		}
+		perFile[i] = append(perFile[i], checkerDiag(snaps[i].Path(), e))
 	}
 	b := newBuilder(res, keptSnaps, files, provs, rec)
 	b.cp = cp
 	b.probe = probe
+	if declOnly != nil || probe != nil {
+		b.broken = make([]bool, len(kept))
+		for j, i := range kept {
+			b.broken[j] = unchecked(i)
+		}
+	}
 	b.build()
+	res.diags = finish(extra, perFile, broken)
 	if probe != nil {
 		res.diags = slices.DeleteFunc(res.diags, placeholderDiagnostic)
 	}
-	return res, nil
+	if !stateful {
+		return res, nil, nil
+	}
+	switch {
+	case !whole:
+		return res, nil, wholeNext("an error of no file")
+	case dropped:
+		return res, nil, wholeNext("a file left out")
+	}
+	st := newState(res, snaps, b.syms, opts)
+	if st == nil {
+		return res, nil, nil
+	}
+	st.diags, st.broken, st.lost, st.declared, st.extra = perFile, make([]bool, n), make([]bool, n), declOnly, extra
+	for i := range low {
+		st.broken[i] = low[i].broken
+		st.lost[i] = low[i].lost
+	}
+	parallel(n, jobs, func(i int) {
+		st.lookups[i] = rec.fileLookups(files[i])
+		st.decls[i] = declared(snaps[i])
+	})
+	return res, st, nil
+}
+
+// wholeNext reports why an update leaves no state for the next to start
+// from to traceWhole.
+func wholeNext(reason string) error {
+	if traceWhole != nil {
+		traceWhole("no state: " + reason)
+	}
+	return nil
+}
+
+// withJava returns the class path and library to check files against:
+// the library's, with java's classes if there are any, and java's
+// errors.
+func (l *Library) withJava(java []JavaSource, files []*syntax.File) (*classpath.Path, *check.Library, []Diagnostic) {
+	if len(java) == 0 {
+		return l.cp, l.lib, nil
+	}
+	var diags []Diagnostic
+	var parsed []*javasrc.File
+	for _, src := range java {
+		f, err := javasrc.Parse(src.Path, src.Text)
+		if f != nil {
+			parsed = append(parsed, f)
+		}
+		if err != nil {
+			diags = append(diags, Diagnostic{Path: src.Path, Line: 1, Column: 1, Code: "source_error", Severity: "error", Message: err.Error()})
+		}
+	}
+	js := driver.AddJavaSources(l.cp, parsed)
+	js.SetKotlin(files)
+	return js.Path, l.lib.WithSources(js.Path), diags
+}
+
+// declaredOf returns which snapshots paths says are only declared, or
+// nil if none is.
+func declaredOf(snaps []*psi.Snapshot, paths map[string]bool) []bool {
+	if len(paths) == 0 {
+		return nil
+	}
+	out := make([]bool, len(snaps))
+	any := false
+	for i, s := range snaps {
+		out[i] = paths[s.Path()]
+		any = any || out[i]
+	}
+	if !any {
+		return nil
+	}
+	return out
 }
 
 // lowerSafely lowers s, recovering if recovering is set. A file lowering
