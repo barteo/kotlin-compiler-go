@@ -1323,6 +1323,27 @@ func (c *Checker) thisType() types.Type {
 
 // isNull reports whether x is null: the literal, or a value of type
 // Nothing?, whose only value it is.
+// neverFalse reports whether checked condition cond is always true:
+// true, or a value whose type isn't nullable compared with null by != or
+// !==, which kotlinc warns is senseless.
+func neverFalse(cond syntax.Expr) bool {
+	switch x := unchecked(cond).(type) {
+	case *syntax.BoolLit:
+		return x.Val
+	case *syntax.Binary:
+		if x.Op != syntax.NE && x.Op != syntax.NOT_EQ_EQ {
+			return false
+		}
+		if _, ok := unchecked(x.Y).(*syntax.NullLit); ok {
+			return definitelyNonNull(x.X.Type())
+		}
+		if _, ok := unchecked(x.X).(*syntax.NullLit); ok {
+			return definitelyNonNull(x.Y.Type())
+		}
+	}
+	return false
+}
+
 func isNull(x syntax.Expr) bool {
 	if _, ok := x.(*syntax.NullLit); ok {
 		return true

@@ -61,3 +61,39 @@ fun <C> local(): Any {
     }
     return X<String>()
 }
+
+// Type arguments of a class an inner class's nested class is in are an
+// error, but taken for the nested class's with the warning.
+class Top<T> {
+    class Mid<B, A> {
+        inner class Low<C>
+    }
+}
+
+fun Top.Mid<String, Int>.Low<Char>.bar() {}
+
+val n1 = Top<Int>.Mid<String>.Low<Char>::bar // error WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING
+val n2 = Top<Char, String, Int>.Mid.Low::bar // error WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING
+val n3 = Top<Any>.Mid<String, Int>.Low<Char>::bar // error
+
+// A local class takes the type parameters of the functions around it as
+// in scope, and wants arguments only for its own.
+fun <T> captures() {
+    class LOuter<A> {
+        inner class LInner<B> {
+            fun foo() {}
+        }
+    }
+    val c1 = LOuter<Int>.LInner<String>::foo
+    val c2 = LOuter<String, Int>.LInner::foo // WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING
+    val c3 = LOuter.LInner<String, Int>::foo // WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING
+}
+
+class InClass<U> {
+    fun <T> foo() {
+        class L
+
+        val x = L::toString // error
+        val y = L<Int>::toString // WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING
+    }
+}

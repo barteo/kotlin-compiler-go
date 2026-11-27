@@ -1538,6 +1538,35 @@ func canHaveSubtypesK1(t types.Type) bool {
 	return false
 }
 
+// componentEquality reports whether op applies to a component of
+// intersection xt or yt and the other operand's type, or a component of
+// it.
+func (c *Checker) componentEquality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) bool {
+	if !xt.IsIntersection() && !yt.IsIntersection() {
+		return false
+	}
+	comps := func(t types.Type) []types.Type {
+		if t.IsIntersection() {
+			return t.Param().Bounds
+		}
+		return []types.Type{t}
+	}
+	n := len(c.errs)
+	defer func() { c.errs = c.errs[:n] }()
+	for _, a := range comps(xt) {
+		for _, b := range comps(yt) {
+			if a.IsIntersection() || b.IsIntersection() {
+				continue
+			}
+			if t := c.equality(p, op, a, b); t.K != types.Invalid && len(c.errs) == n {
+				return true
+			}
+			c.errs = c.errs[:n]
+		}
+	}
+	return false
+}
+
 // castEquality is equality for the operands of x, of types xt and yt,
 // where an operand smart-cast to another class is compared as Kotlin
 // does: two numbers, as numbers of the wider type, -0.0 == 0 for x is
@@ -1586,6 +1615,11 @@ func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
 		// values without identity.
 		general := m == n+1 && strings.HasPrefix(c.errs[n].Msg, "operator '") && c.generalEquality(x.Op, xt, yt)
 		c.errs = c.errs[:n]
+		if general && c.componentEquality(x.P, x.Op, xt, yt) {
+			// As K2, an intersection compares as any of its components:
+			// x == "" for an x smart cast to String & Int.
+			general = false
+		}
 		if general {
 			c.warnf(syntax.StartPos(x), "EQUALITY_NOT_APPLICABLE_WARNING", "operator '%s' cannot be applied to '%s' and '%s'", x.Op, xt, yt)
 		}
@@ -2263,6 +2297,14 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 				whenTrue = whenFalse // implies (!p)
 			}
 			out = append(out, whenTrue...)
+			continue
+		}
+		if e.Null {
+			// The argument is null: of type Nothing?, as after x == null.
+			if k, ok := c.chainKeyOf(arg); ok && types.MayBeNull(k.t) {
+				k.t = types.NullType
+				out = append(out, k)
+			}
 			continue
 		}
 		if e.Is == nil {
@@ -5192,6 +5234,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		}
 		if br.Guard != nil {
 			cov = saved
+			// The branch isn't taken where its condition fails or its
+			// guard does: later branches learn what both say, as K2's
+			// smart casts after it. A guard that can't fail leaves the
+			// condition's: x is an Int after !is Int if x !== null, for
+			// an x that isn't null.
+			condFalse := slices.Clone(later[laterLen:])
 			later = later[:laterLen]
 			switch {
 			case x.Subject == nil:
@@ -5199,12 +5247,20 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			case len(br.Conds) > 1:
 				c.errorf(br.Guard.Pos(), "a guard condition is not allowed after several conditions separated by commas")
 			}
+			condTrue := whenTrue
 			c.push()
 			c.scope.narrows = append(c.scope.narrows, whenTrue...)
 			c.value(br.Guard, types.BoolType)
 			c.wantBool(br.Guard)
-			t, _ := c.narrowing(br.Guard)
+			t, f := c.narrowing(br.Guard)
 			c.pop()
+			if x.Subject != nil && single && len(condFalse) > 0 {
+				if neverFalse(br.Guard) {
+					later = append(later, condFalse...)
+				} else {
+					later = append(later, c.eitherNarrows(condFalse, condTrue, f)...)
+				}
+			}
 			whenTrue = append(whenTrue, t...)
 		}
 		c.push()

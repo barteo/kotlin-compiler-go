@@ -281,12 +281,24 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "%s expected for class %s", countArgs(len(cls.TypeParams)), cls.DisplayName())
 		return types.InvalidType
 	}
-	if c.refLHS && ref.Outer != nil && !c.segmentsFit(ref) {
-		if t, ok := c.flatInnerType(cls, ref); ok {
-			if t.K != types.Invalid {
-				c.lhsArgsWarning(cls, ref, t)
+	if c.refLHS && ref.Outer != nil {
+		nested := c.nestedOuterArgs(cls, ref)
+		if nested != nil || !c.segmentsFit(ref) {
+			if t, ok := c.flatInnerType(cls, ref); ok {
+				if nested != nil {
+					// Outer<A>.Nested.Inner<B, C>: kotlinc's error of the
+					// arguments of the class Nested is in, and its warning
+					// of the arguments it takes as Nested's.
+					top := cls
+					for ; top.Inner && top.Outer != nil; top = top.Outer {
+					}
+					c.errorf(nested.P, "type arguments are only allowed on an outer class of an inner class: %s", top.DisplayName())
+				}
+				if t.K != types.Invalid {
+					c.lhsArgsWarning(cls, ref, t)
+				}
+				return t
 			}
-			return t
 		}
 	}
 	args := make([]types.Arg, 0, len(cls.TypeParams))
@@ -363,6 +375,54 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	return c.nullable(t, ref)
 }
 
+// funCaptured returns the type parameters that local class k, not an
+// inner class, captures of the functions around it, if it captures only
+// those: those a type of it on a callable reference's left side takes as
+// in scope (see applyTypeArgs).
+func funCaptured(k *types.ClassSym) []*types.TypeParamSym {
+	if k == nil || k.Inner {
+		return nil
+	}
+	_, hidden := localOwnParams(k)
+	if len(hidden) == 0 {
+		return nil
+	}
+	out := make([]*types.TypeParamSym, 0, len(hidden))
+	for _, a := range hidden {
+		p := a.T.Param()
+		if p == nil {
+			return nil
+		}
+		if _, ok := p.Owner.(*types.ClassSym); ok {
+			return nil
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// nestedOuterArgs returns the outermost segment of ref, the type of inner
+// class cls on a callable reference's left side, that has type arguments
+// but names a class outside cls's chain of inner classes, as Outer<A> of
+// Outer<A>.Nested.Inner for a class Nested nested in Outer, or nil.
+func (c *Checker) nestedOuterArgs(cls *types.ClassSym, ref *syntax.TypeRef) *syntax.TypeRef {
+	chain := map[*types.ClassSym]bool{cls: true}
+	for k := cls; k.Inner && k.Outer != nil; k = k.Outer {
+		chain[k.Outer] = true
+	}
+	var out *syntax.TypeRef
+	for seg := ref; seg != nil; seg = seg.Outer {
+		k := c.lookupClass(seg.Name)
+		if k == nil {
+			return nil
+		}
+		if !chain[k] && seg.Args != nil {
+			out = seg
+		}
+	}
+	return out
+}
+
 // segmentsFit reports whether each class of the type of an inner class
 // of a generic class, Outer<A>.Inner<B>, has as many type arguments as
 // type parameters of its own.
@@ -378,9 +438,9 @@ func (c *Checker) segmentsFit(ref *syntax.TypeRef) bool {
 		chain[k.Outer] = true
 	}
 	for k := range chain {
-		if _, hidden := localOwnParams(k); hidden != nil {
-			// A local class that captures type parameters, whose type
-			// arguments kotlinc wants all of.
+		if _, hidden := localOwnParams(k); hidden != nil && funCaptured(k) == nil {
+			// A local class that captures type parameters of a class,
+			// whose type arguments kotlinc wants all of.
 			return true
 		}
 	}
@@ -412,7 +472,7 @@ func (c *Checker) segmentsFit(ref *syntax.TypeRef) bool {
 			return true // reported as unresolved
 		}
 		k.Ensure()
-		own := len(k.TypeParams)
+		own := len(k.TypeParams) - len(funCaptured(k))
 		if k.Inner {
 			if own -= k.OuterParams; seg.Outer == nil && k.OuterParams > 0 {
 				return false
@@ -436,12 +496,24 @@ func (c *Checker) flatInnerType(cls *types.ClassSym, ref *syntax.TypeRef) (types
 	for seg := ref; seg != nil; seg = seg.Outer {
 		flat = append(flat, seg.Args...)
 	}
-	if len(flat) != len(cls.TypeParams) {
+	// The type parameters of the functions around a local class it
+	// captures, last, are themselves.
+	top := cls
+	for ; top.Inner && top.Outer != nil; top = top.Outer {
+	}
+	var captured []*types.TypeParamSym
+	for _, p := range funCaptured(top) {
+		// An inner class of a local class doesn't have them.
+		if slices.Contains(cls.TypeParams, p) {
+			captured = append(captured, p)
+		}
+	}
+	if len(flat)+len(captured) != len(cls.TypeParams) {
 		return types.InvalidType, false
 	}
 	defer func(old bool) { c.refLHS = old }(c.refLHS)
 	c.refLHS = false
-	args := make([]types.Arg, len(flat))
+	args := make([]types.Arg, len(flat), len(cls.TypeParams))
 	for i, a := range flat {
 		args[i] = types.Arg{V: a.Variance}
 		if a.Variance != types.Star {
@@ -449,6 +521,9 @@ func (c *Checker) flatInnerType(cls *types.ClassSym, ref *syntax.TypeRef) (types
 				return args[i].T, true
 			}
 		}
+	}
+	for _, p := range captured {
+		args = append(args, types.Arg{T: types.ParamType(p)})
 	}
 	t := types.GenericType(cls, args)
 	if !c.noBoundChecks {

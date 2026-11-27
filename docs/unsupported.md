@@ -76,7 +76,6 @@ own tests.
   - Those of types and type arguments:
     `MUTABLE_PROPERTY_WITH_CAPTURED_TYPE`,
     `TYPE_ARGUMENTS_NOT_ALLOWED_WARNING`,
-    `TYPE_ARGUMENTS_NOT_ALLOWED_IN_PACKAGE_QUALIFIER_WARNING`,
     `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS_WARNING`,
     `CONFLICTING_PROJECTION_IN_CALLABLE_REFERENCE_WARNING`,
     `LOCAL_VARIABLE_WITH_TYPE_PARAMETERS_WARNING`,
@@ -175,12 +174,10 @@ own tests.
   - `INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING` and
     `INFERRED_TYPE_VARIABLE_INTO_POSSIBLE_EMPTY_INTERSECTION` of a call's
     type argument that `kc` infers as an intersection, or that only
-    upper constraints and its declared bounds give, and of a delegated
-    property's `getValue`; not of a callable reference's vararg
-    adaptation or a lambda's last expression after a bare `return`.
-  - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
-    error name in a `@Suppress`, but not in one on a type or a
-    supertype.
+    upper constraints and its declared bounds give, of a delegated
+    property's `getValue`, and of a lambda's last call after a bare
+    `return`, with Unit; not of a callable reference's vararg
+    adaptation.
   - `DSL_MARKER_APPLIED_TO_WRONG_TARGET` not on a lambda.
   - `REDUNDANT_EXPLICIT_BACKING_FIELD` not of a field the property
     can't have.
@@ -196,8 +193,8 @@ own tests.
     constructors whose `this(...)` calls loop.
   - `WRONG_NUMBER_OF_TYPE_ARGUMENTS_WARNING` and
     `WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING` not
-    through a typealias, nor of an inner class of a generic nested
-    class, nor of a local class inside a generic class.
+    through a typealias, nor of the inner classes of a local class that
+    captures a class's type parameters.
   - `ILLEGAL_TYPE_ARGUMENT_FOR_VARARG_PARAMETER_WARNING` not of a
     constructor call.
   - `CONTEXTUAL_OVERLOAD_SHADOWED` not where a platform type or a type

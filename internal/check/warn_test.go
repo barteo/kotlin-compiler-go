@@ -1045,3 +1045,16 @@ fun b%d() {
 		t.Errorf("OPT_IN_WITHOUT_ARGUMENTS in %d files, want 16: %v", len(got), got)
 	}
 }
+
+// TestWarningsWhenGuards checks the warnings of the checks after guarded
+// when branches against kotlinc's, which testdata/whenguard.kt records.
+func TestWarningsWhenGuards(t *testing.T) {
+	checkReference(t, "testdata/whenguard.kt", Options{Warnings: true})
+}
+
+// TestWarningsLHSPackage checks the warnings of the type arguments of
+// package qualifiers on class literals' left sides against kotlinc's,
+// which testdata/lhspackage.kt records.
+func TestWarningsLHSPackage(t *testing.T) {
+	checkReference(t, "testdata/lhspackage.kt", Options{Warnings: true})
+}

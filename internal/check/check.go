@@ -334,6 +334,11 @@ type Checker struct {
 	// an intersection that is or may be empty: see
 	// noteEmptyIntersection.
 	emptyInters map[*syntax.Call]emptyInter
+	// unitInters are the calls a lambda ends with that a bare return
+	// leaves it too, whose type argument K2 infers as the intersection of
+	// Unit and its bound, if it is or may be empty (see
+	// noteUnitIntersection).
+	unitInters map[*syntax.Call]emptyInter
 	// deadClasses are the local classes and object expressions in code
 	// reported unreachable, which classDeadCode doesn't judge.
 	deadClasses map[*syntax.ClassDecl]bool
@@ -1606,6 +1611,13 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			return types.InvalidType
 		}
 		if n > len(ps) {
+			if c.refLHS && ref.ArgsP.Line > 0 {
+				// Its own arguments don't fit its own type parameters:
+				// kotlinc warns, as of misplaced ones (see lhsArgsWarning).
+				c.warnf(ref.ArgsP, "WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING",
+					"%s expected for '%s'. Try to use a lambda expression instead. This will become an error in language version 2.5. See https://youtrack.jetbrains.com/issue/KTLC-388.",
+					countArgs(len(ps)), classSymText(cls))
+			}
 			r := *ref
 			r.Args = ref.Args[:len(ps)]
 			ref = &r

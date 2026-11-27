@@ -76,6 +76,37 @@ func (c *Checker) noteEmptyIntersection(x *syntax.Call, tps []*types.TypeParamSy
 	delete(c.emptyInters, x)
 }
 
+// noteUnitIntersection records call x, the last of a lambda that a bare
+// return@label leaves too, whose type parameter tp K2 infers as the
+// intersection of Unit and its declared bound, which kc infers as
+// bound alone (see bareTail): as noteEmptyIntersection, if no value can
+// be both, or may not be.
+func (c *Checker) noteUnitIntersection(x *syntax.Call, tp *types.TypeParamSym, bound types.Type) {
+	if bound.K == types.Invalid || bound.K == types.Nothing || bound.HasVars() {
+		return
+	}
+	comps := []types.Type{bound, types.UnitType}
+	// Unit is a final object that implements no interface: a class
+	// bound can't be it, an interface one may not be.
+	var e *emptyInter
+	for _, b := range c.boundClasses(bound, nil, 0) {
+		if !b.Interface {
+			e = &emptyInter{tp: tp, comps: comps}
+			break
+		}
+		if e == nil {
+			e = &emptyInter{tp: tp, comps: comps, possible: true}
+		}
+	}
+	if e == nil {
+		return
+	}
+	if c.unitInters == nil {
+		c.unitInters = map[*syntax.Call]emptyInter{}
+	}
+	c.unitInters[x] = *e
+}
+
 // emptyIntersectionWarningAt warns at p of call x if
 // noteEmptyIntersection recorded it: INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION_WARNING, an
 // error in a later language version, or, if the intersection only may
@@ -83,7 +114,11 @@ func (c *Checker) noteEmptyIntersection(x *syntax.Call, tps []*types.TypeParamSy
 func (c *Checker) emptyIntersectionWarningAt(x *syntax.Call, p syntax.Pos) {
 	e, ok := c.emptyInters[x]
 	if !ok {
-		return
+		// The call's own system finds no empty intersection: the one
+		// a bare return adds Unit to (see noteUnitIntersection).
+		if e, ok = c.unitInters[x]; !ok {
+			return
+		}
 	}
 	var names []string
 	for _, t := range e.comps {

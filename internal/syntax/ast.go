@@ -1289,6 +1289,7 @@ type Implies struct {
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
 	Negated bool // with Holds, implies (!p): p is false
+	Null    bool // implies (p == null)
 }
 
 // CallsEffect is a contract's callsInPlace(Param, InvocationKind.Kind)

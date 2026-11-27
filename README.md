@@ -46,7 +46,7 @@ How each number is measured, and the full tables with CPU time, are in
   agrees with `kotlinc` on only 99% of the diagnostics tests. Of the
   warnings, it reports more than 170 kinds, such as deprecations, opt-ins,
   useless and unchecked casts, unreachable code and unnecessary safe
-  calls: 93% of those the diagnostics tests expect.
+  calls: 97% of those the diagnostics tests expect.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**

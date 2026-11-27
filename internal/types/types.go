@@ -527,13 +527,14 @@ func (v *VarSym) UnitLocal() bool { return v.Kind == Local && v.Type.K == Unit &
 // T): if the function returns true (Returns 1), false (Returns 0), at
 // all (Returns -1), a value that isn't null (Returns 2) or null (Returns
 // 3), its parameter
-// at Param (-1: the extension receiver) isn't null, or is an Is when that
-// isn't nil.
+// at Param (-1: the extension receiver) isn't null, is null if Null, or
+// is an Is when that isn't nil.
 type Effect struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool // the parameter, a Boolean, is true: its argument's smart casts
 	Negated        bool // with Holds, it is false: the smart casts of its argument being false
+	Null           bool // the parameter is null, rather than not null
 }
 
 type FunSym struct {
