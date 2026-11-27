@@ -1174,6 +1174,10 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	for _, c := range checkers {
 		c.resolveClassBounds()
 	}
+	// Before the parallel phase reads them.
+	for _, c := range checkers {
+		c.resolveAnnotationTargets()
+	}
 	for _, c := range checkers {
 		c.findCycles()
 	}

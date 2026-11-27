@@ -69,6 +69,61 @@ func declaredAnnotation(m *syntax.Modifiers) (types.Retention, types.Targets) {
 	return ret, targets
 }
 
+// resolveAnnotationTargets gives the program's annotation classes whose
+// @Target has an argument of another class than AnnotationTarget no
+// targets, as K2, which reports the argument's type: @Target(
+// AnnotationTarget.TYPE) where AnnotationTarget is a nested enum of the
+// class's supertype (ARGUMENT_TYPE_MISMATCH). declaredAnnotation read
+// the targets from the arguments' names alone. Only a qualified argument
+// is resolved, by its qualifier.
+func (c *Checker) resolveAnnotationTargets() {
+	saved := c.lookupCls
+	defer func() { c.lookupCls = saved }()
+	for _, d := range c.classes {
+		if !d.Annotation || d.Sym == nil {
+			continue
+		}
+		c.lookupCls = d.Sym.Outer // as the class's own annotations are resolved
+		for i := range d.Annotations {
+			a := &d.Annotations[i]
+			if a.Target != "" || a.Name != "Target" && a.Name != "kotlin.annotation.Target" {
+				continue
+			}
+			for _, arg := range a.Args {
+				q, ok := argQualifier(arg.Toks)
+				if !ok {
+					continue
+				}
+				if cls := c.lookupClass(q); cls != nil && cls.Name != "kotlin/annotation/AnnotationTarget" {
+					d.Sym.Targets = 0
+				}
+			}
+		}
+	}
+}
+
+// argQualifier returns the qualifier of an argument written as a
+// qualified name, a.b.C.X's a.b.C.
+func argQualifier(toks []syntax.Token) (string, bool) {
+	if len(toks) < 3 || len(toks)%2 == 0 {
+		return "", false
+	}
+	var sb strings.Builder
+	for i, t := range toks {
+		want := syntax.IDENT
+		if i%2 == 1 {
+			want = syntax.DOT
+		}
+		if t.Kind != want {
+			return "", false
+		}
+		if i < len(toks)-2 {
+			sb.WriteString(t.Text)
+		}
+	}
+	return sb.String(), true
+}
+
 // annotationClass checks the declaration of an annotation class, with
 // kotlinc's messages.
 func (c *Checker) annotationClass(d *syntax.ClassDecl) {
