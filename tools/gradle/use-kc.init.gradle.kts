@@ -158,6 +158,19 @@ if (gradle.parent == null) {
         }.getOrNull()
       if (explicitApi != null) args += "-Xexplicit-api=$explicitApi"
       freeArgs.lastOrNull { it.startsWith("-XXexplicit-return-types=") }?.let { args += it }
+      // The requirement markers the whole module opts in to, as kotlinc's -opt-in: the module's
+      // optIn option and -opt-in in its free arguments, each of which may list several.
+      val freeOptIns = freeArgs.indices.mapNotNull { i ->
+        when {
+          freeArgs[i].startsWith("-opt-in=") -> freeArgs[i].substringAfter('=')
+          freeArgs[i] == "-opt-in" -> freeArgs.getOrNull(i + 1)
+          else -> null
+        }
+      }
+      val optIns = (option("getOptIn") as List<*>?).orEmpty().filterIsInstance<String>() + freeOptIns
+      for (marker in optIns.flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
+        args += listOf("-opt-in", marker)
+      }
       // A multiplatform module's JVM compilation has expect and actual declarations, which are
       // errors without -Xmulti-platform, as with kotlinc: the task's multiPlatformEnabled (an
       // internal property, whose getter's name is mangled) says so, or its free arguments do.
