@@ -41,3 +41,15 @@ fun g7(@Suppress("UNRESOLVED_REFERENCE") p: Int) = p // ERROR_SUPPRESSION
 class D @Suppress("INVISIBLE_REFERENCE") // ERROR_SUPPRESSION
 @kotlin.internal.LowPriorityInOverloadResolution
 constructor(val x: Int)
+@Target(AnnotationTarget.TYPE)
+annotation class TA
+fun h1(): @Suppress("REPEATED_ANNOTATION") @TA @TA Int = 42 // ERROR_SUPPRESSION
+typealias H2<T> = @Suppress("TYPEALIAS_SHOULD_EXPAND_TO_CLASS") T // ERROR_SUPPRESSION
+interface H3
+interface H4 : @Suppress("SUPERTYPE_NOT_INITIALIZED") H3 // ERROR_SUPPRESSION
+fun h5(x: @Suppress("REDUNDANT_NULLABLE") String??) = x
+fun h6(x: List<@Suppress("TYPE_MISMATCH") String>) = x // ERROR_SUPPRESSION
+fun h7() {
+    val x: @Suppress("UNRESOLVED_REFERENCE") Int = 1 // ERROR_SUPPRESSION
+    x.toString()
+}

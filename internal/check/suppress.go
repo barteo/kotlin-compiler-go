@@ -66,6 +66,7 @@ func init() {
 		"REPEATED_ANNOTATION":                               `^this annotation is not repeatable`,
 		"RETURN_TYPE_MISMATCH":                              typeMismatch,
 		"TYPE_MISMATCH":                                     typeMismatch,
+		"TYPEALIAS_SHOULD_EXPAND_TO_CLASS":                  `^typealias should expand to a class`,
 		"UNSAFE_CALL":                                       `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
 		"UPPER_BOUND_VIOLATED":                              `^type argument is not within its bounds`,
 		"VAL_REASSIGNMENT":                                  `^val cannot be reassigned`,
@@ -249,8 +250,130 @@ func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
 	return paramRanges(rs, d.Params)
 }
 
+// refEnd returns where type reference ref ends as written, near enough
+// for the range of a @Suppress on it: after the last name, type argument
+// or ? of it and the types in it.
+func refEnd(ref *syntax.TypeRef) syntax.Pos {
+	end := ref.P
+	var visit func(r *syntax.TypeRef)
+	later := func(p syntax.Pos) {
+		if before(end, p) {
+			end = p
+		}
+	}
+	visit = func(r *syntax.TypeRef) {
+		if r == nil {
+			return
+		}
+		name := r.Name
+		if i := strings.LastIndexByte(name, '.'); i >= 0 {
+			name = name[i+1:]
+		}
+		p := r.P
+		if n := len(r.Parts); n > 0 {
+			p = r.Parts[n-1]
+		}
+		later(syntax.Pos{Line: p.Line, Col: p.Col + len(name)})
+		if r.Quest.Line > 0 {
+			later(syntax.Pos{Line: r.Quest.Line, Col: r.Quest.Col + 1})
+		}
+		for _, a := range r.Args {
+			if a != nil {
+				visit(a.Type)
+			}
+		}
+		for _, q := range r.Params {
+			visit(q)
+		}
+		for _, q := range r.Contexts {
+			visit(q)
+		}
+		visit(r.Ret)
+		visit(r.Recv)
+		visit(r.Outer)
+		visit(r.And)
+	}
+	visit(ref)
+	return end
+}
+
+// typeRanges adds to rs the ranges of the types among refs, and of those
+// in them, whose @Suppress names diagnostics: each the type as written.
+func typeRanges(rs []suppressRange, refs ...*syntax.TypeRef) []suppressRange {
+	for _, ref := range refs {
+		if ref == nil || ref.Known != nil {
+			continue
+		}
+		if len(ref.Annotations) > 0 {
+			rs = annotationsRange(rs, ref.Annotations, ref.P, refEnd(ref))
+		}
+		for _, a := range ref.Args {
+			if a != nil {
+				rs = typeRanges(rs, a.Type)
+			}
+		}
+		rs = typeRanges(rs, ref.Params...)
+		rs = typeRanges(rs, ref.Contexts...)
+		rs = typeRanges(rs, ref.Ret, ref.Recv, ref.Outer, ref.And)
+	}
+	return rs
+}
+
+// paramTypeRanges is typeRanges of the types of parameters ps.
+func paramTypeRanges(rs []suppressRange, ps []*syntax.Param) []suppressRange {
+	for _, p := range ps {
+		if p != nil {
+			rs = typeRanges(rs, p.Type)
+		}
+	}
+	return rs
+}
+
+// boundRanges is typeRanges of the bounds of type parameters tps.
+func boundRanges(rs []suppressRange, tps []*syntax.TypeParam) []suppressRange {
+	for _, tp := range tps {
+		rs = typeRanges(rs, tp.Bounds...)
+	}
+	return rs
+}
+
+// headerTypeRanges adds to rs the ranges of the annotated types of the
+// signature of declaration d, not of its members: as kotlinc, a
+// @Suppress on a type suppresses in the type.
+func headerTypeRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		if d == nil {
+			return rs
+		}
+		rs = boundRanges(rs, d.TypeParams)
+		rs = typeRanges(rs, d.Recv, d.Ret)
+		rs = paramTypeRanges(rs, d.Params)
+	case *syntax.PropDecl:
+		rs = boundRanges(rs, d.TypeParams)
+		rs = typeRanges(rs, d.Recv, d.Type)
+		rs = headerTypeRanges(d.Getter, rs)
+		rs = headerTypeRanges(d.Setter, rs)
+	case *syntax.TypeAliasDecl:
+		rs = boundRanges(rs, d.TypeParams)
+		rs = typeRanges(rs, d.Type)
+	case *syntax.ClassDecl:
+		rs = boundRanges(rs, d.TypeParams)
+		for _, p := range d.CtorParams {
+			rs = typeRanges(rs, p.Type)
+		}
+		for _, s := range d.Supers {
+			rs = typeRanges(rs, s.Type)
+		}
+	case *syntax.SecondaryCtor:
+		rs = paramTypeRanges(rs, d.Params)
+	}
+	return rs
+}
+
 // suppressRanges adds the ranges of declaration d and its members to rs.
 func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
+	rs = headerTypeRanges(d, rs)
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		rs = funRanges(rs, d)
@@ -321,22 +444,28 @@ func (c *Checker) codeSuppressRanges(rs []suppressRange) []suppressRange {
 		case *syntax.LocalFun:
 			rs = annotationsRange(rs, n.Decl.Annotations, n.Decl.P, nodeEnd(n))
 			rs = paramRanges(rs, n.Decl.Params)
+			rs = headerTypeRanges(n.Decl, rs)
 		case *syntax.LocalClass:
 			end := nodeEnd(n)
 			rs = annotationsRange(rs, n.Annotations, n.Decl.P, end)
 			rs = annotationsRange(rs, n.Decl.Annotations, n.Decl.P, end)
+			rs = headerTypeRanges(n.Decl, rs)
 			for _, m := range n.Decl.Members {
 				rs = suppressRanges(m, rs)
 			}
 		case *syntax.ObjectExpr:
+			rs = headerTypeRanges(n.Decl, rs)
 			for _, m := range n.Decl.Members {
 				rs = suppressRanges(m, rs)
 			}
+		case *syntax.VarStmt:
+			rs = typeRanges(rs, n.Type)
 		case *syntax.Lambda:
 			for _, p := range n.Params {
 				if len(p.Annotations) > 0 {
 					rs = annotationsRange(rs, p.Annotations, p.P, syntax.Pos{Line: p.P.Line, Col: 1 << 30})
 				}
+				rs = typeRanges(rs, p.Type)
 			}
 		}
 		if as, ok := c.file.Annotated[n]; ok {

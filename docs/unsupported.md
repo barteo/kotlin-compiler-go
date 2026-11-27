@@ -178,9 +178,6 @@ own tests.
     upper constraints and its declared bounds give, and of a delegated
     property's `getValue`; not of a callable reference's vararg
     adaptation or a lambda's last expression after a bare `return`.
-  - `ERROR_SUPPRESSION`, reported, as `kotlinc` 2.4.21 does, for every
-    error name in a `@Suppress`, but not in one on a type or a
-    supertype.
   - `DSL_MARKER_APPLIED_TO_WRONG_TARGET` not on a lambda.
   - `REDUNDANT_EXPLICIT_BACKING_FIELD` not of a field the property
     can't have.
