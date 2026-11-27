@@ -431,10 +431,10 @@ func inherits(cls, target *types.ClassSym, javaSource func(*types.ClassSym) bool
 	// class E : E.EE() is a cycle.
 	if cd, ok := cls.Decl.(*syntax.ClassDecl); ok {
 		for _, st := range cd.Supers {
-			if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !viaOuter(st.Type.Name, st.T.C) {
+			if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !viaOuter(st.Type.Name, st.T.C, javaSource) {
 				continue
 			}
-			for o := st.T.C.Outer; o != nil; o = o.Outer {
+			for o := outerClass(st.T.C); o != nil; o = outerClass(o) {
 				if o == target || inherits(o, target, javaSource, seen) {
 					return true
 				}
@@ -444,10 +444,25 @@ func inherits(cls, target *types.ClassSym, javaSource func(*types.ClassSym) bool
 	return false
 }
 
+// outerClass returns the class cls is nested in: its Outer, or a nested
+// class of the program's Java sources that isn't inner's.
+func outerClass(cls *types.ClassSym) *types.ClassSym {
+	if cls.External {
+		cls.Ensure()
+		if cls.Outer == nil {
+			return cls.SourceOuter
+		}
+	}
+	return cls.Outer
+}
+
 // viaOuter reports whether a supertype written as name, which is the class
-// cls, names it through its outer class: A.N, or a typealias.
-func viaOuter(name string, cls *types.ClassSym) bool {
-	if cls.Outer == nil || cls.External {
+// cls, names it through its outer class: A.N, or a typealias. A class of
+// the class path's outer class can't depend on the program's, but one of
+// its Java sources' can: interface T : J.N, where J extends a subtype of
+// T, is a cycle.
+func viaOuter(name string, cls *types.ClassSym, javaSource func(*types.ClassSym) bool) bool {
+	if cls.External && !javaSource(cls) || outerClass(cls) == nil {
 		return false
 	}
 	simple := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
