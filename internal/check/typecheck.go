@@ -358,6 +358,13 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
 		return types.InvalidType
 	}
+	if is && innerOfErasedLocal(t.C) && !(subject.K == types.Class && subject.C.IsSubclassOf(t.C)) {
+		// An inner class of a local class that captures a function's
+		// type parameter, Outer<*>.Inner in fun <E> f, has it too, as in
+		// K2, though kc's type doesn't carry it.
+		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
+		return types.InvalidType
+	}
 	if is && t.A != nil && allStar(t) {
 		// x is C<*> narrows x to C<*> and its own type, whose arguments
 		// it has where they follow from it: a Flow<T> that is a
@@ -1073,6 +1080,29 @@ func enumerable(t types.Type) bool {
 	case t.K == types.Class:
 		t.C.Ensure()
 		return t.C.Entries != nil || t.C.Sealed
+	}
+	return false
+}
+
+// innerOfErasedLocal reports whether cls is an inner class of a local
+// class that captures a type parameter of a function around it that
+// isn't reified.
+func innerOfErasedLocal(cls *types.ClassSym) bool {
+	if !cls.Inner {
+		return false
+	}
+	for o := cls.Outer; o != nil; o = o.Outer {
+		_, hidden := localOwnParams(o)
+		for _, a := range hidden {
+			if p := a.T.Param(); p != nil && !p.Reified {
+				if _, ok := p.Owner.(*types.FunSym); ok {
+					return true
+				}
+			}
+		}
+		if !o.Inner {
+			break
+		}
 	}
 	return false
 }

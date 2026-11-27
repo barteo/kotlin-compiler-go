@@ -1599,6 +1599,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		return c.innerType(ref) // Inner in its outer class's code
 	}
 	ps, hidden := localOwnParams(cls)
+	var extra []*syntax.TypeArg // written for hidden, by position
 	if (c.refLHS || c.refLHSOuter) && len(hidden) > 0 {
 		// A local class on a callable reference's left side, Local::f:
 		// kotlinc 2.4 wants type arguments for its own type parameters
@@ -1614,18 +1615,26 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		if len(ref.Args) != n {
 			c.errorf(ref.P, "%s expected for class %s", countArgs(n), cls.DisplayName())
-			return types.InvalidType
-		}
-		if n > len(ps) {
-			if c.refLHS && ref.ArgsP.Line > 0 {
-				// Its own arguments don't fit its own type parameters:
-				// kotlinc warns, as of misplaced ones (see lhsArgsWarning).
-				c.warnf(ref.ArgsP, "WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING",
-					"%s expected for '%s'. Try to use a lambda expression instead. This will become an error in language version 2.5. See https://youtrack.jetbrains.com/issue/KTLC-388.",
-					countArgs(len(ps)), classSymText(cls))
+			if len(ref.Args) < len(ps) {
+				return types.InvalidType
 			}
+		} else if n > len(ps) && c.refLHS && ref.ArgsP.Line > 0 {
+			// Its own arguments don't fit its own type parameters:
+			// kotlinc warns, as of misplaced ones (see lhsArgsWarning).
+			c.warnf(ref.ArgsP, "WRONG_NUMBER_OF_TYPE_ARGUMENTS_IN_LOCAL_CLASS_IN_LHS_WARNING",
+				"%s expected for '%s'. Try to use a lambda expression instead. This will become an error in language version 2.5. See https://youtrack.jetbrains.com/issue/KTLC-388.",
+				countArgs(len(ps)), classSymText(cls))
+		}
+		// The arguments after its own are those of the parameters it
+		// captures, in order, the rest stars, whether or not their number
+		// is right, as K2 has it: L<Int> is L<Int, *> for an L<T, U>.
+		if len(ref.Args) > len(ps) {
+			extra = ref.Args[len(ps):]
 			r := *ref
 			r.Args = ref.Args[:len(ps)]
+			if len(r.Args) == 0 {
+				r.Args = nil
+			}
 			ref = &r
 		}
 	}
@@ -1663,6 +1672,16 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.Type.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
 		}
 		c.projection(a, ps[i], cls)
+	}
+	if extra != nil {
+		hidden = slices.Clone(hidden)
+		for i := range hidden {
+			if i >= len(extra) || extra[i].Variance == types.Star {
+				hidden[i] = types.Arg{V: types.Star}
+				continue
+			}
+			hidden[i] = types.Arg{V: extra[i].Variance, T: c.resolveType(extra[i].Type)}
+		}
 	}
 	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
