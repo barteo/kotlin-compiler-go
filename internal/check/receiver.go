@@ -534,6 +534,16 @@ func (c *Checker) innerMemberTakes(name string, x *syntax.Call, depth int) bool 
 
 func (c *Checker) memberFun(t types.Type, name string, x *syntax.Call) bool {
 	t = t.Flex()
+	if t.IsIntersection() {
+		// A member of any of its components: foo() on a this smart cast
+		// to B & A is A's.
+		for _, b := range t.Param().Bounds {
+			if c.memberFun(b, name, x) {
+				return true
+			}
+		}
+		return false
+	}
 	fits := func(fs []*types.FunSym) bool {
 		for _, f := range fs {
 			if c.mayTake(f, x) {

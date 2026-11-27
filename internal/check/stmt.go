@@ -237,7 +237,9 @@ func (c *Checker) returnNarrows(call *syntax.Call) []narrow {
 func (c *Checker) narrowAfter(s syntax.Stmt) {
 	cast := func(as *syntax.As) {
 		if k, ok := c.castNarrow(as); ok {
-			c.scope.narrows = append(c.scope.narrows, k)
+			// And the values that hold x's: after val a = d.any; a as A,
+			// d.any is an A, as in K2.
+			c.scope.narrows = append(append(c.scope.narrows, k), c.impliedBy(k)...)
 		}
 	}
 	// A call anywhere in the statement that always returns before the
@@ -552,11 +554,15 @@ func (c *Checker) while(s *syntax.While) types.Type {
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
 		c.loops = c.loops[:len(c.loops)-1]
-		_, whenFalse := c.narrowing(s.Cond)
-		c.push()
-		c.scope.narrows = append(c.scope.narrows, whenFalse...)
-		exits = append(exits, c.flowState())
-		c.pop()
+		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val || !loop.hasBreak {
+			// do { … } while (true) ends only at its breaks; without
+			// any, what follows is dead, and sees the body's smart casts.
+			_, whenFalse := c.narrowing(s.Cond)
+			c.push()
+			c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			exits = append(exits, c.flowState())
+			c.pop()
+		}
 		c.pop()
 	} else {
 		pre := c.loopEntry(vars)

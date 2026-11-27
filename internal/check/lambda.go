@@ -541,7 +541,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	syms = append(x.Ctx[:len(x.Ctx):len(x.Ctx)], syms...)
 	unkeep := func() {}
-	if !x.Once {
+	if !x.Once && !x.AtMostOnce {
 		// As in a loop, the vars it assigns lose their narrowing at its
 		// start: it may run again after it assigns them. As K2 has it, a
 		// lambda that may run again is a loop: those it only increments,

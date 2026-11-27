@@ -3820,6 +3820,11 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 	}
 	x.Field = f
+	if c.stable(f) {
+		// A final field of the program's Java sources, smart cast as in
+		// K2 (see stable).
+		return c.scope.narrowed(f)
+	}
 	return f.Type
 }
 

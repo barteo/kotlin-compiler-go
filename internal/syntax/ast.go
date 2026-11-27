@@ -1672,6 +1672,10 @@ type Lambda struct {
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
 	Once bool
+	// AtMostOnce is set by the checker on a lambda passed to a function
+	// that calls it at most once, callsInPlace(f, AT_MOST_ONCE): like
+	// Once, the vars it assigns keep their narrowing at its start.
+	AtMostOnce bool
 	// InPlace is set by the checker on a lambda passed to a function
 	// whose contract says it calls it in place, any number of times.
 	InPlace bool
