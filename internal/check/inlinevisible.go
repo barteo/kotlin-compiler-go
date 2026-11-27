@@ -29,16 +29,24 @@ import (
 // public-API inline function's uses are checked by publicInline
 // (NON_PUBLIC_CALL_FROM_PUBLIC_INLINE), which kotlinc reports instead of
 // the last two.
+//
+// An inline function of a local class or an object expression, even a
+// private one, isn't private to K2 either, but only its uses of a private
+// class's members are checked.
 func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
-	if d.Sym == nil || effectivelyPrivate(d.Visibility, cls) {
+	if d.Sym == nil {
 		return
 	}
+	local := false
 	for k := cls; k != nil; k = k.Outer {
 		if k.Local || k.Anonymous {
-			return
+			local = true
 		}
 	}
-	publicAPI := publicAPIInline(d, cls)
+	if !local && effectivelyPrivate(d.Visibility, cls) {
+		return
+	}
+	publicAPI := !local && publicAPIInline(d, cls)
 	level := "internal"
 	if publicAPI {
 		level = "public"
@@ -92,6 +100,9 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		return "", t
 	}
 	access := func(p syntax.Pos, t types.Type) {
+		if local {
+			return
+		}
 		if why, u := lessVisible(t); why != "" {
 			report(p, "'%s' type '%s' is accessed from '%s' inline declaration", why, u, level)
 		}
@@ -99,7 +110,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 	// signature checks the use at p of a declaration named what, with the
 	// types ts in its signature.
 	signature := func(p syntax.Pos, what string, ts ...types.Type) {
-		if publicAPI {
+		if publicAPI || local {
 			return
 		}
 		for _, t := range ts {

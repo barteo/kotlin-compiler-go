@@ -517,13 +517,8 @@ func recursiveBound(t types.Type, outer []*types.TypeParamSym) *types.TypeParamS
 // other code, which can't use the private and internal declarations the
 // body would, as kotlinc requires. @PublishedApi internal ones it can.
 func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
-	if d.Visibility == syntax.Private || d.Visibility == syntax.Internal && d.Find("", "PublishedApi") == nil {
-		return
-	}
-	for k := cls; k != nil; k = k.Outer {
-		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal && cd.Find("", "PublishedApi") == nil) {
-			return
-		}
+	if !publicAPIInline(d, cls) {
+		return // nor a member of a local class or an object expression
 	}
 	report := func(p syntax.Pos, what, name string, m *syntax.Modifiers) {
 		if m == nil || m.Find("", "PublishedApi") != nil {
