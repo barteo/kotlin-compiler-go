@@ -357,8 +357,8 @@ type Data struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-// Result is the outcome of analyzing a module. Its methods return copies
-// that callers may change, and are safe for concurrent use.
+// Result is the outcome of analyzing a module. Its methods but Facts
+// return copies that callers may change, and are safe for concurrent use.
 type Result struct {
 	// files are the facts of each snapshot, as passed, in node order.
 	// A Result doesn't change: a Session's update shares the files it
@@ -386,6 +386,30 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 		return Fact{}, false
 	}
 	return ff.fact(j), true
+}
+
+// Facts calls fn with each fact of the snapshot's file, in node order,
+// until fn returns false. Unlike Fact, it doesn't copy: *f and all it
+// points to are the Result's, shared with other facts, and reused for the
+// next fact, so they are only valid until fn returns and must not be
+// changed. Fact returns a copy to keep.
+func (r *Result) Facts(snapshot psi.SnapshotID, fn func(f *Fact) bool) {
+	if r == nil {
+		return
+	}
+	i, ok := r.index[snapshot]
+	if !ok {
+		return
+	}
+	ff := &r.files[i]
+	var f Fact
+	var v view
+	for j := range ff.facts {
+		ff.load(j, &f, &v)
+		if !fn(&f) {
+			return
+		}
+	}
 }
 
 // setFiles makes files the facts of snaps.

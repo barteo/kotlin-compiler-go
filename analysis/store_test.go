@@ -90,3 +90,43 @@ func TestStoreSharing(t *testing.T) {
 		t.Errorf("callee's call isn't its call's: %p, %p", callee.call, call1.call)
 	}
 }
+
+// TestFacts checks that Facts visits the facts Fact returns, in node
+// order, without copying them.
+func TestFacts(t *testing.T) {
+	storeCorpus(t, func(name string, r *Result, s *psi.Snapshot) {
+		var want []Fact
+		for _, f := range r.Data().Facts {
+			if f.Element.Snapshot == s.ID() {
+				want = append(want, f)
+			}
+		}
+		i := 0
+		r.Facts(s.ID(), func(f *Fact) bool {
+			if i >= len(want) {
+				t.Fatalf("%s: more facts than Data's %d", name, len(want))
+			}
+			if got := copyFact(*f); !reflect.DeepEqual(got, want[i]) {
+				t.Fatalf("%s: fact %d\n got %+v\nwant %+v", name, i, got, want[i])
+			}
+			i++
+			return true
+		})
+		if i != len(want) {
+			t.Fatalf("%s: %d facts, want %d", name, i, len(want))
+		}
+		if len(want) > 1 {
+			n := 0
+			r.Facts(s.ID(), func(*Fact) bool { n++; return false })
+			if n != 1 {
+				t.Errorf("%s: %d facts visited after false", name, n)
+			}
+		}
+		// The fact, its calls and their buffers, however many facts.
+		if allocs := testing.AllocsPerRun(5, func() { r.Facts(s.ID(), func(*Fact) bool { return true }) }); allocs > 8 {
+			t.Errorf("%s: Facts makes %v allocations over %d facts", name, allocs, len(want))
+		}
+	})
+	var nilResult *Result
+	nilResult.Facts(1, func(*Fact) bool { t.Error("a nil Result's fact"); return true })
+}

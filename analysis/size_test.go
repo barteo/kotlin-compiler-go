@@ -104,3 +104,26 @@ func BenchmarkFact(b *testing.B) {
 	}
 	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*len(ids)), "ns/fact")
 }
+
+// BenchmarkFacts reports the cost of Result.Facts, over each fact of
+// bench/gen's module of 20 files, against BenchmarkFact's.
+func BenchmarkFacts(b *testing.B) {
+	snaps := genModule(b, 20)
+	r, err := Analyze(context.Background(), withStdlib(b), snaps)
+	if err != nil {
+		b.Fatal(err)
+	}
+	n := 0
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		n = 0
+		for _, s := range snaps {
+			r.Facts(s.ID(), func(f *Fact) bool {
+				n++
+				return true
+			})
+		}
+	}
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*n), "ns/fact")
+}
