@@ -350,8 +350,8 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,910 of the 22,025 expected errors (99.5%) on their lines, 18,164 of
-them (82.5%) under the names `kotlinc` gives them (the rest is the
+21,910 of the 22,025 expected errors (99.5%) on their lines, 19,007 of
+them (86.3%) under the names `kotlinc` gives them (the rest is the
 backlog in
 [diagnostics-misnamed.tsv](../bench/results/diagnostics-misnamed.tsv)),
 and 3,600 of
