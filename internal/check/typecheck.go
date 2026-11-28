@@ -326,8 +326,11 @@ func (c *Checker) earlierCasts(x syntax.Expr, v *types.VarSym) []types.Type {
 // with and its earlier smart casts. as doesn't check them.
 func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []types.Type, is bool) types.Type {
 	c.bareRef, c.bareSubject = ref, subject
+	if is {
+		c.isRef = ref
+	}
 	t := c.resolveType(ref)
-	c.bareRef = nil
+	c.bareRef, c.isRef = nil, nil
 	subject = c.bareSubject // with a builder's variable fixed (see bareType)
 	switch {
 	case t.K == types.Invalid:

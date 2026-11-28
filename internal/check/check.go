@@ -201,6 +201,8 @@ type Checker struct {
 	// namedRecv are the receivers of the member calls with named
 	// arguments, for ambiguousParamName.
 	namedRecv map[*syntax.Call]namedRecv
+	// isRef is the type of the is check being resolved.
+	isRef *syntax.TypeRef
 	// unstableCasts are the smart-cast types of the local vars that
 	// lookupVar couldn't smart cast, since a closure may assign them.
 	unstableCasts map[*syntax.Ident]types.Type
@@ -1509,7 +1511,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 			if cls == nil {
 				if f, ok := unsupportedTypes[ref.Name]; ok {
 					c.unsupported(ref.P, f, "unresolved or unsupported type: %s", ref.Name)
-				} else {
+				} else if !c.enumEntryType(ref) {
 					c.errorf(ref.P, "UNRESOLVED_REFERENCE", "unresolved or unsupported type: %s", ref.Name)
 				}
 				// As in K2, the members of a value of the type are

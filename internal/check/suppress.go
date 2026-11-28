@@ -70,6 +70,8 @@ func init() {
 		"TYPE_MISMATCH":                                     typeMismatch,
 		"TYPEALIAS_SHOULD_EXPAND_TO_CLASS":                  `^typealias should expand to a class`,
 		"SMARTCAST_IMPOSSIBLE":                              `^smart cast to '.*' is impossible`,
+		"ENUM_ENTRY_AS_TYPE":                                `^use of enum entry names as types is prohibited`,
+		"IS_ENUM_ENTRY":                                     `^'is' over enum entry is prohibited`,
 		"UNSAFE_CALL":                                       `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
 		"UPPER_BOUND_VIOLATED":                              `^type argument is not within its bounds`,
 		"VAL_REASSIGNMENT":                                  `^val cannot be reassigned`,
