@@ -234,6 +234,8 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return c.unsafeImplicitProp(x, rt)
 			} else if t, ok := c.inaccessibleOuterProp(x); ok {
 				return t
+			} else if c.headerInstance(x.Name, false) {
+				c.errorf(x.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "cannot access '<this>' before the instance has been initialized")
 			} else if i := slices.IndexFunc(c.uninitParams, func(p *syntax.Param) bool { return p.Name == x.Name && p.Sym != nil }); i >= 0 {
 				// A parameter that a default value before it uses: it has
 				// its type, as in kotlinc.
@@ -3792,6 +3794,11 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			c.args(x, nil)
 			return t
 		}
+		if c.headerInstance(name, true) {
+			c.errorf(fn.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "cannot access '<this>' before the instance has been initialized")
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		if p := c.primitiveCtor(name); p != "" {
 			// kotlinc's primitive types have a private constructor without
 			// parameters: Int() can't access it, and Int(42) passes it too
@@ -5972,4 +5979,27 @@ func starsBounded(t types.Type) types.Type {
 		n = n.Nullable()
 	}
 	return n
+}
+
+// headerInstance reports whether name, which nothing in scope has, is a
+// member or an extension of the class whose header the code is in, a
+// function if call is set: its instance doesn't exist yet, kotlinc's
+// INSTANCE_ACCESS_BEFORE_SUPER_CALL, as a of class A(n: Int = a).
+func (c *Checker) headerInstance(name string, call bool) bool {
+	cls := c.staticCls
+	if c.cls != nil || cls == nil || cls.Object || cls.Interface {
+		return false
+	}
+	cls.Ensure()
+	t := cls.This()
+	if call {
+		return len(c.javaMethods(cls, name)) > 0 || len(c.extCallees(name, t)) > 0
+	}
+	if c.memberProp(cls, name) != nil {
+		return true
+	}
+	n := len(c.errs)
+	_, found := c.extProp(&syntax.Member{Name: name}, t)
+	c.errs = c.errs[:n]
+	return found
 }

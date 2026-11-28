@@ -62,7 +62,7 @@ enum class H3 internal constructor(val x: Int) { // ERROR constructor must be pr
 }
 
 class J(val v: Int) {
-    constructor(s: String) : this(s.length + v) // ERROR unresolved reference: v
+    constructor(s: String) : this(s.length + v) // ERROR cannot access '<this>' before the instance has been initialized
 }
 
 class K {

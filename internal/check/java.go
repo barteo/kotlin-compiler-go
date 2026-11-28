@@ -3433,7 +3433,12 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			outer, ot = c.implicitOuter(cls.Outer, p)
 		}
 		if outer == nil {
-			c.errorf(p, "INNER_CLASS_CONSTRUCTOR_NO_RECEIVER", "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
+			if !qualified && c.cls == nil && c.staticCls != nil && c.staticCls.IsSubclassOf(cls.Outer) {
+				// Inner() in the outer class's header, before its instance.
+				c.errorf(p, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "cannot access '<this>' before the instance has been initialized")
+			} else {
+				c.errorf(p, "INNER_CLASS_CONSTRUCTOR_NO_RECEIVER", "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
+			}
 			c.args(x, nil)
 			return errorNotNull // see reportedError
 		}
