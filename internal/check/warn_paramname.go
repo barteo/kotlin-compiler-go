@@ -172,3 +172,39 @@ func (c *Checker) ambiguousNamedArgs(x *syntax.Call, cls *types.ClassSym, rt typ
 		}
 	}
 }
+
+// namedRecv is the class, and the type, of the receiver of a member call
+// with named arguments.
+type namedRecv struct {
+	cls *types.ClassSym
+	t   types.Type
+}
+
+// ambiguousParamName reports whether name, which no candidate of member
+// call x has a parameter of, names a parameter of another function its
+// receiver's class inherits with a candidate: one of the functions of
+// several supertypes that the class's member overrides together, which
+// K2 takes no name for that the others call otherwise.
+func (c *Checker) ambiguousParamName(x *syntax.Call, cands []callee, name string) bool {
+	r, ok := c.namedRecv[x]
+	if !ok {
+		return false
+	}
+	found := false
+	for _, cl := range cands {
+		f := cl.f
+		if f.Owner == nil || f.Static || !stableParamNames(f) {
+			continue
+		}
+		r.cls.Supertypes(func(s *types.ClassSym) bool {
+			for _, g := range s.Methods[f.Name] {
+				if g != f && !g.Static && !g.Private && g.Ext == f.Ext && len(g.Params) == len(f.Params) && stableParamNames(g) &&
+					paramIndex(g.Params, name) >= 0 && c.sameParams(r.t, f, g) {
+					found = true
+				}
+			}
+			return !found
+		})
+	}
+	return found
+}

@@ -228,6 +228,11 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return c.unsafeImplicitProp(x, rt)
 			} else if t, ok := c.inaccessibleOuterProp(x); ok {
 				return t
+			} else if i := slices.IndexFunc(c.uninitParams, func(p *syntax.Param) bool { return p.Name == x.Name && p.Sym != nil }); i >= 0 {
+				// A parameter that a default value before it uses: it has
+				// its type, as in kotlinc.
+				c.errorf(x.P, "UNINITIALIZED_PARAMETER", "parameter '%s' is uninitialized here", x.Name)
+				return c.uninitParams[i].Sym.Type
 			} else {
 				c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			}

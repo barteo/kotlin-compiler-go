@@ -198,6 +198,9 @@ type Checker struct {
 	// argLambdas are the lambdas that are arguments of calls in the
 	// file, once argLambda has looked for them.
 	argLambdas map[*syntax.Lambda]bool
+	// namedRecv are the receivers of the member calls with named
+	// arguments, for ambiguousParamName.
+	namedRecv map[*syntax.Call]namedRecv
 	// orderDependent is the property whose type extFuncVar couldn't use
 	// because it is being inferred or its inference ran into a cycle.
 	orderDependent *types.VarSym
@@ -652,7 +655,10 @@ type state struct {
 	lrets      []*lambdaResult       // the labeled returns of each of lambdas
 	// defaultsOf is the function whose default value of parameter
 	// defaultParam is being checked.
-	defaultsOf   *types.FunSym
+	defaultsOf *types.FunSym
+	// uninitParams are, in a parameter's default value, that parameter and
+	// those after it, which it can't use: kotlinc's UNINITIALIZED_PARAMETER.
+	uninitParams []*syntax.Param
 	defaultParam int
 	// annotDefault is set while an annotation class's parameter default
 	// is checked, where a Java annotation can be created: Retention(..).
@@ -3992,7 +3998,7 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 	c.inAnon(cls)
 	for i, p := range params {
 		if p.Default != nil {
-			c.defaultParam = i
+			c.defaultParam, c.uninitParams = i, params[i:]
 			before := len(c.errs)
 			c.annotDefault = ctor && cls != nil && cls.Annotation
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos(), "INITIALIZER_TYPE_MISMATCH")
@@ -4000,6 +4006,7 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 			if ctor && cls != nil && cls.Annotation && len(c.errs) == before && c.nonConst(p.Default) != nil {
 				c.errorf(p.Default.Pos(), "ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT", "default value of annotation parameter must be a compile-time constant")
 			}
+			c.uninitParams = nil
 		}
 		s.declare(p.Sym)
 	}

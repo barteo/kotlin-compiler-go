@@ -3630,6 +3630,10 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	ms = c.declaredProtected(fn.X, cls, ms)
 	if slices.ContainsFunc(x.Names, func(n string) bool { return n != "" }) {
 		defer c.ambiguousNamedArgs(x, cls, rt)
+		if c.namedRecv == nil {
+			c.namedRecv = map[*syntax.Call]namedRecv{}
+		}
+		c.namedRecv[x] = namedRecv{cls, rt}
 	}
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)

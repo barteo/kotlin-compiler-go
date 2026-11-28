@@ -427,6 +427,10 @@ func (c *Checker) namedArgError(x *syntax.Call, cands []callee) bool {
 			found = found || paramIndex(cl.f.Params, name) >= 0
 		}
 		if !found {
+			if c.ambiguousParamName(x, cands, name) {
+				c.errorf(x.Args[i].Pos(), "NAME_FOR_AMBIGUOUS_PARAMETER", "named argument is prohibited for parameter with an ambiguous name")
+				return true
+			}
 			c.errorf(x.Args[i].Pos(), "NAMED_PARAMETER_NOT_FOUND", "cannot find a parameter with this name: %s", name)
 			return true
 		}

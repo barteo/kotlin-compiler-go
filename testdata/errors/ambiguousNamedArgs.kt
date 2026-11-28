@@ -40,9 +40,8 @@ interface Same : Same1, Same2
 
 fun calls(c: C, d: D, f: F, i: I, s: Same) {
     c.foo(x = 0, z = 1) // ERROR named argument is prohibited for parameter with an ambiguous name
-    // kc calls A's foo, which has no y: kotlinc's message is the one above.
-    c.foo(0, y = 1) // ERROR cannot find a parameter with this name: y
-    d.foo(y = 0, z = 1) // ERROR cannot find a parameter with this name: y
+    c.foo(0, y = 1) // ERROR named argument is prohibited for parameter with an ambiguous name
+    d.foo(y = 0, z = 1) // ERROR named argument is prohibited for parameter with an ambiguous name
     d.foo(x = 0, z = 1) // ERROR named argument is prohibited for parameter with an ambiguous name
     i.bar(a = 1) // ERROR named argument is prohibited for parameter with an ambiguous name
     c.foo(0, z = 1)
