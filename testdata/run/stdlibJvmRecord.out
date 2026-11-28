@@ -1,0 +1,30 @@
+Point(x=1, y=2)
+true
+true
+Point(x=1, y=5)
+3
+true
+1
+v[a, b]null
+Ann person ANN hi Ann
+Ann
+3 3 [0, 1, 2]
+Point: record=true super=java.lang.Record
+  x: int sig=null accessor=x []
+  y: int sig=null accessor=y []
+  getters: []
+Box: record=true super=java.lang.Record
+  value: Object sig=TT; accessor=value []
+  items: List sig=Ljava/util/List<Ljava/lang/String;>; accessor=items []
+  point: Point sig=null accessor=point []
+  getters: []
+Person: record=true super=java.lang.Record
+  name: String sig=null accessor=name []
+  age: int sig=null accessor=age []
+  email: String sig=null accessor=email []
+  nick: String sig=null accessor=nick [Anywhere]
+  city: String sig=null accessor=city []
+  getters: [getLabel(bridge), getName(bridge)]
+Sized: record=true super=java.lang.Record
+  size: int sig=null accessor=size []
+  getters: []

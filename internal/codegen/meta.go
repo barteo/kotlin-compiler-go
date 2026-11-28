@@ -367,7 +367,7 @@ func visibility(v syntax.Visibility) kmeta.Visibility {
 func annotated(as []syntax.Annotation, p placement) bool {
 	for i := range as {
 		a := &as[i]
-		if a.Class != nil && !a.Implicit && (a.Target == p.site || a.Target == "" && p.dflt != nil && p.dflt(a.Class)) {
+		if a.Class != nil && !a.Implicit && p.places(a, a.Class) {
 			return true
 		}
 	}

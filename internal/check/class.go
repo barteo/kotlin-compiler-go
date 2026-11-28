@@ -96,6 +96,14 @@ func (c *Checker) resolveSupertypes() {
 				}
 			}
 		}
+		if cls.Super == nil && c.jvmRecordClass(cd) {
+			// A record extends java.lang.Record, as kotlinc has it.
+			if rec := c.u.ext.class("java/lang/Record"); rec != nil {
+				rec.Ensure()
+				cls.Super = rec
+				cls.Supers = append([]types.Type{rec.This()}, cls.Supers...)
+			}
+		}
 		if cls.Super == nil {
 			cls.Super = object
 		}

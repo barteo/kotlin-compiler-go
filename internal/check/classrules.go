@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -50,6 +52,21 @@ func recordSuper(d *syntax.ClassDecl) *syntax.SuperType {
 		return st
 	}
 	return nil
+}
+
+// jvmRecordClass reports whether class d, whose annotations are resolved,
+// is compiled as a record: a data class annotated @JvmRecord, for a JVM
+// target that has records. Those jvmRecord rejects are compiled as
+// records as well, for the errors about their members.
+func (c *Checker) jvmRecordClass(d *syntax.ClassDecl) bool {
+	return d.Data && !d.Object && c.u.jvmTarget >= 60 &&
+		slices.ContainsFunc(d.Sym.Annotations, func(a *types.ClassSym) bool { return a.Name == "kotlin/jvm/JvmRecord" })
+}
+
+// isRecord reports whether class cls is a record: one that extends
+// java.lang.Record.
+func isRecord(cls *types.ClassSym) bool {
+	return cls != nil && cls.Super != nil && cls.Super.Name == "java/lang/Record"
 }
 
 // jvmRecord checks class d, annotated @JvmRecord with a, as kotlinc's

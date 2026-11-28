@@ -121,7 +121,7 @@ func (c *Checker) declareExtSetter(d *syntax.PropDecl, cls *types.ClassSym, modu
 	value := &types.VarSym{Name: st.Params[0].Name, Kind: types.Param, Decl: st.Params[0]}
 	st.Params[0].Sym = value
 	st.Visibility = d.SetterVis
-	st.Sym = &types.FunSym{Name: types.SetterName(d.Name), JVMName: jvmName(&d.Modifiers, "set"), Owner: cls, Decl: st, Ext: true, Final: cls == nil || isFinal(d.Modifiers, cls),
+	st.Sym = &types.FunSym{Name: types.SetterName(d.Name), JVMName: accessorName(&d.Modifiers, "set", d.Name, cls), Owner: cls, Decl: st, Ext: true, Final: cls == nil || isFinal(d.Modifiers, cls),
 		Abstract: d.Abstract && cls != nil, Module: module, Private: privateMethod(&setter, cls), Params: []*types.VarSym{value}, Ret: types.UnitType, Resolved: true,
 		Hidden: d.Hidden()}
 	if cls == nil {
@@ -245,7 +245,7 @@ func (c *Checker) declareMemberExtProp(d *syntax.PropDecl, cls *types.ClassSym) 
 			g.Visibility = d.Visibility // for its method's access
 		}
 		final := isFinal(d.Modifiers, cls)
-		g.Sym = &types.FunSym{Name: types.GetterName(d.Name), JVMName: jvmName(&d.Modifiers, "get"), Owner: cls, Decl: g, Ext: true, Final: final,
+		g.Sym = &types.FunSym{Name: types.GetterName(d.Name), JVMName: accessorName(&d.Modifiers, "get", d.Name, cls), Owner: cls, Decl: g, Ext: true, Final: final,
 			Abstract: d.Abstract, Module: c.internal(&d.Modifiers, cls, ""), Private: privateMethod(&d.Modifiers, cls), Hidden: d.Hidden()}
 		if cls.ExtProps == nil {
 			cls.ExtProps = map[string][]*types.FunSym{}

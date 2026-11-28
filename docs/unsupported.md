@@ -726,10 +726,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - `@JvmExposeBoxed` is checked as `kotlinc` checks it, but `kc` doesn't
   write the boxed overloads it asks for: Java sees only the mangled or
   unboxed declarations.
-- `@JvmRecord` is checked as `kotlinc` checks it, but `kc` compiles the
-  class as the plain data class: it doesn't extend `java.lang.Record`,
-  has no `Record` attribute, and its properties' getters are `getX()`,
-  not the record's `x()`, so Java sees no record.
 - A property delegated to a final property or a property reference keeps
   the delegate in a field; `kotlinc` reads it each time through
   `getX$delegate`. A local delegated property's accessors are inlined

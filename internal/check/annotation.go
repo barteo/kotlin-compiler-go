@@ -69,6 +69,33 @@ func declaredAnnotation(m *syntax.Modifiers) (types.Retention, types.Targets) {
 	return ret, targets
 }
 
+// recordComponentAnnotation reports whether Java applies the program's
+// annotation class of modifiers m to record components: if its
+// @java.lang.annotation.Target, written qualified, has RECORD_COMPONENT,
+// or else it has no Kotlin @Target either, from which kotlinc writes
+// one that hasn't.
+func recordComponentAnnotation(m *syntax.Modifiers) bool {
+	kotlin := false
+	for i := range m.Annotations {
+		a := &m.Annotations[i]
+		switch {
+		case a.Target != "":
+		case a.Name == "java.lang.annotation.Target":
+			for _, arg := range a.Args {
+				for _, t := range arg.Toks {
+					if t.Kind == syntax.IDENT && t.Text == "RECORD_COMPONENT" {
+						return true
+					}
+				}
+			}
+			return false
+		case a.Name == "Target" || a.Name == "kotlin.annotation.Target":
+			kotlin = true
+		}
+	}
+	return !kotlin
+}
+
 // resolveAnnotationTargets gives the program's annotation classes whose
 // @Target has an argument of another class than AnnotationTarget no
 // targets, as K2, which reports the argument's type: @Target(

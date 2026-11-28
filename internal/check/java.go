@@ -395,6 +395,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Targets |= types.TargetProperty
 		}
 		cls.TargetsKnown = known
+		cls.RecordComponent = info.JavaTargets == nil || slices.Contains(info.JavaTargets, "RECORD_COMPONENT")
 		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
 	}
 	cls.MethodAnnotations = func(name, desc string) (*classfile.MethodAnnotations, error) {
@@ -3897,8 +3898,10 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
 		annotElem = true
-	case recordComponent(cls, x.Name):
-		getterName, special = x.Name, true // a Java record's component: x()
+	case recordComponent(cls, x.Name) && !slices.ContainsFunc(c.javaMethods(cls, getterName), func(f *types.FunSym) bool { return len(f.Params) == 0 }):
+		// A Java record's component: x(), unless the record has a getX(),
+		// which K2 reads as its property.
+		getterName, special = x.Name, true
 	}
 	setterName := types.SetterName(x.Name)
 	// Not those of an earlier check of x, an extension property's: a
