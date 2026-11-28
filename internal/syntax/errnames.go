@@ -26,7 +26,7 @@ func init() {
 		{`^repeated context parameter lists`, "MULTIPLE_CONTEXT_LISTS"},
 		{`^context parameters must be named`, "CONTEXT_PARAMETER_WITHOUT_NAME"},
 		{`^context parameters cannot have default values`, "CONTEXT_PARAMETER_WITH_DEFAULT"},
-		{`^context parameters (are unsupported|on enum entries are unsupported)`, "UNSUPPORTED"},
+		{`^context parameters (are unsupported|on (enum entries|classes|constructors|primary constructors|property accessors|type aliases|initializers|backing fields) are unsupported)`, "UNSUPPORTED"},
 		{`^delegated property cannot have context parameters`, "UNSUPPORTED"},
 		{`^named context parameters in function types are unsupported`, "NAMED_CONTEXT_PARAMETER_IN_FUNCTION_TYPE"},
 		{`^anonymous functions can't have default values`, "ANONYMOUS_FUNCTION_PARAMETER_WITH_DEFAULT_VALUE"},
@@ -59,6 +59,7 @@ func init() {
 		{`^only one lambda expression is allowed outside a parenthesized argument list`, "MANY_LAMBDA_EXPRESSION_ARGUMENTS"},
 		{`^for-loop range must have an 'iterator\(\)' method`, "ITERATOR_MISSING"},
 		{`^assignments are not expressions`, "ASSIGNMENT_IN_EXPRESSION_CONTEXT"},
+		{`^expected an expression, found a (loop|declaration)`, "EXPRESSION_EXPECTED"},
 		{`^unsupported \[`, "UNSUPPORTED"},
 	} {
 		syntaxErrorNames = append(syntaxErrorNames, struct {

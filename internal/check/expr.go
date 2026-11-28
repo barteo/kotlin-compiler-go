@@ -1861,6 +1861,23 @@ func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool
 	return st, len(c.extCallees(fn.Name, st)) > 0
 }
 
+// primitiveCtor returns the primitive type that a call of name, a
+// built-in type's name or a typealias of it, would construct, or "".
+func (c *Checker) primitiveCtor(name string) string {
+	t := types.InvalidType
+	if a := c.lookupAlias(name); a != nil {
+		c.resolveAlias(a)
+		t = a.Type
+	} else if !c.hidesBuiltin(name) && c.lookupClass(name) == nil {
+		t = map[string]types.Type{"Int": types.IntType, "Long": types.LongType, "Short": types.ShortType, "Byte": types.ByteType,
+			"Double": types.DoubleType, "Float": types.FloatType, "Boolean": types.BoolType, "Char": types.CharType}[name]
+	}
+	if t.N || types.PrimOf(t.K).Box == "" {
+		return ""
+	}
+	return t.String()
+}
+
 // namedOnNonNull reports whether the non-null type of a nullable receiver
 // of type t may have a function called name: a member, an extension, a
 // property that can be invoked. It is true where kc can't tell, as for a
@@ -3722,6 +3739,18 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if t, ok := c.inaccessibleOuterCall(fn.P, name, nil); ok {
 			c.args(x, nil)
 			return t
+		}
+		if p := c.primitiveCtor(name); p != "" {
+			// kotlinc's primitive types have a private constructor without
+			// parameters: Int() can't access it, and Int(42) passes it too
+			// many arguments.
+			if len(x.Args) == 0 {
+				c.errorf(fn.P, "INVISIBLE_REFERENCE", "cannot access 'constructor(): %s': it is private in 'kotlin/%s'", p, p)
+			} else {
+				c.errorf(x.Args[0].Pos(), "TOO_MANY_ARGUMENTS", "too many arguments for 'constructor(): %s'", p)
+			}
+			c.args(x, nil)
+			return types.InvalidType
 		}
 		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 		c.args(x, nil)
