@@ -173,9 +173,16 @@ func reportWarnings(sb *strings.Builder, c *diagConfig, rs []*result, dts []*dia
 		}
 		return strings.Compare(a, b)
 	})
-	if len(names) > 0 {
+	// Only the warnings kc misses on a line, or reports elsewhere: the rest work.
+	gaps := slices.DeleteFunc(slices.Clone(names), func(n string) bool {
+		k := get(n)
+		return k.hit == k.expected && k.stray == 0
+	})
+	fmt.Fprintf(sb, "Of the %d warnings kc reports, %d are on every line the tests expect them and nowhere else; the table lists the other %d.\n\n",
+		len(names), len(names)-len(gaps), len(gaps))
+	if len(gaps) > 0 {
 		fmt.Fprintf(sb, "| Warning kc reports | Expected | On their lines | Elsewhere |\n|:---|---:|---:|---:|\n")
-		for _, n := range names {
+		for _, n := range gaps {
 			k := get(n)
 			fmt.Fprintf(sb, "| `%s` | %d | %d | %d |\n", n, k.expected, k.hit, k.stray)
 		}

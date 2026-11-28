@@ -871,16 +871,17 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		}
 		return strings.Compare(a.name, b.name)
 	})
-	fmt.Fprintf(&sb, "kc reports %d of %d expected errors (%s) on their lines.\n\n", totalHit, totalExp, pct(totalHit, totalExp))
-	fmt.Fprintf(&sb, "| Diagnostic | Expected | Reported | Missed |\n|:---|---:|---:|---:|\n")
-	for i, rc := range rl {
-		if i == 60 {
-			fmt.Fprintf(&sb, "| *%d more* | | | |\n", len(rl)-i)
-			break
+	// Only the diagnostics kc misses somewhere: the rest work.
+	gaps := slices.DeleteFunc(slices.Clone(rl), func(rc *recall) bool { return rc.hits == rc.expected })
+	fmt.Fprintf(&sb, "kc reports %d of %d expected errors (%s) on their lines. Of the %d diagnostics expected, kc reports every one of %d on its line; the table lists the other %d.\n\n",
+		totalHit, totalExp, pct(totalHit, totalExp), len(rl), len(rl)-len(gaps), len(gaps))
+	if len(gaps) > 0 {
+		fmt.Fprintf(&sb, "| Diagnostic | Expected | Reported | Missed |\n|:---|---:|---:|---:|\n")
+		for _, rc := range gaps {
+			fmt.Fprintf(&sb, "| `%s` | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.expected-rc.hits)
 		}
-		fmt.Fprintf(&sb, "| `%s` | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.expected-rc.hits)
+		fmt.Fprintln(&sb)
 	}
-	fmt.Fprintln(&sb)
 	reportMissCauses(&sb, missed, totalExp-totalHit)
 
 	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
