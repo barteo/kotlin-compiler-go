@@ -223,6 +223,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				c.errorf(x.P, "function invocation '%s()' expected; use ::%s for a reference", x.Name, x.Name)
 			} else if cls != nil {
 				c.errorf(x.P, "class '%s' cannot be used as a value", x.Name)
+				return types.UnitType // as K2 types it: id(A) infers its T
+			} else if rt, ok := c.nullableImplicit(x.Name, nil); ok {
+				return c.unsafeImplicitProp(x, rt)
 			} else {
 				c.errorf(x.P, "unresolved reference: %s", x.Name)
 			}
@@ -2667,8 +2670,9 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	if t.K == types.Invalid {
 		if reportedError(t) && !anyMember[fn.Name] { // K2 finds Any's members
 			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+			return types.InvalidType, nil, false
 		}
-		return types.InvalidType, nil, false
+		return t, nil, false
 	}
 	if c.unfixedReceiver(fn.X, t, fn.Name, fn.P) {
 		return types.InvalidType, nil, false
@@ -2710,9 +2714,131 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
 		c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
-		return types.InvalidType, nil, false
+		return t, nil, false
 	}
 	return t.NonNull(), nil, true
+}
+
+// nullableImplicit returns the type of the innermost implicit receiver
+// whose type is nullable and whose non-null type has a member or an
+// extension named name, a property if call is nil, else a function call
+// may call: where nothing else has the name, kotlinc resolves it on that
+// receiver and reports the unsafe call, as length in with(s) { length }
+// for a String? s.
+func (c *Checker) nullableImplicit(name string, call *syntax.Call) (types.Type, bool) {
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		t := c.scope.narrowed(c.recvs[i].sym)
+		if t.K == types.Invalid || !types.MayBeNull(t) || t.P {
+			continue
+		}
+		nn := t.NonNull()
+		if call != nil {
+			if cls := c.classOf(nn); cls != nil && len(c.javaMethods(cls, name)) > 0 || len(c.extCallees(name, nn)) > 0 {
+				return t, true
+			}
+			continue
+		}
+		if c.hasPropOn(nn, name) {
+			return t, true
+		}
+	}
+	return types.InvalidType, false
+}
+
+// hasPropOn reports whether a receiver of type t, not nullable, has a
+// property named name: a read of it checks without errors.
+func (c *Checker) hasPropOn(t types.Type, name string) bool {
+	n := len(c.errs)
+	_, ok := c.propOn(t, name)
+	c.errs = c.errs[:n]
+	return ok
+}
+
+// propOn checks the read of property name on a receiver of type t, and
+// returns its type and whether it checks without errors, which it leaves
+// for the caller to roll back.
+func (c *Checker) propOn(t types.Type, name string) (types.Type, bool) {
+	r := &syntax.Ident{Name: "$receiver"}
+	m := &syntax.Member{X: checked(r, t), Name: name}
+	n := len(c.errs)
+	pt := c.memberOn(m, t)
+	return pt, len(c.errs) == n && pt.K != types.Invalid
+}
+
+// unsafeImplicitProp reports the read x of a property of the implicit
+// receiver of nullable type rt, which nullableImplicit found, and returns
+// the property's type, as kotlinc's on the non-null receiver.
+func (c *Checker) unsafeImplicitProp(x *syntax.Ident, rt types.Type) types.Type {
+	c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+	n := len(c.errs)
+	t, ok := c.propOn(rt.NonNull(), x.Name)
+	c.errs = c.errs[:n]
+	if !ok {
+		return types.InvalidType
+	}
+	return t
+}
+
+// unsafeCallResult returns the type of call x, x.name(...), whose receiver is of
+// nullable type rt, an error kotlinc reports while it still resolves the
+// call on the non-null receiver, which then has its function's result
+// type: run { x.foo() } infers its R from it. kc takes the result type
+// that all the receiver's functions of the name share, if it doesn't
+// depend on their type parameters, and otherwise the error type.
+func (c *Checker) unsafeCallResult(x *syntax.Call, rt types.Type, name string) types.Type {
+	if rt.K == types.Invalid {
+		// Or of an error type's: K2 finds Any's members, so that
+		// unresolved.toString() is a String.
+		switch {
+		case len(c.errs) == 0 || x.Names != nil:
+		case name == "toString" && len(x.Args) == 0:
+			return types.StringType
+		case name == "hashCode" && len(x.Args) == 0:
+			return types.IntType
+		case name == "equals" && len(x.Args) == 1:
+			return types.BoolType
+		}
+		return types.InvalidType
+	}
+	rt = rt.NonNull()
+	var ms []*types.FunSym
+	if cls := c.classOf(rt); cls != nil {
+		ms = c.javaMethods(cls, name)
+	}
+	ext := len(ms) == 0
+	if ext {
+		// Or its extensions', as foo() of fun J.foo() in
+		// with(j) { foo() } for a J? j.
+		ms = calleeFuns(c.extCallees(name, rt))
+	}
+	if len(ms) == 0 {
+		return types.InvalidType
+	}
+	res := types.InvalidType
+	for _, f := range ms {
+		if ensureFun(f); !f.Resolved || len(f.TypeParams) > 0 || f.Ret.K == types.Invalid {
+			return types.InvalidType
+		}
+		t := f.Ret
+		if !ext {
+			t = c.memberSubst(rt, f.Owner).Apply(f.Ret)
+		}
+		classParam := func(u types.Type) bool {
+			if !u.IsParam() {
+				return false
+			}
+			_, ok := u.Param().Owner.(*types.ClassSym)
+			return ok
+		}
+		if t.HasVars() || t.Has(classParam) {
+			return types.InvalidType
+		}
+		if res.K != types.Invalid && res != t {
+			return types.InvalidType
+		}
+		res = t
+	}
+	return res
 }
 
 func (c *Checker) member(x *syntax.Member) types.Type {
@@ -2838,8 +2964,23 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			return t
 		}
 		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
+		// As kotlinc, the property is still read, on the non-null
+		// receiver, and has its type: val s: String = x.length, of a
+		// String? x, is a mismatch too, and run { x.length } an Int. If
+		// that takes another error, the read is the error type.
+		n := len(c.errs)
+		if t := c.memberOn(x, xt); len(c.errs) == n {
+			return t
+		}
+		c.errs = c.errs[:n]
 		return types.InvalidType
 	}
+	return c.memberOn(x, xt)
+}
+
+// memberOn checks the read of property x.Name on x.X, of type xt, which
+// takes it: xt's non-null type does.
+func (c *Checker) memberOn(x *syntax.Member, xt types.Type) types.Type {
 	rt := c.propBound(x, xt.NonNull())
 	var t types.Type
 	cls := c.classOf(rt)
@@ -3464,6 +3605,11 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 				return types.InvalidType
 			}
 		}
+		if rt, ok := c.nullableImplicit(name, x); ok {
+			c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+			c.args(x, nil)
+			return c.unsafeCallResult(x, rt, name)
+		}
 		c.errorf(fn.P, "unresolved reference: %s", name)
 		c.args(x, nil)
 		return types.InvalidType
@@ -3584,7 +3730,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		rt, nullExts, ok := c.callReceiver(fn, rw)
 		if !ok {
 			c.args(x, nil)
-			return types.InvalidType
+			return c.unsafeCallResult(x, rt, fn.Name)
 		}
 		n := c.safeReceivers(x)
 		if r, ok := fn.X.(*syntax.Call); ok && !fn.Safe {

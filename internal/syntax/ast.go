@@ -1038,6 +1038,13 @@ type Block struct {
 	End   Pos // the closing brace, if the block has braces
 	Stmts []Stmt
 	T     types.Type // value type: the last expression's type, Unit, or Nothing
+	// LostJump is set if a statement or a when branch recovery from a
+	// syntax error left out of the block has a return or a throw,
+	// outside of lambdas and local declarations: kotlinc, which keeps
+	// it, may find that the block jumps, and so that a function body
+	// has its return. The checker takes the block for one of type
+	// Nothing.
+	LostJump bool
 }
 
 type ExprStmt struct{ X Expr }

@@ -97,6 +97,7 @@ func extRecvs(d *syntax.FunDecl) []implicitRecv {
 
 // declareExtProp enters an extension property into its package.
 func (c *Checker) declareExtProp(d *syntax.PropDecl) {
+	c.missingExtAccessors(d)
 	d.Sym = &types.VarSym{Name: d.Name, Kind: types.Global, Mutable: d.Mutable, Facade: c.declFacade(d.Visibility), Decl: d}
 	if g := d.Getter; g != nil {
 		g.Sym = &types.FunSym{Name: types.GetterName(d.Name), JVMName: jvmName(&d.Modifiers, "get"), Facade: c.declFacade(d.Visibility), Decl: g, Ext: true, Final: true,
@@ -105,6 +106,30 @@ func (c *Checker) declareExtProp(d *syntax.PropDecl) {
 		c.declareExtSetter(d, nil, "")
 		c.composeGetter(d, d.Sym, nil)
 	}
+}
+
+// missingExtAccessors reports extension property d if it isn't abstract
+// and lacks the accessors it needs, which it then gets without bodies, as
+// an abstract one's: its uses resolve, as kotlinc's do.
+func (c *Checker) missingExtAccessors(d *syntax.PropDecl) {
+	if d.Abstract || d.Init != nil || d.BackingField != nil || d.Getter != nil && (!d.Mutable || d.Setter != nil) {
+		return
+	}
+	c.errorf(d.P, "extension property must have accessors or be abstract")
+	if d.Getter == nil {
+		d.Getter = &syntax.FunDecl{P: d.P, Name: "get", Property: d.Name, Ret: d.Type}
+	}
+	if d.Mutable && d.Setter == nil {
+		d.Setter = &syntax.FunDecl{P: d.P, Name: "set", Property: d.Name, Params: []*syntax.Param{{P: d.P, Name: "value"}}}
+	}
+}
+
+// missingAccessor reports whether f is the getter missingExtAccessors gave
+// an extension property: kotlinc, which takes the property for one with a
+// field, reports no val assigned in a constructor, and kc nothing more.
+func missingAccessor(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && f.Ext && !f.Abstract && !d.External && d.Body == nil && d.ExprBody == nil
 }
 
 // declareExtSetter creates the symbol of a var extension property's
@@ -232,6 +257,7 @@ func (c *Checker) declareMemberExtProp(d *syntax.PropDecl, cls *types.ClassSym) 
 	if cls.Interface && d.Getter == nil && d.Setter == nil && d.Init == nil {
 		d.Abstract = true // implicitly, as an interface's other members
 	}
+	c.missingExtAccessors(d)
 	d.Sym = &types.VarSym{Name: d.Name, Kind: types.Prop, Mutable: d.Mutable, Owner: cls, Decl: d, Abstract: d.Abstract}
 	if d.Abstract && d.Getter == nil && d.Init == nil {
 		// An abstract one's accessors have no bodies.
@@ -317,7 +343,7 @@ func (c *Checker) checkExtPropOverrides(d *syntax.ClassDecl) {
 		}
 		over := c.overriddenExtProps(d.Sym, pd.Name, pd.Getter.Sym)
 		switch {
-		case len(over) == 0 && pd.Override:
+		case len(over) == 0 && pd.Override && !c.errorSupers[d]:
 			c.errorf(pd.P, "'%s' overrides nothing", pd.Name)
 		case len(over) > 0 && !pd.Override:
 			c.errorf(pd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", pd.Name, over[0].Owner.DisplayName())

@@ -117,10 +117,15 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	t := c.resolveType(st.Type)
 	switch {
 	case t.K == types.Invalid:
+		if c.errorSupers == nil {
+			c.errorSupers = map[*syntax.ClassDecl]bool{}
+		}
+		c.errorSupers[cd] = true
 		return t
 	case t.K == types.Any:
 		if cd.Interface {
 			c.errorf(st.Type.P, "an interface cannot inherit from a class")
+			c.interfaceSuper(cd, c.u.ext.class("java/lang/Object"))
 		}
 		return types.InvalidType // the default superclass
 	case t.N:
@@ -157,6 +162,7 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		c.errorf(st.Type.P, "delegation is supported only for interfaces")
 	case cd.Interface:
 		c.errorf(st.Type.P, "an interface cannot inherit from a class")
+		c.interfaceSuper(cd, sc)
 	case cls.Super != nil:
 		c.errorf(st.Type.P, "only one class may appear in a supertype list")
 	case sc.Final:
@@ -189,6 +195,31 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	return types.InvalidType
 }
 
+// interfaceSuper records sc, a class interface cd inherits from, which is
+// reported (Checker.interfaceSupers).
+func (c *Checker) interfaceSuper(cd *syntax.ClassDecl, sc *types.ClassSym) {
+	if sc == nil {
+		return
+	}
+	if c.interfaceSupers == nil {
+		c.interfaceSupers = map[*syntax.ClassDecl][]*types.ClassSym{}
+	}
+	c.interfaceSupers[cd] = append(c.interfaceSupers[cd], sc)
+}
+
+// interfaceSuperFun returns a function of name and arity n of a class
+// interface d inherits from (Checker.interfaceSupers), or nil.
+func (c *Checker) interfaceSuperFun(d *syntax.ClassDecl, name string, n int) *types.FunSym {
+	for _, sc := range c.interfaceSupers[d] {
+		for _, m := range c.javaMethods(sc, name) {
+			if !m.Static && len(m.Params) == n {
+				return m
+			}
+		}
+	}
+	return nil
+}
+
 // findCycles finds the file's classes that inherit from themselves. It
 // runs for all files before checkSupers breaks the cycles, so each class
 // in a cycle is reported.
@@ -211,6 +242,16 @@ func (c *Checker) findCycles() {
 		}
 		c.cyclic = append(c.cyclic, cd)
 		c.cyclicAlias(cd, walk)
+		var keep []types.Type
+		for _, t := range cd.Sym.Supers {
+			if t.K != types.Class || t.C != cd.Sym && !inherits(t.C, cd.Sym, walk, map[*types.ClassSym]bool{}) {
+				keep = append(keep, t)
+			}
+		}
+		if c.cyclicKeep == nil {
+			c.cyclicKeep = map[*syntax.ClassDecl][]types.Type{}
+		}
+		c.cyclicKeep[cd] = keep
 		if !c.u.shadowing {
 			continue
 		}
@@ -275,8 +316,22 @@ func (c *Checker) checkSupers() {
 			c.errorf(p, "there's a cycle in the inheritance hierarchy for this type")
 		}
 		cls := cd.Sym
+		super := cls.Super
 		cls.Super, cls.Interfaces, cls.Supers = c.u.ext.class("java/lang/Object"), nil, []types.Type{}
-		cd.SuperCall = nil
+		for _, t := range c.cyclicKeep[cd] {
+			cls.Supers = append(cls.Supers, t)
+			if t.K != types.Class {
+				continue
+			}
+			if t.C.Interface {
+				cls.Interfaces = append(cls.Interfaces, t.C)
+			} else {
+				cls.Super = t.C
+			}
+		}
+		if cls.Super != super {
+			cd.SuperCall = nil
+		}
 	}
 	for _, cd := range c.classes {
 		c.tparams, c.lookupCls = cd.Sym.TypeParams, cd.Sym
@@ -1247,7 +1302,11 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 		switch {
 		case len(over) == 0 && fd.Override:
-			if c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name] {
+			if o := c.interfaceSuperFun(d, f.Name, len(f.Params)); o != nil {
+				if o.Final {
+					c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
+				}
+			} else if !c.errorSupers[d] && (c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name]) {
 				c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 			}
 		case fd.Override && javaHidden(cls, over):
@@ -1359,7 +1418,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 		over := c.overriddenProps(cls, p)
 		switch {
-		case len(over) == 0 && op.override:
+		case len(over) == 0 && op.override && !c.errorSupers[d]:
 			c.errorf(op.pos, "'%s' overrides nothing", p.Name)
 		case len(over) > 0 && !op.override:
 			c.errorf(op.pos, "'%s' hides member of supertype '%s' and needs 'override' modifier", p.Name, over[0].owner.DisplayName())

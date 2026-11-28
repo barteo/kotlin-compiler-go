@@ -26,7 +26,8 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 		l.missingBrace(n)
 		end = l.end(n)
 	}
-	b := &syntax.Block{P: p, End: end, Stmts: l.stmts(n)}
+	b := &syntax.Block{P: p, End: end}
+	b.Stmts, b.LostJump = l.stmts(n)
 	return record(l, b, n)
 }
 
@@ -55,9 +56,9 @@ func (l *lowerer) missingBrace(n psi.NodeRef) {
 	l.failAt(l.end(n), "expected '}'")
 }
 
-// stmts lowers the statements of a BLOCK.
-func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
-	var out []syntax.Stmt
+// stmts lowers the statements of a BLOCK, and reports whether one left out,
+// recovering, has a jump (syntax.Block.LostJump).
+func (l *lowerer) stmts(n psi.NodeRef) (out []syntax.Stmt, lostJump bool) {
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
 		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
@@ -83,11 +84,29 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 			l.errs[len(l.errs)-1] = &e2
 		}
 		l.lose(c)
+		lostJump = lostJump || hasJump(c)
 		if v := l.placeholderVar(c); v != nil {
 			out = append(out, v)
 		}
 	}
-	return out
+	return out, lostJump
+}
+
+// hasJump reports whether n is or has a return or a throw, outside of
+// lambdas and local declarations, whose jumps are their own.
+func hasJump(n psi.NodeRef) bool {
+	switch n.NumericKind() {
+	case psi.KindRETURN, psi.KindTHROW:
+		return true
+	case psi.KindLAMBDA_EXPRESSION, psi.KindFUNCTION_LITERAL, psi.KindFUN, psi.KindCLASS, psi.KindOBJECT_LITERAL, psi.KindOBJECT_DECLARATION:
+		return false
+	}
+	for _, c := range kids(n) {
+		if hasJump(c) {
+			return true
+		}
+	}
+	return false
 }
 
 // before reports whether a is before b.

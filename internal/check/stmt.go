@@ -24,6 +24,11 @@ func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.
 	}
 	c.push()
 	t := c.stmts(b, want, valueUsed)
+	if b.LostJump {
+		// A statement left out may jump, as kotlinc, which keeps it,
+		// may find: return a + of a function's body is its return.
+		t = types.NothingType
+	}
 	if exit != nil {
 		exit.record(c, t)
 	}
@@ -1059,7 +1064,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
 		case x.Getter != nil && x.Setter == nil:
-			c.errorf(x.P, "val cannot be reassigned")
+			if !missingAccessor(x.Getter) {
+				c.errorf(x.P, "val cannot be reassigned")
+			}
 			return t, false
 		case x.Getter != nil && !c.javaSetterVisible(x.Setter, x.X):
 			c.errorf(x.P, invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
