@@ -1514,7 +1514,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				c.errorf(syntax.StartPos(a), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", a.Type(), w)
 				continue
 			}
-			c.assignable(a.Type(), want, syntax.StartPos(a), "ARGUMENT_TYPE_MISMATCH")
+			c.assignable(a.Type(), want, syntax.StartPos(a), projectedOut(x, &best.callee, i, want))
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
@@ -2342,7 +2342,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		c.samArgs(x, ts, func(i int) types.Type { return best.argType(i, x.Args) })
 		for i, t := range ts {
 			if ch, ok := x.Args[i].(*syntax.Checked); !ok || ch.SAM == nil {
-				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]), "ARGUMENT_TYPE_MISMATCH")
+				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]), projectedOut(x, best, i, best.argType(i, x.Args)))
 			}
 		}
 		if best.ext.K != types.Invalid {
@@ -3519,4 +3519,56 @@ func (c *Checker) ambiguousLambdas(x *syntax.Call) {
 			c.lambda(l, noWant)
 		}
 	}
+}
+
+// projectedOut returns the name of the error of argument i of call x of
+// cl that isn't of type want: kotlinc's MEMBER_PROJECTED_OUT if x has a
+// receiver whose projection made the parameter's type, a type parameter,
+// Nothing, as list.add(1) of a MutableList<out Number>; else
+// ARGUMENT_TYPE_MISMATCH.
+func projectedOut(x *syntax.Call, cl *callee, i int, want types.Type) string {
+	if m, ok := x.Fun.(*syntax.Member); ok && want.K == types.Nothing && !want.N && i < len(x.Args) && projectedCall(m.X, x.Args) {
+		if _, null := x.Args[i].(*syntax.NullLit); !null {
+			if p := cl.param(i); p != nil && p.Type.IsParam() {
+				return "MEMBER_PROJECTED_OUT"
+			}
+		}
+	}
+	return "ARGUMENT_TYPE_MISMATCH"
+}
+
+// projectedCall reports whether a call's receiver, of type rt, or one of
+// its arguments has a projected type, whose capture K2 approximates.
+func projectedCall(recv syntax.Expr, args []syntax.Expr) bool {
+	rt := recv.Type().NonNull()
+	if rt.K == types.TypeParam && !rt.Param().Captured {
+		rt = rt.Param().Bound() // T : MutableList<out Number>
+	}
+	// A local's type has its captured types approximated, as K2 has it.
+	id, ok := recv.(*syntax.Ident)
+	local := ok && id.Sym != nil && id.Sym.Kind == types.Local
+	return projectedType(rt, !local) || slices.ContainsFunc(args, func(a syntax.Expr) bool { return projectedType(a.Type(), true) })
+}
+
+// projectedType reports whether t has a projected type argument, or if
+// captured is set, is or has a projection's captured type:
+// MutableList<out Number>.
+func projectedType(t types.Type, captured bool) bool {
+	t = t.NonNull()
+	switch {
+	case t.K == types.TypeParam:
+		return captured && t.Param().Captured
+	case t.K != types.Class || t.A == nil:
+		return false
+	}
+	for i := range t.A.Len() {
+		a := t.A.Get(i)
+		if a.V == types.Out && i < len(t.C.TypeParams) && t.C.TypeParams[i].Var == types.In {
+			continue // In<out X>, K2's In<Nothing>
+		}
+		if a.V != types.Inv || captured && a.T.K == types.TypeParam && a.T.Param().Captured {
+			return true
+		}
+	}
+	return false
 }
