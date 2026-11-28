@@ -14,7 +14,7 @@ func (c *Checker) value(x syntax.Expr, want types.Type) types.Type {
 	t := c.expr(x, want)
 	switch t.K {
 	case types.Range:
-		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
+		c.errorf(x.Pos(), "", "ranges are only supported in 'for' loops and 'in' checks")
 		return types.InvalidType
 	case types.Unit:
 		if want.K != types.Unit {
@@ -59,7 +59,7 @@ func (c *Checker) rangeExpr(x syntax.Expr) types.Type {
 
 func (c *Checker) wantBool(x syntax.Expr) {
 	if t := x.Type().Flex(); t != types.BoolType && t.K != types.Invalid && t.K != types.Nothing {
-		c.errorf(x.Pos(), "type mismatch: inferred type is %s but Boolean was expected", t)
+		c.errorf(x.Pos(), "CONDITION_TYPE_MISMATCH", "type mismatch: inferred type is %s but Boolean was expected", t)
 	}
 }
 
@@ -157,7 +157,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			}
 		}
 		if ok && (sym.Ambiguous || c.starVarAmbiguous(x.Name, sym)) {
-			c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+			c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s", x.Name)
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
@@ -220,16 +220,16 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				}
 			}
 			if len(c.topFuns(x.Name)) > 0 {
-				c.errorf(x.P, "function invocation '%s()' expected; use ::%s for a reference", x.Name, x.Name)
+				c.errorf(x.P, "FUNCTION_CALL_EXPECTED", "function invocation '%s()' expected; use ::%s for a reference", x.Name, x.Name)
 			} else if cls != nil {
-				c.errorf(x.P, "class '%s' cannot be used as a value", x.Name)
+				c.errorf(x.P, "NO_COMPANION_OBJECT", "class '%s' cannot be used as a value", x.Name)
 				return types.UnitType // as K2 types it: id(A) infers its T
 			} else if rt, ok := c.nullableImplicit(x.Name, nil); ok {
 				return c.unsafeImplicitProp(x, rt)
 			} else if t, ok := c.inaccessibleOuterProp(x); ok {
 				return t
 			} else {
-				c.errorf(x.P, "unresolved reference: %s", x.Name)
+				c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			}
 			return types.InvalidType
 		}
@@ -269,7 +269,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.As:
 		return c.asExpr(x)
 	case *syntax.Super:
-		c.errorf(x.P, "'super' is not an expression, it can only be used on the left-hand side of a dot ('.')")
+		c.errorf(x.P, "SUPER_IS_NOT_AN_EXPRESSION", "'super' is not an expression, it can only be used on the left-hand side of a dot ('.')")
 		return types.InvalidType
 	case *syntax.This:
 		return c.thisExpr(x)
@@ -379,10 +379,10 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		switch {
 		case t.K == types.Invalid:
 		case !t.NonNull().IsArray() && !(t.K == types.Class && types.IsUnsignedArray(t.C)):
-			c.errorf(x.P, "the spread operator can only be applied to arrays, not to %s", t)
+			c.errorf(x.P, "ARGUMENT_TYPE_MISMATCH", "the spread operator can only be applied to arrays, not to %s", t)
 			return types.InvalidType
 		case types.MayBeNull(t) && !t.P:
-			c.errorf(x.P, "the spread operator cannot be applied to a nullable array: %s", t)
+			c.errorf(x.P, "SPREAD_OF_NULLABLE", "the spread operator cannot be applied to a nullable array: %s", t)
 			return types.InvalidType
 		}
 		return t.Flex()
@@ -396,7 +396,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.Lambda:
 		return c.lambda(x, want)
 	}
-	c.errorf(x.Pos(), "unsupported expression")
+	c.errorf(x.Pos(), "", "unsupported expression")
 	return types.InvalidType
 }
 
@@ -531,7 +531,7 @@ func (c *Checker) unsignedLit(x *syntax.IntLit, want types.Type) types.Type {
 	cls := c.u.ext.class(name)
 	if cls == nil {
 		// As kotlinc, without the standard library's unsigned types.
-		c.errorf(x.P, "type of the constant expression cannot be resolved. Please make sure you have the required dependencies for unsigned types in the classpath")
+		c.errorf(x.P, "UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH", "type of the constant expression cannot be resolved. Please make sure you have the required dependencies for unsigned types in the classpath")
 		return types.InvalidType
 	}
 	if !cls.Value {
@@ -611,7 +611,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 			return c.unaryOp(x, t, want)
 		}
 		if t.K != types.Invalid && !t.IsNumeric() {
-			c.errorf(x.P, "operator '%s' cannot be applied to %s", x.Op, t)
+			c.errorf(x.P, "UNSAFE_CALL", "operator '%s' cannot be applied to %s", x.Op, t)
 			return types.InvalidType
 		}
 		if t.K == types.Byte || t.K == types.Short {
@@ -668,7 +668,7 @@ func (c *Checker) rangeValue(x *syntax.Binary, want types.Type) types.Type {
 		}
 		cls := c.u.ext.pkgClass("kotlin.ranges", name)
 		if cls == nil {
-			c.errorf(x.P, "ranges are only supported in 'for' loops and 'in' checks")
+			c.errorf(x.P, "", "ranges are only supported in 'for' loops and 'in' checks")
 			return types.InvalidType
 		}
 		id := &syntax.Ident{Name: name}
@@ -956,7 +956,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		c.mayNotRun(nn, nonNull)
 		t, ok := c.join(xt.NonNull(), yt)
 		if !ok {
-			c.errorf(x.P, "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
+			c.errorf(x.P, "", "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
 			return types.InvalidType
 		}
 		if yt.K == types.Unit && !yt.N && t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
@@ -1039,11 +1039,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			if c.u.ext.kotlin {
 				return c.rangeValue(x, want)
 			}
-			c.errorf(x.P, "ranges are only supported in 'for' loops and 'in' checks")
+			c.errorf(x.P, "", "ranges are only supported in 'for' loops and 'in' checks")
 		}
 		if x.Op == syntax.STEP {
 			if xr, ok := x.X.(*syntax.Binary); !ok || !isRangeOp(xr.Op) || xr.Op == syntax.STEP {
-				c.errorf(x.P, "'step' must follow a range")
+				c.errorf(x.P, "", "'step' must follow a range")
 			}
 			rt := c.rangeExpr(x.X)
 			if rt.K != types.Range && rt.K != types.Invalid && c.u.ext.kotlin {
@@ -1098,7 +1098,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if r, ok := x.Y.(*syntax.Binary); !ok || !isRangeOp(r.Op) {
 			return c.containsOp(x)
 		} else if r.Op == syntax.STEP {
-			c.errorf(x.Y.Pos(), "'in' is only supported with ranges written in place, without 'step'")
+			c.errorf(x.Y.Pos(), "", "'in' is only supported with ranges written in place, without 'step'")
 		}
 		rt := c.rangeExpr(x.Y)
 		if rt.K != types.Range && rt.K != types.Invalid {
@@ -1224,7 +1224,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			return types.NothingType
 		}
 		if !ok {
-			c.errorf(x.P, "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
+			c.errorf(x.P, "UNSAFE_OPERATOR_CALL", "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
 			return types.InvalidType
 		}
 		x.OpType = op
@@ -1247,11 +1247,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			x.Y = checked(x.Y, yt)
 			return c.binaryOp(x, xt, want)
 		default:
-			c.errorf(x.P, "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
+			c.errorf(x.P, "UNSAFE_OPERATOR_CALL", "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
 		}
 		return types.BoolType
 	}
-	c.errorf(x.P, "unsupported operator %s", x.Op)
+	c.errorf(x.P, "", "unsupported operator %s", x.Op)
 	return types.InvalidType
 }
 
@@ -1292,7 +1292,7 @@ func (c *Checker) wantInt(x syntax.Expr, t types.Type) { c.wantType(x, t, types.
 // wantType checks that x, of type t, has the builtin type w.
 func (c *Checker) wantType(x syntax.Expr, t, w types.Type) {
 	if t = t.Flex(); t != w && t.K != types.Invalid && w.K != types.Invalid {
-		c.errorf(x.Pos(), "type mismatch: inferred type is %s but %s was expected", t, w)
+		c.errorf(x.Pos(), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", t, w)
 	}
 }
 
@@ -1314,7 +1314,7 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if o.K == types.Unit || o.K == types.Null || o.IsParam() || o.NonNull().K == types.Any {
 			return types.AnyType.Nullable()
 		}
-		c.errorf(p, "operator '==' cannot be applied to %s and %s", xt, yt)
+		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '==' cannot be applied to %s and %s", xt, yt)
 		return types.InvalidType
 	}
 	if xt.K == types.Null || yt.K == types.Null {
@@ -1331,7 +1331,7 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		}
 	}
 	if (op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ) && (types.IsValue(xt) || types.IsValue(yt)) {
-		c.errorf(p, "identity equality for arguments of types '%s' and '%s' is prohibited", xt, yt)
+		c.errorf(p, "FORBIDDEN_IDENTITY_EQUALS", "identity equality for arguments of types '%s' and '%s' is prohibited", xt, yt)
 		return types.InvalidType
 	}
 	if xt.IsParam() || yt.IsParam() || xt.K == types.Class && yt.K == types.Class && xt.C == yt.C {
@@ -1343,7 +1343,7 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 			if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
 				name = "==="
 			}
-			c.errorf(p, "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+			c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
 			return types.InvalidType
 		}
 		return types.AnyType.Nullable()
@@ -1362,7 +1362,7 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
 			name = "==="
 		}
-		c.errorf(p, "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
 		return types.InvalidType
 	}
 	if xt.IsPrimitive() && yt.IsPrimitive() {
@@ -2538,7 +2538,7 @@ func (c *Checker) receiver(x syntax.Expr, safe bool, name string, p syntax.Pos) 
 		return t, false
 	}
 	if types.MayBeNull(t) && !t.P && !safe {
-		c.errorf(p, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
+		c.errorf(p, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return types.InvalidType, false
 	}
 	return t.NonNull(), true
@@ -2671,7 +2671,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
 		if reportedError(t) && !anyMember[fn.Name] { // K2 finds Any's members
-			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 			return types.InvalidType, nil, false
 		}
 		return t, nil, false
@@ -2715,7 +2715,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		if fn.Name == "plus" && (t.NonNull() == types.StringType || t.K == types.Null) {
 			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
-		c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
+		c.errorf(fn.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return t, nil, false
 	}
 	return t.NonNull(), nil, true
@@ -2767,7 +2767,7 @@ func (c *Checker) inaccessibleOuterCall(p syntax.Pos, name string, recv *types.T
 		if len(fs) == 0 {
 			continue
 		}
-		c.errorf(p, "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
+		c.errorf(p, "INACCESSIBLE_OUTER_CLASS_RECEIVER", "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
 		if len(fs) > 1 {
 			return types.InvalidType, true
 		}
@@ -2789,7 +2789,7 @@ func (c *Checker) inaccessibleOuterProp(x *syntax.Ident) (types.Type, bool) {
 		if p == nil {
 			continue
 		}
-		c.errorf(x.P, "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
+		c.errorf(x.P, "INACCESSIBLE_OUTER_CLASS_RECEIVER", "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
 		if ensureVar(p); !p.Resolved || p.Type.HasParams() || p.Type.HasVars() {
 			return types.InvalidType, true
 		}
@@ -2848,7 +2848,7 @@ func (c *Checker) propOn(t types.Type, name string) (types.Type, bool) {
 // receiver of nullable type rt, which nullableImplicit found, and returns
 // the property's type, as kotlinc's on the non-null receiver.
 func (c *Checker) unsafeImplicitProp(x *syntax.Ident, rt types.Type) types.Type {
-	c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+	c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
 	n := len(c.errs)
 	t, ok := c.propOn(rt.NonNull(), x.Name)
 	c.errs = c.errs[:n]
@@ -2960,7 +2960,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// A top-level property by its qualified name: a.b.x.
 		v, ok := pkg.Vars[x.Name]
 		if !ok {
-			c.errorf(x.P, "unresolved reference: %s", x.Name)
+			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			return types.InvalidType
 		}
 		ensureVar(v)
@@ -3021,7 +3021,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	xt := c.fixedStub(c.declaredIfNull(x.X, c.value(x.X, noWant)))
 	if xt.K == types.Invalid {
 		if reportedError(xt) {
-			c.errorf(x.P, "unresolved reference: %s", x.Name)
+			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			return types.InvalidType
 		}
 		return xt
@@ -3042,7 +3042,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		if t, ok := c.extProp(x, xt); ok {
 			return t
 		}
-		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
+		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
 		// As kotlinc, the property is still read, on the non-null
 		// receiver, and has its type: val s: String = x.length, of a
 		// String? x, is a mismatch too, and run { x.length } an Int. If
@@ -3149,7 +3149,7 @@ func (c *Checker) memberOn(x *syntax.Member, xt types.Type) types.Type {
 		c.protectedGetter(x)
 	}
 	if x.Prop != nil && x.Prop.Ambiguous {
-		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+		c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s", x.Name)
 	}
 	if found && x.Prop == nil && x.Getter != nil && !x.Safe {
 		// A smart cast of a.b, for a friend path's stable property.
@@ -3161,7 +3161,7 @@ func (c *Checker) memberOn(x *syntax.Member, xt types.Type) types.Type {
 	}
 	if !found {
 		if t, found = c.extProp(x, rt); !found {
-			c.errorf(x.P, "unresolved reference: %s", x.Name)
+			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 		}
 	}
 	if t.K == types.Invalid {
@@ -3278,7 +3278,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 	t := c.call1(x, want, sink)
 	if id, ok := x.Fun.(*syntax.Ident); ok && id.Underscore && x.Ctor != nil {
 		// _<Any>() of a class `_`, not the CHECK_TYPE helper.
-		c.errorf(id.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+		c.errorf(id.P, "UNDERSCORE_USAGE_WITHOUT_BACKTICKS", "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
 	}
 	if c.ambiguities > amb {
 		// An ambiguous call in a builder's lambda gives the builder's
@@ -3522,7 +3522,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
 				return c.construct(x, cls, fn.P, want, sink)
 			} else if c.starCtorTiesFuns(name, cls, fs, x) {
-				c.errorf(fn.P, "overload resolution ambiguity: %s is a constructor and a function of the star imports", name)
+				c.errorf(fn.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is a constructor and a function of the star imports", name)
 			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
@@ -3605,7 +3605,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		}
 		if (cls != nil || alias != nil) && len(fs) == 0 && c.ambiguousCtor(name) {
 			// import a.A.B, import a.D.B: B() is unresolved, as K2's.
-			c.errorf(fn.P, "unresolved reference: %s", name)
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3655,14 +3655,14 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			c.noSpread(x)
 			x.Sym, x.Builtin = b, b.Builtin
 			if len(x.TypeArgs) > 0 {
-				c.errorf(x.TypeArgs[0].P, "no type arguments expected for '%s'", name)
+				c.errorf(x.TypeArgs[0].P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for '%s'", name)
 			}
 			if len(x.Args) > 1 || b.Builtin == types.Print && len(x.Args) != 1 {
-				c.errorf(x.P, "wrong number of arguments for %s", name)
+				c.errorf(x.P, "NONE_APPLICABLE", "wrong number of arguments for %s", name)
 			}
 			for _, a := range x.Args {
 				if c.value(a, noWant).K == types.Unit {
-					c.errorf(a.Pos(), "printing Unit is not supported")
+					c.errorf(a.Pos(), "", "printing Unit is not supported")
 				}
 			}
 			return types.UnitType
@@ -3685,7 +3685,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			}
 		}
 		if rt, ok := c.nullableImplicit(name, x); ok {
-			c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+			c.errorf(fn.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
 			c.args(x, nil)
 			return c.unsafeCallResult(x, rt, name)
 		}
@@ -3693,7 +3693,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			c.args(x, nil)
 			return t
 		}
-		c.errorf(fn.P, "unresolved reference: %s", name)
+		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 		c.args(x, nil)
 		return types.InvalidType
 
@@ -3753,7 +3753,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			return c.construct(x, cls, fn.P, want, sink) // java.util.Random(1)
 		}
 		if pkg != nil {
-			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3797,7 +3797,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 				// With an argument for each context parameter, x among
 				// them, which K2 doesn't support: "".f(1, true) for an
 				// f: context(String, Int) Boolean.() -> Unit.
-				c.errorf(fn.P, "unsupported contextual declaration call: '%s' takes its context arguments implicitly", fn.Name)
+				c.errorf(fn.P, "UNSUPPORTED_CONTEXTUAL_DECLARATION_CALL", "unsupported contextual declaration call: '%s' takes its context arguments implicitly", fn.Name)
 			}
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
@@ -3852,7 +3852,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if types.MayBeNull(rt) && !rt.P && !fn.Safe && nullExts == nil && fn.Name == "plus" {
 			// String?.plus(Any?): "null" for null, as s + x.
 			if len(x.Args) != 1 || x.Names != nil {
-				c.errorf(x.P, "wrong number of arguments for %s", fn.Name)
+				c.errorf(x.P, "TOO_MANY_ARGUMENTS", "wrong number of arguments for %s", fn.Name)
 				c.args(x, nil)
 				return types.InvalidType
 			}
@@ -3866,7 +3866,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if types.MayBeNull(rt) && !rt.P && !fn.Safe && nullExts == nil {
 			// Any?.toString(): String.valueOf(x), "null" for null.
 			if len(x.Args) != 0 {
-				c.errorf(x.P, "wrong number of arguments for %s", fn.Name)
+				c.errorf(x.P, "UNSAFE_CALL", "wrong number of arguments for %s", fn.Name)
 				c.args(x, nil)
 			}
 			x.Builtin = types.ToString
@@ -3899,7 +3899,7 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 				if alias != nil && !c.aliasOuterFits(alias, n, rt) {
 					// x.GIntI() for typealias GIntI = Generic<Int>.Inner
 					// needs an x that is a Generic<Int>.
-					c.errorf(fn.P, "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
+					c.errorf(fn.P, "UNRESOLVED_REFERENCE_WRONG_RECEIVER", "unresolved reference: %s, which needs a receiver of type %s", fn.Name, c.aliasOuter(alias, n))
 					c.args(x, nil)
 					return types.InvalidType
 				}
@@ -3977,12 +3977,12 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 				}
 			}
 			if x.Infix && !x.Sym.Infix {
-				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+				c.errorf(fn.P, "INFIX_MODIFIER_REQUIRED", "'infix' modifier is required on '%s'", fn.Name)
 			}
 			if x.Operator && !x.Sym.Operator {
-				c.errorf(x.P, "'operator' modifier is required on '%s'", fn.Name)
+				c.errorf(x.P, "OPERATOR_MODIFIER_REQUIRED", "'operator' modifier is required on '%s'", fn.Name)
 			} else if x.Operator && renamedOperator(x.Sym, fn.Name) {
-				c.errorf(x.P, "'operator' modifier is required on '%s': operator '%s' is imported as '%s'", fn.Name, x.Sym.Name, fn.Name)
+				c.errorf(x.P, "OPERATOR_MODIFIER_REQUIRED", "'operator' modifier is required on '%s': operator '%s' is imported as '%s'", fn.Name, x.Sym.Name, fn.Name)
 			}
 			if isArrayFactory(x.Builtin) {
 				c.reified(x, t, sink)
@@ -4387,7 +4387,7 @@ func constructible(cls *types.ClassSym) bool {
 func (c *Checker) noSpread(x *syntax.Call) {
 	for _, a := range x.Args {
 		if isSpread(a) {
-			c.errorf(a.Pos(), "the spread operator (*foo) can only be applied in a vararg position")
+			c.errorf(a.Pos(), "NON_VARARG_SPREAD", "the spread operator (*foo) can only be applied in a vararg position")
 		}
 	}
 }
@@ -4412,10 +4412,10 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	x.Call = call
 	t := c.expr(call, want)
 	if f := call.Sym; f != nil && !f.Operator {
-		c.errorf(x.P, "'operator' modifier is required on '%s' in '%s'", name, f.Owner.DisplayName())
+		c.errorf(x.P, "OPERATOR_MODIFIER_REQUIRED", "'operator' modifier is required on '%s' in '%s'", name, f.Owner.DisplayName())
 	}
 	if rt := chainType(x.X); safe && rt.K != types.Invalid && types.MayBeNull(rt) && !rt.P {
-		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
 		return types.InvalidType
 	}
 	return t
@@ -4512,7 +4512,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		infix := x.Infix
 		if t, ok := c.memberRange(x, fn, rt, want); ok {
 			if infix {
-				c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+				c.errorf(fn.P, "INFIX_MODIFIER_REQUIRED", "'infix' modifier is required on '%s'", fn.Name)
 			}
 			return t
 		}
@@ -4537,7 +4537,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			x.Args[0] = checked(x.Args[0], at)
 			return c.resolve(x, cands, want, sink)
 		}
-		c.errorf(x.Args[0].Pos(), "type mismatch: inferred type is %s but %s was expected", at, rt)
+		c.errorf(x.Args[0].Pos(), "NONE_APPLICABLE", "type mismatch: inferred type is %s but %s was expected", at, rt)
 		return types.InvalidType
 	}
 	type sig struct {
@@ -4585,7 +4585,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 		if b, t, ok := conversion(fn.Name); ok {
 			s = &sig{b, nil, t}
 			if via := deprecatedConversion(rt, b); via != "" {
-				c.errorf(fn.P, "'%s' is deprecated: convert to %s first", fn.Name, via)
+				c.errorf(fn.P, "DEPRECATION_ERROR", "'%s' is deprecated: convert to %s first", fn.Name, via)
 			}
 		} else if m, ok := types.CharMethods[fn.Name]; ok && rt == types.CharType {
 			ret := types.CharType
@@ -4647,7 +4647,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			c.args(x, nil)
 			return t
 		}
-		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -4659,7 +4659,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 	}
 	c.noSpread(x)
 	if len(x.Args) != len(s.params) {
-		c.errorf(x.P, "wrong number of arguments for %s", fn.Name)
+		c.errorf(x.P, "TOO_MANY_ARGUMENTS", "wrong number of arguments for %s", fn.Name)
 		c.args(x, nil)
 		return s.ret
 	}
@@ -4672,7 +4672,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 				return c.resolve(x, cands, want, sink)
 			}
 		}
-		c.assignable(at, s.params[i], a.Pos())
+		c.assignable(at, s.params[i], a.Pos(), "ARGUMENT_TYPE_MISMATCH")
 	}
 	x.Builtin = s.b
 	c.builtinInfix(x, fn)
@@ -4684,7 +4684,7 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 // and Boolean (and, or, xor, shl, shr, ushr) are infix.
 func (c *Checker) builtinInfix(x *syntax.Call, fn *syntax.Member) {
 	if x.Infix && x.Builtin != types.Bitwise {
-		c.errorf(fn.P, "'infix' modifier is required on '%s'", fn.Name)
+		c.errorf(fn.P, "INFIX_MODIFIER_REQUIRED", "'infix' modifier is required on '%s'", fn.Name)
 	}
 }
 
@@ -4739,7 +4739,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		// if (c) else x, or if (c) x else;, as kotlinc's
 		// INVALID_IF_AS_EXPRESSION: an empty branch without braces is no
 		// value, where {} is Unit.
-		c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
+		c.errorf(x.P, "INVALID_IF_AS_EXPRESSION", "'if' must have both main and 'else' branches if used as an expression")
 	}
 
 	// The vars the branches assign have the join of their types at the
@@ -4767,7 +4767,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	}
 	if x.Else == nil {
 		if valueUsed && !c.tailIfs[x] {
-			c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
+			c.errorf(x.P, "INVALID_IF_AS_EXPRESSION", "'if' must have both main and 'else' branches if used as an expression")
 			return types.InvalidType
 		}
 		c.completeBranches(pending, types.NothingType, noWant, false, false)
@@ -4790,7 +4790,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	}
 	t, ok := c.joinBranches(thenT, elseT, want, x.P)
 	if !ok {
-		c.errorf(x.P, "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
+		c.errorf(x.P, "", "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
 		return types.InvalidType
 	}
 	if sink != nil {
@@ -5241,7 +5241,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		if x.SubjVar != "" {
 			if x.SubjType != nil {
 				declared := c.resolveType(x.SubjType)
-				c.assignable(c.value(x.Subject, declared), declared, x.Subject.Pos())
+				c.assignable(c.value(x.Subject, declared), declared, x.Subject.Pos(), "INITIALIZER_TYPE_MISMATCH")
 				st = declared
 			} else {
 				st = c.value(x.Subject, noWant)
@@ -5275,7 +5275,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
-				c.errorf(br.P, "'else' must be the last branch")
+				c.errorf(br.P, "ELSE_MISPLACED_IN_WHEN", "'else' must be the last branch")
 			}
 			hasElse = true
 		}
@@ -5296,7 +5296,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			switch {
 			case cond.Is || cond.NotIs:
 				if x.Subject == nil {
-					c.errorf(cond.P, "'is' conditions need a 'when' subject")
+					c.errorf(cond.P, "EXPECTED_CONDITION", "'is' conditions need a 'when' subject")
 					continue
 				}
 				cond.Target = c.checkTarget(cond.Type, st, nil, true)
@@ -5333,7 +5333,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				}
 			case cond.In || cond.NotIn:
 				if x.Subject == nil {
-					c.errorf(cond.X.Pos(), "'in' conditions need a 'when' subject")
+					c.errorf(cond.X.Pos(), "EXPECTED_CONDITION", "'in' conditions need a 'when' subject")
 					c.value(cond.X, noWant)
 					break
 				}
@@ -5363,11 +5363,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					call.P = cond.X.Pos()
 					cond.Call = call
 					if t := c.expr(call, types.BoolType); t.K != types.Invalid && t.Flex() != types.BoolType {
-						c.errorf(cond.X.Pos(), "'contains' must return Boolean, not %s", t)
+						c.errorf(cond.X.Pos(), "CONDITION_TYPE_MISMATCH", "'contains' must return Boolean, not %s", t)
 					}
 					break
 				} else if r.Op == syntax.STEP {
-					c.errorf(cond.X.Pos(), "'in' is only supported with ranges written in place, without 'step'")
+					c.errorf(cond.X.Pos(), "", "'in' is only supported with ranges written in place, without 'step'")
 					rt = c.rangeExpr(cond.X)
 				}
 				if e := rt.RangeElem(); st.IsIntersection() && slices.Contains(st.Param().Bounds, e) {
@@ -5378,7 +5378,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					// At the condition, in 1..10, which takes the subject
 					// as its argument.
 					if t := st.Flex(); t != w && t.K != types.Invalid && w.K != types.Invalid {
-						c.errorf(cond.P, "type mismatch: inferred type is %s but %s was expected", t, w)
+						c.errorf(cond.P, "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", t, w)
 					}
 				}
 			case x.Subject != nil:
@@ -5494,9 +5494,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			later = later[:laterLen]
 			switch {
 			case x.Subject == nil:
-				c.errorf(br.Guard.Pos(), "guard conditions are only allowed in 'when' with a subject")
+				c.errorf(br.Guard.Pos(), "WHEN_GUARD_WITHOUT_SUBJECT", "guard conditions are only allowed in 'when' with a subject")
 			case len(br.Conds) > 1:
-				c.errorf(br.Guard.Pos(), "a guard condition is not allowed after several conditions separated by commas")
+				c.errorf(br.Guard.Pos(), "COMMA_IN_WHEN_CONDITION_WITH_WHEN_GUARD", "a guard condition is not allowed after several conditions separated by commas")
 			}
 			condTrue := whenTrue
 			c.push()
@@ -5558,7 +5558,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			}
 			t, ok := c.joinBranches(result, bt, want, x.P)
 			if !ok {
-				c.errorf(br.Body.P, "type mismatch: 'when' branches have incompatible types %s and %s", result, bt)
+				c.errorf(br.Body.P, "", "type mismatch: 'when' branches have incompatible types %s and %s", result, bt)
 				return types.InvalidType
 			}
 			result = t
@@ -5608,7 +5608,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
 		if valueUsed || x.Subject != nil && enumerable(st) {
-			c.errorf(x.P, "'when' expression must be exhaustive, add necessary 'else' branch")
+			c.errorf(x.P, "NO_ELSE_IN_WHEN", "'when' expression must be exhaustive, add necessary 'else' branch")
 			return types.InvalidType
 		}
 		c.completeBranches(pending, types.NothingType, noWant, false, false)
@@ -5745,24 +5745,24 @@ func (c *Checker) jump(x *syntax.Jump) {
 		}
 		switch {
 		case c.fn == nil:
-			c.errorf(x.P, "'return' is not allowed here")
+			c.errorf(x.P, "RETURN_NOT_ALLOWED", "'return' is not allowed here")
 		case !c.leave(c.base, x):
 		case !c.retAllowed && c.exprBodyReturn(x):
 		case !c.retAllowed:
-			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
+			c.errorf(x.P, "RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY_AND_IMPLICIT_TYPE", "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
-			c.assignable(c.returnValue(x.X, c.retType), c.retType, syntax.StartPos(x.X))
+			c.assignable(c.returnValue(x.X, c.retType), c.retType, syntax.StartPos(x.X), "RETURN_TYPE_MISMATCH")
 		case c.retType.K != types.Unit && c.retType.K != types.Invalid:
-			c.errorf(x.P, "this function must return a value of type %s", c.retType)
+			c.errorf(x.P, "RETURN_TYPE_MISMATCH", "this function must return a value of type %s", c.retType)
 		}
 	case syntax.THROW:
 		c.throw(x)
 	case syntax.BREAK, syntax.CONTINUE:
 		if len(c.loops) == 0 {
 			if c.loopsOutside {
-				c.errorf(x.P, "'%s' crosses a function boundary", x.Kind)
+				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' crosses a function boundary", x.Kind)
 			} else {
-				c.errorf(x.P, "'%s' is not allowed outside a loop", x.Kind)
+				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' is not allowed outside a loop", x.Kind)
 			}
 			return
 		}
@@ -5773,7 +5773,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 				i--
 			}
 			if i < 0 {
-				c.errorf(x.P, "unresolved label: %s", x.Label)
+				c.errorf(x.P, "NOT_A_LOOP_LABEL", "unresolved label: %s", x.Label)
 				return
 			}
 			loop = c.loops[i]

@@ -29,7 +29,7 @@ func TreeErrors(s *psi.Snapshot) []*syntax.Error {
 	}
 	var errs []*syntax.Error
 	report := func(n psi.NodeRef, msg string) {
-		errs = append(errs, &syntax.Error{File: l.path, Pos: l.pos(n), Msg: msg})
+		errs = append(errs, &syntax.Error{File: l.path, Pos: l.pos(n), Msg: msg, Name: syntax.ErrorName(msg)})
 	}
 	for id := psi.NodeID(1); int(id) <= s.NodeCount(); id++ {
 		n := s.Node(id)

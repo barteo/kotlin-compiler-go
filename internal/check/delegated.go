@@ -22,7 +22,7 @@ import (
 func (c *Checker) propRef(x *syntax.PropRef) types.Type {
 	cls := c.u.ext.class("kotlin/reflect/KProperty")
 	if cls == nil {
-		c.errorf(x.P, "delegated properties need kotlin.reflect.KProperty: compile with the standard library")
+		c.errorf(x.P, "", "delegated properties need kotlin.reflect.KProperty: compile with the standard library")
 		return types.InvalidType
 	}
 	return types.GenericType(cls, []types.Arg{{V: types.Star}})
@@ -72,7 +72,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	s.Get = &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 	id.P, null.P, m.P, s.Get.P = s.P, s.P, s.P, s.P
 	if s.Type != nil {
-		c.assignable(c.value(s.Get, t), t, s.Delegate.Pos())
+		c.assignable(c.value(s.Get, t), t, s.Delegate.Pos(), "DELEGATE_SPECIAL_FUNCTION_RETURN_TYPE_MISMATCH")
 	} else {
 		t = c.value(s.Get, noWant)
 	}
@@ -91,7 +91,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	}
 	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
-		c.errorf(s.P, "conflicting declarations: %s", s.Name)
+		c.errorf(s.P, "REDECLARATION", "conflicting declarations: %s", s.Name)
 	}
 }
 
@@ -128,7 +128,7 @@ func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutab
 		// has no getValue while it isn't fixed. One that a lambda's
 		// result is yet to give a lower bound, T of keep { boxOf(1) },
 		// does.
-		c.errorf(pos, "property delegate of type %s has no 'getValue' method: its type isn't inferred yet", s.apply(rt))
+		c.errorf(pos, "DELEGATE_SPECIAL_FUNCTION_MISSING", "property delegate of type %s has no 'getValue' method: its type isn't inferred yet", s.apply(rt))
 		return types.InvalidType, noWant
 	}
 	if ps, r, ok := c.delegateOp(s, rt, "getValue", pos); ok {
@@ -358,7 +358,7 @@ func (c *Checker) delegateUsesTypeParam(x syntax.Expr, p *syntax.PropDecl, t typ
 		}
 	}
 	if tp := usedTypeParam(t, params); tp != nil {
-		c.errorf(x.Pos(), "extension property type parameter '%s' cannot be used in delegates", tp.Name)
+		c.errorf(x.Pos(), "DELEGATE_USES_EXTENSION_PROPERTY_TYPE_PARAMETER_ERROR", "extension property type parameter '%s' cannot be used in delegates", tp.Name)
 	}
 }
 

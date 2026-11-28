@@ -24,10 +24,10 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 	switch strings.TrimPrefix(cls.Name, "kotlin/jvm/") {
 	case "JvmName":
 		if s, ok := a.Str("name"); ok && !validJvmName(s) {
-			c.errorf(a.P, "illegal JVM name")
+			c.errorf(a.P, "ILLEGAL_JVM_NAME", "illegal JVM name")
 		}
 		if site == localFunSite {
-			c.errorf(a.P, inapplicableJvmName)
+			c.errorf(a.P, "INAPPLICABLE_JVM_NAME", inapplicableJvmName)
 		}
 	case "JvmPackageName":
 		if s, ok := a.Str("name"); ok && site == fileSite {
@@ -37,32 +37,32 @@ func (c *Checker) jvmAnnotation(a *syntax.Annotation, cls *types.ClassSym, site 
 		// an expression; a package's name isn't one.
 		if arg := a.Arg(0, "name"); arg != nil && len(arg.Toks) == 1 && arg.Toks[0].Kind == syntax.IDENT {
 			if name := arg.Toks[0].Text; !c.isVar(name) && (c.u.isPackage(name) || c.u.ext.hasPackageTree(name)) {
-				c.errorf(arg.Toks[0].Pos, "expression expected, but package name found")
+				c.errorf(arg.Toks[0].Pos, "EXPRESSION_EXPECTED_PACKAGE_FOUND", "expression expected, but package name found")
 			}
 		}
 	case "Strictfp":
 		if site.kind == siteClass || site == objectExprSite {
-			c.errorf(a.P, "'@Strictfp' annotation on classes is unsupported yet")
+			c.errorf(a.P, "STRICTFP_ON_CLASS", "'@Strictfp' annotation on classes is unsupported yet")
 		}
 	case "JvmOverloads":
 		if site == localFunSite {
-			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
+			c.errorf(a.P, "OVERLOADS_LOCAL", "'@JvmOverloads' annotation cannot be used on local declarations")
 		}
 	case "JvmExposeBoxed":
 		if name, pos, named := exposedName(a); named {
 			if site.kind == siteClass || site.kind == siteCtor {
-				c.errorf(pos, "'@JvmExposeBoxed' with name is applicable only to functions, getters and setters")
+				c.errorf(pos, "INAPPLICABLE_JVM_EXPOSE_BOXED_WITH_NAME", "'@JvmExposeBoxed' with name is applicable only to functions, getters and setters")
 			}
 			if name != "" && !validJvmName(name) {
-				c.errorf(pos, "illegal JVM name")
+				c.errorf(pos, "ILLEGAL_JVM_NAME", "illegal JVM name")
 			}
 		}
 		if site == localFunSite {
-			c.errorf(a.P, "'@JvmExposeBoxed' cannot expose local functions")
+			c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_LOCALS", "'@JvmExposeBoxed' cannot expose local functions")
 		}
 	case "JvmStatic":
 		if site == localFunSite {
-			c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+			c.errorf(a.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		}
 	}
 }
@@ -78,10 +78,10 @@ func validJvmName(s string) bool {
 func (c *Checker) jvmPackageName(a *syntax.Annotation, name string) {
 	switch {
 	case name == "":
-		c.errorf(a.P, "'@JvmPackageName' annotation value cannot be empty")
+		c.errorf(a.P, "JVM_PACKAGE_NAME_CANNOT_BE_EMPTY", "'@JvmPackageName' annotation value cannot be empty")
 		return
 	case !validPackageName(name):
-		c.errorf(a.P, "'@JvmPackageName' annotation value must be a valid dot-qualified name of a package")
+		c.errorf(a.P, "JVM_PACKAGE_NAME_MUST_BE_VALID_NAME", "'@JvmPackageName' annotation value must be a valid dot-qualified name of a package")
 		return
 	}
 	if c.file != nil {
@@ -90,7 +90,7 @@ func (c *Checker) jvmPackageName(a *syntax.Annotation, name string) {
 				// kotlinc's "is not supported for files with class
 				// declarations", reworded: kc's "not supported" are
 				// features it lacks.
-				c.errorf(a.P, "'@JvmPackageName' annotation cannot be used in files with class declarations")
+				c.errorf(a.P, "JVM_PACKAGE_NAME_NOT_SUPPORTED_IN_FILES_WITH_CLASSES", "'@JvmPackageName' annotation cannot be used in files with class declarations")
 				return
 			}
 		}
@@ -147,13 +147,13 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
 		c.synchronized(&d.Modifiers, owner, "", d.Inline, d.Suspend)
 		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
-			c.errorf(a.P, inapplicableJvmName)
+			c.errorf(a.P, "INAPPLICABLE_JVM_NAME", inapplicableJvmName)
 		}
 	case *syntax.PropDecl:
 		if overridable(d.Modifiers, owner) {
 			for _, a := range []*syntax.Annotation{d.Find("get", "JvmName"), d.Find("set", "JvmName")} {
 				if a != nil {
-					c.errorf(a.P, inapplicableJvmName)
+					c.errorf(a.P, "INAPPLICABLE_JVM_NAME", inapplicableJvmName)
 				}
 			}
 			for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -161,7 +161,7 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 					continue
 				}
 				if a := acc.Find("", "JvmName"); a != nil {
-					c.errorf(a.P, inapplicableJvmName)
+					c.errorf(a.P, "INAPPLICABLE_JVM_NAME", inapplicableJvmName)
 				}
 			}
 		}
@@ -175,27 +175,27 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.jvmFieldApplicable(d, owner)
 		if d.Field != nil {
 			if a := d.Find("delegate", "JvmSynthetic"); a != nil {
-				c.errorf(a.P, "'@JvmSynthetic' annotation cannot be used on delegated properties")
+				c.errorf(a.P, "JVM_SYNTHETIC_ON_DELEGATE", "'@JvmSynthetic' annotation cannot be used on delegated properties")
 			}
 		}
 	case *syntax.ClassDecl:
 		if a := d.CtorMods.Find("", "JvmOverloads"); a != nil && d.Annotation {
-			c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on constructors of annotation classes")
+			c.errorf(a.P, "OVERLOADS_ANNOTATION_CLASS_CONSTRUCTOR_ERROR", "'@JvmOverloads' annotation cannot be used on constructors of annotation classes")
 		} else if a != nil && d.Sym != nil && !localClass(d.Sym) {
 			c.uselessOverloads(a, &d.CtorMods, slices.ContainsFunc(d.CtorParams, func(p *syntax.CtorParam) bool { return p.Default != nil }))
 		}
 		for _, cp := range d.CtorParams {
 			if a := cp.Modifiers.Find("", "JvmStatic"); a != nil && cp.IsProp {
-				c.errorf(a.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+				c.errorf(a.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 			}
 			if a := cp.Modifiers.Find("", "JvmField"); a != nil && cp.IsProp && cp.PropSym != nil {
 				switch {
 				case cp.Visibility == syntax.Private:
-					c.errorf(a.P, "JvmField has no effect on a private property")
+					c.errorf(a.P, "INAPPLICABLE_JVM_FIELD", "JvmField has no effect on a private property")
 				case cp.Open || cp.Override:
-					c.errorf(a.P, "JvmField cannot be applied to a property that overrides some other property or can be overridden")
+					c.errorf(a.P, "INAPPLICABLE_JVM_FIELD", "JvmField cannot be applied to a property that overrides some other property or can be overridden")
 				case c.valueClassType(cp.PropSym.Type):
-					c.errorf(a.P, "JvmField cannot be applied to a property of an inline class type")
+					c.errorf(a.P, "INAPPLICABLE_JVM_FIELD", "JvmField cannot be applied to a property of an inline class type")
 				}
 			}
 		}
@@ -213,7 +213,7 @@ func (c *Checker) jvmFieldApplicable(d *syntax.PropDecl, owner *types.ClassSym) 
 			return
 		}
 	}
-	inapplicable := func(why string) { c.errorf(a.P, "JvmField %s", why) }
+	inapplicable := func(why string) { c.errorf(a.P, "INAPPLICABLE_JVM_FIELD", "JvmField %s", why) }
 	switch {
 	case d.Field != nil:
 		inapplicable("cannot be applied to a delegated property")
@@ -221,7 +221,7 @@ func (c *Checker) jvmFieldApplicable(d *syntax.PropDecl, owner *types.ClassSym) 
 		if a.Target != "" {
 			// Without one, it's reported as any annotation of fields is
 			// on a property without one, by annotationTarget.
-			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field'")
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target 'member property without backing field'")
 		}
 	case d.Const:
 		inapplicable("cannot be applied to a const property")
@@ -277,11 +277,11 @@ func (c *Checker) overloads(m *syntax.Modifiers, owner *types.ClassSym, defaults
 	case owner == nil:
 		c.uselessOverloads(a, m, defaults)
 	case owner.Interface:
-		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on interface methods")
+		c.errorf(a.P, "OVERLOADS_INTERFACE", "'@JvmOverloads' annotation cannot be used on interface methods")
 	case m.Abstract:
-		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on abstract methods")
+		c.errorf(a.P, "OVERLOADS_ABSTRACT", "'@JvmOverloads' annotation cannot be used on abstract methods")
 	case localClass(owner):
-		c.errorf(a.P, "'@JvmOverloads' annotation cannot be used on local declarations")
+		c.errorf(a.P, "OVERLOADS_LOCAL", "'@JvmOverloads' annotation cannot be used on local declarations")
 	default:
 		c.uselessOverloads(a, m, defaults)
 	}
@@ -317,17 +317,17 @@ func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, targe
 	case suspend:
 		// A suspend function may resume on another thread, which
 		// can't release the monitor.
-		c.errorf(a.P, synchronizedOnSuspend)
+		c.errorf(a.P, "SYNCHRONIZED_ON_SUSPEND_ERROR", synchronizedOnSuspend)
 	case owner == nil:
 	case owner.Annotation:
-		c.errorf(a.P, "'@Synchronized' annotation cannot be used on annotation parameters")
+		c.errorf(a.P, "SYNCHRONIZED_IN_ANNOTATION_ERROR", "'@Synchronized' annotation cannot be used on annotation parameters")
 	case owner.Interface:
-		c.errorf(a.P, "'@Synchronized' annotation cannot be used on interface members")
+		c.errorf(a.P, "SYNCHRONIZED_IN_INTERFACE", "'@Synchronized' annotation cannot be used on interface members")
 	case owner.Value:
 		// Its methods are static ones, on the unboxed value.
-		c.errorf(a.P, "'@Synchronized' annotation has no effect on value classes")
+		c.errorf(a.P, "SYNCHRONIZED_ON_VALUE_CLASS_ERROR", "'@Synchronized' annotation has no effect on value classes")
 	case m.Abstract:
-		c.errorf(a.P, "'@Synchronized' annotation cannot be used on abstract functions")
+		c.errorf(a.P, "SYNCHRONIZED_ON_ABSTRACT", "'@Synchronized' annotation cannot be used on abstract functions")
 	}
 }
 
@@ -342,7 +342,7 @@ func (c *Checker) synchronizedLambda(l *syntax.Lambda, as []syntax.Annotation) {
 	}
 	if a := c.findAnnotation(as, "", "Synchronized", "kotlin/jvm/Synchronized"); a != nil {
 		n := len(c.errs)
-		c.errorf(a.P, synchronizedOnSuspend)
+		c.errorf(a.P, "SYNCHRONIZED_ON_SUSPEND_ERROR", synchronizedOnSuspend)
 		c.dropRepeatedErrors(n)
 	}
 }
@@ -362,10 +362,10 @@ func (c *Checker) volatile(as []syntax.Annotation, mutable, delegated bool) {
 			continue
 		}
 		if delegated {
-			c.errorf(a.P, "'@Volatile' annotation cannot be used on delegated properties")
+			c.errorf(a.P, "VOLATILE_ON_DELEGATE", "'@Volatile' annotation cannot be used on delegated properties")
 		}
 		if !mutable {
-			c.errorf(a.P, "'@Volatile' annotation cannot be used on immutable properties")
+			c.errorf(a.P, "VOLATILE_ON_VALUE", "'@Volatile' annotation cannot be used on immutable properties")
 		}
 	}
 }
@@ -380,7 +380,7 @@ func (c *Checker) projectedAnnotationParams(d *syntax.ClassDecl) {
 		}
 		for _, arg := range t.Args {
 			if arg.Variance == types.Out || arg.Variance == types.In {
-				c.errorf(t.P, "projections are not allowed in types of annotation members")
+				c.errorf(t.P, "PROJECTION_IN_TYPE_OF_ANNOTATION_MEMBER_ERROR", "projections are not allowed in types of annotation members")
 				break
 			}
 		}
@@ -404,7 +404,7 @@ func multifileSynthetic(checkers []*Checker) {
 			continue
 		}
 		if a := fileAnnotation(f, "JvmMultifileClass"); a != nil {
-			c.errorf(a.P, "not all parts of the multi-file class are annotated @JvmSynthetic")
+			c.errorf(a.P, "NOT_ALL_MULTIFILE_CLASS_PARTS_ARE_JVM_SYNTHETIC", "not all parts of the multi-file class are annotated @JvmSynthetic")
 		}
 	}
 }
@@ -432,7 +432,7 @@ func (c *Checker) exposeBoxed(ds []syntax.Decl, owner *types.ClassSym, outer boo
 		}
 		for _, a := range as {
 			if a.Is("JvmExposeBoxed") && a.Target == target {
-				c.errorf(a.P, "'@JvmExposeBoxed' cannot be applied to a private declaration")
+				c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE", "'@JvmExposeBoxed' cannot be applied to a private declaration")
 			}
 		}
 	}
@@ -495,7 +495,7 @@ func (c *Checker) exposeBoxed(ds []syntax.Decl, owner *types.ClassSym, outer boo
 				}
 			}
 			if a := d.Find("", "JvmExposeBoxed"); a != nil && d.Interface {
-				c.errorf(a.P, exposeBoxedOpen)
+				c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_OPEN_ABSTRACT", exposeBoxedOpen)
 			}
 			c.exposeBoxed(d.Members, d.Sym, private)
 		}
@@ -566,29 +566,29 @@ func (c *Checker) exposeBoxedFun(a *syntax.Annotation, f exposedFun) {
 	overloadable := f.overloadable()
 	if !named && !overloadable && types.IsValue(f.ret) && f.owner == nil {
 		// The boxed form would differ only in its result type.
-		c.errorf(a.P, "this declaration requires a name in the '@JvmExposeBoxed' annotation")
+		c.errorf(a.P, "JVM_EXPOSE_BOXED_REQUIRES_NAME", "this declaration requires a name in the '@JvmExposeBoxed' annotation")
 	}
 	if f.mods.Find(f.target, "JvmSynthetic") != nil {
-		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose synthetic functions")
+		c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_SYNTHETIC", "'@JvmExposeBoxed' cannot expose synthetic functions")
 	}
 	if overridable(*f.mods, f.owner) {
-		c.errorf(a.P, exposeBoxedOpen)
+		c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_OPEN_ABSTRACT", exposeBoxedOpen)
 	}
 	if named && !overloadable {
 		if jn := f.mods.Find(f.target, "JvmName"); jn != nil {
 			if s, ok := jn.Str("name"); ok && s == name {
-				c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with the one in '@JvmName'")
+				c.errorf(pos, "JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME_AS_JVM_NAME", "the name in '@JvmExposeBoxed' cannot coincide with the one in '@JvmName'")
 			}
 		}
 	}
 	if f.reified {
-		c.errorf(a.P, "'@JvmExposeBoxed' cannot expose inline functions with reified type parameters")
+		c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_REIFIED", "'@JvmExposeBoxed' cannot expose inline functions with reified type parameters")
 	}
 	if f.suspend {
-		c.errorf(a.P, "suspend functions cannot be exposed by '@JvmExposeBoxed'")
+		c.errorf(a.P, "JVM_EXPOSE_BOXED_CANNOT_EXPOSE_SUSPEND", "suspend functions cannot be exposed by '@JvmExposeBoxed'")
 	}
 	if named && f.target == "" && name == f.name {
-		c.errorf(pos, "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
+		c.errorf(pos, "JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME", "the name in '@JvmExposeBoxed' cannot coincide with that of the declaration")
 	}
 }
 

@@ -46,17 +46,17 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 	if cls == nil {
 		switch {
 		case !strings.Contains(a.Name, ".") && annotTypeParam(a.Name, owner, c.tparams):
-			c.errorf(a.P, "not a class")
+			c.errorf(a.P, "NOT_A_CLASS", "not a class")
 		case c.lookupClass("kotlin.Suppress") == nil:
 			// Without the standard library on the class path, kc still
 			// knows its annotations by name, so a name can't be judged.
 		default:
-			c.errorf(a.P, "unresolved reference: %s", a.Name)
+			c.errorf(a.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", a.Name)
 		}
 		return nil
 	}
 	if cls.Retention == types.NoRetention {
-		c.errorf(a.P, "%s is not an annotation class", cls.DisplayName())
+		c.errorf(a.P, "NOT_AN_ANNOTATION_CLASS", "%s is not an annotation class", cls.DisplayName())
 		return nil
 	}
 	if k := c.requiredTargetAmbiguity(a, cls); k != nil {
@@ -84,7 +84,7 @@ func (c *Checker) requiredTargetAmbiguity(a *syntax.Annotation, cls *types.Class
 		return nil
 	}
 	k.Ensure()
-	c.errorf(a.P, "resolution of the annotation type is ambiguous between '%s' and the compiler-required annotation 'Target': specify a fully qualified annotation name", cls.DisplayName())
+	c.errorf(a.P, "COMPILER_REQUIRED_ANNOTATION_AMBIGUITY", "resolution of the annotation type is ambiguous between '%s' and the compiler-required annotation 'Target': specify a fully qualified annotation name", cls.DisplayName())
 	return k
 }
 

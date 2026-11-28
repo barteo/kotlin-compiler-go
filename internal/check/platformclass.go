@@ -212,5 +212,5 @@ func (c *Checker) jvmFunctionInit(ref *syntax.TypeRef, init syntax.Expr) {
 	if !ok || n == "" || strings.Trim(n, "0123456789") != "" {
 		return
 	}
-	c.errorf(init.Pos(), "type mismatch: a function value isn't a %s, which names the class: use a function type", ref.Name)
+	c.errorf(init.Pos(), "INITIALIZER_TYPE_MISMATCH", "type mismatch: a function value isn't a %s, which names the class: use a function type", ref.Name)
 }

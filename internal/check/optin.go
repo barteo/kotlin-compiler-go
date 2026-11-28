@@ -82,7 +82,7 @@ func (w *optWalker) imports(imps []*syntax.Import) {
 			prefix := strings.Join(parts[:i], ".")
 			for _, cls := range w.o.annClasses[parts[i-1]] {
 				if qualName(cls) == prefix && w.o.marker(cls) != nil {
-					w.errorf(imp.P, "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", cls.DisplayName())
+					w.errorf(imp.P, "OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN", "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", cls.DisplayName())
 					break outer
 				}
 			}
@@ -624,14 +624,14 @@ type optWalker struct {
 func (w *optWalker) push(as []syntax.Annotation) { w.scope = append(w.scope, as) }
 func (w *optWalker) pop()                        { w.scope = w.scope[:len(w.scope)-1] }
 
-func (w *optWalker) errorf(p syntax.Pos, format string, args ...any) {
+func (w *optWalker) errorf(p syntax.Pos, name, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	k := optErrKey{w.c.file.Path, p.Line, msg}
 	if w.o.seen[k] {
 		return
 	}
 	w.o.seen[k] = true
-	w.c.errorf(p, "%s", msg)
+	w.c.errorf(p, name, "%s", msg)
 }
 
 // suppressed reports whether the scope suppresses the diagnostic name.
@@ -669,7 +669,7 @@ func (w *optWalker) require(p syntax.Pos, ms []*optMarker) {
 		}
 		switch {
 		case m.err && !w.suppressed("OPT_IN_USAGE_ERROR"):
-			w.errorf(p, "this declaration needs opt-in: its usage must be marked with '@%s' or '@OptIn(%s::class)'", m.simple, m.simple)
+			w.errorf(p, "OPT_IN_USAGE_ERROR", "this declaration needs opt-in: its usage must be marked with '@%s' or '@OptIn(%s::class)'", m.simple, m.simple)
 		case !m.err:
 			w.warnf(p, "OPT_IN_USAGE", "this declaration needs opt-in. Its usage should be marked with '@%s' or '@OptIn(%s::class)'", m.simple, m.simple)
 		}
@@ -686,7 +686,7 @@ func (w *optWalker) deprecatedUse(p syntax.Pos, name string, d depr) {
 	}
 	if d.isError() {
 		if !w.suppressed("DEPRECATION_ERROR") {
-			w.errorf(p, "'%s' is deprecated with level %s", name, d.level)
+			w.errorf(p, "DEPRECATION_ERROR", "'%s' is deprecated with level %s", name, d.level)
 		}
 		return
 	}
@@ -728,7 +728,7 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 			}
 			if cls := w.expansionDeprecated(k.Type, true, 0); cls != nil {
 				if !w.deprecated() && !w.suppressed("TYPEALIAS_EXPANSION_DEPRECATION_ERROR") {
-					w.errorf(r.P, "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
+					w.errorf(r.P, "TYPEALIAS_EXPANSION_DEPRECATION_ERROR", "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
 				}
 			} else if cls := w.expansionDeprecated(k.Type, false, 0); cls != nil && !w.deprecated() {
 				w.warnf(r.P, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
@@ -836,7 +836,7 @@ func (w *optWalker) annotationAsType(p syntax.Pos, k any, markers bool) {
 	}
 	switch qualName(cls) {
 	case "kotlin.RequiresOptIn", "kotlin.OptIn":
-		w.errorf(p, "this class can only be used as an annotation or as an argument to @OptIn")
+		w.errorf(p, "OPT_IN_CAN_ONLY_BE_USED_AS_ANNOTATION", "this class can only be used as an annotation or as an argument to @OptIn")
 		return
 	}
 	if !markers {
@@ -849,7 +849,7 @@ func (w *optWalker) annotationAsType(p syntax.Pos, k any, markers bool) {
 		if slices.Contains(w.classes, m) {
 			return
 		}
-		w.errorf(p, "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", m.DisplayName())
+		w.errorf(p, "OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN", "opt-in requirement marker '%s' can only be used as an annotation or as an argument to @OptIn", m.DisplayName())
 		return
 	}
 }
@@ -908,7 +908,7 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			versions = append(versions, a.Arg(0, "version"))
 		case a.Is("DeprecatedSinceKotlin"):
 			if pkg := w.c.file.Package; pkg != "kotlin" && !strings.HasPrefix(pkg, "kotlin.") {
-				w.errorf(a.P, "@DeprecatedSinceKotlin is only allowed in the kotlin package and its subpackages")
+				w.errorf(a.P, "DEPRECATED_SINCE_KOTLIN_OUTSIDE_KOTLIN_SUBPACKAGE", "@DeprecatedSinceKotlin is only allowed in the kotlin package and its subpackages")
 			}
 			for j := range a.Args {
 				versions = append(versions, &a.Args[j])
@@ -920,7 +920,7 @@ func (w *optWalker) annotationErrors(as []syntax.Annotation) {
 			}
 			s, ok := literalString(arg.Toks[0])
 			if ok && !kotlinVersion.MatchString(s) {
-				w.errorf(arg.Toks[0].Pos, "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
+				w.errorf(arg.Toks[0].Pos, "ILLEGAL_KOTLIN_VERSION_STRING_VALUE", "invalid Kotlin version %q: it must be major.minor or major.minor.patch", s)
 			} else if ok && a.Is("SinceKotlin") && newerThanAPI(s) {
 				w.c.warnf(arg.Toks[0].Pos, "NEWER_VERSION_IN_SINCE_KOTLIN", "the version is greater than the specified API version %s", apiVersion)
 			}
@@ -1015,7 +1015,7 @@ func (w *optWalker) markerTargetErrors(as []syntax.Annotation, param bool) {
 			continue
 		}
 		if m := w.o.marker(w.o.annClass(a)); m != nil {
-			w.errorf(a.P, "opt-in requirement marker '%s' can't be used on this target", m.simple)
+			w.errorf(a.P, "OPT_IN_MARKER_ON_WRONG_TARGET", "opt-in requirement marker '%s' can't be used on this target", m.simple)
 		}
 	}
 }
@@ -1033,7 +1033,7 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 					for _, t := range arg.Toks {
 						switch t.Text {
 						case "FILE", "EXPRESSION", "TYPE_PARAMETER", "TYPE":
-							w.errorf(a.P, "opt-in requirement marker can't be used on target %s", t.Text)
+							w.errorf(a.P, "OPT_IN_MARKER_WITH_WRONG_TARGET", "opt-in requirement marker can't be used on target %s", t.Text)
 						}
 					}
 				}
@@ -1041,7 +1041,7 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 				for _, arg := range a.Args {
 					for _, t := range arg.Toks {
 						if t.Text == "SOURCE" {
-							w.errorf(a.P, "opt-in requirement marker can't have SOURCE retention")
+							w.errorf(a.P, "OPT_IN_MARKER_WITH_WRONG_RETENTION", "opt-in requirement marker can't have SOURCE retention")
 						}
 					}
 				}
@@ -1067,7 +1067,7 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 			case d.Object:
 				kind = "an object"
 			}
-			w.errorf(a.P, "'@SubclassOptInRequired' is not applicable to %s", kind)
+			w.errorf(a.P, "SUBCLASS_OPT_IN_INAPPLICABLE", "'@SubclassOptInRequired' is not applicable to %s", kind)
 			continue
 		}
 		for _, arg := range a.Args {
@@ -1077,7 +1077,7 @@ func (w *optWalker) markerDeclErrors(d *syntax.ClassDecl) {
 					if len(arg.Toks) > 0 {
 						p = arg.Toks[0].Pos
 					}
-					w.errorf(p, "'%s' is not an opt-in requirement marker", n)
+					w.errorf(p, "SUBCLASS_OPT_IN_ARGUMENT_IS_NOT_MARKER", "'%s' is not an opt-in requirement marker", n)
 				}
 			}
 		}
@@ -1185,7 +1185,7 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 	for i := range extra {
 		// A local class's annotations, which it doesn't keep.
 		if a := &extra[i]; a.Is("SubclassOptInRequired") {
-			w.errorf(a.P, "'@SubclassOptInRequired' is not applicable to a local class")
+			w.errorf(a.P, "SUBCLASS_OPT_IN_INAPPLICABLE", "'@SubclassOptInRequired' is not applicable to a local class")
 		}
 	}
 	w.push(extra)
@@ -1364,7 +1364,7 @@ func (w *optWalker) inheritance(st *syntax.SuperType) {
 			continue
 		}
 		if st.Type != nil {
-			w.errorf(st.Type.P, "this class needs opt-in to inherit from '%s': mark the subclass with '@SubclassOptInRequired(%s::class)' or '@OptIn(%s::class)'", cls.DisplayName(), m.simple, m.simple)
+			w.errorf(st.Type.P, "OPT_IN_TO_INHERITANCE_ERROR", "this class needs opt-in to inherit from '%s': mark the subclass with '@SubclassOptInRequired(%s::class)' or '@OptIn(%s::class)'", cls.DisplayName(), m.simple, m.simple)
 		}
 	}
 }
@@ -1419,7 +1419,7 @@ func (w *optWalker) overrideOf(p syntax.Pos, ms []*optMarker, super *types.Class
 		switch {
 		case w.o.optsIn(w.scope, m, false):
 		case m.err:
-			w.errorf(p, "this override needs opt-in: the overridden declaration is marked with '@%s'", m.simple)
+			w.errorf(p, "OPT_IN_OVERRIDE_ERROR", "this override needs opt-in: the overridden declaration is marked with '@%s'", m.simple)
 		case super != nil:
 			w.warnf(p, "OPT_IN_OVERRIDE", "base declaration of supertype '%s' needs opt-in. The declaration override should be annotated with '@%s' or '@OptIn(%s::class)'", simpleName(super), m.simple, m.simple)
 		}
@@ -1511,7 +1511,7 @@ func (w *optWalker) visit(n any) bool {
 		if _, ok := n.(*syntax.ObjectExpr); ok {
 			for i := range as {
 				if as[i].Is("SubclassOptInRequired") {
-					w.errorf(as[i].P, "'@SubclassOptInRequired' is not applicable to a final class")
+					w.errorf(as[i].P, "SUBCLASS_OPT_IN_INAPPLICABLE", "'@SubclassOptInRequired' is not applicable to a final class")
 				}
 			}
 		}
@@ -1738,10 +1738,10 @@ func (w *optWalker) call(n *syntax.Call) {
 		return
 	}
 	if w.c.deprecatedListSort(n.Sym) && !superCall(n) && !w.deprecated() && !w.suppressed("DEPRECATION_ERROR") {
-		w.errorf(p, "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
+		w.errorf(p, "DEPRECATION_ERROR", "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
 	}
 	if w.c.hiddenJDKMember(n.Sym) && !superCall(n) {
-		w.errorf(p, "unresolved reference: %s", n.Sym.Name)
+		w.errorf(p, "UNRESOLVED_REFERENCE", "unresolved reference: %s", n.Sym.Name)
 		return
 	}
 	w.fun1(n.Sym, p, n.T)
@@ -1788,7 +1788,7 @@ func (w *optWalker) javaPrivateKotlin(n *syntax.Call, p syntax.Pos) {
 			return
 		}
 	}
-	w.errorf(p, "this Java class extends a private Kotlin class, which can't be used here")
+	w.errorf(p, "JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS", "this Java class extends a private Kotlin class, which can't be used here")
 }
 
 // deprecatedListSort reports whether f is java.util.List's
@@ -2271,7 +2271,7 @@ func (w *optWalker) inlineTarget(p syntax.Pos, class string) {
 		return
 	}
 	if major := classfile.Major(data); major > target && !w.suppressed("INLINE_FROM_HIGHER_PLATFORM") {
-		w.errorf(p, "cannot inline bytecode built with JVM target %s into bytecode that is being built with JVM target %s: specify a proper '-jvm-target' option",
+		w.errorf(p, "INLINE_FROM_HIGHER_PLATFORM", "cannot inline bytecode built with JVM target %s into bytecode that is being built with JVM target %s: specify a proper '-jvm-target' option",
 			classfile.TargetName(major), classfile.TargetName(target))
 	}
 }

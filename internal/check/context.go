@@ -46,7 +46,7 @@ func (c *Checker) declareContexts(d *syntax.FunDecl, sym *types.FunSym) {
 func (c *Checker) noinlineContexts(ps []*syntax.Param) {
 	for _, p := range ps {
 		if t := p.Sym.Type; !p.Noinline && !t.N && t.Flex().IsFunc() {
-			c.errorf(p.P, "context parameter '%s: %s' must be 'noinline': inlining context parameters is not yet supported", p.Name, t)
+			c.errorf(p.P, "CONTEXT_PARAMETER_MUST_BE_NOINLINE", "context parameter '%s: %s' must be 'noinline': inlining context parameters is not yet supported", p.Name, t)
 		}
 	}
 }
@@ -60,7 +60,7 @@ func reservedContext(t types.Type) bool {
 // reservedContextError reports a context parameter at p of type t, or a
 // lambda or function type with one, that reservedContext rejects.
 func (c *Checker) reservedContextError(p syntax.Pos) {
-	c.errorf(p, "context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use")
+	c.errorf(p, "COROUTINE_CONTEXT_AS_CONTEXT_PARAMETER_IS_RESERVED", "context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use")
 }
 
 // paramClashes reports the context parameters ctxs and the value
@@ -71,7 +71,7 @@ func (c *Checker) paramClashes(ctxs, ps []*syntax.Param) {
 	seen := map[string]syntax.Pos{}
 	report := func(p syntax.Pos, name string) {
 		if !c.hasErrorAt(p, "conflicting declarations") {
-			c.errorf(p, "conflicting declarations: %s", name)
+			c.errorf(p, "REDECLARATION", "conflicting declarations: %s", name)
 		}
 	}
 	for i, p := range slices.Concat(ctxs, ps) {
@@ -137,7 +137,7 @@ func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 		// Reported as an extension property's, or with the explicit
 		// backing field.
 	case d.Lateinit:
-		c.errorf(d.PosOf("lateinit", d.P), "'lateinit' modifier is not allowed on properties with context receivers")
+		c.errorf(d.PosOf("lateinit", d.P), "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties with context receivers")
 	case !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil):
 		c.contextsWithField(d)
 	}
@@ -310,14 +310,14 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 // ambiguousContext reports a context argument at p for a parameter of type
 // t that two implicit values of the same level fit.
 func (c *Checker) ambiguousContext(p syntax.Pos, t types.Type) {
-	c.errorf(p, "multiple potential context arguments for '%s' in scope", t)
+	c.errorf(p, "AMBIGUOUS_CONTEXT_ARGUMENT", "multiple potential context arguments for '%s' in scope", t)
 }
 
 // noContextArg reports a call at p of f, none of whose candidates found
 // the context arguments.
 func (c *Checker) noContextArg(p syntax.Pos, f *types.FunSym) {
 	for _, cp := range f.Contexts {
-		c.errorf(p, "no context argument for '%s: %s' found", cp.Name, cp.Type)
+		c.errorf(p, "NO_CONTEXT_ARGUMENT", "no context argument for '%s: %s' found", cp.Name, cp.Type)
 		return
 	}
 }
@@ -345,7 +345,7 @@ func (c *Checker) setContexts(x *syntax.Call, cl *callee, sys *system, sub types
 				switch {
 				case !ok && !a.ambiguous:
 					v = a.x
-					c.errorf(x.P, "no context argument for '%s: %s' found", cl.f.Contexts[k].Name, want)
+					c.errorf(x.P, "NO_CONTEXT_ARGUMENT", "no context argument for '%s: %s' found", cl.f.Contexts[k].Name, want)
 				case !ok:
 					v, amb = a.x, true
 				}
@@ -387,7 +387,7 @@ func (c *Checker) refContexts(x *syntax.Lambda, p syntax.Pos) bool {
 	if name == "" {
 		return false
 	}
-	c.errorf(p, "callable reference to '%s' is unsupported because it has context parameters", name)
+	c.errorf(p, "CALLABLE_REFERENCE_TO_CONTEXTUAL_DECLARATION", "callable reference to '%s' is unsupported because it has context parameters", name)
 	return true
 }
 
@@ -404,7 +404,7 @@ func (c *Checker) implicitContexts(x *syntax.Call, ft types.Type) {
 		want := ft.A.Get(i).T
 		v, _, ok, amb := c.contextValue(x.P, func(t types.Type) bool { return c.subtype(t, want) })
 		if !ok {
-			c.errorf(x.P, "no context argument for '%s' found", want)
+			c.errorf(x.P, "NO_CONTEXT_ARGUMENT", "no context argument for '%s' found", want)
 			return
 		}
 		if amb {
@@ -764,7 +764,7 @@ func (c *Checker) altAmbiguity(x syntax.Expr) bool {
 		if prop != nil {
 			name = prop.Name
 		}
-		c.errorf(x.Pos(), "overload resolution ambiguity: %s", name)
+		c.errorf(x.Pos(), "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s", name)
 	}
 	return ambiguous
 }
@@ -985,7 +985,7 @@ func (c *Checker) shadowedErrors() {
 	}
 	for _, u := range c.shadowed {
 		if u.still() {
-			c.errorf(u.p, "'%s' uses an implicit receiver shadowed by a context parameter: make the receiver explicit", u.name)
+			c.errorf(u.p, "RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER", "'%s' uses an implicit receiver shadowed by a context parameter: make the receiver explicit", u.name)
 		}
 	}
 }
@@ -1038,5 +1038,5 @@ func (c *Checker) contextsWithField(d *syntax.PropDecl) {
 	if p.Line == 0 {
 		p = d.P
 	}
-	c.errorf(p, "property with context parameters cannot be initialized because it has no backing field")
+	c.errorf(p, "CONTEXT_PARAMETERS_WITH_BACKING_FIELD", "property with context parameters cannot be initialized because it has no backing field")
 }

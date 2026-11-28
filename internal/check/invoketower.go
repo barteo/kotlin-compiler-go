@@ -121,7 +121,7 @@ func (c *Checker) safeChainInvoke(x *syntax.Call, want types.Type, sink *system)
 	x.Fun, x.Operator = m, true
 	t := c.call(x, want, sink)
 	if rt := chainType(fun); rt.K != types.Invalid && types.MayBeNull(rt) && !rt.P {
-		c.errorf(m.P, "expression of type %s cannot be invoked as a function", rt)
+		c.errorf(m.P, "UNSAFE_IMPLICIT_INVOKE_CALL", "expression of type %s cannot be invoked as a function", rt)
 		return types.InvalidType, true
 	}
 	return t, true

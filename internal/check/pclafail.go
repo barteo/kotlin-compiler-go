@@ -36,7 +36,7 @@ func (c *Checker) pclaFailedCall(x *syntax.Call, t types.Type) types.Type {
 	cannot := func(p syntax.Pos, v *types.TypeParamSym) {
 		msg := "cannot infer type for type parameter '" + v.Name + "'. Specify it explicitly."
 		if !c.hasErrorAt(p, msg) {
-			c.errorf(p, "%s", msg)
+			c.errorf(p, "CANNOT_INFER_PARAMETER_TYPE", "%s", msg)
 		}
 	}
 	rigid := func(f *types.FunSym, t types.Type) types.Type {
@@ -83,7 +83,7 @@ func (c *Checker) pclaFailedCall(x *syntax.Call, t types.Type) types.Type {
 					switch {
 					case q != f.Recv:
 					case j == 0 && ft.IsExtFunc():
-						c.errorf(l.P, "cannot infer type for receiver parameter. Specify it explicitly.")
+						c.errorf(l.P, "CANNOT_INFER_RECEIVER_PARAMETER_TYPE", "cannot infer type for receiver parameter. Specify it explicitly.")
 					default:
 						cannot(l.P, q.Param())
 					}
@@ -117,7 +117,7 @@ func (c *Checker) pclaFailedCall(x *syntax.Call, t types.Type) types.Type {
 			}
 		}
 		if msg := "candidate '" + f.Name + "' is inapplicable because of a receiver type mismatch"; !c.hasErrorAt(p, msg) {
-			c.errorf(p, "%s", msg)
+			c.errorf(p, "UNRESOLVED_REFERENCE_WRONG_RECEIVER", "%s", msg)
 		}
 		return types.InvalidType
 	}
@@ -138,11 +138,11 @@ func (c *Checker) pclaFailedCall(x *syntax.Call, t types.Type) types.Type {
 		}
 		reported = true
 		if !c.hasErrorAt(a.Pos(), "type mismatch: inferred type is ") {
-			c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", at, f.Params[pi].Type)
+			c.errorf(a.Pos(), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", at, f.Params[pi].Type)
 		}
 	}
 	if msg := "inapplicable candidate '" + f.Name + "': the type arguments of the builder it is in can't be inferred"; !reported && !c.hasErrorAt(p, msg) {
-		c.errorf(p, "%s", msg)
+		c.errorf(p, "INAPPLICABLE_CANDIDATE", "%s", msg)
 	}
 	if lambda && len(f.TypeParams) > 0 {
 		return rigid(f, f.Ret)
@@ -211,7 +211,7 @@ func (c *Checker) uninferredArg(x *syntax.Call) {
 			}
 			msg := "cannot infer type for type parameter '" + v.Name + "'. Specify it explicitly."
 			if !c.hasErrorAt(p, msg) {
-				c.errorf(p, "%s", msg)
+				c.errorf(p, "CANNOT_INFER_PARAMETER_TYPE", "%s", msg)
 			}
 			c.uninferredCall = x
 			return

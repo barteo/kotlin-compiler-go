@@ -136,9 +136,11 @@ type tvar struct {
 	strictArg []types.Type
 }
 
+// inferError is an error of inference, which kotlinc names name.
 type inferError struct {
-	pos syntax.Pos
-	msg string
+	pos  syntax.Pos
+	name string
+	msg  string
 }
 
 type system struct {
@@ -631,8 +633,8 @@ func (s *system) subArgs(sup, b types.Type) {
 						// variable X, which K2 can't approximate, can't be
 						// inferred: capture(getOut()) for an Inv<out R>.
 						if s.c.stub(ta.T.Flex()) != nil {
-							if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, msg}) {
-								s.errs = append(s.errs, inferError{tv.pos, msg})
+							if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", msg}) {
+								s.errs = append(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", msg})
 							}
 						}
 					}
@@ -1188,7 +1190,7 @@ func (s *system) fix(tv *tvar) {
 	case declOnly:
 		// Only its declared bounds: R of <T : A, R : T> in a call that
 		// gives neither.
-		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		s.errs = append(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 		tv.uninferred = true
 	case len(lowers) > 0:
 		val = lowers[0]
@@ -1332,7 +1334,7 @@ func (s *system) fix(tv *tvar) {
 			val = b
 			break
 		}
-		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		s.errs = append(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 		tv.uninferred = true
 		if s.nothingFix {
 			val = types.NothingType
@@ -1359,7 +1361,7 @@ func (s *system) fix(tv *tvar) {
 				inBounds[i] = true
 			case tv.v.Origin != nil && tv.v.Origin.Reified:
 				// An intersection is no reified type argument.
-				s.errs = append(s.errs, inferError{tv.pos, "type argument for reified type parameter '" + tv.v.Name +
+				s.errs = append(s.errs, inferError{tv.pos, "TYPE_INTERSECTION_AS_REIFIED_ERROR", "type argument for reified type parameter '" + tv.v.Name +
 					"' was inferred to the intersection of ['" + b.String() + "' & '" + val.String() + "']"})
 				inBounds[i] = true
 			default:
@@ -1376,7 +1378,7 @@ func (s *system) fix(tv *tvar) {
 		val = approxCaptures(val)
 	}
 	if !s.onlyInputOK(tv, val) {
-		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
+		s.errs = append(s.errs, inferError{tv.pos, "TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR", "type inference failed. The value of the type parameter '" + tv.v.Name +
 			"' must be mentioned in input types (argument types, receiver type, or expected type). Try to specify it explicitly."})
 	}
 	tv.fixed = true
@@ -1412,14 +1414,14 @@ func (s *system) fix(tv *tvar) {
 		s.sub(val, u)
 	}
 	if tv.captBound && len(lowers) > 0 && !captured && !tv.proj && val.K != types.Nothing {
-		s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
+		s.errs = append(s.errs, inferError{tv.pos, "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: inferred type " +
 			val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of its bound's captured type"})
 	}
 	for i, b := range tv.v.Bounds {
 		// A plugin's code isn't checked, as kotlinc's plugins write IR:
 		// serialization's passes a class's T to encodeNullableSerializableElement<T : Any>.
 		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !c.state.plugin && !b.HasVars() && !c.subtype(val, b) {
-			s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
+			s.errs = append(s.errs, inferError{tv.pos, "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: inferred type " +
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
@@ -1606,7 +1608,7 @@ func (s *system) finish() {
 	n := 0
 	report := func() {
 		for ; n < len(s.errs); n++ {
-			s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
+			s.c.errorf(s.errs[n].pos, s.errs[n].name, "%s", s.errs[n].msg)
 		}
 	}
 	report()

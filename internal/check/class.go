@@ -46,17 +46,17 @@ func (c *Checker) resolveSupertypes() {
 		seen := map[*types.ClassSym]bool{}
 		for _, st := range cd.Supers {
 			if st.Delegate != nil && cd.Interface {
-				c.errorf(st.Type.P, "delegation cannot be used in interfaces")
+				c.errorf(st.Type.P, "DELEGATION_IN_INTERFACE", "delegation cannot be used in interfaces")
 				st.Delegate = nil
 			}
 			if st.Delegate != nil && !cd.HasPrimary {
 				// The delegate is a field the primary constructor sets.
-				c.errorf(st.Type.P, "delegation without primary constructor is unsupported")
+				c.errorf(st.Type.P, "UNSUPPORTED", "delegation without primary constructor is unsupported")
 				st.Delegate = nil
 			}
 			t := c.supertype(cd, st, seen)
 			if t.E || t.X > 0 {
-				c.errorf(st.Type.P, "extension function type or function type with context parameters is not allowed as supertype")
+				c.errorf(st.Type.P, "SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE", "extension function type or function type with context parameters is not allowed as supertype")
 			}
 			if t.IsComposableFunc() {
 				c.unsupported(st.Type.P, "compose", "classes that implement composable function types are not supported")
@@ -124,15 +124,15 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 		return t
 	case t.K == types.Any:
 		if cd.Interface {
-			c.errorf(st.Type.P, "an interface cannot inherit from a class")
+			c.errorf(st.Type.P, "INTERFACE_WITH_SUPERCLASS", "an interface cannot inherit from a class")
 			c.interfaceSuper(cd, c.u.ext.class("java/lang/Object"))
 		}
 		return types.InvalidType // the default superclass
 	case t.N:
-		c.errorf(st.Type.P, "a supertype cannot be nullable")
+		c.errorf(st.Type.P, "NULLABLE_SUPERTYPE", "a supertype cannot be nullable")
 		return types.InvalidType
 	case t.K != types.Class:
-		c.errorf(st.Type.P, "this type is final, so it cannot be inherited from")
+		c.errorf(st.Type.P, "SUPERTYPE_NOT_A_CLASS_OR_INTERFACE", "this type is final, so it cannot be inherited from")
 		return types.InvalidType
 	}
 	sc := t.C
@@ -140,37 +140,41 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	if sc.JavaSealed {
 		// javac checks that the subclasses it permits extend it, which
 		// it doesn't see a Kotlin class do.
-		c.errorf(st.Type.P, "a Kotlin class can't inherit from sealed Java class or interface '%s'", sc.DisplayName())
+		c.errorf(st.Type.P, "CLASS_INHERITS_JAVA_SEALED_CLASS", "a Kotlin class can't inherit from sealed Java class or interface '%s'", sc.DisplayName())
 	}
 	switch {
 	case seen[sc]:
-		c.errorf(st.Type.P, "a supertype appears twice")
+		c.errorf(st.Type.P, "SUPERTYPE_APPEARS_TWICE", "a supertype appears twice")
 	case cd.Enum && !sc.Interface:
-		c.errorf(st.Type.P, "an enum class cannot inherit from a class")
+		c.errorf(st.Type.P, "CLASS_IN_SUPERTYPE_FOR_ENUM", "an enum class cannot inherit from a class")
 	case sc.Name == "java/lang/Enum" && !cd.Interface:
 		// Only an enum class extends kotlin.Enum. As in FIR, the class
 		// still inherits from it.
-		c.errorf(st.Type.P, "class 'Enum' cannot be extended directly")
+		c.errorf(st.Type.P, "CLASS_CANNOT_BE_EXTENDED_DIRECTLY", "class 'Enum' cannot be extended directly")
 		return t
 	case sc.Interface:
 		if st.Call != nil {
-			c.errorf(st.Call.P, "this type has no constructor, and thus must not be called")
+			c.errorf(st.Call.P, "NO_CONSTRUCTOR", "this type has no constructor, and thus must not be called")
 			return types.InvalidType
 		}
 		return t
 	case st.Delegate != nil:
-		c.errorf(st.Type.P, "delegation is supported only for interfaces")
+		c.errorf(st.Type.P, "DELEGATION_NOT_TO_INTERFACE", "delegation is supported only for interfaces")
 	case cd.Interface:
-		c.errorf(st.Type.P, "an interface cannot inherit from a class")
+		c.errorf(st.Type.P, "INTERFACE_WITH_SUPERCLASS", "an interface cannot inherit from a class")
 		c.interfaceSuper(cd, sc)
 	case cls.Super != nil:
-		c.errorf(st.Type.P, "only one class may appear in a supertype list")
+		c.errorf(st.Type.P, "MANY_CLASSES_IN_SUPERTYPE_LIST", "only one class may appear in a supertype list")
 	case sc.Final:
 		// As in FIR, the class still inherits from it.
-		c.errorf(st.Type.P, "this type is final, so it cannot be inherited from")
+		name := "FINAL_SUPERTYPE"
+		if sc.Object {
+			name = "SINGLETON_IN_SUPERTYPE"
+		}
+		c.errorf(st.Type.P, name, "this type is final, so it cannot be inherited from")
 		return t
 	case !cd.HasPrimary && st.Call != nil:
-		c.errorf(st.Type.P, "supertype initialization is impossible without a primary constructor")
+		c.errorf(st.Type.P, "SUPERTYPE_INITIALIZED_WITHOUT_PRIMARY_CONSTRUCTOR", "supertype initialization is impossible without a primary constructor")
 		if c.superCallNoPrimary == nil {
 			c.superCallNoPrimary = map[*syntax.ClassDecl]bool{}
 		}
@@ -179,15 +183,15 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 			if len(sc.Params) == 0 {
 				// kotlinc's class still has a primary constructor, which
 				// a secondary one without parameters conflicts with.
-				c.errorf(cd.P, "conflicting overloads: constructor %s()", cd.Name)
-				c.errorf(sc.P, "conflicting overloads: constructor %s()", cd.Name)
+				c.errorf(cd.P, "CONFLICTING_OVERLOADS", "conflicting overloads: constructor %s()", cd.Name)
+				c.errorf(sc.P, "CONFLICTING_OVERLOADS", "conflicting overloads: constructor %s()", cd.Name)
 				break
 			}
 		}
 		st.Call = nil
 		return t
 	case st.Call == nil && cd.HasPrimary:
-		c.errorf(st.Type.P, "this type has a constructor, and thus must be initialized here")
+		c.errorf(st.Type.P, "SUPERTYPE_NOT_INITIALIZED", "this type has a constructor, and thus must be initialized here")
 		return t
 	default:
 		return t
@@ -291,12 +295,12 @@ func (c *Checker) cyclicAlias(cd *syntax.ClassDecl, walk func(*types.ClassSym) b
 		d := a.Decl.(*syntax.TypeAliasDecl)
 		if st.T.C == cd.Sym {
 			// class A : S of typealias S = A.
-			c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
+			c.u.aliasFile[a].errorf(d.Type.P, "RECURSIVE_TYPEALIAS_EXPANSION", "recursive type alias in expansion: %s", a.Name)
 			continue
 		}
 		for o := st.T.C.Outer; o != nil; o = o.Outer {
 			if o == cd.Sym || inherits(o, cd.Sym, walk, map[*types.ClassSym]bool{}) {
-				c.u.aliasFile[a].errorf(d.Type.P, "recursive type alias in expansion: %s", a.Name)
+				c.u.aliasFile[a].errorf(d.Type.P, "RECURSIVE_TYPEALIAS_EXPANSION", "recursive type alias in expansion: %s", a.Name)
 				break
 			}
 		}
@@ -313,7 +317,7 @@ func (c *Checker) checkSupers() {
 			at = []syntax.Pos{cd.P}
 		}
 		for _, p := range at {
-			c.errorf(p, "there's a cycle in the inheritance hierarchy for this type")
+			c.errorf(p, "CYCLIC_INHERITANCE_HIERARCHY", "there's a cycle in the inheritance hierarchy for this type")
 		}
 		cls := cd.Sym
 		super := cls.Super
@@ -340,7 +344,7 @@ func (c *Checker) checkSupers() {
 			c.javaCycle(st)
 			if st.Type != nil && st.Type.Ret != nil {
 				for _, p := range st.Type.Named {
-					c.errorf(p, "named parameter in function type as supertype is unsupported")
+					c.errorf(p, "UNSUPPORTED", "named parameter in function type as supertype is unsupported")
 				}
 			}
 			if st.T.K == types.Class && st.T.A != nil {
@@ -358,9 +362,9 @@ func (c *Checker) checkSupers() {
 			if s := st.T.C; st.T.K == types.Class && s.Sealed && !s.JavaSealed {
 				switch {
 				case s.External && !s.Source && !s.JavaSealed:
-					c.errorf(st.Type.P, "inheritor of sealed class or interface declared in a different module")
+					c.errorf(st.Type.P, "SEALED_INHERITOR_IN_DIFFERENT_MODULE", "inheritor of sealed class or interface declared in a different module")
 				case packageOf(s) != packageOf(cd.Sym):
-					c.errorf(st.Type.P, "inheritors of sealed classes must be in the same package")
+					c.errorf(st.Type.P, "SEALED_INHERITOR_IN_DIFFERENT_PACKAGE", "inheritors of sealed classes must be in the same package")
 				}
 				s.Subclasses = append(s.Subclasses, cd.Sym)
 			}
@@ -378,7 +382,7 @@ func (c *Checker) annotationSupers(cd *syntax.ClassDecl) {
 	direct := false
 	for _, st := range cd.Supers {
 		if st.T.K == types.Class && isAnnotationClass(st.T.C) {
-			c.errorf(st.Type.P, "inheriting an annotation class is prohibited")
+			c.errorf(st.Type.P, "FINAL_SUPERTYPE", "inheriting an annotation class is prohibited")
 			direct = true
 		}
 	}
@@ -391,7 +395,7 @@ func (c *Checker) annotationSupers(cd *syntax.ClassDecl) {
 		return !found
 	})
 	if found {
-		c.errorf(cd.P, "inheriting an annotation class is prohibited")
+		c.errorf(cd.P, "EXTENDING_AN_ANNOTATION_CLASS_ERROR", "inheriting an annotation class is prohibited")
 	}
 }
 
@@ -430,7 +434,7 @@ func (c *Checker) checkConsistentSupers(cd *syntax.ClassDecl) {
 			continue
 		}
 		if s.A != nil && prev.A != nil && !c.sameArgs(prev, s) {
-			c.errorf(cd.Supers[0].Type.P, "type parameters of '%s' have inconsistent values: %s, %s", s.C.DisplayName(), prev, s)
+			c.errorf(cd.Supers[0].Type.P, "INCONSISTENT_TYPE_PARAMETER_VALUES", "type parameters of '%s' have inconsistent values: %s, %s", s.C.DisplayName(), prev, s)
 			return
 		}
 	}
@@ -1304,15 +1308,15 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		case len(over) == 0 && fd.Override:
 			if o := c.interfaceSuperFun(d, f.Name, len(f.Params)); o != nil {
 				if o.Final {
-					c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
+					c.errorf(fd.P, "OVERRIDING_FINAL_MEMBER", "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
 				}
 			} else if !c.errorSupers[d] && (c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name]) {
-				c.errorf(fd.P, "'%s' overrides nothing", f.Name)
+				c.errorf(fd.P, "NOTHING_TO_OVERRIDE", "'%s' overrides nothing", f.Name)
 			}
 		case fd.Override && javaHidden(cls, over):
-			c.errorf(fd.P, "'%s' overrides nothing", f.Name)
+			c.errorf(fd.P, "NOTHING_TO_OVERRIDE", "'%s' overrides nothing", f.Name)
 		case len(over) > 0 && !fd.Override && !platformOnly(over):
-			c.errorf(fd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", f.Name, over[0].Owner.DisplayName())
+			c.errorf(fd.P, "VIRTUAL_MEMBER_HIDDEN", "'%s' hides member of supertype '%s' and needs 'override' modifier", f.Name, over[0].Owner.DisplayName())
 		}
 		if !fd.Override {
 			continue
@@ -1346,7 +1350,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				f.Infix = true // an override of an infix function is one
 			}
 			if o.Final {
-				c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
+				c.errorf(fd.P, "OVERRIDING_FINAL_MEMBER", "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
 				continue
 			}
 			if fd.Explicit && !o.PackagePrivate && !inheritsVisibility(o.Decl) {
@@ -1356,16 +1360,16 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			case mixed && f.Suspend != o.Suspend && o.Owner.Func:
 				continue
 			case f.Suspend && !o.Suspend:
-				c.errorf(fd.P, "suspend function '%s' cannot override non-suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
+				c.errorf(fd.P, "NON_SUSPEND_OVERRIDDEN_BY_SUSPEND", "suspend function '%s' cannot override non-suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 				continue
 			case !f.Suspend && o.Suspend:
-				c.errorf(fd.P, "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
+				c.errorf(fd.P, "SUSPEND_OVERRIDDEN_BY_NON_SUSPEND", "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 				continue
 			case f.Composable != o.Composable && !c.u.compose:
 				c.unsupported(fd.P, "compose", "'%s' overrides a @Composable function: compile with -compose", f.Name)
 				continue
 			case f.Composable != o.Composable:
-				c.errorf(fd.P, "@Composable annotation mismatch with overridden function: '%s' defined in '%s'", f.Name, o.Owner.DisplayName())
+				c.errorf(fd.P, "CONFLICTING_OVERLOADS", "@Composable annotation mismatch with overridden function: '%s' defined in '%s'", f.Name, o.Owner.DisplayName())
 				continue
 			case f.Composable && (f.Changed != o.Changed || f.Defaults != o.Defaults):
 				c.unsupported(fd.P, "compose", "'%s' overrides a composable function whose parameters differ", f.Name)
@@ -1373,7 +1377,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
 			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.overrideRetFits(f.Ret, ret) {
-				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
+				c.errorf(fd.P, "RETURN_TYPE_MISMATCH_ON_OVERRIDE", "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {
 				// Not if f's name is mangled: its bridge unboxes them.
@@ -1419,9 +1423,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		over := c.overriddenProps(cls, p)
 		switch {
 		case len(over) == 0 && op.override && !c.errorSupers[d]:
-			c.errorf(op.pos, "'%s' overrides nothing", p.Name)
+			c.errorf(op.pos, "NOTHING_TO_OVERRIDE", "'%s' overrides nothing", p.Name)
 		case len(over) > 0 && !op.override:
-			c.errorf(op.pos, "'%s' hides member of supertype '%s' and needs 'override' modifier", p.Name, over[0].owner.DisplayName())
+			c.errorf(op.pos, "VIRTUAL_MEMBER_HIDDEN", "'%s' hides member of supertype '%s' and needs 'override' modifier", p.Name, over[0].owner.DisplayName())
 		}
 		if !op.override {
 			continue
@@ -1439,21 +1443,21 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			t := c.memberSubst(this, o.owner).Apply(o.t)
 			switch {
 			case o.final:
-				c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, o.owner.DisplayName())
+				c.errorf(op.pos, "OVERRIDING_FINAL_MEMBER", "'%s' in '%s' is final and cannot be overridden", p.Name, o.owner.DisplayName())
 				continue
 			case javaFinalAccessor(cls, o) != nil:
 				if !finalReported {
-					c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, javaFinalAccessor(cls, o).DisplayName())
+					c.errorf(op.pos, "OVERRIDING_FINAL_MEMBER", "'%s' in '%s' is final and cannot be overridden", p.Name, javaFinalAccessor(cls, o).DisplayName())
 					finalReported = true
 				}
 				continue
 			case o.mutable && !p.Mutable:
-				c.errorf(op.pos, "val-property cannot override var-property '%s'", p.Name)
+				c.errorf(op.pos, "VAR_OVERRIDDEN_BY_VAL", "val-property cannot override var-property '%s'", p.Name)
 			case p.Type.K == types.Invalid || t.K == types.Invalid:
 			case p.Mutable && o.mutable && !c.sameType(p.Type, t):
-				c.errorf(op.pos, "type of '%s' doesn't match the type of the overridden var-property", p.Name)
+				c.errorf(op.pos, "VAR_TYPE_MISMATCH_ON_OVERRIDE", "type of '%s' doesn't match the type of the overridden var-property", p.Name)
 			case !c.subtype(p.Type, t):
-				c.errorf(op.pos, "type of '%s' is not a subtype of the overridden property", p.Name)
+				c.errorf(op.pos, "PROPERTY_TYPE_MISMATCH_ON_OVERRIDE", "type of '%s' is not a subtype of the overridden property", p.Name)
 			}
 			vis, explicit := declVisibility(p.Decl)
 			if o.inherits {
@@ -1502,7 +1506,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		c.checkImplemented(d, reported)
 	}
 	if !cls.Interface && c.inheritsJavaFunctionN(cls) {
-		c.errorf(d.P, "a Kotlin class can't inherit a Java member that references 'kotlin.jvm.functions.FunctionN'")
+		c.errorf(d.P, "UNSUPPORTED_INHERITANCE_FROM_JAVA_MEMBER_REFERENCING_KOTLIN_FUNCTION", "a Kotlin class can't inherit a Java member that references 'kotlin.jvm.functions.FunctionN'")
 	}
 }
 
@@ -1690,15 +1694,15 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 				cls.Abstract = true
 				for _, e := range d.Entries {
 					if e.Body == nil {
-						c.errorf(e.P, "enum entry '%s.%s' does not implement abstract member '%s'", cls.DisplayName(), e.Name, name)
+						c.errorf(e.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED_BY_ENUM_ENTRY", "enum entry '%s.%s' does not implement abstract member '%s'", cls.DisplayName(), e.Name, name)
 					}
 				}
 				return
 			}
 			if cls.Anonymous {
-				c.errorf(d.P, "object is not abstract and does not implement abstract member '%s'", name)
+				c.errorf(d.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED", "object is not abstract and does not implement abstract member '%s'", name)
 			} else {
-				c.errorf(d.P, "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
+				c.errorf(d.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED", "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
 			}
 		}
 	}
@@ -1739,7 +1743,7 @@ invisible:
 				if cls.Object {
 					what = "object '" + cls.DisplayName() + "'"
 				}
-				c.errorf(d.P, "%s inherits invisible abstract member '%s' of %s, which it can't implement", what, name, sc.DisplayName())
+				c.errorf(d.P, "INVISIBLE_ABSTRACT_MEMBER_FROM_SUPER_ERROR", "%s inherits invisible abstract member '%s' of %s, which it can't implement", what, name, sc.DisplayName())
 				break invisible
 			}
 		}
@@ -1781,7 +1785,7 @@ invisible:
 					// superclass and g, whose default values it inherits:
 					// kotlinc's backend fails on its calls (KT-49722).
 					if h := c.implementation(cls, this, g); h != nil && h.Owner != cls && !hasDefaults(h) && isInlineFun(h) {
-						c.errorf(d.P, "functional parameters with inherited default values are not yet supported in inline functions")
+						c.errorf(d.P, "", "functional parameters with inherited default values are not yet supported in inline functions")
 						inlineReported = true
 					}
 				}
@@ -2027,7 +2031,7 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 		}
 	}
 	if len(cands) == 0 {
-		c.errorf(x.P, "%s has no constructor that a subclass can call", sc.DisplayName())
+		c.errorf(x.P, "SEALED_INHERITOR_IN_DIFFERENT_MODULE", "%s has no constructor that a subclass can call", sc.DisplayName())
 		c.args(x, nil)
 		return
 	}
@@ -2051,7 +2055,7 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 			}
 		}
 		if want.K != types.Invalid && slices.ContainsFunc(want.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
-			c.errorf(x.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", want)
+			c.errorf(x.P, "PROJECTION_IN_IMMEDIATE_ARGUMENT_TO_SUPERTYPE", "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", want)
 			c.args(x, nil)
 			return
 		}
@@ -2096,7 +2100,7 @@ func (c *Checker) superOuterArgs(cls *types.ClassSym, x *syntax.Call) bool {
 		}
 		for i := range sc.OuterParams {
 			if t.A.Get(own+i) != os.A.Get(i) {
-				c.errorf(x.P, "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
+				c.errorf(x.P, "INNER_CLASS_CONSTRUCTOR_NO_RECEIVER", "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
 				c.args(x, nil)
 				return false
 			}
@@ -2136,7 +2140,7 @@ func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
 			} else if !self(e) {
 				return true
 			}
-			c.errorf(at.Pos(), "self call in nested object constructor is prohibited")
+			c.errorf(at.Pos(), "SELF_CALL_IN_NESTED_OBJECT_CONSTRUCTOR_ERROR", "self call in nested object constructor is prohibited")
 			return false
 		})
 	}
@@ -2150,13 +2154,13 @@ func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
 func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Type, bool) {
 	cls := c.cls
 	if s.Label != "" && c.ambiguousLabel(s.Label) {
-		c.errorf(s.P, "ambiguous label: %s", s.Label)
+		c.errorf(s.P, "AMBIGUOUS_LABEL", "ambiguous label: %s", s.Label)
 	}
 	switch {
 	case s.Label != "" && (cls == nil || s.Label != simpleName(cls)):
 		r := c.outerRecv(s.Label)
 		if r == nil {
-			c.errorf(s.P, "unresolved label: %s", s.Label)
+			c.errorf(s.P, "UNRESOLVED_LABEL", "unresolved label: %s", s.Label)
 			return types.InvalidType, false
 		}
 		s.Outer = recvThis(r, s.P)
@@ -2170,7 +2174,7 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 		c.value(s.Outer, noWant)
 		cls = r.sym.Type.C
 	case cls == nil || cls.Decl == nil:
-		c.errorf(s.P, "'super' is not an expression, it can only be used on the left-hand side of a dot ('.')")
+		c.errorf(s.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "'super' is not an expression, it can only be used on the left-hand side of a dot ('.')")
 		return types.InvalidType, false
 	default:
 		c.captureThis()
@@ -2207,7 +2211,7 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			}
 		}
 		if t.K == types.Invalid {
-			c.errorf(s.Iface.P, "not an immediate supertype")
+			c.errorf(s.Iface.P, "NOT_A_SUPERTYPE", "not an immediate supertype")
 			return t, false
 		}
 		if s.Outer != nil && s.Iface.Args != nil && c.sameArgs(t, want) {
@@ -2244,7 +2248,7 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			has = append(has, cls.Supers[i])
 		}
 		if len(has) > 1 {
-			c.errorf(s.P, "many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<%s>'", has[0].C.DisplayName())
+			c.errorf(s.P, "AMBIGUOUS_SUPER", "many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<%s>'", has[0].C.DisplayName())
 			return types.InvalidType, false
 		}
 		if len(has) == 1 {
@@ -2261,7 +2265,7 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 		}
 		if t.K == types.Invalid {
 			if cls.Super == nil {
-				c.errorf(s.P, "'super' is not available here")
+				c.errorf(s.P, "SUPER_NOT_AVAILABLE", "'super' is not available here")
 				return t, false
 			}
 			t = types.ClassType(cls.Super)
@@ -2389,17 +2393,17 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 		return c.call(x, want, sink)
 	}
 	if len(ms) == 0 {
-		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	t := c.resolve(x, c.memberCallees(c.superImpls(st.C, ms), st), want, sink)
 	if x.Sym != nil && x.Sym.Abstract {
-		c.errorf(fn.P, "abstract member cannot be accessed directly")
+		c.errorf(fn.P, "ABSTRACT_SUPER_CALL", "abstract member cannot be accessed directly")
 	} else if x.Sym != nil && usesDefaults(x) {
 		// The super call would need the supertype's foo$default, which
 		// dispatches virtually.
-		c.errorf(fn.P, "super calls with default arguments are not allowed, specify all arguments of 'super.%s' explicitly", fn.Name)
+		c.errorf(fn.P, "SUPER_CALL_WITH_DEFAULT_PARAMETERS", "super calls with default arguments are not allowed, specify all arguments of 'super.%s' explicitly", fn.Name)
 	}
 	return t
 }
@@ -2457,7 +2461,7 @@ func (c *Checker) superMember(x *syntax.Member, s *syntax.Super) types.Type {
 	}
 	if p := c.userProp(st.C, x.Name); p != nil {
 		if p.Abstract {
-			c.errorf(x.P, "abstract member cannot be accessed directly")
+			c.errorf(x.P, "ABSTRACT_SUPER_CALL", "abstract member cannot be accessed directly")
 		}
 		ensureVar(p)
 		x.Prop = p
@@ -2466,7 +2470,7 @@ func (c *Checker) superMember(x *syntax.Member, s *syntax.Super) types.Type {
 	if t, ok := c.javaProperty(x, st); ok {
 		return t
 	}
-	c.errorf(x.P, "unresolved reference: %s", x.Name)
+	c.errorf(x.P, "INVISIBLE_REFERENCE", "unresolved reference: %s", x.Name)
 	return types.InvalidType
 }
 
@@ -2758,7 +2762,7 @@ func (c *Checker) methodsOfAny(d *syntax.ClassDecl) {
 			any = len(f.Sym.Params) == 1 && f.Sym.Params[0].Type.K == types.Any && f.Sym.Params[0].Type.N
 		}
 		if any && !suppresses(f.Annotations, "METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE") {
-			c.errorf(f.P, "an interface may not implement a method of 'Any'")
+			c.errorf(f.P, "METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE", "an interface may not implement a method of 'Any'")
 		}
 	}
 }
@@ -2769,9 +2773,9 @@ func (c *Checker) methodsOfAny(d *syntax.ClassDecl) {
 func (c *Checker) overrideVisibility(p syntax.Pos, name string, ov, v syntax.Visibility, owner *types.ClassSym) {
 	switch cmp, ok := compareVisibility(ov, v); {
 	case !ok:
-		c.errorf(p, "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+		c.errorf(p, "CANNOT_CHANGE_ACCESS_PRIVILEGE", "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
 	case cmp > 0:
-		c.errorf(p, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+		c.errorf(p, "CANNOT_WEAKEN_ACCESS_PRIVILEGE", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
 	}
 }
 
@@ -2863,12 +2867,12 @@ func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
 	}
 	for _, a := range st.Type.Args {
 		if a.Variance != types.Inv {
-			c.errorf(a.P, "projections are not allowed for immediate arguments of a supertype")
+			c.errorf(a.P, "PROJECTION_IN_IMMEDIATE_ARGUMENT_TO_SUPERTYPE", "projections are not allowed for immediate arguments of a supertype")
 			return
 		}
 	}
 	if c.lookupAlias(st.Type.Name) != nil {
-		c.errorf(st.Type.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+		c.errorf(st.Type.P, "CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR", "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
 	}
 }
 
@@ -2878,7 +2882,7 @@ func (c *Checker) superProjections(st *syntax.SuperType, t types.Type) {
 // supertype list, as kotlinc does. It reports whether it did.
 func (c *Checker) checkMixedSuspendSupertypes(d *syntax.ClassDecl) bool {
 	if mixesSuspendSupertypes(d) {
-		c.errorf(d.Supers[0].Type.P, "mixing suspend and non-suspend supertypes is not allowed")
+		c.errorf(d.Supers[0].Type.P, "MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES", "mixing suspend and non-suspend supertypes is not allowed")
 		return true
 	}
 	return false

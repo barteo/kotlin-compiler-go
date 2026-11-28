@@ -192,7 +192,7 @@ func (c *Checker) aliasRepeatedAnnotations(ref *syntax.TypeRef, a *types.AliasSy
 		have := c.aliasAnnotations(a, map[*types.AliasSym]bool{})
 		for _, an := range ref.Annotations {
 			if cls := c.lookupClass(an.Name); cls != nil && have[cls] && !repeatable(cls) {
-				c.errorf(an.P, "this annotation is not repeatable")
+				c.errorf(an.P, "REPEATED_ANNOTATION", "this annotation is not repeatable")
 			}
 		}
 	}
@@ -204,7 +204,7 @@ func (c *Checker) aliasRepeatedAnnotations(ref *syntax.TypeRef, a *types.AliasSy
 		c.paramAnnotations(d.Type, a.TypeParams[i].Name, have)
 		for _, an := range arg.Type.Annotations {
 			if cls := c.lookupClass(an.Name); cls != nil && have[cls] && !repeatable(cls) {
-				c.errorf(an.P, "this annotation is not repeatable")
+				c.errorf(an.P, "REPEATED_ANNOTATION", "this annotation is not repeatable")
 			}
 		}
 	}

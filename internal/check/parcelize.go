@@ -205,16 +205,16 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 	case cd.Sealed:
 		return // its subclasses are Parcelable
 	case cd.Interface || cd.Annotation:
-		c.errorf(cd.P, "'Parcelable' must be a class")
+		c.errorf(cd.P, "PARCELABLE_SHOULD_BE_CLASS", "'Parcelable' must be a class")
 		return
 	case cd.Abstract:
-		c.errorf(cd.P, "'Parcelable' cannot be an abstract class")
+		c.errorf(cd.P, "PARCELABLE_SHOULD_BE_INSTANTIABLE", "'Parcelable' cannot be an abstract class")
 		return
 	case cd.Inner:
-		c.errorf(cd.P, "'Parcelable' can't be an inner class")
+		c.errorf(cd.P, "PARCELABLE_CANT_BE_INNER_CLASS", "'Parcelable' can't be an inner class")
 		return
 	case !cd.Object && !cd.Enum && !cd.HasPrimary:
-		c.errorf(cd.P, "'Parcelable' should have a primary constructor")
+		c.errorf(cd.P, "PARCELABLE_SHOULD_HAVE_PRIMARY_CONSTRUCTOR", "'Parcelable' should have a primary constructor")
 		return
 	}
 	describe := true
@@ -247,7 +247,7 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 		"}\n", name)
 	members, err := parseMembers(c.file.Path, cd.P, src.String())
 	if err != nil {
-		c.errorf(cd.P, "parcelize: %v", err)
+		c.errorf(cd.P, "", "parcelize: %v", err)
 		return
 	}
 	for _, m := range members {
@@ -421,7 +421,7 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	members, err := parseMembers(c.file.Path, cd.P, "fun f() {\n"+g.body.String()+"}\n")
 	if err != nil {
-		c.errorf(cd.P, "parcelize: %v", err)
+		c.errorf(cd.P, "", "parcelize: %v", err)
 		return
 	}
 	body := members[0].(*syntax.FunDecl).Body
@@ -452,7 +452,7 @@ func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
 		if p.Sym != nil && parcelFileDescriptors(parcelErase(p.Sym.Type)) {
 			members, err := parseMembers(c.file.Path, cd.P, "fun f(): kotlin.Int {\nreturn 1\n}\n")
 			if err != nil {
-				c.errorf(cd.P, "parcelize: %v", err)
+				c.errorf(cd.P, "", "parcelize: %v", err)
 				return
 			}
 			d.Body, d.ExprBody = members[0].(*syntax.FunDecl).Body, nil
@@ -491,7 +491,7 @@ func (c *Checker) parcelNewArray(d *syntax.FunDecl, cls *types.ClassSym) {
 	members, err := parseMembers(c.file.Path, cd.P, fmt.Sprintf(
 		"fun f(): kotlin.Array<%[2]s?> {\nreturn %[1]s.newArray(size) as kotlin.Array<%[2]s?>\n}\n", fqName(comp), name))
 	if err != nil {
-		c.errorf(cd.P, "parcelize: %v", err)
+		c.errorf(cd.P, "", "parcelize: %v", err)
 		return
 	}
 	d.Body, d.ExprBody = members[0].(*syntax.FunDecl).Body, nil
@@ -509,7 +509,7 @@ func (c *Checker) parcelParceler(cd *syntax.ClassDecl, cls *types.ClassSym, writ
 		for _, p := range cd.CtorParams {
 			if !p.IsProp && !cd.Enum {
 				if write {
-					c.errorf(p.P, "'Parcelable' constructor parameter should be 'val' or 'var'")
+					c.errorf(p.P, "PARCELABLE_CONSTRUCTOR_PARAMETER_SHOULD_BE_VAL_OR_VAR", "'Parcelable' constructor parameter should be 'val' or 'var'")
 				}
 				return nil, false
 			}

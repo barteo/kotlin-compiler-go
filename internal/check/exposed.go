@@ -643,7 +643,7 @@ func (c *Checker) exposed(t types.Type, vis effVis, p syntax.Pos, diag string, s
 		rel += " containing declaration"
 	}
 	m := exposedMessages[diag]
-	c.errorf(p, "'%s' %s exposes its '%s' %s%s '%s'", vis, m[0], e.vis, m[1], rel, cls.DisplayName())
+	c.errorf(p, diag, "'%s' %s exposes its '%s' %s%s '%s'", vis, m[0], e.vis, m[1], rel, cls.DisplayName())
 	return true
 }
 

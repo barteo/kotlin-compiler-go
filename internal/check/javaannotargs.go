@@ -29,10 +29,10 @@ func (c *Checker) javaPositionalArgs(a *syntax.Annotation, cls *types.ClassSym) 
 		case named:
 			// A Java annotation's parameters have no order for a
 			// positional argument after a named one to follow.
-			c.errorf(p, "mixing named and positional arguments is not allowed")
+			c.errorf(p, "MIXING_NAMED_AND_POSITIONAL_ARGUMENTS", "mixing named and positional arguments is not allowed")
 		case len(ps) > 0 && ps[0].Name == "value" && (i == 0 || ps[0].Vararg):
 		default:
-			c.errorf(p, "only named arguments are available for Java annotations")
+			c.errorf(p, "POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION", "only named arguments are available for Java annotations")
 		}
 	}
 }

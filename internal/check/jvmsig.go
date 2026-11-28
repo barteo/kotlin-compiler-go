@@ -40,7 +40,7 @@ func (c *Checker) checkClashes() {
 	c.sameContainer(top)
 	for _, m := range top {
 		if !m.private && objectFinals[m.sig] {
-			c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
+			c.errorf(m.pos, "ACCIDENTAL_OVERRIDE", "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 		}
 	}
 	for _, d := range c.classes {
@@ -86,7 +86,7 @@ func (c *Checker) javaGetterClashes(d *syntax.ClassDecl) {
 			}
 			for _, g := range s.Methods[name] {
 				if len(g.Params) == 0 && !g.Static && !g.Private && g.JVM()+types.FunDesc(g) == sig {
-					c.errorf(pos[i], "accidental override: the following declarations have the same JVM signature (%s)", sig)
+					c.errorf(pos[i], "ACCIDENTAL_OVERRIDE", "accidental override: the following declarations have the same JVM signature (%s)", sig)
 					return false
 				}
 			}

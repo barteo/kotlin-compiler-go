@@ -345,14 +345,14 @@ func visibilityOf(v syntax.Visibility, owner *types.ClassSym) string {
 // invisibleFun reports a call of a function the code can't see.
 func (c *Checker) invisibleFun(p syntax.Pos, f *types.FunSym) {
 	if o := f.Owner; o != nil && o.CompanionOf != nil && !o.External && !c.classVisible(o) {
-		c.errorf(p, "cannot access '%s': it is a member of a private companion object of '%s'", f.Name, o.CompanionOf.DisplayName())
+		c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is a member of a private companion object of '%s'", f.Name, o.CompanionOf.DisplayName())
 		return
 	}
 	if c.inPrivateClass(f.Owner) {
 		c.invisibleMember(p, f.Name, f.Owner)
 		return
 	}
-	c.errorf(p, "cannot access '%s': it is %s", f.Name, visibilityOf(memberVisibility(f), f.Owner))
+	c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is %s", f.Name, visibilityOf(memberVisibility(f), f.Owner))
 }
 
 // invisibleProp reports a use of a property the code can't see.
@@ -366,17 +366,17 @@ func (c *Checker) invisibleProp(p syntax.Pos, v *types.VarSym) {
 		vis = syntax.Protected
 	}
 	if !ok && v.PackagePrivate {
-		c.errorf(p, "cannot access '%s': it is package-private in '%s'", v.Name, v.Owner.DisplayName())
+		c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is package-private in '%s'", v.Name, v.Owner.DisplayName())
 		return
 	}
-	c.errorf(p, "cannot access '%s': it is %s", v.Name, visibilityOf(vis, v.Owner))
+	c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is %s", v.Name, visibilityOf(vis, v.Owner))
 }
 
 // invisibleSetter reports an assignment of a property whose setter the
 // code can't see.
 func (c *Checker) invisibleSetter(p syntax.Pos, v *types.VarSym) {
 	vis := setterVis(v)
-	c.errorf(p, invisibleSetterMsg+"'%s': the setter is %s", v.Name, visibilityOf(vis, v.Owner))
+	c.errorf(p, "INVISIBLE_SETTER", invisibleSetterMsg+"'%s': the setter is %s", v.Name, visibilityOf(vis, v.Owner))
 }
 
 // invisibleSetterMsg begins invisibleSetter's message.
@@ -387,11 +387,11 @@ const invisibleSetterMsg = "cannot assign to "
 func (c *Checker) checkClassVisible(cls *types.ClassSym, p syntax.Pos) {
 	if k := c.invisibleOuter(cls); k != nil {
 		if k.External {
-			c.errorf(p, "cannot access '%s': it is protected in '%s'", k.DisplayName(), c.protectedOuter(k).DisplayName())
+			c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is protected in '%s'", k.DisplayName(), c.protectedOuter(k).DisplayName())
 			return
 		}
 		v, _ := declVisibility(k.Decl)
-		c.errorf(p, "cannot access '%s': it is %s", k.DisplayName(), visibilityOf(v, k.Outer))
+		c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is %s", k.DisplayName(), visibilityOf(v, k.Outer))
 	}
 }
 
@@ -399,7 +399,7 @@ func (c *Checker) checkClassVisible(cls *types.ClassSym, p syntax.Pos) {
 // code can't see.
 func (c *Checker) checkAliasVisible(a *types.AliasSym, p syntax.Pos) {
 	if v, ok := declVisibility(a.Decl); ok && !c.canSee(v, a.Outer, c.aliasFileClass(a)) {
-		c.errorf(p, "cannot access '%s': it is %s", a.Name, visibilityOf(v, a.Outer))
+		c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is %s", a.Name, visibilityOf(v, a.Outer))
 	}
 }
 
@@ -443,7 +443,7 @@ func (c *Checker) checkPrivateToThis(x syntax.Expr, name string, owner *types.Cl
 	if c.file.SuppressInvisible {
 		return
 	}
-	c.errorf(p, "cannot access '%s': it is %s'%s'", name, privateToThisMsg, owner.DisplayName())
+	c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is %s'%s'", name, privateToThisMsg, owner.DisplayName())
 }
 
 // privateToThisMsg is in checkPrivateToThis's message.
@@ -723,7 +723,7 @@ func (c *Checker) companionProtected(owner *types.ClassSym, name string, jvmStat
 			return // the companion's own subclass, which sees it as its own
 		}
 	}
-	c.errorf(p, "using non-JVM static members protected in the superclass companion is unsupported yet: '%s'", name)
+	c.errorf(p, "SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC", "using non-JVM static members protected in the superclass companion is unsupported yet: '%s'", name)
 }
 
 // companionProtectedFun is companionProtected for a call of f.
@@ -789,7 +789,7 @@ func (c *Checker) shadowedField(cls *types.ClassSym, f *types.VarSym, p syntax.P
 		return true
 	})
 	if shadow != nil {
-		c.errorf(p, "the Java field '%s' is shadowed by the Kotlin property of '%s', which is invisible here", f.Name, shadow.Owner.Name)
+		c.errorf(p, "JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY", "the Java field '%s' is shadowed by the Kotlin property of '%s', which is invisible here", f.Name, shadow.Owner.Name)
 	}
 }
 
@@ -798,7 +798,7 @@ func (c *Checker) shadowedField(cls *types.ClassSym, f *types.VarSym, p syntax.P
 func (c *Checker) invisibleMember(p syntax.Pos, name string, owner *types.ClassSym) {
 	k := c.invisibleOuter(owner)
 	v, _ := declVisibility(k.Decl)
-	c.errorf(p, "cannot access '%s': it is a member of '%s', which is %s", name, owner.DisplayName(), visibilityOf(v, k.Outer))
+	c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is a member of '%s', which is %s", name, owner.DisplayName(), visibilityOf(v, k.Outer))
 }
 
 // inPrivateClass reports whether cls is a class of the program that the

@@ -125,7 +125,7 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 	found := false
 	for _, cp := range m.Contexts {
 		if a := introducedAt(cp.Annotations); a != nil {
-			c.errorf(a.P, "'@IntroducedAt' cannot be used on receiver or context parameters")
+			c.errorf(a.P, "INVALID_VERSIONING_ON_RECEIVER_OR_CONTEXT_PARAMETER_POSITION", "'@IntroducedAt' cannot be used on receiver or context parameters")
 			found = true
 		}
 	}
@@ -152,13 +152,13 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 	cls := site.cls
 	switch {
 	case !site.ctor && (m.Abstract || m.Open || m.Override && !m.Final || cls != nil && cls.Interface && m.Visibility != syntax.Private):
-		c.errorf(p, "functions with '@IntroducedAt' parameters must be final")
+		c.errorf(p, "INVALID_VERSIONING_ON_NONFINAL_FUNCTION", "functions with '@IntroducedAt' parameters must be final")
 	case site.local:
-		c.errorf(p, "local functions cannot have '@IntroducedAt' parameters")
+		c.errorf(p, "INVALID_VERSIONING_ON_LOCAL_FUNCTION", "local functions cannot have '@IntroducedAt' parameters")
 	case !site.ctor && cls != nil && (cls.Open || cls.Abstract || cls.Sealed):
-		c.errorf(p, "functions with '@IntroducedAt' parameters must be in final classes")
+		c.errorf(p, "INVALID_VERSIONING_ON_NONFINAL_CLASS", "functions with '@IntroducedAt' parameters must be in final classes")
 	case cls != nil && cls.Annotation:
-		c.errorf(p, "annotation class constructors cannot have '@IntroducedAt' parameters")
+		c.errorf(p, "INVALID_VERSIONING_ON_ANNOTATION_CLASS", "annotation class constructors cannot have '@IntroducedAt' parameters")
 	}
 
 	versions := map[any]mavenVersion{}
@@ -168,7 +168,7 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 		if a == nil {
 			last := i == len(ps)-1 && q.Type != nil && q.Type.Ret != nil
 			if q.Default == nil && highest != nil && !last {
-				c.errorf(q.P, "a parameter without '@IntroducedAt' after one with it must be optional")
+				c.errorf(q.P, "INVALID_NON_OPTIONAL_PARAMETER_POSITION", "a parameter without '@IntroducedAt' after one with it must be optional")
 			}
 			continue
 		}
@@ -179,16 +179,16 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 		}
 		switch {
 		case q.Vararg || ctor != nil && ctor[i].Modifiers.Vararg:
-			c.errorf(a.P, "'@IntroducedAt' cannot be used on vararg parameters")
+			c.errorf(a.P, "INVALID_VERSIONING_ON_VARARG", "'@IntroducedAt' cannot be used on vararg parameters")
 		case ctor != nil && ctor[i].IsProp && cls != nil && (cls.Value || cls.Inline):
-			c.errorf(a.P, "'@IntroducedAt' cannot be used on value class properties")
+			c.errorf(a.P, "INVALID_VERSIONING_ON_VALUE_CLASS_PARAMETER", "'@IntroducedAt' cannot be used on value class properties")
 		case q.Default == nil && !m.Actual:
-			c.errorf(a.P, "'@IntroducedAt' can only be used on optional parameters")
+			c.errorf(a.P, "INVALID_VERSIONING_ON_NON_OPTIONAL", "'@IntroducedAt' can only be used on optional parameters")
 		}
 		if highest == nil || highest.compare(v) <= 0 {
 			highest = &v
 		} else if !suppressed("NON_ASCENDING_VERSION_ANNOTATION") {
-			c.errorf(a.P, "version %s of '@IntroducedAt' is lower than the earlier %s", s, highest.s)
+			c.errorf(a.P, "NON_ASCENDING_VERSION_ANNOTATION", "version %s of '@IntroducedAt' is lower than the earlier %s", s, highest.s)
 		}
 	}
 
@@ -207,13 +207,13 @@ func (c *Checker) versionParams(m *syntax.Modifiers, p syntax.Pos, ps []*syntax.
 		syntax.Inspect(q.Default, func(n any) bool {
 			switch n := n.(type) {
 			case *syntax.ObjectExpr:
-				c.errorf(n.P, "default values of version-overloaded functions cannot have object expressions")
+				c.errorf(n.P, "VERSION_OVERLOADS_TOO_COMPLEX_EXPRESSION", "default values of version-overloaded functions cannot have object expressions")
 			case *syntax.Ident:
 				if n.Sym == nil {
 					break
 				}
 				if v, ok := versions[n.Sym]; ok && (own == nil || own.compare(v) < 0) {
-					c.errorf(n.P, "a default value cannot use a parameter of a newer version")
+					c.errorf(n.P, "INVALID_DEFAULT_VALUE_DEPENDENCY", "a default value cannot use a parameter of a newer version")
 				}
 			}
 			return true

@@ -149,7 +149,7 @@ func (c *Checker) noVisibility(p syntax.Pos, m *syntax.Modifiers) {
 	}
 	switch c.u.explicitAPI {
 	case APIStrict:
-		c.errorf(p, "visibility must be specified in explicit API mode")
+		c.errorf(p, "NO_EXPLICIT_VISIBILITY_IN_API_MODE", "visibility must be specified in explicit API mode")
 	case APIWarning:
 		c.warnf(p, "NO_EXPLICIT_VISIBILITY_IN_API_MODE_WARNING", "visibility must be specified in explicit API mode")
 	}
@@ -160,7 +160,7 @@ func (c *Checker) noVisibility(p syntax.Pos, m *syntax.Modifiers) {
 func (c *Checker) noReturnType(p syntax.Pos) {
 	switch max(c.u.explicitAPI, c.u.explicitReturnTypes) {
 	case APIStrict:
-		c.errorf(p, "return type must be specified in explicit API mode")
+		c.errorf(p, "NO_EXPLICIT_RETURN_TYPE_IN_API_MODE", "return type must be specified in explicit API mode")
 	case APIWarning:
 		c.warnf(p, "NO_EXPLICIT_RETURN_TYPE_IN_API_MODE_WARNING", "return type must be specified in explicit API mode")
 	}

@@ -407,7 +407,7 @@ func paramIndex(ps []*types.VarSym, name string) int {
 func (c *Checker) namedArgError(x *syntax.Call, cands []callee) bool {
 	for _, cl := range cands {
 		if o := cl.f.Owner; o != nil && o.External && o.KotlinName == "" {
-			c.errorf(x.P, "named arguments are not allowed for non-Kotlin functions")
+			c.errorf(x.P, "NAMED_ARGUMENTS_NOT_ALLOWED", "named arguments are not allowed for non-Kotlin functions")
 			return true
 		}
 	}
@@ -418,7 +418,7 @@ func (c *Checker) namedArgError(x *syntax.Call, cands []callee) bool {
 			continue
 		}
 		if seen[name] {
-			c.errorf(x.Args[i].Pos(), "an argument is already passed for this parameter: %s", name)
+			c.errorf(x.Args[i].Pos(), "ARGUMENT_PASSED_TWICE", "an argument is already passed for this parameter: %s", name)
 			return true
 		}
 		seen[name] = true
@@ -427,7 +427,7 @@ func (c *Checker) namedArgError(x *syntax.Call, cands []callee) bool {
 			found = found || paramIndex(cl.f.Params, name) >= 0
 		}
 		if !found {
-			c.errorf(x.Args[i].Pos(), "cannot find a parameter with this name: %s", name)
+			c.errorf(x.Args[i].Pos(), "NAMED_PARAMETER_NOT_FOUND", "cannot find a parameter with this name: %s", name)
 			return true
 		}
 	}
@@ -444,7 +444,7 @@ func (c *Checker) namedArgError(x *syntax.Call, cands []callee) bool {
 		if x.Name(i) != "" && !inPlace(i) {
 			for j := i + 1; j < len(x.Args); j++ {
 				if x.Name(j) == "" && !(x.Trailing() && j == len(x.Args)-1) {
-					c.errorf(x.Args[j].Pos(), "mixing named and positioned arguments is not allowed")
+					c.errorf(x.Args[j].Pos(), "MIXING_NAMED_AND_POSITIONAL_ARGUMENTS", "mixing named and positioned arguments is not allowed")
 					return true
 				}
 			}
@@ -777,7 +777,7 @@ func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	ts := make([]types.Type, len(x.TypeArgs))
 	for i, a := range x.TypeArgs {
 		if a.Variance != types.Inv {
-			c.errorf(a.P, "projections are not allowed on type arguments of functions and properties")
+			c.errorf(a.P, "PROJECTION_ON_NON_CLASS_TYPE_ARGUMENT", "projections are not allowed on type arguments of functions and properties")
 			ts[i] = types.InvalidType
 			continue
 		}
@@ -894,7 +894,7 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 			// A bound with a receiver's projection holds its capture,
 			// which only a written type takes: X : C<T> for a B<out N>.
 			if b = s.final(cd.sub.ApplyParam(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
-				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
+				c.errorf(x.TypeArgs[j].P, "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
 	}
@@ -932,7 +932,7 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 		// A superclass's private constructor, which only the classes
 		// nested in it may call: a sealed class's. construct leaves
 		// the others out (see visibleCtors).
-		c.errorf(x.P, "cannot access 'constructor': it is private in '%s'", f.Owner.DisplayName())
+		c.errorf(x.P, "INVISIBLE_REFERENCE", "cannot access 'constructor': it is private in '%s'", f.Owner.DisplayName())
 	}
 	if f := x.Sym; f != nil && f.Ext {
 		if lf, ok := f.Decl.(*syntax.LocalFun); ok {
@@ -955,7 +955,7 @@ func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
 
 func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink *system) types.Type {
 	if x.Dropped != nil && !c.hasErrorAt(x.Dropped.Pos(), "unexpected trailing lambda") {
-		c.errorf(x.Dropped.Pos(), "unexpected trailing lambda on a new line")
+		c.errorf(x.Dropped.Pos(), "UNEXPECTED_TRAILING_LAMBDA_ON_A_NEW_LINE", "unexpected trailing lambda on a new line")
 	}
 	name := cands[0].f.Name
 	byArity := cands[:0] // cands is the caller's own slice
@@ -992,7 +992,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.args(x, nil)
 			return soleResult(cands)
 		case spreadMisplaced(x, cands):
-			c.errorf(x.P, "the spread operator (*foo) can only be applied in a vararg position")
+			c.errorf(x.P, "NON_VARARG_SPREAD", "the spread operator (*foo) can only be applied in a vararg position")
 		case why != "":
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
@@ -1008,7 +1008,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
 		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
 			// Only @Deprecated(level = HIDDEN) ones, as a Java method's.
-			c.errorf(x.P, "unresolved reference: %s", name)
+			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 		case x.Trailing() && x.TrailingNL && newLineLambdaExcess(x, cands):
 			// As kotlinc, the call is resolved without the lambda, which
 			// is reported.
@@ -1037,7 +1037,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if len(ok) == 0 {
 			cl := byArity[0]
-			c.errorf(x.TypeArgs[0].P, "%s expected for '%s%s'", countArgs(len(cl.tparams)), name, types.TypeParamsString(cl.tparams))
+			c.errorf(x.TypeArgs[0].P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for '%s%s'", countArgs(len(cl.tparams)), name, types.TypeParamsString(cl.tparams))
 			c.args(x, nil)
 			if c.u.partial && sameRetClass(byArity) {
 				// The candidates' type, with error type arguments, as
@@ -1346,9 +1346,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				}
 			}
 			if len(match) == 0 {
-				c.errorf(x.P, "none of the %d candidates for '%s' takes (%s)", len(cs), name, strings.Join(names, ", "))
+				c.errorf(x.P, "NONE_APPLICABLE", "none of the %d candidates for '%s' takes (%s)", len(cs), name, strings.Join(names, ", "))
 			} else {
-				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
+				c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
 				c.ambiguities++
 				c.pclaAmbiguous(ts)
 				c.ambiguousLambdas(x)
@@ -1443,7 +1443,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				want = captured(view, recvParam, want)
 			}
 			n := len(c.errs)
-			c.assignable(best.ext, want, x.Fun.Pos())
+			c.assignable(best.ext, want, x.Fun.Pos(), "UNRESOLVED_REFERENCE_WRONG_RECEIVER")
 			if len(c.errs) == n {
 				c.exactRecvMismatch(x, best, ts, s)
 			}
@@ -1461,7 +1461,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 					if len(x.TypeArgs) == len(best.tparams) {
 						p = x.TypeArgs[i].P
 					}
-					c.errorf(p, "cannot use '%s' as reified type parameter", t.Param().Name)
+					c.errorf(p, "TYPE_PARAMETER_AS_REIFIED", "cannot use '%s' as reified type parameter", t.Param().Name)
 				}
 			}
 		})
@@ -1507,14 +1507,14 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			want := captured(a.Type(), params[i], pt)
 			if w, ok := secondCapture(a.Type(), params[i], want, capts); ok {
-				c.errorf(syntax.StartPos(a), "type mismatch: inferred type is %s but %s was expected", a.Type(), w)
+				c.errorf(syntax.StartPos(a), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", a.Type(), w)
 				continue
 			}
-			c.assignable(a.Type(), want, syntax.StartPos(a))
+			c.assignable(a.Type(), want, syntax.StartPos(a), "ARGUMENT_TYPE_MISMATCH")
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
-				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
+				c.errorf(a.Pos(), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
 			}
 		}
 		for _, p := range f.Params {
@@ -1691,7 +1691,7 @@ func (c *Checker) exactRecvMismatch(x *syntax.Call, cd *candidate, ts []types.Ty
 		for _, b := range p.Param().Bounds {
 			b = exact.Apply(b)
 			if !b.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cd.f.TypeParams, u.Param()) }) && !c.subtype(t, b) {
-				c.errorf(x.Args[i].Pos(), "argument type mismatch: actual type is %s but %s was expected", t, b)
+				c.errorf(x.Args[i].Pos(), "ARGUMENT_TYPE_MISMATCH", "argument type mismatch: actual type is %s but %s was expected", t, b)
 				return
 			}
 		}
@@ -2226,7 +2226,9 @@ func soleResult(cands []callee) types.Type {
 // The arguments before it are checked against their parameters, as
 // kotlinc does (ARGUMENT_TYPE_MISMATCH), where their types are known.
 func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
-	report := func(p syntax.Pos) { c.errorf(p, "no function '%s' takes %d arguments", name, len(x.Args)) }
+	report := func(p syntax.Pos, diag string) {
+		c.errorf(p, diag, "no function '%s' takes %d arguments", name, len(x.Args))
+	}
 	excess, vararg := excessArg(x, cands)
 	if excess < 0 && slices.ContainsFunc(x.Args, syntax.IsInvalid) {
 		// f( cut short by a syntax error: as kotlinc, whose candidates
@@ -2235,12 +2237,14 @@ func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
 		return
 	}
 	switch {
-	case excess < 0 || len(cands) > 1:
-		report(x.P)
+	case len(cands) > 1:
+		report(x.P, "NONE_APPLICABLE")
+	case excess < 0:
+		report(x.P, "NO_VALUE_FOR_PARAMETER")
 	case vararg:
-		c.errorf(x.Args[excess].Pos(), "passing value as a vararg is only allowed inside a parenthesized argument list")
+		c.errorf(x.Args[excess].Pos(), "VARARG_OUTSIDE_PARENTHESES", "passing value as a vararg is only allowed inside a parenthesized argument list")
 	default:
-		report(x.Args[excess].Pos())
+		report(x.Args[excess].Pos(), "TOO_MANY_ARGUMENTS")
 		f := cands[0].f
 		for i := range x.Args {
 			want := noWant
@@ -2251,7 +2255,7 @@ func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
 			}
 			t := c.argValue(&x.Args[i], want, nil)
 			if want != noWant && t.K != types.Invalid && !c.subtype(t, want) {
-				c.errorf(x.Args[i].Pos(), "type mismatch: inferred type is %s but %s was expected", t, want)
+				c.errorf(x.Args[i].Pos(), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", t, want)
 			}
 		}
 		return
@@ -2334,11 +2338,11 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		c.samArgs(x, ts, func(i int) types.Type { return best.argType(i, x.Args) })
 		for i, t := range ts {
 			if ch, ok := x.Args[i].(*syntax.Checked); !ok || ch.SAM == nil {
-				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]))
+				c.assignable(t, best.argType(i, x.Args), syntax.StartPos(x.Args[i]), "ARGUMENT_TYPE_MISMATCH")
 			}
 		}
 		if best.ext.K != types.Invalid {
-			c.assignable(best.ext, best.f.Recv, x.Fun.Pos())
+			c.assignable(best.ext, best.f.Recv, x.Fun.Pos(), "UNRESOLVED_REFERENCE_WRONG_RECEIVER")
 		}
 	} else {
 		ts := c.args(x, nil)
@@ -2413,9 +2417,9 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 				names[i] = t.String()
 			}
 			if len(match) == 0 {
-				c.errorf(x.P, "none of the %d candidates for '%s' takes (%s)", len(cs), cs[0].f.Name, strings.Join(names, ", "))
+				c.errorf(x.P, "NONE_APPLICABLE", "none of the %d candidates for '%s' takes (%s)", len(cs), cs[0].f.Name, strings.Join(names, ", "))
 			} else {
-				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
+				c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
 				c.ambiguities++
 				c.pclaAmbiguous(ts)
 				c.ambiguousLambdas(x)

@@ -81,8 +81,8 @@ func newMetroAnalysis(u *Universe, checkers []*Checker) *metroAnalysis {
 	return m
 }
 
-func (m *metroAnalysis) errorf(c *Checker, p syntax.Pos, format string, args ...any) {
-	m.errs = append(m.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+func (m *metroAnalysis) errorf(c *Checker, p syntax.Pos, name, format string, args ...any) {
+	m.errs = append(m.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Name: name})
 }
 
 func (m *metroAnalysis) unsupported(c *Checker, p syntax.Pos, format string, args ...any) {
@@ -562,7 +562,7 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 	for _, scope := range order {
 		sc := m.class(scope)
 		if sc == nil {
-			m.errorf(c, d.P, "unresolved Metro scope %s", scope)
+			m.errorf(c, d.P, "", "unresolved Metro scope %s", scope)
 			continue
 		}
 		if fns := byScope[scope]; len(fns) > 0 {
@@ -746,7 +746,7 @@ func (m *metroAnalysis) graphCalls(c *Checker) {
 			src = m.factoryCall(cls)
 		}
 		if src == "" {
-			m.errorf(c, s.x.P, "%s is not a Metro graph factory", cls.DisplayName())
+			m.errorf(c, s.x.P, "", "%s is not a Metro graph factory", cls.DisplayName())
 			continue
 		}
 		calls := m.plan.calls[c.file.Path]

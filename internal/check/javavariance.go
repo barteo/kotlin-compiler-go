@@ -46,7 +46,7 @@ func (c *Checker) javaVariance(f *types.FunSym, p *types.VarSym, a syntax.Expr, 
 	lower := want // the platform type's lower bound, nullable
 	lower.P, lower.N = false, true
 	if !c.subtype(dropOut(t, true), lower) {
-		c.errorf(a.Pos(), "Java type mismatch: expected '%s' but found '%s'. Use explicit cast.", want, t)
+		c.errorf(a.Pos(), "JAVA_TYPE_MISMATCH", "Java type mismatch: expected '%s' but found '%s'. Use explicit cast.", want, t)
 	}
 }
 

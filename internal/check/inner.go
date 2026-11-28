@@ -23,13 +23,13 @@ import (
 func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) {
 	switch {
 	case outer == nil:
-		c.errorf(d.P, "modifier 'inner' is not applicable to 'top level class'")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifier 'inner' is not applicable to 'top level class'")
 		return
 	case outer.Interface || outer.Object:
-		c.errorf(d.P, "modifier 'inner' is not applicable inside an object or an interface")
+		c.errorf(d.P, "WRONG_MODIFIER_CONTAINING_DECLARATION", "modifier 'inner' is not applicable inside an object or an interface")
 		return
 	case d.Interface || d.Object || d.Enum || d.Annotation:
-		c.errorf(d.PosOf("inner", d.P), "modifier 'inner' is only applicable to classes")
+		c.errorf(d.PosOf("inner", d.P), "WRONG_MODIFIER_TARGET", "modifier 'inner' is only applicable to classes")
 		return
 	}
 	sym.Inner = true
@@ -111,7 +111,7 @@ func (c *Checker) superOuter(cls *types.ClassSym, x *syntax.Call) bool {
 	}
 	outer, _ := c.implicitOuter(sc.Outer, x.P)
 	if outer == nil {
-		c.errorf(x.P, "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
+		c.errorf(x.P, "INNER_CLASS_CONSTRUCTOR_NO_RECEIVER", "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
 		c.args(x, nil)
 		return false
 	}
@@ -252,11 +252,11 @@ func (c *Checker) typeParamInScope(p *types.TypeParamSym) bool {
 func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	cls := c.lookupClass(ref.Name)
 	if cls == nil {
-		c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
+		c.errorf(ref.P, "UNRESOLVED_REFERENCE", "unresolved or unsupported type: %s", ref.Name)
 		return types.InvalidType
 	}
 	if cls.Ensure(); !cls.Inner {
-		c.errorf(ref.P, "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
+		c.errorf(ref.P, "TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED", "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
 		if ref.Outer == nil {
 			return types.InvalidType
 		}
@@ -285,7 +285,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	if (c.refLHS || lhsOuter) && ref.Outer == nil && len(ref.Args) < len(cls.TypeParams) {
 		// Inner<B>::f in Outer's code, or Inner<B> of Inner<B>.Deeper<C>::f:
 		// kotlinc wants the outer classes' type arguments too.
-		c.errorf(ref.P, "%s expected for class %s", countArgs(len(cls.TypeParams)), cls.DisplayName())
+		c.errorf(ref.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for class %s", countArgs(len(cls.TypeParams)), cls.DisplayName())
 		return types.InvalidType
 	}
 	if c.refLHS && ref.Outer != nil {
@@ -299,7 +299,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 					top := cls
 					for ; top.Inner && top.Outer != nil; top = top.Outer {
 					}
-					c.errorf(nested.P, "type arguments are only allowed on an outer class of an inner class: %s", top.DisplayName())
+					c.errorf(nested.P, "TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED", "type arguments are only allowed on an outer class of an inner class: %s", top.DisplayName())
 				}
 				if t.K != types.Invalid {
 					c.lhsArgsWarning(cls, ref, t)
@@ -315,7 +315,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	if c.refLHS && len(ref.Args) > own && len(ref.Args) <= len(cls.TypeParams) {
 		extra = len(ref.Args) - own
 	} else if len(ref.Args) != own {
-		c.errorf(ref.P, "%s expected for class %s", countArgs(own), cls.DisplayName())
+		c.errorf(ref.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for class %s", countArgs(own), cls.DisplayName())
 		return types.InvalidType
 	}
 	inner := c.refLHS
@@ -356,9 +356,9 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 				continue
 			}
 			if strings.Contains(ref.Name, ".") { // G.I for G<T>.I
-				c.errorf(ref.P, "%s expected for class %s", countArgs(cls.OuterParams), cls.Outer.DisplayName())
+				c.errorf(ref.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for class %s", countArgs(cls.OuterParams), cls.Outer.DisplayName())
 			} else {
-				c.errorf(ref.P, "type arguments of the outer class of %s are needed here: write %s<...>.%s", cls.DisplayName(), cls.Outer.DisplayName(), ref.Name)
+				c.errorf(ref.P, "OUTER_CLASS_ARGUMENTS_REQUIRED", "type arguments of the outer class of %s are needed here: write %s<...>.%s", cls.DisplayName(), cls.Outer.DisplayName(), ref.Name)
 			}
 			return types.InvalidType
 		}
@@ -366,7 +366,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	}
 	sup, ok := c.outerAs(outer, cls.Outer)
 	if !ok {
-		c.errorf(ref.P, "%s is not an inner class of %s", ref.Name, outer)
+		c.errorf(ref.P, "UNRESOLVED_REFERENCE", "%s is not an inner class of %s", ref.Name, outer)
 		return types.InvalidType
 	}
 	for i := range cls.TypeParams[own+extra:] {

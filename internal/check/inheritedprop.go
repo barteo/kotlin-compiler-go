@@ -20,10 +20,10 @@ func (c *Checker) inheritedPropImpl(d *syntax.ClassDecl, cls, s *types.ClassSym,
 	}
 	switch {
 	case p.Mutable && !q.Mutable:
-		c.errorf(d.P, "var '%s' of %s is implemented by an inherited val of %s", p.Name, s.Name, q.Owner.Name)
+		c.errorf(d.P, "VAR_IMPLEMENTED_BY_INHERITED_VAL_ERROR", "var '%s' of %s is implemented by an inherited val of %s", p.Name, s.Name, q.Owner.Name)
 	case p.Mutable && pt != qt && !(c.subtype(pt, qt) && c.subtype(qt, pt)):
-		c.errorf(d.P, "the types of the inherited var '%s' of %s and %s don't match: %s and %s", p.Name, s.Name, q.Owner.Name, pt, qt)
+		c.errorf(d.P, "VAR_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited var '%s' of %s and %s don't match: %s and %s", p.Name, s.Name, q.Owner.Name, pt, qt)
 	case !c.subtype(qt, pt):
-		c.errorf(d.P, "the types of the inherited property '%s' of %s and %s don't match: %s isn't a subtype of %s", p.Name, s.Name, q.Owner.Name, qt, pt)
+		c.errorf(d.P, "PROPERTY_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited property '%s' of %s and %s don't match: %s isn't a subtype of %s", p.Name, s.Name, q.Owner.Name, qt, pt)
 	}
 }

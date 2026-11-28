@@ -80,10 +80,10 @@ func (c *Checker) enumIntrinsic(x *syntax.Call, t types.Type) {
 	case e.K == types.Invalid || e.HasVars():
 	case e.K == types.TypeParam:
 		if !e.Param().Reified {
-			c.errorf(x.P, "cannot use '%s' as reified type parameter: use a class instead", e.Param().Name)
+			c.errorf(x.P, "TYPE_PARAMETER_AS_REIFIED", "cannot use '%s' as reified type parameter: use a class instead", e.Param().Name)
 		}
 	case e.K != types.Class || !c.isSubclassOf(e.C, "java/lang/Enum"):
-		c.errorf(x.P, "type argument is not within its bounds: '%s' is not an enum class", e)
+		c.errorf(x.P, "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: '%s' is not an enum class", e)
 	}
 }
 
@@ -173,15 +173,15 @@ func (c *Checker) reified(x *syntax.Call, t types.Type, sink *system) {
 	}
 	switch e := types.ArrayElem(t); {
 	case e.K == types.TypeParam && !e.Param().Reified:
-		c.errorf(x.P, "cannot use '%s' as reified type parameter: use a class instead", e.Param().Name)
+		c.errorf(x.P, "TYPE_PARAMETER_AS_REIFIED", "cannot use '%s' as reified type parameter: use a class instead", e.Param().Name)
 	case erasedArrayElem(e) != nil:
-		c.errorf(x.P, "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(e).Name)
+		c.errorf(x.P, "TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR", "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(e).Name)
 	case e.K == types.Nothing && !e.N && (len(x.TypeArgs) == 1 || !typedDeadLast(x)):
 		p := x.P
 		if len(x.TypeArgs) == 1 {
 			p = x.TypeArgs[0].P
 		}
-		c.errorf(p, "cannot use 'Nothing' as reified type parameter")
+		c.errorf(p, "REIFIED_TYPE_FORBIDDEN_SUBSTITUTION", "cannot use 'Nothing' as reified type parameter")
 	}
 }
 
@@ -242,7 +242,7 @@ func (c *Checker) arrayNothingRef(ref *syntax.TypeRef, t types.Type) {
 	}
 	if a := t.A.List[0]; a.V != types.Star && nothingElem(a.T) {
 		c.done[arrayNothingRef{ref}] = true
-		c.errorf(ref.P, "%s", arrayNothingMsg(t))
+		c.errorf(ref.P, "UNSUPPORTED", "%s", arrayNothingMsg(t))
 	}
 }
 
@@ -257,10 +257,10 @@ func (c *Checker) arrayNothingExpr(x *syntax.Call, t types.Type) {
 		return
 	}
 	if at.A.List[0].T.N {
-		c.errorf(x.P, "%s", arrayNothingMsg(at))
+		c.errorf(x.P, "UNSUPPORTED", "%s", arrayNothingMsg(at))
 		return
 	}
-	c.errorf(x.P, "expression cannot have a type of 'Array<Nothing>'")
+	c.errorf(x.P, "UNSUPPORTED", "expression cannot have a type of 'Array<Nothing>'")
 }
 
 // aliasArrayNothing reports a typealias that expands to a type with an
@@ -272,7 +272,7 @@ func (c *Checker) aliasArrayNothing(d *syntax.TypeAliasDecl) {
 		return
 	}
 	if at, ok := arrayOfNothing(a.Type); ok && !at.A.List[0].T.N {
-		c.errorf(d.Type.P, "type alias expanded to malformed type '%s'", a.Type)
+		c.errorf(d.Type.P, "TYPEALIAS_EXPANDS_TO_ARRAY_OF_NOTHINGS", "type alias expanded to malformed type '%s'", a.Type)
 		return
 	}
 	saved, savedCls, savedChecks, n := c.tparams, c.lookupCls, c.noBoundChecks, len(c.errs)
@@ -303,7 +303,7 @@ func (c *Checker) aliasArrayNothing(d *syntax.TypeAliasDecl) {
 	c.errs = c.errs[:n]
 	c.tparams, c.lookupCls, c.noBoundChecks = saved, savedCls, savedChecks
 	for _, ref := range refs {
-		c.errorf(ref.P, "'Array<Nothing?>' isn't supported on the JVM")
+		c.errorf(ref.P, "UNSUPPORTED", "'Array<Nothing?>' isn't supported on the JVM")
 	}
 }
 

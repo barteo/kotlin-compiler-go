@@ -15,10 +15,10 @@ func (c *Checker) declareAlias(d *syntax.TypeAliasDecl, outer *types.ClassSym) *
 		Private: d.Visibility == syntax.Private, Internal: d.Visibility == syntax.Internal}
 	for _, p := range d.TypeParams {
 		if len(p.Bounds) > 0 {
-			c.errorf(p.P, "bounds are not allowed on type alias parameters")
+			c.errorf(p.P, "BOUND_ON_TYPE_ALIAS_PARAMETER_NOT_ALLOWED", "bounds are not allowed on type alias parameters")
 		}
 		if p.Reified {
-			c.errorf(p.P, "only type parameters of inline functions can be reified")
+			c.errorf(p.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified")
 		}
 	}
 	a.TypeParams = c.declareTypeParams(d.TypeParams, a, false)
@@ -57,7 +57,7 @@ func (c *Checker) resolveAlias(a *types.AliasSym) {
 			if x.Resolved {
 				continue
 			}
-			c.u.aliasFile[x].errorf(x.Decl.(*syntax.TypeAliasDecl).P, "recursive type alias in expansion: %s", x.Name)
+			c.u.aliasFile[x].errorf(x.Decl.(*syntax.TypeAliasDecl).P, "RECURSIVE_TYPEALIAS_EXPANSION", "recursive type alias in expansion: %s", x.Name)
 			x.Type, x.Resolved = types.InvalidType, true
 		}
 		return
@@ -127,9 +127,9 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 			p = ref.Args[0].P
 		}
 		if len(a.TypeParams) == 0 {
-			c.errorf(p, "no type arguments expected for typealias %s", a.Name)
+			c.errorf(p, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for typealias %s", a.Name)
 		} else {
-			c.errorf(p, "%s expected for typealias %s%s", countArgs(len(a.TypeParams)), a.Name, types.TypeParamsString(a.TypeParams))
+			c.errorf(p, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for typealias %s%s", countArgs(len(a.TypeParams)), a.Name, types.TypeParamsString(a.TypeParams))
 		}
 		return types.InvalidType
 	}
@@ -145,7 +145,7 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 	}
 	for i, arg := range args {
 		if (arg.V == types.In || arg.V == types.Out) && projectionConflicts(a.Type, a.TypeParams[i], arg.V) {
-			c.errorf(ref.Args[i].P, "conflicting projection in typealias expansion: typealias %s uses %s where '%s' conflicts with the variance", a.Name, a.TypeParams[i].Name, arg.V)
+			c.errorf(ref.Args[i].P, "CONFLICTING_PROJECTION_IN_TYPEALIAS_EXPANSION", "conflicting projection in typealias expansion: typealias %s uses %s where '%s' conflicts with the variance", a.Name, a.TypeParams[i].Name, arg.V)
 			// As in K2, the argument is then a star.
 			args[i] = types.Arg{V: types.Star}
 		}
@@ -258,7 +258,7 @@ func (c *Checker) projection(a *syntax.TypeArg, p *types.TypeParamSym, cls *type
 	switch {
 	case a.Variance == types.Inv || a.Variance == types.Star:
 	case p.Var != types.Inv && a.Variance != p.Var:
-		c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
+		c.errorf(a.P, "CONFLICTING_PROJECTION", "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
 	case a.Variance == p.Var:
 		c.redundantProjection(a.P)
 	}
@@ -318,7 +318,7 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		}
 		if t.K == types.Class && t.C == cls && t.A != nil && slices.ContainsFunc(t.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
 			// CIn() of typealias CIn = C<in Int>.
-			c.errorf(p, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
+			c.errorf(p, "PROJECTION_ON_NON_CLASS_TYPE_ARGUMENT", "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", t)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -383,7 +383,7 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 		return false
 	}
 	if t.K != types.Class || t.C != cls {
-		c.errorf(x.TypeArgs[0].P, "type arguments with _ are not supported for typealias %s", a.Name)
+		c.errorf(x.TypeArgs[0].P, "", "type arguments with _ are not supported for typealias %s", a.Name)
 		return false
 	}
 	pos := x.TypeArgs[0].P
@@ -420,7 +420,7 @@ func (c *Checker) checkAliasBounds() {
 			continue
 		}
 		if a.Type.K == types.Class && compilerRequiredAnnotations[a.Type.C.Name] {
-			c.errorf(d.Type.P, "typealias to a compiler-required annotation '%s' is not allowed. Remove the typealias and use the annotation directly", strings.ReplaceAll(a.Type.C.Name, "/", "."))
+			c.errorf(d.Type.P, "TYPEALIAS_EXPANDS_TO_COMPILER_REQUIRED_ANNOTATION_ERROR", "typealias to a compiler-required annotation '%s' is not allowed. Remove the typealias and use the annotation directly", strings.ReplaceAll(a.Type.C.Name, "/", "."))
 		}
 		own := func(t types.Type) bool {
 			return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param().Owner == a })
@@ -434,7 +434,7 @@ func (c *Checker) checkAliasBounds() {
 		}
 		c.tparams, c.lookupCls = a.TypeParams, a.Outer
 		if r := d.Type; a.Type.IsParam() && len(r.Args) == 0 && r.Ret == nil && r.Outer == nil && r.Known == nil && c.lookupTypeParam(r.Name) != nil {
-			c.errorf(r.P, "typealias should expand to a class, an interface or an object, not a type parameter")
+			c.errorf(r.P, "TYPEALIAS_SHOULD_EXPAND_TO_CLASS", "typealias should expand to a class, an interface or an object, not a type parameter")
 		}
 		c.refBounds(a.Type, d.Type, own, stars)
 	}
@@ -603,9 +603,9 @@ func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(typ
 					break
 				}
 				if alias != nil {
-					c.errorf(at(i), "type argument is not within its bounds in the expansion of typealias %s: type parameter '%s' must be subtype of '%s', but actual: '%s'", alias.Name, ps[i].Name, b, a.T)
+					c.errorf(at(i), "UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION", "type argument is not within its bounds in the expansion of typealias %s: type parameter '%s' must be subtype of '%s', but actual: '%s'", alias.Name, ps[i].Name, b, a.T)
 				} else {
-					c.errorf(at(i), "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
+					c.errorf(at(i), "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 				}
 				break
 			}
@@ -625,11 +625,11 @@ func (c *Checker) abbreviatedNothing() {
 			switch d := d.(type) {
 			case *syntax.FunDecl:
 				if c.nothingAlias(d.Ret) {
-					c.errorf(d.P, "'Nothing' return type needs to be specified explicitly")
+					c.errorf(d.P, "ABBREVIATED_NOTHING_RETURN_TYPE", "'Nothing' return type needs to be specified explicitly")
 				}
 			case *syntax.PropDecl:
 				if c.nothingAlias(d.Type) {
-					c.errorf(d.P, "'Nothing' property type needs to be specified explicitly")
+					c.errorf(d.P, "ABBREVIATED_NOTHING_PROPERTY_TYPE", "'Nothing' property type needs to be specified explicitly")
 				}
 			case *syntax.ClassDecl:
 				walk(d.Members, d.Sym)

@@ -120,43 +120,138 @@ Why kc reports no error on the line of an expected one, the first that applies: 
 | nearby | 19 | 16.5% | `UNRESOLVED_REFERENCE` 4, `ARGUMENT_TYPE_MISMATCH` 2, `INVISIBLE_REFERENCE` 2, `WRONG_NUMBER_OF_TYPE_ARGUMENTS` 2, `ARGUMENT_PASSED_TWICE` 1 |
 | missing-check | 46 | 40.0% | `ARGUMENT_TYPE_MISMATCH` 9, `UNRESOLVED_REFERENCE_WRONG_RECEIVER` 7, `CANNOT_INFER_PARAMETER_TYPE` 5, `RETURN_TYPE_MISMATCH` 4, `UNRESOLVED_REFERENCE` 3 |
 
+### Errors by name
+
+kc reports 18164 of the 22025 expected errors (82.5%) on their lines under kotlinc's names, and 3746 (17.1% of those it reports on their lines) under other names: the error is found, but called something else, or kc reports another error first. [diagnostics-misnamed.tsv](diagnostics-misnamed.tsv) lists each expected error kc doesn't report under its name, with the names kc reports on its line.
+
+The diagnostics kc reports most often under other names:
+
+| Diagnostic | Expected | Reported | Named | Other name |
+|:---|---:|---:|---:|---:|
+| `UNRESOLVED_REFERENCE` | 2553 | 2525 | 1979 | 546 |
+| `ARGUMENT_TYPE_MISMATCH` | 1491 | 1472 | 1207 | 265 |
+| `SMARTCAST_IMPOSSIBLE` | 183 | 183 | 0 | 183 |
+| `INVISIBLE_REFERENCE` | 525 | 523 | 383 | 140 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 635 | 630 | 510 | 120 |
+| `INAPPLICABLE_CANDIDATE` | 127 | 127 | 8 | 119 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 251 | 244 | 140 | 104 |
+| `WRONG_MODIFIER_TARGET` | 375 | 375 | 281 | 94 |
+| `NONE_APPLICABLE` | 150 | 150 | 62 | 88 |
+| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 96 | 96 | 21 | 75 |
+| `NO_VALUE_FOR_PARAMETER` | 175 | 174 | 102 | 72 |
+| `INSTANCE_ACCESS_BEFORE_SUPER_CALL` | 116 | 116 | 58 | 58 |
+| `UNSUPPORTED` | 233 | 232 | 176 | 56 |
+| `MEMBER_PROJECTED_OUT` | 50 | 48 | 0 | 48 |
+| `DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE` | 45 | 45 | 0 | 45 |
+| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 222 | 182 | 40 |
+| `RETURN_TYPE_MISMATCH` | 418 | 413 | 373 | 40 |
+| `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 37 | 37 | 0 | 37 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 426 | 389 | 37 |
+| `TOO_MANY_ARGUMENTS` | 118 | 118 | 81 | 37 |
+| `VALUE_PARAMETER_WITHOUT_EXPLICIT_TYPE` | 36 | 36 | 0 | 36 |
+| `INCOMPATIBLE_ENUM_COMPARISON_ERROR` | 34 | 34 | 0 | 34 |
+| `INCOMPATIBLE_MODIFIERS` | 74 | 74 | 43 | 31 |
+| `FUNCTION_CALL_EXPECTED` | 29 | 29 | 0 | 29 |
+| `ASSIGNING_SINGLE_ELEMENT_TO_VARARG_IN_NAMED_FORM_FUNCTION_ERROR` | 27 | 27 | 0 | 27 |
+| `ENUM_ENTRY_AS_TYPE` | 27 | 27 | 0 | 27 |
+| `UNINITIALIZED_PARAMETER` | 27 | 27 | 0 | 27 |
+| `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 23 | 23 | 0 | 23 |
+| `NO_COMPANION_OBJECT` | 53 | 53 | 30 | 23 |
+| `INACCESSIBLE_OUTER_CLASS_RECEIVER` | 40 | 40 | 18 | 22 |
+| `NON_LOCAL_SUSPENSION_POINT` | 22 | 22 | 0 | 22 |
+| `VAL_REASSIGNMENT` | 231 | 230 | 209 | 21 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 161 | 140 | 21 |
+| `NAME_FOR_AMBIGUOUS_PARAMETER` | 31 | 31 | 11 | 20 |
+| `TYPE_MISMATCH` | 33 | 31 | 11 | 20 |
+| `EXPRESSION_EXPECTED` | 19 | 19 | 0 | 19 |
+| `SUPERTYPE_INITIALIZED_IN_INTERFACE` | 18 | 18 | 0 | 18 |
+| `BREAK_OR_CONTINUE_OUTSIDE_A_LOOP` | 17 | 17 | 0 | 17 |
+| `FUNCTION_DECLARATION_WITH_NO_NAME` | 17 | 17 | 0 | 17 |
+| `LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR` | 17 | 17 | 0 | 17 |
+
+What kc reports instead, by the expected error and kc's names of the errors on its line (`-` for an error kc doesn't name):
+
+| Expected | kc | Count |
+|:---|:---|---:|
+| `UNRESOLVED_REFERENCE` | `UNSAFE_CALL` | 306 |
+| `SMARTCAST_IMPOSSIBLE` | `UNSAFE_CALL` | 137 |
+| `UNRESOLVED_REFERENCE` | `SYNTAX` | 114 |
+| `INVISIBLE_REFERENCE` | `UNRESOLVED_REFERENCE` | 105 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | `UNRESOLVED_REFERENCE` | 53 |
+| `MEMBER_PROJECTED_OUT` | `ARGUMENT_TYPE_MISMATCH` | 47 |
+| `CANNOT_INFER_PARAMETER_TYPE` | `UPPER_BOUND_VIOLATED` | 39 |
+| `INAPPLICABLE_CANDIDATE` | `ARGUMENT_TYPE_MISMATCH` | 39 |
+| `SMARTCAST_IMPOSSIBLE` | `UNRESOLVED_REFERENCE` | 39 |
+| `INAPPLICABLE_CANDIDATE` | `UPPER_BOUND_VIOLATED` | 37 |
+| `ARGUMENT_TYPE_MISMATCH` | `UPPER_BOUND_VIOLATED` | 35 |
+| `INCOMPATIBLE_ENUM_COMPARISON_ERROR` | `EQUALITY_NOT_APPLICABLE` | 34 |
+| `UNSUPPORTED` | `SYNTAX` | 34 |
+| `ARGUMENT_TYPE_MISMATCH` | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 31 |
+| `NONE_APPLICABLE` | `UNRESOLVED_REFERENCE` | 31 |
+| `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | `SYNTAX` | 30 |
+| `ENUM_ENTRY_AS_TYPE` | `UNRESOLVED_REFERENCE` | 27 |
+| `INSTANCE_ACCESS_BEFORE_SUPER_CALL` | `UNRESOLVED_REFERENCE` | 27 |
+| `CANNOT_INFER_PARAMETER_TYPE` | `UNRESOLVED_REFERENCE` | 25 |
+| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 25 |
+| `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 23 |
+| `ARGUMENT_TYPE_MISMATCH` | `CANNOT_INFER_PARAMETER_TYPE` | 23 |
+| `UNINITIALIZED_PARAMETER` | `UNRESOLVED_REFERENCE` | 22 |
+| `UNRESOLVED_REFERENCE` | `FUNCTION_EXPECTED` | 22 |
+| `ARGUMENT_TYPE_MISMATCH` | `UNRESOLVED_REFERENCE` | 21 |
+| `ARGUMENT_TYPE_MISMATCH` | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 21 |
+| `NON_LOCAL_SUSPENSION_POINT` | `ILLEGAL_SUSPEND_FUNCTION_CALL` | 21 |
+| `VALUE_PARAMETER_WITHOUT_EXPLICIT_TYPE` | `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 21 |
+| `ARGUMENT_TYPE_MISMATCH` | `NONE_APPLICABLE` | 20 |
+| `TOO_MANY_ARGUMENTS` | `UNRESOLVED_REFERENCE` | 20 |
+| `ASSIGNING_SINGLE_ELEMENT_TO_VARARG_IN_NAMED_FORM_FUNCTION_ERROR` | `ARGUMENT_TYPE_MISMATCH` | 19 |
+| `EXPRESSION_EXPECTED` | `SYNTAX` | 19 |
+| `FUNCTION_CALL_EXPECTED` | `UNRESOLVED_REFERENCE` | 19 |
+| `UNSUPPORTED` | `UNRESOLVED_REFERENCE` | 19 |
+| `WRONG_MODIFIER_TARGET` | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 19 |
+| `WRONG_MODIFIER_TARGET` | `UNRESOLVED_REFERENCE` | 19 |
+| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | `UNRESOLVED_REFERENCE` | 18 |
+| `ARGUMENT_TYPE_MISMATCH` | `RETURN_TYPE_MISMATCH` | 18 |
+| `NAME_FOR_AMBIGUOUS_PARAMETER` | `NAMED_PARAMETER_NOT_FOUND` | 18 |
+| `NO_VALUE_FOR_PARAMETER` | `SYNTAX` | 18 |
+| *750 more* | | |
+
 ## Errors kotlinc doesn't report
 
-kc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
+kc's errors on lines where the markup expects no diagnostic, in the tests it checked, by their names, or by their messages with names replaced by _ for those kc doesn't name. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.
 
 | Error | Count |
 |:---|---:|
-| `type mismatch: inferred type is _ but _ was expected` | 83 |
-| `unresolved reference: _` | 83 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 34 |
-| `class '_' is not abstract and does not implement abstract member '_'` | 20 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 17 |
-| `unresolved or unsupported type: _` | 14 |
-| `no function '_' takes n arguments` | 11 |
-| `unresolved import: _` | 11 |
-| `cannot use '_' as reified type parameter` | 6 |
-| `captured values cannot be initialized because of possible reassignments` | 6 |
-| `'_' modifier is required on '_'` | 5 |
-| `ambiguous call: n candidates for '_' take (_)` | 5 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 5 |
-| `val cannot be reassigned` | 5 |
-| `'_' expression must be exhaustive, add necessary '_' branch` | 4 |
-| `'_' is not allowed outside a loop` | 4 |
-| `'_' overrides nothing` | 4 |
-| `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
-| `inheriting an annotation class is prohibited` | 4 |
-| `no context argument for '_' found` | 4 |
-| `named arguments are not allowed for non-Kotlin functions` | 3 |
-| `names _, __, ___, ..., can be used only in back-ticks ('_', '__', '___', ...)` | 3 |
-| `there'_'B.Bn'` | 3 |
-| `'_' annotation is applicable only to value classes` | 2 |
-| `conflicting overloads: _` | 2 |
-| `expected a name` | 2 |
-| `expected parameter of type _` | 2 |
-| `incompatible types Int and Nothing` | 2 |
-| `multiple vararg-parameters are prohibited` | 2 |
-| `not enough information to infer type arguments of ::fix: specify the expected function type` | 2 |
-| *55 more* | |
+| `UNRESOLVED_REFERENCE` | 99 |
+| `ARGUMENT_TYPE_MISMATCH` | 42 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 36 |
+| `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 20 |
+| `UNSAFE_CALL` | 17 |
+| `INITIALIZER_TYPE_MISMATCH` | 14 |
+| `UNRESOLVED_IMPORT` | 11 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 9 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 9 |
+| `ASSIGNMENT_TYPE_MISMATCH` | 8 |
+| `CAPTURED_VAL_INITIALIZATION` | 6 |
+| `CONDITION_TYPE_MISMATCH` | 6 |
+| `RETURN_TYPE_MISMATCH` | 6 |
+| `TOO_MANY_ARGUMENTS` | 6 |
+| `TYPE_PARAMETER_AS_REIFIED` | 6 |
+| `CANNOT_INFER_VALUE_PARAMETER_TYPE` | 5 |
+| `SYNTAX` | 5 |
+| `UPPER_BOUND_VIOLATED` | 5 |
+| `VAL_REASSIGNMENT` | 5 |
+| `BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY` | 4 |
+| `EXTENDING_AN_ANNOTATION_CLASS_ERROR` | 4 |
+| `NONE_APPLICABLE` | 4 |
+| `NOTHING_TO_OVERRIDE` | 4 |
+| `NO_CONTEXT_ARGUMENT` | 4 |
+| `NO_ELSE_IN_WHEN` | 4 |
+| `USAGE_IS_NOT_INLINABLE` | 4 |
+| `INFIX_MODIFIER_REQUIRED` | 3 |
+| `NAMED_ARGUMENTS_NOT_ALLOWED` | 3 |
+| `NO_VALUE_FOR_PARAMETER` | 3 |
+| `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 3 |
+| *40 more* | |
 
 ## Unsupported features
 

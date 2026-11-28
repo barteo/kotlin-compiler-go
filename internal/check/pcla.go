@@ -199,7 +199,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	fail := func(why string) (types.Type, bool) {
 		c.pclaStat("unfinished", l.P, why)
 		c.errs = append(c.errs, k.errs...)
-		c.errorf(l.P, "internal error: builder inference left the lambda's check unfinished (%s)", why)
+		c.errorf(l.P, "", "internal error: builder inference left the lambda's check unfinished (%s)", why)
 		r.checks = slices.DeleteFunc(r.checks, func(k pclaCheck) bool { return k.l == l })
 		return types.InvalidType, true
 	}
@@ -377,7 +377,7 @@ func (c *Checker) pclaCommit(s *system, r *stubRun, l *syntax.Lambda, w lambdaWa
 	if at := r.failed; at.Line > 0 {
 		for _, x := range c.pclaPoisoned[l] {
 			if (x.p.Line > at.Line || x.p.Line == at.Line && x.p.Col > at.Col) && sub.Apply(x.t).Has(func(u types.Type) bool { return u.K == types.Invalid }) {
-				c.errorf(x.p, "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", x.name)
+				c.errorf(x.p, "UNRESOLVED_REFERENCE_WRONG_RECEIVER", "unresolved reference: %s: no candidate takes the receiver, whose builder's type arguments can't be inferred", x.name)
 			}
 		}
 	}
@@ -440,8 +440,8 @@ func (s *system) pclaComplete(sub types.Subst) {
 			!slices.ContainsFunc(tv.lower, func(l types.Type) bool { return !uninferred(l) && s.proper(l) }) {
 			tv.fixed = true
 			s.vals[tv.v] = types.Arg{T: types.InvalidType}
-			if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, msg}) {
-				s.errs = append(s.errs, inferError{tv.pos, msg})
+			if msg := "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."; !slices.Contains(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", msg}) {
+				s.errs = append(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", msg})
 			}
 		}
 	}
@@ -459,7 +459,7 @@ func (s *system) pclaComplete(sub types.Subst) {
 		s.fixups[i](s)
 	}
 	for ; n < len(s.errs); n++ {
-		s.c.errorf(s.errs[n].pos, "%s", s.errs[n].msg)
+		s.c.errorf(s.errs[n].pos, s.errs[n].name, "%s", s.errs[n].msg)
 	}
 }
 
@@ -976,9 +976,9 @@ func (c *Checker) unfixedReceiver(x syntax.Expr, t types.Type, name string, p sy
 	}
 	switch {
 	case name == "hashCode" || name == "toString" || name == "equals" || c.extCallees(name, t) != nil:
-		c.errorf(syntax.StartPos(x), "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", t.Flex().Param().Name)
+		c.errorf(syntax.StartPos(x), "BUILDER_INFERENCE_STUB_RECEIVER", "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", t.Flex().Param().Name)
 	default:
-		c.errorf(p, "unresolved reference: %s", name)
+		c.errorf(p, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 	}
 	return true
 }

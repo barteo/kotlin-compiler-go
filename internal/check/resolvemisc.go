@@ -36,7 +36,7 @@ func (c *Checker) extFuncAnnotated(ref *syntax.TypeRef, t types.Type) types.Type
 	switch {
 	case a == nil:
 	case !t.IsFunc() || t.A.Len() < 2:
-		c.errorf(a.P, "'@ExtensionFunctionType' is only allowed on function types with at least one parameter")
+		c.errorf(a.P, "WRONG_EXTENSION_FUNCTION_TYPE", "'@ExtensionFunctionType' is only allowed on function types with at least one parameter")
 	case ref.Ret == nil && !t.IsExtFunc():
 		return t.WithReceiver()
 	}

@@ -75,7 +75,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			reported[p] = map[string]bool{}
 		}
 		reported[p][msg] = true
-		c.errorf(p, "%s", msg)
+		c.errorf(p, "PRIVATE_CLASS_MEMBER_FROM_INLINE", "%s", msg)
 	}
 	// lessVisible returns how type t, or a type among its arguments, is
 	// less visible than d, and that type, or "".

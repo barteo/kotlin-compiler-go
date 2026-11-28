@@ -37,7 +37,7 @@ func (c *Checker) javaMissingClass(x *syntax.Call, cands []callee) bool {
 	if missing == "" {
 		return false
 	}
-	c.errorf(x.P, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", strings.ReplaceAll(missing, "/", "."))
+	c.errorf(x.P, "MISSING_DEPENDENCY_CLASS", "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", strings.ReplaceAll(missing, "/", "."))
 	return true
 }
 

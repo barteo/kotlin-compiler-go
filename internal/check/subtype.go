@@ -616,9 +616,9 @@ func (c *Checker) joinBranch(result, bt, want types.Type, p syntax.Pos) (types.T
 	if want.K != types.Invalid && !want.HasVars() && isBuiltin(result) && isBuiltin(bt) && result.NonNull() != bt.NonNull() &&
 		!c.subtype(types.AnyType, want.NonNull()) {
 		if !c.subtype(bt, want) {
-			c.errorf(p, "type mismatch: inferred type is %s but %s was expected", bt, want)
+			c.errorf(p, "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", bt, want)
 		} else {
-			c.errorf(p, "type mismatch: inferred type is %s but %s was expected", result, want)
+			c.errorf(p, "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", result, want)
 		}
 		return want, true
 	}

@@ -60,10 +60,10 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 	}
 	switch {
 	case d.Interface:
-		c.errorf(secs[0].P, "an interface may not have a constructor")
+		c.errorf(secs[0].P, "CONSTRUCTOR_IN_INTERFACE", "an interface may not have a constructor")
 		return
 	case d.Object:
-		c.errorf(secs[0].P, "constructors are not allowed for objects")
+		c.errorf(secs[0].P, "CONSTRUCTOR_IN_OBJECT", "constructors are not allowed for objects")
 		return
 	}
 	// The constructors by erased parameters, to report conflicts.
@@ -84,13 +84,13 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 			Private: privateCtor(d, &sc.Modifiers)}
 		sc.Sym = f
 		if sc.External {
-			c.errorf(sc.ExternalP, "modifier 'external' is not applicable to 'constructor'")
+			c.errorf(sc.ExternalP, "WRONG_MODIFIER_TARGET", "modifier 'external' is not applicable to 'constructor'")
 		}
 		c.tparams = cls.TypeParams
 		names := map[string]bool{}
 		for _, p := range sc.Params {
 			if names[p.Name] {
-				c.errorf(p.P, "conflicting declarations: %s", p.Name)
+				c.errorf(p.P, "REDECLARATION", "conflicting declarations: %s", p.Name)
 			}
 			names[p.Name] = true
 			p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
@@ -99,18 +99,18 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 		c.tparams = nil
 		c.checkVarargs(sc.Params)
 		if d.Enum && sc.Explicit && sc.Visibility != syntax.Private {
-			c.errorf(sc.P, "constructor must be private in enum class")
+			c.errorf(sc.P, "NON_PRIVATE_CONSTRUCTOR_IN_ENUM", "constructor must be private in enum class")
 		}
 		if k := paramKey(f); seen[k] != (syntax.Pos{}) {
 			switch {
 			case hidden[k] || f.Hidden:
-				c.errorf(sc.P, "platform declaration clash: constructor%s", k)
+				c.errorf(sc.P, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: constructor%s", k)
 			default:
 				if !reported[k] {
 					reported[k] = true
-					c.errorf(seen[k], "conflicting overloads: constructor%s", k)
+					c.errorf(seen[k], "CONFLICTING_OVERLOADS", "conflicting overloads: constructor%s", k)
 				}
-				c.errorf(sc.P, "conflicting overloads: constructor%s", k)
+				c.errorf(sc.P, "CONFLICTING_OVERLOADS", "conflicting overloads: constructor%s", k)
 			}
 		} else {
 			seen[k], hidden[k] = sc.P, f.Hidden
@@ -198,11 +198,11 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 		x := sc.Delegation
 		var argNarrows []narrow // the delegation call's smart casts, which the body has
 		if d.Enum && x != nil && !sc.ToThis {
-			c.errorf(x.P, "call to super is not allowed in enum constructor")
+			c.errorf(x.P, "DELEGATION_SUPER_CALL_IN_ENUM_CONSTRUCTOR", "call to super is not allowed in enum constructor")
 		}
 		switch {
 		case d.HasPrimary && (x == nil || !sc.ToThis):
-			c.errorf(sc.P, "primary constructor call expected")
+			c.errorf(sc.P, "PRIMARY_CONSTRUCTOR_DELEGATION_CALL_EXPECTED", "primary constructor call expected")
 			if x != nil {
 				c.state = state{scope: params(), tparams: cls.TypeParams}
 				c.args(x, nil)
@@ -220,7 +220,7 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			// Without a JDK, java.lang.Object has no class: the
 			// constructor calls its constructor, which takes nothing.
 			if x != nil && len(x.Args) > 0 {
-				c.errorf(x.P, "too many arguments for public constructor Any()")
+				c.errorf(x.P, "TOO_MANY_ARGUMENTS", "too many arguments for public constructor Any()")
 			}
 			sc.Delegation = nil
 		default:
@@ -268,12 +268,12 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 				cands = superCtorCands(cls)
 			}
 			if implicit && !hasNoArgCtor(cands) {
-				c.errorf(sc.P, "explicit 'this' or 'super' call is required: there is no constructor in the superclass that can be called without arguments")
+				c.errorf(sc.P, "EXPLICIT_DELEGATION_CALL_REQUIRED", "explicit 'this' or 'super' call is required: there is no constructor in the superclass that can be called without arguments")
 				sc.Delegation = nil
 				break
 			}
 			if len(cands) == 0 {
-				c.errorf(x.P, "%s has no constructor that can be called here", x.Ctor.DisplayName())
+				c.errorf(x.P, "INVISIBLE_REFERENCE", "%s has no constructor that can be called here", x.Ctor.DisplayName())
 				c.args(x, nil)
 				sc.Delegation = nil
 				break
@@ -316,7 +316,7 @@ func (c *Checker) checkSecondaries(d *syntax.ClassDecl) {
 			seen[t] = true
 			next, _ := t.Delegation.Sym.Decl.(*syntax.SecondaryCtor)
 			if seen[next] {
-				c.errorf(sc.P, "there's a cycle in the delegation calls chain")
+				c.errorf(sc.P, "CYCLIC_CONSTRUCTOR_DELEGATION_CALL", "there's a cycle in the delegation calls chain")
 				break
 			}
 			t = next

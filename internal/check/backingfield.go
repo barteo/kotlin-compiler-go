@@ -22,29 +22,29 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 	bf.Checked = true
 	for _, m := range bf.Mods {
 		// As in kotlinc, the field is kept: private field = 1.
-		c.errorf(m.P, "modifier '%s' is not applicable to 'backing field'", m.Name)
+		c.errorf(m.P, "WRONG_MODIFIER_TARGET", "modifier '%s' is not applicable to 'backing field'", m.Name)
 	}
 	n := len(c.errs)
 	if d.Mutable {
-		c.errorf(d.P, "a 'var' property cannot have an explicit backing field")
+		c.errorf(d.P, "VAR_PROPERTY_WITH_EXPLICIT_BACKING_FIELD", "a 'var' property cannot have an explicit backing field")
 	}
 	switch {
 	case d.Field != nil:
-		c.errorf(bf.P, "a delegated property cannot have a backing field")
+		c.errorf(bf.P, "BACKING_FIELD_FOR_DELEGATED_PROPERTY", "a delegated property cannot have a backing field")
 	case d.Recv != nil:
-		c.errorf(bf.P, "an extension property cannot have an explicit backing field")
+		c.errorf(bf.P, "EXPLICIT_BACKING_FIELD_IN_EXTENSION", "an extension property cannot have an explicit backing field")
 	case owner != nil && owner.Interface:
-		c.errorf(bf.P, "an explicit backing field is not allowed in an interface")
+		c.errorf(bf.P, "EXPLICIT_BACKING_FIELD_IN_INTERFACE", "an explicit backing field is not allowed in an interface")
 	case d.Abstract:
-		c.errorf(bf.P, "an abstract property cannot have an explicit backing field")
+		c.errorf(bf.P, "EXPLICIT_BACKING_FIELD_IN_ABSTRACT_PROPERTY", "an abstract property cannot have an explicit backing field")
 	case d.Expect:
-		c.errorf(bf.P, "an expect property cannot have an explicit backing field")
+		c.errorf(bf.P, "EXPECT_PROPERTY_WITH_EXPLICIT_BACKING_FIELD", "an expect property cannot have an explicit backing field")
 	case d.Const:
-		c.errorf(modPos(d.Written, "const", bf.P), "a const property cannot have an explicit backing field")
+		c.errorf(modPos(d.Written, "const", bf.P), "CONST_VAL_WITH_EBF", "a const property cannot have an explicit backing field")
 	case len(d.Contexts) > 0:
 		c.contextsWithField(d)
 	case d.Open || d.Override && !d.Final && owner != nil && !owner.Final:
-		c.errorf(bf.P, "a property with an explicit backing field must be final")
+		c.errorf(bf.P, "NON_FINAL_PROPERTY_WITH_EXPLICIT_BACKING_FIELD", "a property with an explicit backing field must be final")
 	}
 	if (d.Getter != nil || d.Setter != nil || d.AccessorP.Line != 0) && !(d.Mutable && d.Getter == nil) && d.Field == nil {
 		// But for a var's setter, as kotlinc has it: the var is reported;
@@ -53,32 +53,32 @@ func (c *Checker) backingFieldDecl(d *syntax.PropDecl, owner *types.ClassSym) {
 		if p.Line == 0 {
 			p = bf.P
 		}
-		c.errorf(p, "a property with an explicit backing field cannot have accessors")
+		c.errorf(p, "PROPERTY_WITH_EXPLICIT_FIELD_AND_ACCESSORS", "a property with an explicit backing field cannot have accessors")
 	}
 	if d.Init != nil {
-		c.errorf(d.Init.Pos(), "a property with an explicit backing field cannot have an initializer")
+		c.errorf(d.Init.Pos(), "PROPERTY_INITIALIZER_WITH_EXPLICIT_FIELD_DECLARATION", "a property with an explicit backing field cannot have an initializer")
 	}
 	if d.Type == nil && d.Field == nil {
-		c.errorf(d.P, "the type of a property with an explicit backing field must be written")
+		c.errorf(d.P, "INCONSISTENT_BACKING_FIELD_TYPE", "the type of a property with an explicit backing field must be written")
 	}
 	if d.Visibility == syntax.Private {
-		c.errorf(d.P, "a private property's explicit backing field must be less visible than it")
+		c.errorf(d.P, "EXPLICIT_FIELD_VISIBILITY_MUST_BE_LESS_PERMISSIVE", "a private property's explicit backing field must be less visible than it")
 	}
 	if d.Lateinit {
-		c.errorf(d.P, "'lateinit' modifier is not allowed on properties with an explicit backing field")
+		c.errorf(d.P, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties with an explicit backing field")
 	}
 	if a := d.Find("", "JvmField"); a != nil {
-		c.errorf(a.P, "@JvmField cannot be applied to a property with an explicit backing field")
+		c.errorf(a.P, "INAPPLICABLE_JVM_FIELD", "@JvmField cannot be applied to a property with an explicit backing field")
 	}
 	if bf.Type == nil && bf.Init == nil {
 		// Of no type, which kotlinc reports as not one of the property's.
-		c.errorf(d.P, "the type of the backing field must be a subtype of the property's type")
-		c.errorf(bf.P, "an explicit backing field must have a type or an initializer")
+		c.errorf(d.P, "INCONSISTENT_BACKING_FIELD_TYPE", "the type of the backing field must be a subtype of the property's type")
+		c.errorf(bf.P, "PROPERTY_FIELD_DECLARATION_MISSING_INITIALIZER", "an explicit backing field must have a type or an initializer")
 	}
 	if bf.Init == nil && d.Init == nil && (owner == nil || !owner.Interface && (d.Getter != nil || d.Setter != nil)) {
 		// A class's is checked by definite assignment, but for one with
 		// accessors, which the constructors can't assign.
-		c.errorf(bf.P, "an explicit backing field must be initialized")
+		c.errorf(bf.P, "EXPLICIT_FIELD_MUST_BE_INITIALIZED", "an explicit backing field must be initialized")
 	}
 	bf.Allowed = len(c.errs) == n
 	if d.Init == nil && d.Field == nil && d.Getter == nil && !d.Abstract && (owner == nil || !owner.Interface) {
@@ -148,7 +148,7 @@ func (c *Checker) fieldNarrows(ft, t types.Type, p syntax.Pos) bool {
 	case ft.K == types.Invalid || t.K == types.Invalid:
 		return false
 	case !c.subtype(ft, t):
-		c.errorf(p, "the type of the backing field, %s, must be a subtype of the property's, %s", ft, t)
+		c.errorf(p, "INCONSISTENT_BACKING_FIELD_TYPE", "the type of the backing field, %s, must be a subtype of the property's, %s", ft, t)
 		return false
 	}
 	return ft != t // a field of the property's type is redundant
@@ -233,7 +233,7 @@ func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.
 	init := d.BackingField.Init
 	t := c.value(init, want)
 	if assign {
-		c.assignable(t, want, init.Pos())
+		c.assignable(t, want, init.Pos(), "FIELD_INITIALIZER_TYPE_MISMATCH")
 	}
 	if cls == nil {
 		c.uninitializedTop(d, init)
@@ -269,7 +269,7 @@ func (c *Checker) uninitializedTop(d *syntax.PropDecl, init syntax.Expr) {
 			if n.Sym != nil && n.Sym.Kind == types.Global {
 				if pd, ok := n.Sym.Decl.(*syntax.PropDecl); ok {
 					if i, ok := order[pd]; ok && i >= at && pd.Getter == nil && pd.Field == nil && !pd.Const {
-						c.errorf(n.P, "variable '%s' must be initialized", n.Name)
+						c.errorf(n.P, "UNINITIALIZED_VARIABLE", "variable '%s' must be initialized", n.Name)
 					}
 				}
 			}

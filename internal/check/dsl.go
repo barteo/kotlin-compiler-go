@@ -387,7 +387,7 @@ func (c *Checker) dslErrors() {
 		u := c.dslUses[key]
 		if !seen[key.x] && !at[u.p] && u.still() {
 			seen[key.x], at[u.p] = true, true
-			c.errorf(u.p, "'%s' cannot be called in this context with an implicit receiver: use an explicit receiver if necessary", u.name)
+			c.errorf(u.p, "DSL_SCOPE_VIOLATION", "'%s' cannot be called in this context with an implicit receiver: use an explicit receiver if necessary", u.name)
 		}
 	}
 }

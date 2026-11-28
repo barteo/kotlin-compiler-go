@@ -112,10 +112,10 @@ func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool
 		return
 	}
 	if null {
-		c.errorf(p, "check for instance is always '%v': %s and %s have no common instances but null", !not, orig, t)
+		c.errorf(p, "IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_ERROR", "check for instance is always '%v': %s and %s have no common instances but null", !not, orig, t)
 		return
 	}
-	c.errorf(p, "check for instance is always '%v': %s and %s are incompatible", not, orig, t)
+	c.errorf(p, "IMPOSSIBLE_IS_CHECK_ERROR", "check for instance is always '%v': %s and %s are incompatible", not, orig, t)
 }
 
 // rules1 reports whether values of the types l and r can't be the same
@@ -337,14 +337,14 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 		if u := c.u.ext.class("kotlin/Unit"); u != nil {
 			return types.ClassType(u)
 		}
-		c.errorf(ref.P, "cannot check for an instance of %s", t)
+		c.errorf(ref.P, "", "cannot check for an instance of %s", t)
 		return types.InvalidType
 	case t.K == types.Range:
-		c.errorf(ref.P, "cannot check for an instance of %s", t)
+		c.errorf(ref.P, "", "cannot check for an instance of %s", t)
 		return types.InvalidType
 	case t.IsParam():
 		if is && !t.Param().Reified && !c.paramKnown(t, subject) && !slices.ContainsFunc(known, func(k types.Type) bool { return c.paramKnown(t, k) }) {
-			c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
+			c.errorf(ref.P, "CANNOT_CHECK_FOR_ERASED", "cannot check for instance of erased type: %s", t)
 			return types.InvalidType
 		}
 		return t
@@ -355,14 +355,14 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []t
 		return types.InvalidType
 	}
 	if is && t.A != nil && !allStar(t) && !c.argsKnown(t, subject, ref) && !slices.ContainsFunc(known, func(k types.Type) bool { return c.argsKnown(t, k, ref) }) {
-		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
+		c.errorf(ref.P, "CANNOT_CHECK_FOR_ERASED", "cannot check for instance of erased type: %s", t)
 		return types.InvalidType
 	}
 	if is && innerOfErasedLocal(t.C) && !(subject.K == types.Class && subject.C.IsSubclassOf(t.C)) {
 		// An inner class of a local class that captures a function's
 		// type parameter, Outer<*>.Inner in fun <E> f, has it too, as in
 		// K2, though kc's type doesn't carry it.
-		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
+		c.errorf(ref.P, "CANNOT_CHECK_FOR_ERASED", "cannot check for instance of erased type: %s", t)
 		return types.InvalidType
 	}
 	if is && t.A != nil && allStar(t) {
@@ -427,15 +427,15 @@ func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject typ
 		// A local class that captures its function's type parameters,
 		// whose bare type K2 doesn't infer (NO_TYPE_ARGUMENTS_ON_RHS).
 		star := types.GenericType(cls, append(slices.Repeat([]types.Arg{{V: types.Star}}, len(own)), hidden...))
-		c.errorf(ref.P, "%s expected for %s; use %s if you don't want to pass type arguments",
+		c.errorf(ref.P, "NO_TYPE_ARGUMENTS_ON_RHS", "%s expected for %s; use %s if you don't want to pass type arguments",
 			countArgs(len(own)), types.ClassType(cls), star)
 	case known || ref != c.bareRef || ref == nil || subject.IsParam():
 	case subject.K == types.Invalid:
 		// As kotlinc, whose subject of an error type gives no arguments.
-		c.errorf(ref.P, "%s expected for %s; use %s if you don't want to pass type arguments",
+		c.errorf(ref.P, "NO_TYPE_ARGUMENTS_ON_RHS", "%s expected for %s; use %s if you don't want to pass type arguments",
 			countArgs(len(cls.TypeParams)), types.ClassType(cls), t.NonNull())
 	default:
-		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",
+		c.errorf(ref.P, "NO_TYPE_ARGUMENTS_ON_RHS", "%s expected for %s: its type arguments don't follow from %s; use %s",
 			countArgs(len(cls.TypeParams)), types.ClassType(cls), subject, t.NonNull())
 	}
 	return t

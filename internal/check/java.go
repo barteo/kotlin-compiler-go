@@ -940,7 +940,7 @@ func (c *Checker) resolveImports() {
 				// Imported twice: its members aren't overloads of
 				// themselves. An object's is an error each time.
 				if owner := c.importOwner(imp.Path); c.u.Pkgs[imp.Path] == nil && owner != nil && owner.Object && !owner.External && !ext.hasPackage(name) && !ext.isKotlinPackage(imp.Path) {
-					c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+					c.errorf(imp.P, "CANNOT_ALL_UNDER_IMPORT_FROM_SINGLETON", "cannot import on demand from object '%s'", owner.DisplayName())
 				}
 				continue
 			}
@@ -953,14 +953,14 @@ func (c *Checker) resolveImports() {
 				c.stars = append(c.stars, name)
 			} else if owner := c.importOwner(imp.Path); user == nil && owner != nil && owner.Object && !owner.External {
 				// Its members are imported all the same, as K2 does.
-				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+				c.errorf(imp.P, "CANNOT_ALL_UNDER_IMPORT_FROM_SINGLETON", "cannot import on demand from object '%s'", owner.DisplayName())
 				memberStars = append(memberStars, imp)
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
 			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
 				c.aliasStars = append(c.aliasStars, aliasStar{alias: a, imp: imp})
 			} else if user == nil && !optionalExpectationPackages[imp.Path] {
-				c.errorf(imp.P, "unresolved import: %s.*", imp.Path)
+				c.errorf(imp.P, "UNRESOLVED_IMPORT", "unresolved import: %s.*", imp.Path)
 			}
 			continue
 		}
@@ -1024,7 +1024,7 @@ func (c *Checker) resolveImports() {
 			}
 			if found {
 				if c.importsOnlyHidden(user, simple) {
-					c.errorf(imp.P, "cannot access '%s': it is private in file", simple)
+					c.errorf(imp.P, "INVISIBLE_REFERENCE", "cannot access '%s': it is private in file", simple)
 				}
 				continue
 			}
@@ -1082,7 +1082,7 @@ func (c *Checker) resolveImports() {
 			// a library's typealias whose class isn't on the class path
 			// imports nothing, though its uses are still the alias.
 			if ac := c.aliasClass(ta); ac != nil && ac.Missing {
-				c.errorf(imp.P, "unresolved import: %s", imp.Path)
+				c.errorf(imp.P, "UNRESOLVED_IMPORT", "unresolved import: %s", imp.Path)
 			}
 		}
 		if cls != nil || ta != nil || len(fs) > 0 || v != nil || len(gs) > 0 {
@@ -1136,7 +1136,7 @@ func (c *Checker) resolveImports() {
 		if pkg == "kotlin" && builtinFuns[simple] && alias == simple {
 			continue // import kotlin.arrayOfNulls: built in, imported by default
 		}
-		c.errorf(imp.P, "unresolved import: %s", imp.Path)
+		c.errorf(imp.P, "UNRESOLVED_IMPORT", "unresolved import: %s", imp.Path)
 	}
 	for _, imp := range c.file.Imports {
 		alias := imp.Alias
@@ -1149,7 +1149,7 @@ func (c *Checker) resolveImports() {
 			c.conflictingImports[alias] = c.conflictingImports[alias] || slices.ContainsFunc(c.file.Imports, func(o *syntax.Import) bool {
 				return slices.Contains(ps, o.P) && o.Path != imp.Path
 			})
-			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
+			c.errorf(imp.P, "CONFLICTING_IMPORT", "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
 		}
 	}
 	// import java.nio.file.StandardOpenOption.* imports a Java class's
@@ -1172,9 +1172,9 @@ func (c *Checker) checkImportVisible(cls *types.ClassSym, p syntax.Pos) {
 	if cls.External && !cls.FromKotlin && !c.file.SuppressInvisible {
 		// A Java class's: import p.Foo.Nested of a package-private p.Foo.
 		if cls.Ensure(); cls.Private && !cls.Missing && !(cls.PackagePrivate && c.samePackage(cls)) {
-			c.errorf(p, "cannot access '%s': it is not public", cls.DisplayName())
+			c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is not public", cls.DisplayName())
 		} else if o := c.invisibleJavaOuter(cls); o != nil {
-			c.errorf(p, "cannot access '%s': it is not public", o.DisplayName())
+			c.errorf(p, "INVISIBLE_REFERENCE", "cannot access '%s': it is not public", o.DisplayName())
 		}
 		return
 	}
@@ -1958,7 +1958,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 			// ambiguous: import b.d, import c.d of A.d.
 			for _, g := range c.userExtProps[x.Name] {
 				if g != best && len(g.TypeParams) == 0 && c.recvFits(rt, g.Recv) && c.sameType(g.Recv, best.Recv) {
-					c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+					c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s", x.Name)
 					break
 				}
 			}
@@ -2367,11 +2367,11 @@ func (c *Checker) qualifierValue(x syntax.Expr) bool {
 		if objectOf(cls) != nil {
 			return false
 		}
-		c.errorf(x.Pos(), "classifier '%s' does not have a companion object, so it cannot be used as an expression", cls.DisplayName())
+		c.errorf(x.Pos(), "NO_COMPANION_OBJECT", "classifier '%s' does not have a companion object, so it cannot be used as an expression", cls.DisplayName())
 		return true
 	}
 	if name := c.qualifiedName(x); name != "" && c.u.isPackage(name) {
-		c.errorf(x.Pos(), "expression expected, but a package name found")
+		c.errorf(x.Pos(), "EXPRESSION_EXPECTED_PACKAGE_FOUND", "expression expected, but a package name found")
 		return true
 	}
 	return false
@@ -2426,12 +2426,12 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	cls.Ensure()
 	switch {
 	case cls.Missing:
-		c.errorf(p, "cannot read class %s", cls.Name)
+		c.errorf(p, "MISSING_DEPENDENCY_CLASS", "cannot read class %s", cls.Name)
 	case cls.Private && !(cls.Internal && c.file.SuppressInvisible) && !(cls.PackagePrivate && c.samePackage(cls)):
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
-		c.errorf(p, "class %s is not public", cls.DisplayName())
+		c.errorf(p, "INVISIBLE_REFERENCE", "class %s is not public", cls.DisplayName())
 	case c.invisibleJavaOuter(cls) != nil:
-		c.errorf(p, "class %s is not public", c.invisibleJavaOuter(cls).DisplayName())
+		c.errorf(p, "INVISIBLE_REFERENCE", "class %s is not public", c.invisibleJavaOuter(cls).DisplayName())
 	default:
 		c.checkModuleExport(cls, p)
 		return true
@@ -2478,7 +2478,7 @@ func (c *Checker) checkModuleExport(cls *types.ClassSym, p syntax.Pos) {
 		if i := strings.LastIndexByte(cls.Name, '/'); i >= 0 {
 			pkg = strings.ReplaceAll(cls.Name[:i], "/", ".")
 		}
-		c.errorf(p, "symbol is declared in module '%s' which does not export package '%s'", module, pkg)
+		c.errorf(p, "JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE", "symbol is declared in module '%s' which does not export package '%s'", module, pkg)
 	}
 }
 
@@ -3394,17 +3394,17 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		}
 	}
 	if cls.Object {
-		c.errorf(p, "expression '%s' of type '%s' cannot be invoked as a function", cls.DisplayName(), cls.DisplayName())
+		c.errorf(p, "UNRESOLVED_REFERENCE", "expression '%s' of type '%s' cannot be invoked as a function", cls.DisplayName(), cls.DisplayName())
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	if cls.Entries != nil && !cls.External {
-		c.errorf(p, "enum types cannot be instantiated")
+		c.errorf(p, "ENUM_CLASS_CONSTRUCTOR_CALL", "enum types cannot be instantiated")
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	if cls.Annotation && x.FromRef {
-		c.errorf(p, "annotation class cannot be instantiated")
+		c.errorf(p, "CALLABLE_REFERENCE_TO_ANNOTATION_CONSTRUCTOR", "annotation class cannot be instantiated")
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -3433,7 +3433,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			outer, ot = c.implicitOuter(cls.Outer, p)
 		}
 		if outer == nil {
-			c.errorf(p, "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
+			c.errorf(p, "INNER_CLASS_CONSTRUCTOR_NO_RECEIVER", "constructor of inner class %s can be called only with receiver of containing class", cls.DisplayName())
 			c.args(x, nil)
 			return errorNotNull // see reportedError
 		}
@@ -3456,11 +3456,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			return c.call(x, want, sink)
 		}
 		if cls.Abstract {
-			kind := "an abstract class"
+			kind, name := "an abstract class", "CREATING_AN_INSTANCE_OF_ABSTRACT_CLASS"
 			if cls.Interface {
-				kind = "an interface"
+				kind, name = "an interface", "INTERFACE_AS_FUNCTION"
 			}
-			c.errorf(p, "cannot create an instance of %s: %s", kind, cls.DisplayName())
+			c.errorf(p, name, "cannot create an instance of %s: %s", kind, cls.DisplayName())
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3477,11 +3477,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			if ctorVisibility(userCtors(cls)[0]) == syntax.Protected {
 				what = "protected"
 			}
-			c.errorf(p, "cannot access 'constructor': it is %s in '%s'", what, cls.DisplayName())
+			c.errorf(p, "INVISIBLE_REFERENCE", "cannot access 'constructor': it is %s in '%s'", what, cls.DisplayName())
 			c.args(x, nil)
 			return types.InvalidType
 		case len(cands) == 0:
-			c.errorf(p, "cannot create an instance of %s", cls.DisplayName())
+			c.errorf(p, "NONE_APPLICABLE", "cannot create an instance of %s", cls.DisplayName())
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -3534,7 +3534,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		return c.call(x, want, sink)
 	}
 	if len(cands) == 0 {
-		c.errorf(p, "cannot create an instance of %s", cls.DisplayName())
+		c.errorf(p, "INTERFACE_AS_FUNCTION", "cannot create an instance of %s", cls.DisplayName())
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -3555,7 +3555,7 @@ func (c *Checker) samConstructor(x *syntax.Call, cls *types.ClassSym, want types
 		// It takes the method's function type, not the interface.
 		if ch, ok := x.Args[0].(*syntax.Checked); !ok || ch.SAM == nil {
 			_, ft := c.samTarget(rt)
-			c.errorf(x.Args[0].Pos(), "type mismatch: inferred type is %s but %s was expected", x.Args[0].Type(), ft)
+			c.errorf(x.Args[0].Pos(), "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", x.Args[0].Type(), ft)
 			return types.InvalidType
 		}
 	}
@@ -3592,9 +3592,9 @@ func (c *Checker) staticCall(x *syntax.Call, fn *syntax.Member, cls *types.Class
 	}
 	if len(ms) == 0 {
 		if cls.External && len(c.javaMethods(cls, fn.Name)) > 0 {
-			c.errorf(fn.P, "'%s' is not a static method of %s", fn.Name, cls.DisplayName())
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "'%s' is not a static method of %s", fn.Name, cls.DisplayName())
 		} else {
-			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 		}
 		c.args(x, nil)
 		return types.InvalidType
@@ -3607,19 +3607,19 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	cls := c.classOf(rt)
 	if cls == nil || !c.usable(cls, fn.P) {
 		if cls == nil {
-			c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 		}
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	if (fn.Name == "length" && c.isCharSequence(cls) || fn.Name == "size" && c.hasSize(cls)) && !c.javaClassNarrowed(fn.X) {
-		c.errorf(fn.P, "expression '%s' of type Int cannot be invoked as a function", fn.Name)
+		c.errorf(fn.P, "FUNCTION_EXPECTED", "expression '%s' of type Int cannot be invoked as a function", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	if m := javaAnnotationElement(cls, fn.Name); m != nil {
 		// Kotlin sees a Java annotation's elements as properties.
-		c.errorf(fn.P, "expression '%s' of type %s cannot be invoked as a function", fn.Name, c.kclassOfJava(m.Ret))
+		c.errorf(fn.P, "FUNCTION_EXPECTED", "expression '%s' of type %s cannot be invoked as a function", fn.Name, c.kclassOfJava(m.Ret))
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -3655,7 +3655,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 			}
 			return t
 		}
-		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
+		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -3833,14 +3833,14 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 	}
 	f := c.staticFieldOf(cls, x.Name)
 	if f == nil {
-		c.errorf(x.P, "unresolved reference: %s", x.Name)
+		c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 		return types.InvalidType
 	}
 	if fs := c.visibleStaticFields(cls, x.Name); len(fs) > 1 {
-		c.errorf(x.P, "overload resolution ambiguity: %s is a static field of both %s and %s", x.Name, fs[0].Owner.DisplayName(), fs[1].Owner.DisplayName())
+		c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is a static field of both %s and %s", x.Name, fs[0].Owner.DisplayName(), fs[1].Owner.DisplayName())
 	}
 	if f.Ambiguous {
-		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+		c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s", x.Name)
 	}
 	x.Field = f
 	if c.stable(f) {
@@ -3952,7 +3952,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 			}
 		}
 		if len(found) > 1 {
-			c.errorf(x.P, "overload resolution ambiguity: %s is the property of %s() and %s()", x.Name, found[0].Name, found[1].Name)
+			c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is the property of %s() and %s()", x.Name, found[0].Name, found[1].Name)
 			return types.InvalidType, true
 		}
 		if len(found) == 1 {
@@ -3971,7 +3971,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	if g := x.Getter; g.InProgress && !g.Resolved {
 		// The program's override whose return type is being inferred:
 		// override fun getFoo() = foo.
-		c.errorf(x.P, "type checking has run into a recursive problem; specify the return type of '%s'", g.Name)
+		c.errorf(x.P, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the return type of '%s'", g.Name)
 		return types.InvalidType, true
 	}
 	sub := c.memberSubst(rt, x.Getter.Owner)
@@ -4326,7 +4326,7 @@ func (c *Checker) javaCycle(st *syntax.SuperType) {
 		return cyclic == nil
 	})
 	if cyclic != nil {
-		c.errorf(st.Type.P, "there's a cycle in the inheritance hierarchy of '%s'", cyclic.DisplayName())
+		c.errorf(st.Type.P, "", "there's a cycle in the inheritance hierarchy of '%s'", cyclic.DisplayName())
 	}
 }
 
@@ -4339,7 +4339,7 @@ func (c *Checker) javaBoundCycle(ref *syntax.TypeRef, t types.Type) {
 	}
 	for _, p := range t.C.TypeParams {
 		if types.ParamCycle(p) {
-			c.errorf(ref.P, "the upper bounds of the type parameters of '%s' are a cycle", t.C.DisplayName())
+			c.errorf(ref.P, "", "the upper bounds of the type parameters of '%s' are a cycle", t.C.DisplayName())
 			return
 		}
 	}

@@ -1,415 +1,412 @@
-tests/BinaryCallsOnNullableValues.kt	rejects invalid	BinaryCallsOnNullableValues.kt:25	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
-tests/BreakContinue.kt	rejects invalid	BreakContinue.kt:88	multiple labels are forbidden
-tests/FunctionCalleeExpressions.kt	rejects invalid	FunctionCalleeExpressions.kt:68	expected a name
-tests/FunctionCalleeExpressions.kt	rejects invalid	FunctionCalleeExpressions.kt:69	expected a name
-tests/InvokeAndRecursiveResolve.kt	rejects invalid	InvokeAndRecursiveResolve.kt:16	type checking has run into a recursive problem; specify the type of 'test'
-tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	KotlinActualAnnotationHasNoEffectInKotlin.kt:4	unresolved import: kotlin.annotations.jvm.KotlinActual
-tests/PackageQualified.kt	rejects invalid	a.kt:3	unresolved import: java.*
-tests/ResolveToJava.kt	rejects invalid	a.kt:2	unresolved import: java.*
-tests/annotations/AnnotationInContract.kt	rejects invalid	AnnotationInContract.kt:6	error in contract description: the contract is empty
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:6	inheriting an annotation class is prohibited
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	inheriting an annotation class is prohibited
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	class 'C' is not abstract and does not implement abstract member 'annotationType'
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:12	inheriting an annotation class is prohibited
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:12	this type is final, so it cannot be inherited from
-tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:13	inheriting an annotation class is prohibited
-tests/annotations/requiredAnnotationWithTypealiasedImportedArgument.kt	rejects invalid	requiredAnnotationWithTypealiasedImportedArgument.kt:10	unresolved reference: ANNOTATION_CLASS
-tests/backingField/TopLevelPropertyInitialization.kt	rejects invalid	TopLevelPropertyInitialization.kt:86	property must be initialized or be abstract
-tests/backingField/TopLevelPropertyInitialization.kt	rejects invalid	TopLevelPropertyInitialization.kt:87	val cannot be reassigned
-tests/callableReference/adapted/adaptationByExpectTypeOutsideCall.kt	rejects invalid	adaptationByExpectTypeOutsideCall.kt:27	type mismatch: inferred type is CharSequence but String was expected
-tests/callableReference/bound/reservedExpressionSyntax.kt	rejects invalid	reservedExpressionSyntax.kt:21	type mismatch: a::foo needs a receiver of type a<*>, but () -> Unit was expected
-tests/callableReference/function/innerConstructorFromExtension.kt	rejects invalid	innerConstructorFromExtension.kt:12	unresolved reference: Inner
-tests/callableReference/function/noAmbiguityMemberVsTopLevel.kt	rejects invalid	noAmbiguityMemberVsTopLevel.kt:27	type mismatch: inferred type is Unit but String was expected
-tests/callableReference/resolve/moreSpecificAmbiguousExtensions.kt	rejects invalid	moreSpecificAmbiguousExtensions.kt:19	ambiguous call: 2 candidates for 'extFun' take (IB)
-tests/callableReference/resolve/withExtFun.kt	rejects invalid	withExtFun.kt:23	type mismatch: inferred type is Unit but String was expected
-tests/cast/bare/ErrorsInSubstitution.kt	rejects invalid	ErrorsInSubstitution.kt:8	one type argument expected for G; use G<*> if you don't want to pass type arguments
-tests/cfa/reassignOfNonMemberProperty_lateInitialization.kt	rejects invalid	reassignOfNonMemberProperty_lateInitialization.kt:35	val cannot be reassigned
-tests/cfg/flowFromTwoInplaceLambdas.kt	rejects invalid	flowFromTwoInplaceLambdas.kt:89	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
-tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:23	overload resolution ambiguity for ::bar: specify the expected function type
-tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:25	overload resolution ambiguity for ::baz: specify the expected function type
-tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	anonymousFunctionWithWrongShape.kt:10	the anonymous function's receiver doesn't match the expected function type
-tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	contextInCompanionObject.kt:15	no context argument for 'c: Test.Named' found
-tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	contextInCompanionObject.kt:16	unresolved reference: b
-tests/contextParameters/declarationAndUsages/onConstructor.kt	rejects invalid	onConstructor.kt:17	this type has a constructor, and thus must be initialized here
-tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	rejects invalid	coroutineContextIsReserved.kt:38	context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use
-tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:15	no context argument for 't: T' found
-tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	type mismatch: inferred type is O.FooImpl.Bar but O was expected
-tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	type argument is not within its bounds: inferred type O.FooImpl.Bar of type parameter 'T' is not a subtype of Foo
-tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:19	no context argument for 'Foo' found
-tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:19	no function 'invoke' takes 0 arguments
-tests/contextParameters/operators/invokeOnTypeWithContext.kt	rejects invalid	invokeOnTypeWithContext.kt:17	cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/contextParameters/operators/invokeOnTypeWithContext.kt	rejects invalid	invokeOnTypeWithContext.kt:18	expression of type Test1 cannot be invoked as a function
-tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	rejects invalid	test.kt:4	expected 2 parameters of types String!, String!, but 1 were declared
-tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	rejects invalid	test.kt:4	no context argument for 'ctx: T' found
-tests/controlFlowAnalysis/assignmentInLocalsInConstructor.kt	rejects invalid	assignmentInLocalsInConstructor.kt:47	val cannot be reassigned
-tests/controlFlowAnalysis/uninitializedCompanionOfEnum.kt	rejects invalid	uninitializedCompanionOfEnum.kt:48	unresolved reference: extensionFun
-tests/controlStructures/kt10717.kt	rejects invalid	kt10717.kt:25	return type 'Nothing' needs to be specified explicitly
-tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:11	incompatible types Int and Nothing
-tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:20	incompatible types Int and Nothing
-tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:2	there's a cycle in the inheritance hierarchy of 'A'
-tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:3	there's a cycle in the inheritance hierarchy of 'B.B2'
-tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:4	there's a cycle in the inheritance hierarchy of 'B.B2'
-tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:5	there's a cycle in the inheritance hierarchy of 'B.B3'
-tests/cyclicHierarchy/kotlinJavaKotlinCycle.kt	rejects invalid	I.kt:2	there's a cycle in the inheritance hierarchy for this type
-tests/declarationChecks/illegalModifiersOnClass.kt	rejects invalid	illegalModifiersOnClass.kt:10	redeclaration: class Companion
-tests/defaultArguments/inheritedDefaultValueWithIntersectionOverride.kt	rejects invalid	inheritedDefaultValueWithIntersectionOverride.kt:13	functional parameters with inherited default values are not yet supported in inline functions
-tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:15	type mismatch: inferred type is Int but String was expected
-tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:15	'operator' modifier is required on 'provideDelegate'
-tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:17	'operator' modifier is required on 'provideDelegate'
-tests/delegation/covariantOverrides/kt13952.kt	rejects invalid	kt13952.kt:17	return type of 'foo' is not a subtype of the return type of the overridden member 'foo' defined in 'IB'
-tests/dynamicTypes/withInvisibleSynthesized.kt	rejects invalid	k.kt:6	unresolved reference: sam
-tests/enum/entries/entriesPropertyImportPrioritized.kt	rejects invalid	entriesPropertyImportPrioritized.kt:4	unresolved import: MyEnum.entries
-tests/exceptions/keywordsInsteadOfIdentifiers.kt	rejects invalid	keywordsInsteadOfIdentifiers.kt:7	unresolved reference: foo
-tests/exhaustiveness/negative/exhaustiveWithNegativeContract.kt	rejects invalid	exhaustiveWithNegativeContract.kt:29	'when' expression must be exhaustive, add necessary 'else' branch
-tests/exhaustiveness/negative/exhaustiveWithNegativeMutableVar.kt	rejects invalid	exhaustiveWithNegativeMutableVar.kt:42	'when' expression must be exhaustive, add necessary 'else' branch
-tests/expressionsInQaSelectorsCornerCases.kt	rejects invalid	expressionsInQaSelectorsCornerCases.kt:14	unresolved reference: invoke
-tests/expressionsInQaSelectorsCornerCases.kt	rejects invalid	expressionsInQaSelectorsCornerCases.kt:19	unresolved reference: invoke
-tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:11	unresolved reference: name
-tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:12	unresolved reference: name
-tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:20	unresolved reference: name
-tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:21	unresolved reference: name
-tests/expresssions/invoke/threeReceiversCorrect.kt	rejects invalid	threeReceiversCorrect.kt:19	unresolved reference: foo
-tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	rejects invalid	propertyAccessWithExplicitTypeArguments.kt:70	cannot infer type for type parameter 'B'. Specify it explicitly.
-tests/extensions/ExtensionFunctions.kt	rejects invalid	a.kt:8	'infix' modifier is required on 'plus'
-tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:37	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
-tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:41	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
-tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:45	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
-tests/generics/innerClasses/implicitArguments/fromCompanionObject_after.kt	rejects invalid	fromCompanionObject_after.kt:20	unresolved reference: Inner
-tests/generics/innerClasses/implicitArguments/fromSuperClasses.kt	rejects invalid	fromSuperClasses.kt:24	unresolved reference: _
-tests/generics/innerClasses/implicitArguments/fromSuperClasses.kt	rejects invalid	fromSuperClasses.kt:26	unresolved reference: _
-tests/generics/innerClasses/implicitArguments/fromSuperClassesTransitive.kt	rejects invalid	fromSuperClassesTransitive.kt:19	unresolved reference: _
-tests/generics/innerClasses/innerClassGenericBounds.kt	rejects invalid	kt35566.kt:9	type mismatch: inferred type is M but L? was expected
-tests/generics/innerClasses/simpleOutUseSite.kt	rejects invalid	simpleOutUseSite.kt:32	type mismatch: inferred type is Outer.Inner<out String> but Outer.Inner<out Nothing> was expected
-tests/generics/innerClasses/simpleOutUseSite.kt	rejects invalid	simpleOutUseSite.kt:33	type mismatch: inferred type is Outer.Inner<out String> but Outer.Inner<out Nothing> was expected
-tests/generics/wildcardInValueParameter.kt	rejects invalid	main.kt:2	unresolved reference: foo
-tests/generics/wildcardInValueParameter.kt	rejects invalid	main.kt:4	unresolved reference: bar
-tests/imports/CheckJavaVisibility.kt	rejects invalid	k1.kt:7	unresolved import: j.JavaPublic.javaProtected
-tests/imports/CheckJavaVisibility.kt	rejects invalid	k1.kt:15	unresolved import: j.JavaProtected.javaPProtected
-tests/incompleteCode/incompleteAssignment.kt	rejects invalid	incompleteAssignment.kt:12	missing return statement in function 'sum'
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:19	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:23	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:27	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:31	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:37	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:56	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:62	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:68	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/nullableCaptruredTypeAgainstNullableVariable.kt	rejects invalid	main.kt:9	type argument is not within its bounds: inferred type Number? of type parameter 'T' is not a subtype of Any
-tests/inference/coercionToUnit/coercionToUnitWithNothingType.kt	rejects invalid	test.kt:35	unresolved or unsupported type: dynamic
-tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	commonSuperTypeOfErrorTypes.kt:11	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	commonSuperTypeOfErrorTypes.kt:16	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:40	type mismatch: inferred type is Inv<Inv<<error>>> but Inv<SubInv<Int>> was expected
-tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:40	cannot infer type for type parameter 'K'. Specify it explicitly.
-tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:78	type mismatch: inferred type is Inv<out <error>> but Inv<Number> was expected
-tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:78	cannot infer type for type parameter 'K'. Specify it explicitly.
-tests/inference/completion/lambdaWithVariableAndNothing.kt	rejects invalid	lambdaWithVariableAndNothing.kt:18	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/inference/completion/lambdaWithVariableAndNothing.kt	rejects invalid	lambdaWithVariableAndNothing.kt:32	type mismatch: inferred type is () -> String but Nothing was expected
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isExternal'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isInfix'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isInline'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isOperator'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isSuspend'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'call'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'callBy'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isAbstract'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isFinal'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'isOpen'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'parameters'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'returnType'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'typeParameters'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'visibility'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	class 'A3' is not abstract and does not implement abstract member 'annotations'
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	cannot infer type for type parameter 'K'. Specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	cannot infer a type for this parameter. Please specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	cannot infer a type for this parameter. Please specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	cannot infer type for type parameter 'K'. Specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	cannot infer a type for this parameter. Please specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	cannot infer a type for this parameter. Please specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:165	cannot infer type for type parameter 'K'. Specify it explicitly.
-tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:165	cannot infer a type for this parameter. Please specify it explicitly.
-tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	overloadResolutionByLambdaReturnTypeAndExpectedType.kt:18	type mismatch: inferred type is MyList<String> but MyList<E> was expected
-tests/inference/functionPlaceholderError.kt	rejects invalid	functionPlaceholderError.kt:13	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/functionPlaceholderError.kt	rejects invalid	functionPlaceholderError.kt:13	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypes.kt	rejects invalid	main.kt:14	cannot infer type for type parameter 'E1'. Specify it explicitly.
-tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypes.kt	rejects invalid	main.kt:19	cannot infer type for type parameter 'E1'. Specify it explicitly.
-tests/inference/kt79864.kt	rejects invalid	kt79864.kt:10	type argument is not within its bounds: inferred type F! of type parameter 'T' is not a subtype of Enum<F!>!
-tests/inference/kt79864.kt	rejects invalid	kt79864.kt:16	type argument is not within its bounds: inferred type F! of type parameter 'T' is not a subtype of Enum<F!>!
-tests/inference/nestedCalls/binaryExpressions.kt	rejects invalid	binaryExpressions.kt:30	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/nestedCalls/binaryExpressions.kt	rejects invalid	binaryExpressions.kt:30	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/nestedIfWithExpectedType.kt	rejects invalid	nestedIfWithExpectedType.kt:19	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/nestedIfWithExpectedType.kt	rejects invalid	nestedIfWithExpectedType.kt:30	cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/nothingType/notEnoughInformationFromNullabilityConstraint.kt	rejects invalid	notEnoughInformationFromNullabilityConstraint.kt:15	cannot infer type for type parameter 'M'. Specify it explicitly.
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:24	cannot infer type for type parameter 'S'. Specify it explicitly.
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	type mismatch: inferred type is Controller<S> but Controller<F> was expected
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	cannot infer type for type parameter 'F'. Specify it explicitly.
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	type mismatch: inferred type is T but F was expected
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:44	cannot infer type for type parameter 'S'. Specify it explicitly.
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	type mismatch: inferred type is Controller<S> but Controller<F> was expected
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	cannot infer type for type parameter 'F'. Specify it explicitly.
-tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	type mismatch: inferred type is T but F was expected
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	ContravariantTypeVariableCapture.kt:12	type mismatch: inferred type is Interloper but ScopeOwner was expected
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	CovariantTypeVariableCapture.kt:12	type mismatch: inferred type is Interloper but ScopeOwner was expected
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	IntersectedTypeVariable.kt:10	unresolved reference: function
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	TypeVariableStarCapture.kt:12	type mismatch: inferred type is Interloper but ScopeOwner was expected
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:6	unresolved reference: memberFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:16	unresolved reference: extensionFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexCallableReference.kt	rejects invalid	ComplexCallableReference.kt:6	unresolved reference: InnerKlass
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:6	unresolved reference: memberFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:7	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:17	unresolved reference: extensionFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:18	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:28	unresolved reference: InnerKlass
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:29	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:39	not enough information to infer type arguments of ::fix: specify the expected function type
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:8	unresolved reference: memberFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:19	unresolved reference: extensionFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:8	unresolved reference: memberFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:9	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:20	unresolved reference: extensionFunction
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:21	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:31	unresolved reference: InnerKlass
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:32	no function 'invoke' takes 1 arguments
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:42	not enough information to infer type arguments of ::fix: specify the expected function type
-tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingOperatorCall.kt	rejects invalid	IndexingOperatorCall.kt:22	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type ScopeOwner
-tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	fixingTVForLambadaWithShallowDependencyToOuter2.kt:24	unresolved reference: length
-tests/inference/pcla/issues/kt53422b.kt	rejects invalid	kt53422b.kt:17	type mismatch: inferred type is Buildee<TargetTypeBase> but Buildee<TargetType> was expected
-tests/inference/pcla/issues/kt59426.kt	rejects invalid	kt59426.kt:12	type mismatch: inferred type is Buildee<DifferentType> but Buildee<TargetType> was expected
-tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:74	ambiguous call: 2 candidates for 'myMapWithArg' take (MyFlow<F3>, MyFlow<F4>, lambda)
-tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:79	ambiguous call: 2 candidates for 'myMapWithArg' take (MyFlow<F3>, MyFlow<F4>, lambda)
-tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	main.kt:16	cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:68	cannot infer type for type parameter 'R2'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:70	cannot infer type for type parameter 'E'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	cannot infer type for type parameter 'E'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	type mismatch: inferred type is String! but E was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	type mismatch: inferred type is String? but String! was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	type mismatch: inferred type is T! but Inv<E?> was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	type mismatch: inferred type is Inv<R2> but T! was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	cannot infer type for type parameter 'E'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	type mismatch: inferred type is String? but E? was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	type mismatch: inferred type is Inv<R2> but Inv<E?> was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	cannot infer type for type parameter 'E'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	type mismatch: inferred type is String! but E? was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	type mismatch: inferred type is String? but String! was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	type mismatch: inferred type is T! but Inv<E?> was expected
-tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	type mismatch: inferred type is Inv<R2> but T! was expected
-tests/inference/unsoundness1.kt	rejects invalid	unsoundness1.kt:21	type mismatch: inferred type is Any? but U was expected
-tests/inference/upperBounds/typeParameterAsUpperBound.kt	rejects invalid	typeParameterAsUpperBound.kt:6	type parameter cannot have any other bounds if it's bounded by another type parameter
-tests/infos/SmartCasts.kt	rejects invalid	SmartCasts.kt:166	type mismatch: inferred type is String? but String was expected
-tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:7	illegal usage of inline-parameter 'p' in 'modAssign': add 'noinline' modifier to the parameter declaration
-tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:19	illegal usage of inline-parameter 'ext' in 'modAssign': add 'noinline' modifier to the parameter declaration
-tests/inline/binaryExpressions/contains.kt	rejects invalid	contains.kt:5	illegal usage of inline-parameter 'p' in 'contains': add 'noinline' modifier to the parameter declaration
-tests/inline/binaryExpressions/rangeTo.kt	rejects invalid	rangeTo.kt:5	illegal usage of inline-parameter 'p' in 'rangeTo': add 'noinline' modifier to the parameter declaration
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:19	'continue' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:20	'break' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:23	'continue' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:24	'break' is not allowed outside a loop
-tests/inline/superCallDepecation.kt	rejects invalid	main.kt:103	accessing super members from public-API inline function is prohibited
-tests/inner/innerConstructorsFromQualifiersWithIrrelevantCandidate.kt	rejects invalid	Outer.kt:22	constructor of inner class Outer.Inner can be called only with receiver of containing class
-tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	withInvokeCall.kt:10	expected expression, found ')'
-tests/integerLiterals/IltAsExtensionReceiver.kt	rejects invalid	IltAsExtensionReceiver.kt:18	unresolved reference: foo
-tests/intersectedVisibilitiesAccessorDifferences_Useful1.kt	rejects invalid	intersectedVisibilitiesAccessorDifferences_Useful1.kt:21	var 'x' of C is implemented by an inherited val of I
-tests/invalidAnnotation.kt	rejects invalid	invalidAnnotation.kt:8	class 'X' is not abstract and does not implement abstract member 'close'
-tests/invisibleClassInsteadOfFun.kt	rejects invalid	Main.kt:4	cannot access 'QueryPagingSource': it is internal in module
-tests/j+k/genericConstructor/superCall.kt	rejects invalid	main.kt:2	2 type arguments expected for '<init><E, T>'
-tests/j+k/orderOfSupertypesAndFakeOverrides_1.kt	rejects invalid	main.kt:8	type mismatch: inferred type is String? but String was expected
-tests/j+k/orderOfSupertypesAndFakeOverrides_2.kt	rejects invalid	main.kt:9	type mismatch: inferred type is String? but String was expected
-tests/j+k/properties/unitVsVoid.kt	rejects invalid	main.kt:7	type mismatch: inferred type is Nothing? but Unit was expected
-tests/j+k/properties/unitVsVoid.kt	rejects invalid	main.kt:9	type mismatch: inferred type is Nothing? but Unit was expected
-tests/j+k/recursiveRawUpperBound2.kt	rejects invalid	main.kt:2	the upper bounds of the type parameters of 'XYZ' are a cycle
-tests/j+k/recursiveRawUpperBound3.kt	rejects invalid	main.kt:2	the upper bounds of the type parameters of 'XYZ' are a cycle
-tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	rejects invalid	Test.kt:15	type mismatch: inferred type is String? but String was expected
-tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	rejects invalid	Test.kt:18	type mismatch: inferred type is String? but String was expected
-tests/j+k/typeFromJavaGenericWithoutWrtHack.kt	rejects invalid	Test.kt:34	type mismatch: inferred type is JavaBox<out String?>! but JavaBox<out String> was expected
-tests/j+k/typeFromJavaGenericWithoutWrtHack.kt	rejects invalid	Test.kt:35	type mismatch: inferred type is String? but Any was expected
-tests/javac/qualifiedExpression/PackageVsClass.kt	rejects invalid	c.kt:10	unresolved reference: a_bc
-tests/javac/qualifiedExpression/PackageVsClass2.kt	rejects invalid	b.kt:3	cannot access class 'test.a$b'. Check your module classpath for missing or conflicting dependencies
-tests/kt56723.kt	rejects invalid	kt56723.kt:81	unresolved reference: getValue
-tests/kt56723.kt	rejects invalid	kt56723.kt:81	unresolved reference: setValue
-tests/lambdaInCallInAnnotation.kt	rejects invalid	lambdaInCallInAnnotation.kt:7	type mismatch: inferred type is List<() -> <error>> but String was expected
-tests/lambdaInCallInAnnotation.kt	rejects invalid	lambdaInCallInAnnotation.kt:7	unresolved reference: it
-tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:17	unresolved reference: normalParams
-tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:20	unresolved reference: functionalType
-tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:24	cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:25	unresolved reference: contextParams
-tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:26	unresolved reference: contextualFunctionalType
-tests/modifiers/inlineValueClass.kt	rejects invalid	inlineValueClass.kt:5	'@JvmInline' annotation is applicable only to value classes
-tests/modifiers/inlineValueClass.kt	rejects invalid	inlineValueClass.kt:8	'@JvmInline' annotation is applicable only to value classes
-tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:28	'infix' modifier is required on 'minus'
-tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:39	type mismatch: inferred type is Int but String was expected
-tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:39	'infix' modifier is required on 'minus'
-tests/multimodule/FluctuatingTypeInference.kt	rejects invalid	foo.kt:10	type mismatch: inferred type is Any but Base was expected
-tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:10	named arguments are not allowed for non-Kotlin functions
-tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:12	named arguments are not allowed for non-Kotlin functions
-tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:19	named arguments are not allowed for non-Kotlin functions
-tests/nestedTypeAliases/companion.kt	rejects invalid	companion.kt:42	unresolved reference: NestedCompanionTA
-tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:62	unresolved reference: InnerGenericTA2
-tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:63	unresolved reference: InnerGenericTA2
-tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:76	unresolved reference: InnerTA
-tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:78	unresolved reference: InnerTAWithTP
-tests/operatorsOverloading/implicitInvokeOnPropertyInItsInitializer.kt	rejects invalid	implicitInvokeOnPropertyInItsInitializer.kt:15	type mismatch: inferred type is Int but String was expected
-tests/override/clashesOnInheritance/kt13355.kt	rejects invalid	kt13355.kt:14	the types of the inherited property 'foo' of IFooStr and BaseAny don't match: Any isn't a subtype of String
-tests/overrides/simpleMostSpecific.kt	rejects invalid	simpleMostSpecific.kt:31	type mismatch: inferred type is CheckTypeInv<String?> but CheckTypeInv<String> was expected
-tests/overrides/simpleMostSpecific.kt	rejects invalid	simpleMostSpecific.kt:38	type mismatch: inferred type is CheckTypeInv<CharSequence> but CheckTypeInv<String> was expected
-tests/overrides/supertypeGenericsComplex.kt	rejects invalid	supertypeGenericsComplex.kt:13	type argument is not within its bounds: inferred type X of type parameter 'D' is not a subtype of Out<CharSequence>
-tests/parenthesesWithIndexedAssignmentOrSetValCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetValCornerCases.kt:58	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAssignExt>?
-tests/parenthesesWithIndexedAssignmentOrSetValCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetValCornerCases.kt:61	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAndPlusAssignExt>?
-tests/parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt:58	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAssignExt>?
-tests/parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt:61	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAndPlusAssignExt>?
-tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:19	operator '++' cannot be applied to Int?
-tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:23	operator '+' cannot be applied to Int and Int?
-tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:27	operator '+' cannot be applied to Int? and Int
-tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:39	operator '+=' cannot be applied to Int? and Int
-tests/platformTypes/rawOverrides.kt	rejects invalid	main.kt:2	class 'E' is not abstract and does not implement abstract member 'foo'
-tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:7	type mismatch: inferred type is Array<String> but Array<CharSequence!>! was expected
-tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:10	type mismatch: inferred type is Array<Map<Int, Int>> but Array<MutableMap!>! was expected
-tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:11	type mismatch: inferred type is Array<MutableMap<Int, Int>> but Array<MutableMap!>! was expected
-tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:18	type mismatch: inferred type is Array<Array<Array<String>>> but Array<Array<Any!>!>! was expected
-tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:20	type mismatch: inferred type is Array<List<String>> but Array<MutableList!>! was expected
-tests/platformTypes/rawTypes/rawSupertypeOverride.kt	rejects invalid	main.kt:6	'bar' overrides nothing
-tests/platformTypes/rawTypes/rawSupertypeOverride.kt	rejects invalid	main.kt:12	'bar' overrides nothing
-tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:6	unresolved reference: length
-tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:8	unresolved reference: foo
-tests/problems/invalidCode.kt	rejects invalid	a.kt:3	expected identifier, found newline
-tests/problems/kt28430.kt	rejects invalid	kt28430.kt:13	unresolved reference: m1
-tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	class 'AB' must override 'a' because it inherits multiple implementations for it
-tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	class 'AB' is not abstract and does not implement abstract member 'a'
-tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	objectExpression.kt:33	unresolved reference: bar
-tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	objectExpression.kt:34	unresolved reference: bar
-tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:39	unresolved reference: type
-tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:48	unresolved reference: type
-tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:63	unresolved reference: type
-tests/redeclarations/SingletonAndFunctionSameName.kt	rejects invalid	SingletonAndFunctionSameName.kt:12	conflicting overloads: En
-tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:115	the anonymous function's receiver doesn't match the expected function type
-tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:116	expected 1 parameter of type Int, but 0 were declared
-tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:116	'this' is not defined in this context
-tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMarkerWithTypealiasRecursion.kt:15	unresolved reference: body
-tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMarkerWithTypealiasRecursion.kt:19	unresolved reference: zbar
-tests/resolve/dslMarker/threeImplicitReceivers2.kt	rejects invalid	threeImplicitReceivers2.kt:58	unresolved reference: x
-tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt:7	reference has a nullable type '(String.() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
-tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	rejects invalid	1.kt:14	unresolved reference: foo
-tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:19	unresolved reference: extensionProperty
-tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:31	unresolved reference: extensionProperty
-tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:32	type mismatch: inferred type is String but Int was expected
-tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:60	no function '<init>' takes 0 arguments
-tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:80	unresolved reference: getValue
-tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:80	class 'X' cannot be used as a value
-tests/resolve/priority/samConstructorVsFunction.kt	rejects invalid	test1.kt:10	type mismatch: inferred type is () -> String but Foo<String> was expected
-tests/samConversions/samWithLambdaNoFlexible.kt	rejects invalid	Test.kt:9	expected parameter of type String?
-tests/samConversions/samWithLambdaNoFlexible.kt	rejects invalid	Test.kt:25	expected parameter of type String?
-tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	rejects invalid	A.kt:2	platform declaration clash: the following declarations have the same JVM signature (getScope()Ljava/lang/String;)
-tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	rejects invalid	A.kt:7	platform declaration clash: the following declarations have the same JVM signature (getScope()Ljava/lang/String;)
-tests/scopes/kt1080.kt	rejects invalid	a.kt:7	unresolved import: b.*
-tests/scopes/protectedVisibility/kt7971.kt	rejects invalid	module2/main.kt:13	type mismatch: inferred type is CheckTypeInv<Int!> but CheckTypeInv<String> was expected
-tests/sealed/NeverEnum.kt	rejects invalid	NeverEnum.kt:6	this type is final, so it cannot be inherited from
-tests/secondaryConstructors/constructorInObject.kt	rejects invalid	constructorInObject.kt:8	conflicting overloads: constructor()
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:38	unresolved reference: s
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:61	unresolved reference: s
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:72	unresolved reference: s
-tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:176	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:10	type mismatch: inferred type is Any but Nothing was expected
-tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:26	type mismatch: inferred type is Any but Nothing was expected
-tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:27	type mismatch: inferred type is Any but Int was expected
-tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:35	type mismatch: inferred type is Any but Nothing was expected
-tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	fakeSmartCastOnEquality.kt:38	no function 'use' takes 0 arguments
-tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	fakeSmartCastOnEquality.kt:42	no function 'use' takes 0 arguments
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:6	'getName' overrides nothing
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:7	'setName' overrides nothing
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:14	unresolved reference: name
-tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:15	unresolved reference: name
-tests/smartCasts/intersectionScope/properties.kt	rejects invalid	properties.kt:20	type mismatch: inferred type is CheckTypeInv<String?> but CheckTypeInv<String> was expected
-tests/smartCasts/kt32358_2.kt	rejects invalid	kt32358_2.kt:9	this declaration needs opt-in: its usage must be marked with '@ExperimentalContracts' or '@OptIn(ExperimentalContracts::class)'
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndAssignmentOperator.kt	rejects invalid	lambdaWithCallInPlaceAndAssignmentOperator.kt:188	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:228	unresolved reference: length
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:241	unresolved reference: length
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	lambdaWithCallInPlaceAssignmnetsAndCycles.kt:123	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
-tests/smartCasts/savedSmartcastResult.kt	rejects invalid	savedSmartcastResult.kt:34	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:7	type mismatch: inferred type is Some but T? was expected
-tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:19	type mismatch: inferred type is Some but T? was expected
-tests/smartCasts/smartcastToNothing.kt	rejects invalid	smartcastToNothing.kt:33	unresolved reference: length
-tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:14	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:108	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/variables/reassignedDependency.kt	rejects invalid	reassignedDependency.kt:71	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/variables/reassignedInRhs.kt	rejects invalid	reassignedInRhs.kt:33	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
-tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	findClosestCorrespondingSupertype.kt:10	type mismatch: inferred type is B but X<Int> was expected
-tests/syntheticExtensions/javaProperties/OverrideGetterOnly.kt	rejects invalid	KotlinFile.kt:7	operator '+=' cannot be applied to Any!
-tests/syntheticSet.kt	rejects invalid	test.kt:12	type mismatch: inferred type is Any! but Nothing? was expected
-tests/typeParameters/anonymousFunction.kt	rejects invalid	anonymousFunction.kt:8	unresolved or unsupported type: T
-tests/typeParameters/memberTypeParameterVsNestedClass2.kt	rejects invalid	memberTypeParameterVsNestedClass2.kt:15	cannot use 'T' as reified type parameter
-tests/typeParameters/memberTypeParameterVsNestedClass2.kt	rejects invalid	memberTypeParameterVsNestedClass2.kt:25	cannot use 'T' as reified type parameter
-tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:35	cannot use 'OuterParam' as reified type parameter
-tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:40	cannot use 'OuterParam' as reified type parameter
-tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:46	cannot use 'OuterParam' as reified type parameter
-tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:51	cannot use 'OuterParam' as reified type parameter
-tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	main.kt:11	cannot access 'A3': it is private in file
-tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	main.kt:11	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<String> was expected
-tests/typealias/importFromTypeAliasObject.kt	rejects invalid	2.kt:4	unresolved reference: foo
-tests/typealias/importMemberFromJavaViaAlias.kt	rejects invalid	test.kt:9	unresolved reference: member
-tests/typealias/importNestedTypeFromTypeAlias.kt	rejects invalid	b.kt:2	unresolved import: c.TA.Nested
-tests/typealias/inheritedNestedTypeAlias.kt	rejects invalid	inheritedNestedTypeAlias.kt:20	unresolved or unsupported type: Base.CT
-tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:31	unresolved or unsupported type: Outer.InnerAlias
-tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:32	unresolved or unsupported type: Outer.InnerAlias
-tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:34	unresolved or unsupported type: Outer.GenericInnerAlias
-tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:35	unresolved or unsupported type: Outer.GenericInnerAlias
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:15	unresolved or unsupported type: C.DA
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:17	unresolved or unsupported type: C.TSDA
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:18	unresolved or unsupported type: C.TC
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:20	unresolved or unsupported type: C.DA
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:21	unresolved or unsupported type: C.TSDA
-tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:22	unresolved or unsupported type: C.TC
-tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:13	unresolved reference: P
-tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:19	unresolved reference: P1
-tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:20	unresolved reference: P2
-tests/typealias/nestedCapturingTypeParameters.kt	rejects invalid	nestedCapturingTypeParameters.kt:23	cannot infer type for type parameter 'T2'. Specify it explicitly.
-tests/typealias/nestedCapturingTypeParameters.kt	rejects invalid	nestedCapturingTypeParameters.kt:24	cannot infer type for type parameter 'T2'. Specify it explicitly.
-tests/typealias/nestedSubstituted.kt	rejects invalid	nestedSubstituted.kt:10	unresolved or unsupported type: C.P2
-tests/typealias/privateInFileInDifferentModule.kt	rejects invalid	file2.kt:5	unresolved reference: TA
-tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:3	unresolved import: test.ClassAlias.Nested1
-tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:9	unresolved import: test.ObjectAlias.Nested2
-tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:15	unresolved import: test.EnumAlias.Nested3
-tests/valueParameterWithoutExplicitType.kt	rejects invalid	valueParameterWithoutExplicitType.kt:4	expected ':', found ')'
-tests/visibility/checkCastToInaccessibleInterface.kt	rejects invalid	test2/source.kt:12	multiple vararg-parameters are prohibited
-tests/visibility/checkCastToInaccessibleInterface.kt	rejects invalid	test2/source.kt:12	multiple vararg-parameters are prohibited
-tests/when/ElseOnNullableEnum.kt	rejects invalid	1.kt:40	'when' expression must be exhaustive, add necessary 'else' branch
-tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:52	type mismatch: inferred type is String & Boolean but Boolean was expected
-tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:52	type mismatch: inferred type is String & Boolean but Boolean was expected
-tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	type mismatch: inferred type is String & Boolean but Boolean was expected
-tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	type mismatch: inferred type is String & Boolean but Boolean was expected
-tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	rejects invalid	exhaustiveWithComplementaryLowersFromNegativeCheck.kt:22	'when' expression must be exhaustive, add necessary 'else' branch
-tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:34	type mismatch: inferred type is T but Boolean was expected
-tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:36	type mismatch: inferred type is T but Boolean was expected
-testsWithStdLib/annotations/annotationAllRepeatable.kt	rejects invalid	annotationAllRepeatable.kt:32	this annotation is not repeatable
-testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	jvmName.kt:107	class 'D' is not abstract and does not implement abstract member 'privateAbstractFun'
-testsWithStdLib/annotations/throws.kt	rejects invalid	main4.kt:15	overload resolution ambiguity: Throws is a classifier of more than one import
-testsWithStdLib/callableReferences/beyoundCalls.kt	rejects invalid	beyoundCalls.kt:9	ambiguous call: 2 candidates for 'bar' take (String)
-testsWithStdLib/callableReferences/fromBasicDiagnosticTests/moreSpecificAmbiguousExtensions.kt	rejects invalid	moreSpecificAmbiguousExtensions.kt:17	ambiguous call: 2 candidates for 'extFun' take (IB)
-testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	breakContinuesInInlinedLambda.kt:25	val cannot be reassigned
-testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	breakContinuesInInlinedLambda.kt:28	val cannot be reassigned
-testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects invalid	labeledReturns.kt:75	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects invalid	labeledReturns.kt:79	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:21	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:38	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:25	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:33	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/fromSource/good/returnsImplies/booleanOperators.kt	rejects invalid	booleanOperators.kt:66	unresolved reference: foo
-testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	rejects invalid	extensionWithNonValuableConstraints.kt:39	cannot infer type for type parameter 'S'. Specify it explicitly.
-testsWithStdLib/coroutines/inference/plusAssignInCoroutineContext.kt	rejects invalid	plusAssignInCoroutineContext.kt:22	type checking has run into a recursive problem; specify the return type of 'foo'
-testsWithStdLib/coroutines/inference/plusAssignWithLambda.kt	rejects invalid	plusAssignWithLambda.kt:10	type checking has run into a recursive problem; specify the return type of 'foo'
-testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfNoinlineOrdinary.kt	rejects invalid	inlineOrdinaryOfNoinlineOrdinary.kt:23	unresolved reference: startCoroutine
-testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfOrdinary.kt	rejects invalid	inlineOrdinaryOfOrdinary.kt:36	suspend function 'calculate' can only be called from a coroutine or another suspend function
-testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfNoinlineOrdinary.kt	rejects invalid	inlineSuspendOfNoinlineOrdinary.kt:23	unresolved reference: startCoroutine
-testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	inlineSuspendOfOrdinary.kt:33	suspend function 'calculate' can only be called from a coroutine or another suspend function
-testsWithStdLib/coroutines/kt18292.kt	rejects invalid	kt18292.kt:13	cannot infer type for type parameter 'T'. Specify it explicitly.
-testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:4	unresolved reference: nestedI
-testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:8	unresolved reference: nested
-testsWithStdLib/pcla/upperBoundViolation.kt	rejects invalid	upperBoundViolation.kt:8	cannot infer type for type parameter 'E'. Specify it explicitly.
-testsWithStdLib/problems/KJKComplexHierarchyNestedLoop.kt	rejects invalid	K1.kt:2	constructor of inner class J1.Nested can be called only with receiver of containing class
-testsWithStdLib/problems/stringConstructors.kt	rejects invalid	stringConstructors.kt:4	overload resolution ambiguity for ::String: specify the expected function type
-testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt	rejects invalid	explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt:16	unresolved reference: inc
-testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt	rejects invalid	explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt:17	unresolved reference: inc
-testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeWithReceiver.kt	rejects invalid	explicitFieldWithFunctionTypeWithReceiver.kt:21	no function 'invoke' takes 0 arguments
-testsWithStdLib/properties/backingField/lateinitBackingFields.kt	rejects invalid	lateinitBackingFields.kt:6	type mismatch: inferred type is String but Int was expected
-testsWithStdLib/properties/backingField/lateinitBackingFields.kt	rejects invalid	lateinitBackingFields.kt:35	type mismatch: inferred type is String but Number was expected
-testsWithStdLib/regression/ea65206.kt	rejects invalid	ea65206.kt:7	unresolved reference: x
-testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	hidesMembers2.kt:20	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<A> was expected
-testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	hidesMembers2.kt:23	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<A> was expected
-testsWithStdLib/smartcasts/lambdaInCallArgs.kt	rejects invalid	lambdaInCallArgs.kt:36	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/BinaryCallsOnNullableValues.kt	rejects invalid	BinaryCallsOnNullableValues.kt:25	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
+tests/BreakContinue.kt	rejects invalid	BreakContinue.kt:88	MULTIPLE_LABELS_ARE_FORBIDDEN	multiple labels are forbidden
+tests/FunctionCalleeExpressions.kt	rejects invalid	FunctionCalleeExpressions.kt:68	SYNTAX	expected a name
+tests/FunctionCalleeExpressions.kt	rejects invalid	FunctionCalleeExpressions.kt:69	SYNTAX	expected a name
+tests/InvokeAndRecursiveResolve.kt	rejects invalid	InvokeAndRecursiveResolve.kt:16	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	type checking has run into a recursive problem; specify the type of 'test'
+tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	KotlinActualAnnotationHasNoEffectInKotlin.kt:4	UNRESOLVED_IMPORT	unresolved import: kotlin.annotations.jvm.KotlinActual
+tests/PackageQualified.kt	rejects invalid	a.kt:3	UNRESOLVED_IMPORT	unresolved import: java.*
+tests/ResolveToJava.kt	rejects invalid	a.kt:2	UNRESOLVED_IMPORT	unresolved import: java.*
+tests/annotations/AnnotationInContract.kt	rejects invalid	AnnotationInContract.kt:6	ERROR_IN_CONTRACT_DESCRIPTION	error in contract description: the contract is empty
+tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:6	EXTENDING_AN_ANNOTATION_CLASS_ERROR	inheriting an annotation class is prohibited
+tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	EXTENDING_AN_ANNOTATION_CLASS_ERROR	inheriting an annotation class is prohibited
+tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'C' is not abstract and does not implement abstract member 'annotationType'
+tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:12	EXTENDING_AN_ANNOTATION_CLASS_ERROR	inheriting an annotation class is prohibited
+tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:13	EXTENDING_AN_ANNOTATION_CLASS_ERROR	inheriting an annotation class is prohibited
+tests/annotations/requiredAnnotationWithTypealiasedImportedArgument.kt	rejects invalid	requiredAnnotationWithTypealiasedImportedArgument.kt:10	UNRESOLVED_REFERENCE	unresolved reference: ANNOTATION_CLASS
+tests/backingField/TopLevelPropertyInitialization.kt	rejects invalid	TopLevelPropertyInitialization.kt:86	MUST_BE_INITIALIZED	property must be initialized or be abstract
+tests/backingField/TopLevelPropertyInitialization.kt	rejects invalid	TopLevelPropertyInitialization.kt:87	VAL_REASSIGNMENT	val cannot be reassigned
+tests/callableReference/adapted/adaptationByExpectTypeOutsideCall.kt	rejects invalid	adaptationByExpectTypeOutsideCall.kt:27	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is CharSequence but String was expected
+tests/callableReference/bound/reservedExpressionSyntax.kt	rejects invalid	reservedExpressionSyntax.kt:21	NONE_APPLICABLE	type mismatch: a::foo needs a receiver of type a<*>, but () -> Unit was expected
+tests/callableReference/function/innerConstructorFromExtension.kt	rejects invalid	innerConstructorFromExtension.kt:12	UNRESOLVED_REFERENCE	unresolved reference: Inner
+tests/callableReference/function/noAmbiguityMemberVsTopLevel.kt	rejects invalid	noAmbiguityMemberVsTopLevel.kt:27	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Unit but String was expected
+tests/callableReference/resolve/moreSpecificAmbiguousExtensions.kt	rejects invalid	moreSpecificAmbiguousExtensions.kt:19	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'extFun' take (IB)
+tests/callableReference/resolve/withExtFun.kt	rejects invalid	withExtFun.kt:23	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Unit but String was expected
+tests/cast/bare/ErrorsInSubstitution.kt	rejects invalid	ErrorsInSubstitution.kt:8	NO_TYPE_ARGUMENTS_ON_RHS	one type argument expected for G; use G<*> if you don't want to pass type arguments
+tests/cfa/reassignOfNonMemberProperty_lateInitialization.kt	rejects invalid	reassignOfNonMemberProperty_lateInitialization.kt:35	VAL_REASSIGNMENT	val cannot be reassigned
+tests/cfg/flowFromTwoInplaceLambdas.kt	rejects invalid	flowFromTwoInplaceLambdas.kt:89	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:23	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity for ::bar: specify the expected function type
+tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:25	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity for ::baz: specify the expected function type
+tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	anonymousFunctionWithWrongShape.kt:10	INITIALIZER_TYPE_MISMATCH	the anonymous function's receiver doesn't match the expected function type
+tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	contextInCompanionObject.kt:15	NO_CONTEXT_ARGUMENT	no context argument for 'c: Test.Named' found
+tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	contextInCompanionObject.kt:16	UNRESOLVED_REFERENCE	unresolved reference: b
+tests/contextParameters/declarationAndUsages/onConstructor.kt	rejects invalid	onConstructor.kt:17	SUPERTYPE_NOT_INITIALIZED	this type has a constructor, and thus must be initialized here
+tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	rejects invalid	coroutineContextIsReserved.kt:38	COROUTINE_CONTEXT_AS_CONTEXT_PARAMETER_IS_RESERVED	context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:15	NO_CONTEXT_ARGUMENT	no context argument for 't: T' found
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is O.FooImpl.Bar but O was expected
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:18	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type O.FooImpl.Bar of type parameter 'T' is not a subtype of Foo
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:19	NO_CONTEXT_ARGUMENT	no context argument for 'Foo' found
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	inaccessibleReceiver.kt:19	NO_VALUE_FOR_PARAMETER	no function 'invoke' takes 0 arguments
+tests/contextParameters/operators/invokeOnTypeWithContext.kt	rejects invalid	invokeOnTypeWithContext.kt:17	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/contextParameters/operators/invokeOnTypeWithContext.kt	rejects invalid	invokeOnTypeWithContext.kt:18	FUNCTION_EXPECTED	expression of type Test1 cannot be invoked as a function
+tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	rejects invalid	test.kt:4	ARGUMENT_TYPE_MISMATCH	expected 2 parameters of types String!, String!, but 1 were declared
+tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	rejects invalid	test.kt:4	NO_CONTEXT_ARGUMENT	no context argument for 'ctx: T' found
+tests/controlFlowAnalysis/assignmentInLocalsInConstructor.kt	rejects invalid	assignmentInLocalsInConstructor.kt:47	VAL_REASSIGNMENT	val cannot be reassigned
+tests/controlFlowAnalysis/uninitializedCompanionOfEnum.kt	rejects invalid	uninitializedCompanionOfEnum.kt:48	UNRESOLVED_REFERENCE	unresolved reference: extensionFun
+tests/controlStructures/kt10717.kt	rejects invalid	kt10717.kt:25	IMPLICIT_NOTHING_RETURN_TYPE	return type 'Nothing' needs to be specified explicitly
+tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:11	EQUALITY_NOT_APPLICABLE	incompatible types Int and Nothing
+tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:20	EQUALITY_NOT_APPLICABLE	incompatible types Int and Nothing
+tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:2	-	there's a cycle in the inheritance hierarchy of 'A'
+tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:3	-	there's a cycle in the inheritance hierarchy of 'B.B2'
+tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:4	-	there's a cycle in the inheritance hierarchy of 'B.B2'
+tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:5	-	there's a cycle in the inheritance hierarchy of 'B.B3'
+tests/cyclicHierarchy/kotlinJavaKotlinCycle.kt	rejects invalid	I.kt:2	CYCLIC_INHERITANCE_HIERARCHY	there's a cycle in the inheritance hierarchy for this type
+tests/defaultArguments/inheritedDefaultValueWithIntersectionOverride.kt	rejects invalid	inheritedDefaultValueWithIntersectionOverride.kt:13	-	functional parameters with inherited default values are not yet supported in inline functions
+tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:15	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Int but String was expected
+tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:15	OPERATOR_MODIFIER_REQUIRED	'operator' modifier is required on 'provideDelegate'
+tests/delegatedProperty/provideDelegate/noOperatorModifierOnProvideDelegate.kt	rejects invalid	noOperatorModifierOnProvideDelegate.kt:17	OPERATOR_MODIFIER_REQUIRED	'operator' modifier is required on 'provideDelegate'
+tests/delegation/covariantOverrides/kt13952.kt	rejects invalid	kt13952.kt:17	RETURN_TYPE_MISMATCH_ON_OVERRIDE	return type of 'foo' is not a subtype of the return type of the overridden member 'foo' defined in 'IB'
+tests/dynamicTypes/withInvisibleSynthesized.kt	rejects invalid	k.kt:6	UNRESOLVED_REFERENCE	unresolved reference: sam
+tests/enum/entries/entriesPropertyImportPrioritized.kt	rejects invalid	entriesPropertyImportPrioritized.kt:4	UNRESOLVED_IMPORT	unresolved import: MyEnum.entries
+tests/exceptions/keywordsInsteadOfIdentifiers.kt	rejects invalid	keywordsInsteadOfIdentifiers.kt:7	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/exhaustiveness/negative/exhaustiveWithNegativeContract.kt	rejects invalid	exhaustiveWithNegativeContract.kt:29	NO_ELSE_IN_WHEN	'when' expression must be exhaustive, add necessary 'else' branch
+tests/exhaustiveness/negative/exhaustiveWithNegativeMutableVar.kt	rejects invalid	exhaustiveWithNegativeMutableVar.kt:42	NO_ELSE_IN_WHEN	'when' expression must be exhaustive, add necessary 'else' branch
+tests/expressionsInQaSelectorsCornerCases.kt	rejects invalid	expressionsInQaSelectorsCornerCases.kt:14	UNRESOLVED_REFERENCE	unresolved reference: invoke
+tests/expressionsInQaSelectorsCornerCases.kt	rejects invalid	expressionsInQaSelectorsCornerCases.kt:19	UNRESOLVED_REFERENCE	unresolved reference: invoke
+tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:11	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:12	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:20	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/expresssions/genericDescriptor.kt	rejects invalid	test.kt:21	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/expresssions/invoke/threeReceiversCorrect.kt	rejects invalid	threeReceiversCorrect.kt:19	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	rejects invalid	propertyAccessWithExplicitTypeArguments.kt:70	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'B'. Specify it explicitly.
+tests/extensions/ExtensionFunctions.kt	rejects invalid	a.kt:8	INFIX_MODIFIER_REQUIRED	'infix' modifier is required on 'plus'
+tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:37	UNDERSCORE_USAGE_WITHOUT_BACKTICKS	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
+tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:41	UNDERSCORE_USAGE_WITHOUT_BACKTICKS	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
+tests/functionLiterals/underscopeParameters.kt	rejects invalid	underscopeParameters.kt:45	UNDERSCORE_USAGE_WITHOUT_BACKTICKS	names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)
+tests/generics/innerClasses/implicitArguments/fromCompanionObject_after.kt	rejects invalid	fromCompanionObject_after.kt:20	UNRESOLVED_REFERENCE	unresolved reference: Inner
+tests/generics/innerClasses/implicitArguments/fromSuperClasses.kt	rejects invalid	fromSuperClasses.kt:24	UNRESOLVED_REFERENCE	unresolved reference: _
+tests/generics/innerClasses/implicitArguments/fromSuperClasses.kt	rejects invalid	fromSuperClasses.kt:26	UNRESOLVED_REFERENCE	unresolved reference: _
+tests/generics/innerClasses/implicitArguments/fromSuperClassesTransitive.kt	rejects invalid	fromSuperClassesTransitive.kt:19	UNRESOLVED_REFERENCE	unresolved reference: _
+tests/generics/innerClasses/innerClassGenericBounds.kt	rejects invalid	kt35566.kt:9	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is M but L? was expected
+tests/generics/innerClasses/simpleOutUseSite.kt	rejects invalid	simpleOutUseSite.kt:32	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Outer.Inner<out String> but Outer.Inner<out Nothing> was expected
+tests/generics/innerClasses/simpleOutUseSite.kt	rejects invalid	simpleOutUseSite.kt:33	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Outer.Inner<out String> but Outer.Inner<out Nothing> was expected
+tests/generics/wildcardInValueParameter.kt	rejects invalid	main.kt:2	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/generics/wildcardInValueParameter.kt	rejects invalid	main.kt:4	UNRESOLVED_REFERENCE	unresolved reference: bar
+tests/imports/CheckJavaVisibility.kt	rejects invalid	k1.kt:7	UNRESOLVED_IMPORT	unresolved import: j.JavaPublic.javaProtected
+tests/imports/CheckJavaVisibility.kt	rejects invalid	k1.kt:15	UNRESOLVED_IMPORT	unresolved import: j.JavaProtected.javaPProtected
+tests/incompleteCode/incompleteAssignment.kt	rejects invalid	incompleteAssignment.kt:12	NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY	missing return statement in function 'sum'
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:19	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:23	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:27	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:31	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:37	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:56	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:62	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:68	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/nullableCaptruredTypeAgainstNullableVariable.kt	rejects invalid	main.kt:9	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type Number? of type parameter 'T' is not a subtype of Any
+tests/inference/coercionToUnit/coercionToUnitWithNothingType.kt	rejects invalid	test.kt:35	UNRESOLVED_REFERENCE	unresolved or unsupported type: dynamic
+tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	commonSuperTypeOfErrorTypes.kt:11	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	commonSuperTypeOfErrorTypes.kt:16	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:40	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Inv<Inv<<error>>> but Inv<SubInv<Int>> was expected
+tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:40	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'K'. Specify it explicitly.
+tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:78	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Inv<out <error>> but Inv<Number> was expected
+tests/inference/commonSystem/cstWithTypeContainingNonFixedVariable.kt	rejects invalid	cstWithTypeContainingNonFixedVariable.kt:78	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'K'. Specify it explicitly.
+tests/inference/completion/lambdaWithVariableAndNothing.kt	rejects invalid	lambdaWithVariableAndNothing.kt:18	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/inference/completion/lambdaWithVariableAndNothing.kt	rejects invalid	lambdaWithVariableAndNothing.kt:32	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is () -> String but Nothing was expected
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isExternal'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isInfix'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isInline'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isOperator'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isSuspend'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'call'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'callBy'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isAbstract'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isFinal'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'isOpen'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'parameters'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'returnType'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'typeParameters'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'visibility'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:45	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'A3' is not abstract and does not implement abstract member 'annotations'
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'K'. Specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	CANNOT_INFER_VALUE_PARAMETER_TYPE	cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:163	CANNOT_INFER_VALUE_PARAMETER_TYPE	cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'K'. Specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	CANNOT_INFER_VALUE_PARAMETER_TYPE	cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:164	CANNOT_INFER_VALUE_PARAMETER_TYPE	cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:165	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'K'. Specify it explicitly.
+tests/inference/completion/postponedArgumentsAnalysis/basic.kt	rejects invalid	basic.kt:165	CANNOT_INFER_VALUE_PARAMETER_TYPE	cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	overloadResolutionByLambdaReturnTypeAndExpectedType.kt:18	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is MyList<String> but MyList<E> was expected
+tests/inference/functionPlaceholderError.kt	rejects invalid	functionPlaceholderError.kt:13	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/functionPlaceholderError.kt	rejects invalid	functionPlaceholderError.kt:13	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypes.kt	rejects invalid	main.kt:14	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E1'. Specify it explicitly.
+tests/inference/incorporation/insideOtherConstraintsWithFlexibleTypes.kt	rejects invalid	main.kt:19	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E1'. Specify it explicitly.
+tests/inference/kt79864.kt	rejects invalid	kt79864.kt:10	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type F! of type parameter 'T' is not a subtype of Enum<F!>!
+tests/inference/kt79864.kt	rejects invalid	kt79864.kt:16	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type F! of type parameter 'T' is not a subtype of Enum<F!>!
+tests/inference/nestedCalls/binaryExpressions.kt	rejects invalid	binaryExpressions.kt:30	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/nestedCalls/binaryExpressions.kt	rejects invalid	binaryExpressions.kt:30	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/nestedIfWithExpectedType.kt	rejects invalid	nestedIfWithExpectedType.kt:19	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/nestedIfWithExpectedType.kt	rejects invalid	nestedIfWithExpectedType.kt:30	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/nothingType/notEnoughInformationFromNullabilityConstraint.kt	rejects invalid	notEnoughInformationFromNullabilityConstraint.kt:15	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'M'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:24	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'S'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is Controller<S> but Controller<F> was expected
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'F'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:29	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is T but F was expected
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:44	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'S'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is Controller<S> but Controller<F> was expected
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'F'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	relatedToOuter.kt:52	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is T but F was expected
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	ContravariantTypeVariableCapture.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Interloper but ScopeOwner was expected
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	CovariantTypeVariableCapture.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Interloper but ScopeOwner was expected
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	IntersectedTypeVariable.kt:10	UNRESOLVED_REFERENCE	unresolved reference: function
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	TypeVariableStarCapture.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Interloper but ScopeOwner was expected
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:6	UNRESOLVED_REFERENCE	unresolved reference: memberFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:16	UNRESOLVED_REFERENCE	unresolved reference: extensionFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexCallableReference.kt	rejects invalid	ComplexCallableReference.kt:6	UNRESOLVED_REFERENCE	unresolved reference: InnerKlass
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:6	UNRESOLVED_REFERENCE	unresolved reference: memberFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:7	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:17	UNRESOLVED_REFERENCE	unresolved reference: extensionFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:18	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:28	UNRESOLVED_REFERENCE	unresolved reference: InnerKlass
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:29	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:39	CANNOT_INFER_PARAMETER_TYPE	not enough information to infer type arguments of ::fix: specify the expected function type
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:8	UNRESOLVED_REFERENCE	unresolved reference: memberFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	BasicCallableReference.kt:19	UNRESOLVED_REFERENCE	unresolved reference: extensionFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:8	UNRESOLVED_REFERENCE	unresolved reference: memberFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:9	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:20	UNRESOLVED_REFERENCE	unresolved reference: extensionFunction
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:21	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:31	UNRESOLVED_REFERENCE	unresolved reference: InnerKlass
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:32	TOO_MANY_ARGUMENTS	no function 'invoke' takes 1 arguments
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	GenericCallableReference.kt:42	CANNOT_INFER_PARAMETER_TYPE	not enough information to infer type arguments of ::fix: specify the expected function type
+tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingOperatorCall.kt	rejects invalid	IndexingOperatorCall.kt:22	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type ScopeOwner
+tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	fixingTVForLambadaWithShallowDependencyToOuter2.kt:24	UNRESOLVED_REFERENCE	unresolved reference: length
+tests/inference/pcla/issues/kt53422b.kt	rejects invalid	kt53422b.kt:17	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Buildee<TargetTypeBase> but Buildee<TargetType> was expected
+tests/inference/pcla/issues/kt59426.kt	rejects invalid	kt59426.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Buildee<DifferentType> but Buildee<TargetType> was expected
+tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:74	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'myMapWithArg' take (MyFlow<F3>, MyFlow<F4>, lambda)
+tests/inference/pcla/noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt	rejects invalid	noCompilerAssertionInAttemptToSemifixLowerVariablesOnlyConstraints.kt:79	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'myMapWithArg' take (MyFlow<F3>, MyFlow<F4>, lambda)
+tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	main.kt:16	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:68	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'R2'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:70	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String! but E was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String! was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is T! but Inv<E?> was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:72	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Inv<R2> but T! was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but E? was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:74	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Inv<R2> but Inv<E?> was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String! but E? was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String! was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is T! but Inv<E?> was expected
+tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	main.kt:76	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Inv<R2> but T! was expected
+tests/inference/unsoundness1.kt	rejects invalid	unsoundness1.kt:21	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Any? but U was expected
+tests/inference/upperBounds/typeParameterAsUpperBound.kt	rejects invalid	typeParameterAsUpperBound.kt:6	BOUNDS_NOT_ALLOWED_IF_BOUNDED_BY_TYPE_PARAMETER	type parameter cannot have any other bounds if it's bounded by another type parameter
+tests/infos/SmartCasts.kt	rejects invalid	SmartCasts.kt:166	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is String? but String was expected
+tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:7	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'p' in 'modAssign': add 'noinline' modifier to the parameter declaration
+tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:19	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'ext' in 'modAssign': add 'noinline' modifier to the parameter declaration
+tests/inline/binaryExpressions/contains.kt	rejects invalid	contains.kt:5	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'p' in 'contains': add 'noinline' modifier to the parameter declaration
+tests/inline/binaryExpressions/rangeTo.kt	rejects invalid	rangeTo.kt:5	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'p' in 'rangeTo': add 'noinline' modifier to the parameter declaration
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:19	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' is not allowed outside a loop
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:20	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' is not allowed outside a loop
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:23	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' is not allowed outside a loop
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:24	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' is not allowed outside a loop
+tests/inline/superCallDepecation.kt	rejects invalid	main.kt:103	SUPER_CALL_FROM_PUBLIC_INLINE	accessing super members from public-API inline function is prohibited
+tests/inner/innerConstructorsFromQualifiersWithIrrelevantCandidate.kt	rejects invalid	Outer.kt:22	INNER_CLASS_CONSTRUCTOR_NO_RECEIVER	constructor of inner class Outer.Inner can be called only with receiver of containing class
+tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	withInvokeCall.kt:10	SYNTAX	expected expression, found ')'
+tests/integerLiterals/IltAsExtensionReceiver.kt	rejects invalid	IltAsExtensionReceiver.kt:18	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/intersectedVisibilitiesAccessorDifferences_Useful1.kt	rejects invalid	intersectedVisibilitiesAccessorDifferences_Useful1.kt:21	VAR_IMPLEMENTED_BY_INHERITED_VAL_ERROR	var 'x' of C is implemented by an inherited val of I
+tests/invalidAnnotation.kt	rejects invalid	invalidAnnotation.kt:8	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'X' is not abstract and does not implement abstract member 'close'
+tests/invisibleClassInsteadOfFun.kt	rejects invalid	Main.kt:4	INVISIBLE_REFERENCE	cannot access 'QueryPagingSource': it is internal in module
+tests/j+k/genericConstructor/superCall.kt	rejects invalid	main.kt:2	WRONG_NUMBER_OF_TYPE_ARGUMENTS	2 type arguments expected for '<init><E, T>'
+tests/j+k/orderOfSupertypesAndFakeOverrides_1.kt	rejects invalid	main.kt:8	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String was expected
+tests/j+k/orderOfSupertypesAndFakeOverrides_2.kt	rejects invalid	main.kt:9	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String was expected
+tests/j+k/properties/unitVsVoid.kt	rejects invalid	main.kt:7	NULL_FOR_NONNULL_TYPE	type mismatch: inferred type is Nothing? but Unit was expected
+tests/j+k/properties/unitVsVoid.kt	rejects invalid	main.kt:9	NULL_FOR_NONNULL_TYPE	type mismatch: inferred type is Nothing? but Unit was expected
+tests/j+k/recursiveRawUpperBound2.kt	rejects invalid	main.kt:2	-	the upper bounds of the type parameters of 'XYZ' are a cycle
+tests/j+k/recursiveRawUpperBound3.kt	rejects invalid	main.kt:2	-	the upper bounds of the type parameters of 'XYZ' are a cycle
+tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	rejects invalid	Test.kt:15	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String was expected
+tests/j+k/typeFromJavaGenericFunWithoutWrtHack.kt	rejects invalid	Test.kt:18	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String? but String was expected
+tests/j+k/typeFromJavaGenericWithoutWrtHack.kt	rejects invalid	Test.kt:34	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is JavaBox<out String?>! but JavaBox<out String> was expected
+tests/j+k/typeFromJavaGenericWithoutWrtHack.kt	rejects invalid	Test.kt:35	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is String? but Any was expected
+tests/javac/qualifiedExpression/PackageVsClass.kt	rejects invalid	c.kt:10	UNRESOLVED_REFERENCE	unresolved reference: a_bc
+tests/javac/qualifiedExpression/PackageVsClass2.kt	rejects invalid	b.kt:3	MISSING_DEPENDENCY_CLASS	cannot access class 'test.a$b'. Check your module classpath for missing or conflicting dependencies
+tests/kt56723.kt	rejects invalid	kt56723.kt:81	UNRESOLVED_REFERENCE	unresolved reference: getValue
+tests/kt56723.kt	rejects invalid	kt56723.kt:81	UNRESOLVED_REFERENCE	unresolved reference: setValue
+tests/lambdaInCallInAnnotation.kt	rejects invalid	lambdaInCallInAnnotation.kt:7	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is List<() -> <error>> but String was expected
+tests/lambdaInCallInAnnotation.kt	rejects invalid	lambdaInCallInAnnotation.kt:7	UNRESOLVED_REFERENCE	unresolved reference: it
+tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:17	UNRESOLVED_REFERENCE	unresolved reference: normalParams
+tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:20	UNRESOLVED_REFERENCE	unresolved reference: functionalType
+tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:24	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:25	UNRESOLVED_REFERENCE	unresolved reference: contextParams
+tests/mappingWithEmptyParameter.kt	rejects invalid	mappingWithEmptyParameter.kt:26	UNRESOLVED_REFERENCE	unresolved reference: contextualFunctionalType
+tests/modifiers/inlineValueClass.kt	rejects invalid	inlineValueClass.kt:5	JVM_INLINE_WITHOUT_VALUE_CLASS	'@JvmInline' annotation is applicable only to value classes
+tests/modifiers/inlineValueClass.kt	rejects invalid	inlineValueClass.kt:8	JVM_INLINE_WITHOUT_VALUE_CLASS	'@JvmInline' annotation is applicable only to value classes
+tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:28	INFIX_MODIFIER_REQUIRED	'infix' modifier is required on 'minus'
+tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:39	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Int but String was expected
+tests/modifiers/operatorInfix/MemberFunctions.kt	rejects invalid	MemberFunctions.kt:39	INFIX_MODIFIER_REQUIRED	'infix' modifier is required on 'minus'
+tests/multimodule/FluctuatingTypeInference.kt	rejects invalid	foo.kt:10	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Any but Base was expected
+tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:10	NAMED_ARGUMENTS_NOT_ALLOWED	named arguments are not allowed for non-Kotlin functions
+tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:12	NAMED_ARGUMENTS_NOT_ALLOWED	named arguments are not allowed for non-Kotlin functions
+tests/namedArguments/mixedNamedPosition/javaOverrideOfKotlinNamed.kt	rejects invalid	I.kt:19	NAMED_ARGUMENTS_NOT_ALLOWED	named arguments are not allowed for non-Kotlin functions
+tests/nestedTypeAliases/companion.kt	rejects invalid	companion.kt:42	UNRESOLVED_REFERENCE	unresolved reference: NestedCompanionTA
+tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:62	UNRESOLVED_REFERENCE	unresolved reference: InnerGenericTA2
+tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:63	UNRESOLVED_REFERENCE	unresolved reference: InnerGenericTA2
+tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:76	UNRESOLVED_REFERENCE	unresolved reference: InnerTA
+tests/nestedTypeAliases/innerRHSInGeneric.kt	rejects invalid	innerRHSInGeneric.kt:78	UNRESOLVED_REFERENCE	unresolved reference: InnerTAWithTP
+tests/operatorsOverloading/implicitInvokeOnPropertyInItsInitializer.kt	rejects invalid	implicitInvokeOnPropertyInItsInitializer.kt:15	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Int but String was expected
+tests/override/clashesOnInheritance/kt13355.kt	rejects invalid	kt13355.kt:14	PROPERTY_TYPE_MISMATCH_ON_INHERITANCE	the types of the inherited property 'foo' of IFooStr and BaseAny don't match: Any isn't a subtype of String
+tests/overrides/simpleMostSpecific.kt	rejects invalid	simpleMostSpecific.kt:31	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<String?> but CheckTypeInv<String> was expected
+tests/overrides/simpleMostSpecific.kt	rejects invalid	simpleMostSpecific.kt:38	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<CharSequence> but CheckTypeInv<String> was expected
+tests/overrides/supertypeGenericsComplex.kt	rejects invalid	supertypeGenericsComplex.kt:13	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type X of type parameter 'D' is not a subtype of Out<CharSequence>
+tests/parenthesesWithIndexedAssignmentOrSetValCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetValCornerCases.kt:58	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAssignExt>?
+tests/parenthesesWithIndexedAssignmentOrSetValCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetValCornerCases.kt:61	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAndPlusAssignExt>?
+tests/parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt:58	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAssignExt>?
+tests/parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt	rejects invalid	parenthesesWithIndexedAssignmentOrSetVarCornerCases.kt:61	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Array<PlusAndPlusAssignExt>?
+tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:19	UNRESOLVED_REFERENCE	operator '++' cannot be applied to Int?
+tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:23	UNSAFE_OPERATOR_CALL	operator '+' cannot be applied to Int and Int?
+tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:27	UNSAFE_OPERATOR_CALL	operator '+' cannot be applied to Int? and Int
+tests/platformTypes/nullabilityWarnings/arithmetic.kt	rejects invalid	k.kt:39	NONE_APPLICABLE	operator '+=' cannot be applied to Int? and Int
+tests/platformTypes/rawOverrides.kt	rejects invalid	main.kt:2	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'E' is not abstract and does not implement abstract member 'foo'
+tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:7	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is Array<String> but Array<CharSequence!>! was expected
+tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:10	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is Array<Map<Int, Int>> but Array<MutableMap!>! was expected
+tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:11	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is Array<MutableMap<Int, Int>> but Array<MutableMap!>! was expected
+tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:18	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is Array<Array<Array<String>>> but Array<Array<Any!>!>! was expected
+tests/platformTypes/rawTypes/arrays.kt	rejects invalid	main.kt:20	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is Array<List<String>> but Array<MutableList!>! was expected
+tests/platformTypes/rawTypes/rawSupertypeOverride.kt	rejects invalid	main.kt:6	NOTHING_TO_OVERRIDE	'bar' overrides nothing
+tests/platformTypes/rawTypes/rawSupertypeOverride.kt	rejects invalid	main.kt:12	NOTHING_TO_OVERRIDE	'bar' overrides nothing
+tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:6	UNRESOLVED_REFERENCE	unresolved reference: length
+tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:8	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/problems/invalidCode.kt	rejects invalid	a.kt:3	SYNTAX	expected identifier, found newline
+tests/problems/kt28430.kt	rejects invalid	kt28430.kt:13	UNRESOLVED_REFERENCE	unresolved reference: m1
+tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	MANY_IMPL_MEMBER_NOT_IMPLEMENTED	class 'AB' must override 'a' because it inherits multiple implementations for it
+tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'AB' is not abstract and does not implement abstract member 'a'
+tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	objectExpression.kt:33	UNRESOLVED_REFERENCE	unresolved reference: bar
+tests/properties/inferenceFromGetters/objectExpression.kt	rejects invalid	objectExpression.kt:34	UNRESOLVED_REFERENCE	unresolved reference: bar
+tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:39	UNRESOLVED_REFERENCE	unresolved reference: type
+tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:48	UNRESOLVED_REFERENCE	unresolved reference: type
+tests/propertyOfFinalClassSmartcastEdgeCases.kt	rejects invalid	Kotlin.kt:63	UNRESOLVED_REFERENCE	unresolved reference: type
+tests/redeclarations/SingletonAndFunctionSameName.kt	rejects invalid	SingletonAndFunctionSameName.kt:12	CONFLICTING_OVERLOADS	conflicting overloads: En
+tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:115	INITIALIZER_TYPE_MISMATCH	the anonymous function's receiver doesn't match the expected function type
+tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:116	ARGUMENT_TYPE_MISMATCH	expected 1 parameter of type Int, but 0 were declared
+tests/regressions/kt30245.kt	rejects invalid	kt30245.kt:116	INSTANCE_ACCESS_BEFORE_SUPER_CALL	'this' is not defined in this context
+tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMarkerWithTypealiasRecursion.kt:15	UNRESOLVED_REFERENCE	unresolved reference: body
+tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	dslMarkerWithTypealiasRecursion.kt:19	UNRESOLVED_REFERENCE	unresolved reference: zbar
+tests/resolve/dslMarker/threeImplicitReceivers2.kt	rejects invalid	threeImplicitReceivers2.kt:58	UNRESOLVED_REFERENCE	unresolved reference: x
+tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt:7	UNSAFE_IMPLICIT_INVOKE_CALL	reference has a nullable type '(String.() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
+tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	rejects invalid	1.kt:14	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:19	UNRESOLVED_REFERENCE	unresolved reference: extensionProperty
+tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:31	UNRESOLVED_REFERENCE	unresolved reference: extensionProperty
+tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:32	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is String but Int was expected
+tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:60	NO_VALUE_FOR_PARAMETER	no function '<init>' takes 0 arguments
+tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:80	UNRESOLVED_REFERENCE	unresolved reference: getValue
+tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:80	NO_COMPANION_OBJECT	class 'X' cannot be used as a value
+tests/resolve/priority/samConstructorVsFunction.kt	rejects invalid	test1.kt:10	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is () -> String but Foo<String> was expected
+tests/samConversions/samWithLambdaNoFlexible.kt	rejects invalid	Test.kt:9	EXPECTED_PARAMETER_TYPE_MISMATCH	expected parameter of type String?
+tests/samConversions/samWithLambdaNoFlexible.kt	rejects invalid	Test.kt:25	EXPECTED_PARAMETER_TYPE_MISMATCH	expected parameter of type String?
+tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	rejects invalid	A.kt:2	CONFLICTING_JVM_DECLARATIONS	platform declaration clash: the following declarations have the same JVM signature (getScope()Ljava/lang/String;)
+tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	rejects invalid	A.kt:7	CONFLICTING_JVM_DECLARATIONS	platform declaration clash: the following declarations have the same JVM signature (getScope()Ljava/lang/String;)
+tests/scopes/kt1080.kt	rejects invalid	a.kt:7	UNRESOLVED_IMPORT	unresolved import: b.*
+tests/scopes/protectedVisibility/kt7971.kt	rejects invalid	module2/main.kt:13	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<Int!> but CheckTypeInv<String> was expected
+tests/sealed/NeverEnum.kt	rejects invalid	NeverEnum.kt:6	FINAL_SUPERTYPE	this type is final, so it cannot be inherited from
+tests/secondaryConstructors/constructorInObject.kt	rejects invalid	constructorInObject.kt:8	CONFLICTING_OVERLOADS	conflicting overloads: constructor()
+tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:38	UNRESOLVED_REFERENCE	unresolved reference: s
+tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:61	UNRESOLVED_REFERENCE	unresolved reference: s
+tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:72	UNRESOLVED_REFERENCE	unresolved reference: s
+tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	boundSmartcastsInBranches.kt:176	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:10	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Any but Nothing was expected
+tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:26	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Any but Nothing was expected
+tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:27	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Any but Int was expected
+tests/smartCasts/comparisonOfBuiltInTypesUnderOr.kt	rejects invalid	comparisonOfBuiltInTypesUnderOr.kt:35	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is Any but Nothing was expected
+tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	fakeSmartCastOnEquality.kt:38	NONE_APPLICABLE	no function 'use' takes 0 arguments
+tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	fakeSmartCastOnEquality.kt:42	NONE_APPLICABLE	no function 'use' takes 0 arguments
+tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:6	NOTHING_TO_OVERRIDE	'getName' overrides nothing
+tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:7	NOTHING_TO_OVERRIDE	'setName' overrides nothing
+tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:14	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:15	UNRESOLVED_REFERENCE	unresolved reference: name
+tests/smartCasts/intersectionScope/properties.kt	rejects invalid	properties.kt:20	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<String?> but CheckTypeInv<String> was expected
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndAssignmentOperator.kt	rejects invalid	lambdaWithCallInPlaceAndAssignmentOperator.kt:188	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:228	UNRESOLVED_REFERENCE	unresolved reference: length
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:241	UNRESOLVED_REFERENCE	unresolved reference: length
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	lambdaWithCallInPlaceAssignmnetsAndCycles.kt:123	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/smartCasts/savedSmartcastResult.kt	rejects invalid	savedSmartcastResult.kt:34	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:7	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Some but T? was expected
+tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:19	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Some but T? was expected
+tests/smartCasts/smartcastToNothing.kt	rejects invalid	smartcastToNothing.kt:33	UNRESOLVED_REFERENCE	unresolved reference: length
+tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:14	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:108	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/variables/reassignedDependency.kt	rejects invalid	reassignedDependency.kt:71	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/variables/reassignedInRhs.kt	rejects invalid	reassignedInRhs.kt:33	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	findClosestCorrespondingSupertype.kt:10	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is B but X<Int> was expected
+tests/syntheticExtensions/javaProperties/OverrideGetterOnly.kt	rejects invalid	KotlinFile.kt:7	UNRESOLVED_REFERENCE	operator '+=' cannot be applied to Any!
+tests/syntheticSet.kt	rejects invalid	test.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any! but Nothing? was expected
+tests/typeParameters/anonymousFunction.kt	rejects invalid	anonymousFunction.kt:8	UNRESOLVED_REFERENCE	unresolved or unsupported type: T
+tests/typeParameters/memberTypeParameterVsNestedClass2.kt	rejects invalid	memberTypeParameterVsNestedClass2.kt:15	TYPE_PARAMETER_AS_REIFIED	cannot use 'T' as reified type parameter
+tests/typeParameters/memberTypeParameterVsNestedClass2.kt	rejects invalid	memberTypeParameterVsNestedClass2.kt:25	TYPE_PARAMETER_AS_REIFIED	cannot use 'T' as reified type parameter
+tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:35	TYPE_PARAMETER_AS_REIFIED	cannot use 'OuterParam' as reified type parameter
+tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:40	TYPE_PARAMETER_AS_REIFIED	cannot use 'OuterParam' as reified type parameter
+tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:46	TYPE_PARAMETER_AS_REIFIED	cannot use 'OuterParam' as reified type parameter
+tests/typeParameters/memberTypeParameterVsNestedClassReference.kt	rejects invalid	memberTypeParameterVsNestedClassReference.kt:51	TYPE_PARAMETER_AS_REIFIED	cannot use 'OuterParam' as reified type parameter
+tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	main.kt:11	INVISIBLE_REFERENCE	cannot access 'A3': it is private in file
+tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	main.kt:11	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<String> was expected
+tests/typealias/importFromTypeAliasObject.kt	rejects invalid	2.kt:4	UNRESOLVED_REFERENCE	unresolved reference: foo
+tests/typealias/importMemberFromJavaViaAlias.kt	rejects invalid	test.kt:9	UNRESOLVED_REFERENCE	unresolved reference: member
+tests/typealias/importNestedTypeFromTypeAlias.kt	rejects invalid	b.kt:2	UNRESOLVED_IMPORT	unresolved import: c.TA.Nested
+tests/typealias/inheritedNestedTypeAlias.kt	rejects invalid	inheritedNestedTypeAlias.kt:20	UNRESOLVED_REFERENCE	unresolved or unsupported type: Base.CT
+tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:31	UNRESOLVED_REFERENCE	unresolved or unsupported type: Outer.InnerAlias
+tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:32	UNRESOLVED_REFERENCE	unresolved or unsupported type: Outer.InnerAlias
+tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:34	UNRESOLVED_REFERENCE	unresolved or unsupported type: Outer.GenericInnerAlias
+tests/typealias/innerTypeAliasAsType.kt	rejects invalid	innerTypeAliasAsType.kt:35	UNRESOLVED_REFERENCE	unresolved or unsupported type: Outer.GenericInnerAlias
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:15	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.DA
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:17	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.TSDA
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:18	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.TC
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:20	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.DA
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:21	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.TSDA
+tests/typealias/innerTypeAliasAsType2.kt	rejects invalid	innerTypeAliasAsType2.kt:22	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.TC
+tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:13	UNRESOLVED_REFERENCE	unresolved reference: P
+tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:19	UNRESOLVED_REFERENCE	unresolved reference: P1
+tests/typealias/innerTypeAliasConstructor.kt	rejects invalid	innerTypeAliasConstructor.kt:20	UNRESOLVED_REFERENCE	unresolved reference: P2
+tests/typealias/nestedCapturingTypeParameters.kt	rejects invalid	nestedCapturingTypeParameters.kt:23	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T2'. Specify it explicitly.
+tests/typealias/nestedCapturingTypeParameters.kt	rejects invalid	nestedCapturingTypeParameters.kt:24	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T2'. Specify it explicitly.
+tests/typealias/nestedSubstituted.kt	rejects invalid	nestedSubstituted.kt:10	UNRESOLVED_REFERENCE	unresolved or unsupported type: C.P2
+tests/typealias/privateInFileInDifferentModule.kt	rejects invalid	file2.kt:5	UNRESOLVED_REFERENCE	unresolved reference: TA
+tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:3	UNRESOLVED_IMPORT	unresolved import: test.ClassAlias.Nested1
+tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:9	UNRESOLVED_IMPORT	unresolved import: test.ObjectAlias.Nested2
+tests/typealias/typeAliasesInImportDirectives.kt	rejects invalid	test.kt:15	UNRESOLVED_IMPORT	unresolved import: test.EnumAlias.Nested3
+tests/valueParameterWithoutExplicitType.kt	rejects invalid	valueParameterWithoutExplicitType.kt:4	SYNTAX	expected ':', found ')'
+tests/visibility/checkCastToInaccessibleInterface.kt	rejects invalid	test2/source.kt:12	MULTIPLE_VARARG_PARAMETERS	multiple vararg-parameters are prohibited
+tests/visibility/checkCastToInaccessibleInterface.kt	rejects invalid	test2/source.kt:12	MULTIPLE_VARARG_PARAMETERS	multiple vararg-parameters are prohibited
+tests/when/ElseOnNullableEnum.kt	rejects invalid	1.kt:40	NO_ELSE_IN_WHEN	'when' expression must be exhaustive, add necessary 'else' branch
+tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:52	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is String & Boolean but Boolean was expected
+tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:52	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is String & Boolean but Boolean was expected
+tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is String & Boolean but Boolean was expected
+tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is String & Boolean but Boolean was expected
+tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	rejects invalid	exhaustiveWithComplementaryLowersFromNegativeCheck.kt:22	NO_ELSE_IN_WHEN	'when' expression must be exhaustive, add necessary 'else' branch
+tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:34	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is T but Boolean was expected
+tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:36	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is T but Boolean was expected
+testsWithStdLib/annotations/annotationAllRepeatable.kt	rejects invalid	annotationAllRepeatable.kt:32	REPEATED_ANNOTATION	this annotation is not repeatable
+testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	jvmName.kt:107	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'D' is not abstract and does not implement abstract member 'privateAbstractFun'
+testsWithStdLib/annotations/throws.kt	rejects invalid	main4.kt:15	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity: Throws is a classifier of more than one import
+testsWithStdLib/callableReferences/beyoundCalls.kt	rejects invalid	beyoundCalls.kt:9	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'bar' take (String)
+testsWithStdLib/callableReferences/fromBasicDiagnosticTests/moreSpecificAmbiguousExtensions.kt	rejects invalid	moreSpecificAmbiguousExtensions.kt:17	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'extFun' take (IB)
+testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	breakContinuesInInlinedLambda.kt:25	VAL_REASSIGNMENT	val cannot be reassigned
+testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	breakContinuesInInlinedLambda.kt:28	VAL_REASSIGNMENT	val cannot be reassigned
+testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects invalid	labeledReturns.kt:75	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects invalid	labeledReturns.kt:79	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:21	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:38	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:25	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:33	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/fromSource/good/returnsImplies/booleanOperators.kt	rejects invalid	booleanOperators.kt:66	UNRESOLVED_REFERENCE	unresolved reference: foo
+testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	rejects invalid	extensionWithNonValuableConstraints.kt:39	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'S'. Specify it explicitly.
+testsWithStdLib/coroutines/inference/plusAssignInCoroutineContext.kt	rejects invalid	plusAssignInCoroutineContext.kt:22	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	type checking has run into a recursive problem; specify the return type of 'foo'
+testsWithStdLib/coroutines/inference/plusAssignWithLambda.kt	rejects invalid	plusAssignWithLambda.kt:10	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	type checking has run into a recursive problem; specify the return type of 'foo'
+testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfNoinlineOrdinary.kt	rejects invalid	inlineOrdinaryOfNoinlineOrdinary.kt:23	UNRESOLVED_REFERENCE	unresolved reference: startCoroutine
+testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfOrdinary.kt	rejects invalid	inlineOrdinaryOfOrdinary.kt:36	ILLEGAL_SUSPEND_FUNCTION_CALL	suspend function 'calculate' can only be called from a coroutine or another suspend function
+testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfNoinlineOrdinary.kt	rejects invalid	inlineSuspendOfNoinlineOrdinary.kt:23	UNRESOLVED_REFERENCE	unresolved reference: startCoroutine
+testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	inlineSuspendOfOrdinary.kt:33	ILLEGAL_SUSPEND_FUNCTION_CALL	suspend function 'calculate' can only be called from a coroutine or another suspend function
+testsWithStdLib/coroutines/kt18292.kt	rejects invalid	kt18292.kt:13	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
+testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:4	UNRESOLVED_REFERENCE	unresolved reference: nestedI
+testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:8	UNRESOLVED_REFERENCE	unresolved reference: nested
+testsWithStdLib/pcla/upperBoundViolation.kt	rejects invalid	upperBoundViolation.kt:8	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'E'. Specify it explicitly.
+testsWithStdLib/problems/KJKComplexHierarchyNestedLoop.kt	rejects invalid	K1.kt:2	INNER_CLASS_CONSTRUCTOR_NO_RECEIVER	constructor of inner class J1.Nested can be called only with receiver of containing class
+testsWithStdLib/problems/stringConstructors.kt	rejects invalid	stringConstructors.kt:4	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity for ::String: specify the expected function type
+testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt	rejects invalid	explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt:16	UNRESOLVED_REFERENCE	unresolved reference: inc
+testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt	rejects invalid	explicitBackingFieldsInInlineWithVisibilityFromOverriddenFun.kt:17	UNRESOLVED_REFERENCE	unresolved reference: inc
+testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeWithReceiver.kt	rejects invalid	explicitFieldWithFunctionTypeWithReceiver.kt:21	NO_VALUE_FOR_PARAMETER	no function 'invoke' takes 0 arguments
+testsWithStdLib/properties/backingField/lateinitBackingFields.kt	rejects invalid	lateinitBackingFields.kt:6	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is String but Int was expected
+testsWithStdLib/properties/backingField/lateinitBackingFields.kt	rejects invalid	lateinitBackingFields.kt:35	ASSIGNMENT_TYPE_MISMATCH	type mismatch: inferred type is String but Number was expected
+testsWithStdLib/regression/ea65206.kt	rejects invalid	ea65206.kt:7	UNRESOLVED_REFERENCE	unresolved reference: x
+testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	hidesMembers2.kt:20	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<A> was expected
+testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	hidesMembers2.kt:23	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<B> but CheckTypeInv<A> was expected
+testsWithStdLib/smartcasts/lambdaInCallArgs.kt	rejects invalid	lambdaInCallArgs.kt:36	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?

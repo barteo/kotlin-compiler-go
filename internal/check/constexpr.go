@@ -31,13 +31,13 @@ func (c *Checker) constInit(d *syntax.PropDecl) {
 		return
 	}
 	if t := d.Sym.Type; t.K != types.Invalid && (!constType(t) || t.N || t.K == types.Null || t.K == types.Nothing) {
-		c.errorf(modPos(d.Written, "const", d.P), "const 'val' has type '%s'. Only primitive types and String are allowed", t)
+		c.errorf(modPos(d.Written, "const", d.P), "TYPE_CANT_BE_USED_FOR_CONST_VAL", "const 'val' has type '%s'. Only primitive types and String are allowed", t)
 		d.Sym.ConstBad = true
 		return
 	}
 	if d.Init == nil {
 		if d.Field == nil && d.Getter == nil && d.AccessorP.Line == 0 && !d.Expect && !d.External {
-			c.errorf(modPos(d.Written, "const", d.P), "const 'val' should have an initializer")
+			c.errorf(modPos(d.Written, "const", d.P), "CONST_VAL_WITHOUT_INITIALIZER", "const 'val' should have an initializer")
 		}
 		return
 	}
@@ -54,7 +54,7 @@ func (c *Checker) constInit(d *syntax.PropDecl) {
 			for _, v := range path {
 				if pd, ok := v.Decl.(*syntax.PropDecl); ok && pd != d && !v.ConstBad && pd.Init != nil && propIn(c.file.Decls, pd) {
 					v.ConstBad = true
-					c.errorf(pd.Init.Pos(), "const 'val' initializer should be a constant value")
+					c.errorf(pd.Init.Pos(), "CONST_VAL_WITH_NON_CONST_INITIALIZER", "const 'val' initializer should be a constant value")
 				}
 			}
 		}
@@ -65,9 +65,9 @@ func (c *Checker) constInit(d *syntax.PropDecl) {
 	switch {
 	case bad == nil:
 	case nonConstRef(bad):
-		c.errorf(bad.Pos(), "only 'const val' can be used in constant expressions")
+		c.errorf(bad.Pos(), "NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION", "only 'const val' can be used in constant expressions")
 	default:
-		c.errorf(d.Init.Pos(), "const 'val' initializer should be a constant value")
+		c.errorf(d.Init.Pos(), "CONST_VAL_WITH_NON_CONST_INITIALIZER", "const 'val' initializer should be a constant value")
 	}
 }
 

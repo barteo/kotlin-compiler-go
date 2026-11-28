@@ -215,7 +215,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 		name := gr[0].Name
 		c.supertypeParamNameWarnings(d, gr)
 		if !mixed && slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Suspend != gr[0].Suspend }) {
-			c.errorf(d.P, "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
+			c.errorf(d.P, "CONFLICTING_INHERITED_MEMBERS", "%s inherits conflicting members '%s': a suspend function and a function that isn't", classKind(cls), name)
 		}
 		var impls, classImpls, classMembers int
 		for _, g := range gr {
@@ -231,10 +231,10 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 		}
 		switch {
 		case classImpls > 0 && impls > 1:
-			c.errorf(d.P, "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
 			reported[name] = true
 		case classImpls == 0 && impls > 0 && classMembers == 0:
-			c.errorf(d.P, "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
 			reported[name] = true
 		}
 		if classMembers > 0 && classImpls == 0 {
@@ -250,7 +250,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 				}
 			}
 			if n > 1 {
-				c.errorf(d.P, "more than one inherited member declares a default value for parameter %d of '%s': it must be overridden explicitly", i+1, name)
+				c.errorf(d.P, "MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE", "more than one inherited member declares a default value for parameter %d of '%s': it must be overridden explicitly", i+1, name)
 				break
 			}
 		}
@@ -261,7 +261,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 					continue
 				}
 				if cmp, ok := compareVisibility(memberVisibility(o), memberVisibility(q)); ok && cmp > 0 {
-					c.errorf(d.P, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(memberVisibility(q)), name, q.Owner.DisplayName())
+					c.errorf(d.P, "CANNOT_WEAKEN_ACCESS_PRIVILEGE", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(memberVisibility(q)), name, q.Owner.DisplayName())
 				}
 			}
 		}
@@ -280,7 +280,7 @@ func (c *Checker) checkInheritedFuns(d *syntax.ClassDecl, mixed bool) map[string
 			return !slices.ContainsFunc(rets, func(o types.Type) bool { return !c.subtype(r, o) })
 		}
 		if impl >= 0 && !subOfAll(rets[impl]) || impl < 0 && !slices.ContainsFunc(rets, subOfAll) {
-			c.errorf(d.P, "return types of inherited members '%s' are incompatible", name)
+			c.errorf(d.P, "RETURN_TYPE_MISMATCH_ON_INHERITANCE", "return types of inherited members '%s' are incompatible", name)
 		}
 	}
 	c.checkJDKImpls(d, reported)
@@ -315,9 +315,9 @@ func (c *Checker) checkJDKImpls(d *syntax.ClassDecl, reported map[string]bool) {
 			continue
 		}
 		if viaClass {
-			c.errorf(d.P, "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
 		} else {
-			c.errorf(d.P, "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
 		}
 		reported[name] = true
 	}
@@ -426,11 +426,11 @@ func (c *Checker) checkInheritedProps(d *syntax.ClassDecl, reported map[string]b
 		}
 		switch {
 		case classImpls > 0 && impls > 1:
-			c.errorf(d.P, "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits many implementations of it", classKind(cls), name)
 			reported[name] = true
 			continue
 		case classImpls == 0 && impls > 0 && classMembers == 0:
-			c.errorf(d.P, "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
+			c.errorf(d.P, "MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED", "%s must override '%s' because it inherits multiple interface methods of it", classKind(cls), name)
 			reported[name] = true
 			continue
 		}
@@ -445,7 +445,7 @@ func (c *Checker) checkInheritedProps(d *syntax.ClassDecl, reported map[string]b
 					continue
 				}
 				if cmp, ok := compareVisibility(o.vis, q.vis); ok && cmp > 0 {
-					c.errorf(d.P, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.vis), name, q.owner.DisplayName())
+					c.errorf(d.P, "CANNOT_WEAKEN_ACCESS_PRIVILEGE", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.vis), name, q.owner.DisplayName())
 				} else if o.mutable && q.mutable && !q.inheritsSetter && !o.inheritsSetter {
 					if cmp, ok := compareVisibility(o.setterVis, q.setterVis); ok && cmp > 0 {
 						c.warnf(d.P, "CANNOT_WEAKEN_ACCESS_PRIVILEGE_WARNING", "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(q.setterVis), name, q.owner.DisplayName())
@@ -479,19 +479,19 @@ func (c *Checker) checkInheritedProps(d *syntax.ClassDecl, reported map[string]b
 			chosen = slices.IndexFunc(ts, subOfAll)
 		}
 		if impls == 1 && !gr[impl].mutable && slices.ContainsFunc(gr, func(o superProp) bool { return o.mutable }) {
-			c.errorf(d.P, "var '%s' is implemented by an inherited val of %s", name, gr[impl].owner.DisplayName())
+			c.errorf(d.P, "VAR_IMPLEMENTED_BY_INHERITED_VAL_ERROR", "var '%s' is implemented by an inherited val of %s", name, gr[impl].owner.DisplayName())
 			continue
 		}
 		mutable := slices.ContainsFunc(gr, func(o superProp) bool { return o.mutable })
 		switch {
 		case chosen < 0 && mutable:
-			c.errorf(d.P, "the types of the inherited var '%s' don't match", name)
+			c.errorf(d.P, "VAR_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited var '%s' don't match", name)
 		case chosen < 0:
-			c.errorf(d.P, "the types of the inherited property '%s' don't match", name)
+			c.errorf(d.P, "PROPERTY_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited property '%s' don't match", name)
 		default:
 			for i, o := range gr {
 				if o.mutable && !c.sameType(ts[i], ts[chosen]) {
-					c.errorf(d.P, "the types of the inherited var '%s' don't match", name)
+					c.errorf(d.P, "VAR_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited var '%s' don't match", name)
 					break
 				}
 			}
@@ -522,16 +522,16 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 					if cp := dataProp(d, name); cp != nil {
 						p = cp.P
 					}
-					c.errorf(p, "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", name, name, g.Owner.DisplayName())
+					c.errorf(p, "SUSPEND_OVERRIDDEN_BY_NON_SUSPEND", "non-suspend function '%s' cannot override suspend function '%s' defined in '%s'", name, name, g.Owner.DisplayName())
 				}
 			}
 		}
 	}
 	if conflict {
-		c.errorf(d.P, "data class '%s' overrides an implementation of a componentN function it generates", cls.DisplayName())
+		c.errorf(d.P, "DATA_CLASS_OVERRIDE_CONFLICT", "data class '%s' overrides an implementation of a componentN function it generates", cls.DisplayName())
 	}
 	if copies {
-		c.errorf(d.P, "the copy function of data class '%s' overrides a function of a supertype, whose default values it can't declare", cls.DisplayName())
+		c.errorf(d.P, "DATA_CLASS_OVERRIDE_DEFAULT_VALUES", "the copy function of data class '%s' overrides a function of a supertype, whose default values it can't declare", cls.DisplayName())
 	}
 }
 
@@ -578,7 +578,7 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 	overridesFinal := func(kind, name string) {
 		if !finalReported {
 			finalReported = true
-			c.errorf(d.P, "%s '%s', which delegation implements, overrides a final member of a superclass", kind, name)
+			c.errorf(d.P, "OVERRIDING_FINAL_MEMBER_BY_DELEGATION", "%s '%s', which delegation implements, overrides a final member of a superclass", kind, name)
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
@@ -601,7 +601,7 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 					}
 				}
 				if n > 1 {
-					c.errorf(d.P, "more than one inherited member declares a default value for parameter %d of '%s': it must be overridden explicitly", i+1, name)
+					c.errorf(d.P, "MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE", "more than one inherited member declares a default value for parameter %d of '%s': it must be overridden explicitly", i+1, name)
 					break
 				}
 			}
@@ -619,10 +619,10 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 			}
 			switch common, sub := fits(f.Ret, ts); {
 			case !common:
-				c.errorf(d.P, "return types of inherited members '%s' are incompatible", name)
+				c.errorf(d.P, "RETURN_TYPE_MISMATCH_ON_INHERITANCE", "return types of inherited members '%s' are incompatible", name)
 				reported[name] = true
 			case !sub:
-				c.errorf(d.P, "the return type of '%s', which delegation implements, isn't a subtype of the return types of the members it overrides", name)
+				c.errorf(d.P, "RETURN_TYPE_MISMATCH_BY_DELEGATION", "the return type of '%s', which delegation implements, isn't a subtype of the return types of the members it overrides", name)
 				reported[name] = true
 			}
 		}
@@ -649,14 +649,14 @@ func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
 		}
 		reported["prop "+p.Name] = true
 		if mutable && !p.Mutable {
-			c.errorf(d.P, "var '%s' is overridden by a val that delegation implements", p.Name)
+			c.errorf(d.P, "VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION", "var '%s' is overridden by a val that delegation implements", p.Name)
 			continue
 		}
 		switch common, sub := fits(p.Type, ts); {
 		case !common:
-			c.errorf(d.P, "the types of the inherited property '%s' don't match", p.Name)
+			c.errorf(d.P, "PROPERTY_TYPE_MISMATCH_ON_INHERITANCE", "the types of the inherited property '%s' don't match", p.Name)
 		case !sub:
-			c.errorf(d.P, "the type of property '%s', which delegation implements, isn't a subtype of the types of the properties it overrides", p.Name)
+			c.errorf(d.P, "PROPERTY_TYPE_MISMATCH_BY_DELEGATION", "the type of property '%s', which delegation implements, isn't a subtype of the types of the properties it overrides", p.Name)
 		}
 	}
 }

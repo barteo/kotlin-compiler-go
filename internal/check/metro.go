@@ -205,7 +205,7 @@ func (c *Checker) metroInsert() {
 			for _, src := range plan.supers[name] {
 				ref, err := parseType(c.file.Path, cd.P, src)
 				if err != nil {
-					c.errorf(cd.P, "metro: %v", err)
+					c.errorf(cd.P, "", "metro: %v", err)
 					continue
 				}
 				cd.Supers = append(cd.Supers, &syntax.SuperType{Type: ref})
@@ -213,7 +213,7 @@ func (c *Checker) metroInsert() {
 			if srcs := plan.members[name]; len(srcs) > 0 {
 				members, err := parseMembers(c.file.Path, cd.P, strings.Join(srcs, "\n"))
 				if err != nil {
-					c.errorf(cd.P, "metro: %v\n%s", err, strings.Join(srcs, "\n"))
+					c.errorf(cd.P, "", "metro: %v\n%s", err, strings.Join(srcs, "\n"))
 					continue
 				}
 				cd.Members = append(cd.Members, members...)
@@ -229,7 +229,7 @@ func (c *Checker) metroInsert() {
 			}
 			r, err := parseExpr(c.file.Path, x.P, src)
 			if err != nil {
-				c.errorf(x.P, "metro: %v", err)
+				c.errorf(x.P, "", "metro: %v", err)
 				return
 			}
 			*x = *r

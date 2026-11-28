@@ -102,7 +102,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 		if recv == nil && depth > 0 || recv != nil && localType(recv.Type()) {
 			return
 		}
-		c.errorf(p, "protected %s call from public-API inline function is prohibited: '%s'", what, name)
+		c.errorf(p, "PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR", "protected %s call from public-API inline function is prohibited: '%s'", what, name)
 	}
 	receiver := func(f syntax.Expr) syntax.Expr {
 		if m, ok := f.(*syntax.Member); ok {
@@ -143,7 +143,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 			}
 		case *syntax.Super:
 			if n.Label == "" && depth == 0 || n.Label != "" && !locals[n.Label] {
-				c.errorf(n.P, "accessing super members from public-API inline function is prohibited")
+				c.errorf(n.P, "SUPER_CALL_FROM_PUBLIC_INLINE", "accessing super members from public-API inline function is prohibited")
 			}
 		case *syntax.Ident:
 			if v := n.Sym; v != nil && v.Kind == types.Prop && n.Member == nil {
@@ -171,7 +171,7 @@ func (c *Checker) inlineAccess(d *syntax.FunDecl, protectedAPI bool) {
 			if n.Ctor != nil {
 				if f.Decl != nil && depth == 0 && !protectedAPI && publicAPIClass(n.Ctor.Outer) && !localType(types.ClassType(n.Ctor)) {
 					if cd, ok := n.Ctor.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Protected || ctorVisibility(f) == syntax.Protected) {
-						c.errorf(n.P, "protected constructor call from public-API inline function is prohibited: '%s'", cd.Name)
+						c.errorf(n.P, "PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE", "protected constructor call from public-API inline function is prohibited: '%s'", cd.Name)
 					}
 				}
 				break
@@ -290,7 +290,7 @@ func (c *Checker) inlineUsage(d *syntax.FunDecl) {
 	lambdas := map[*syntax.Lambda]nlCtx{} // the lambdas passed as arguments
 	nonLocal := func(id *syntax.Ident, at nlCtx) {
 		if at == nlForbidden && !cross[id.Sym] {
-			c.errorf(id.P, "can't inline '%s' here: it may contain non-local returns", id.Name)
+			c.errorf(id.P, "NON_LOCAL_RETURN_NOT_ALLOWED", "can't inline '%s' here: it may contain non-local returns", id.Name)
 		}
 	}
 	var visit func(n any) bool
@@ -365,7 +365,7 @@ func (c *Checker) inlineUsage(d *syntax.FunDecl) {
 			return false
 		case *syntax.Ident:
 			if param(n) != nil && !allowed[n] {
-				c.errorf(n.P, "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", n.Name, d.Name)
+				c.errorf(n.P, "USAGE_IS_NOT_INLINABLE", "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", n.Name, d.Name)
 			}
 		}
 		return true
@@ -498,7 +498,7 @@ func (c *Checker) inlineProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	}
 	c.virtualInlineProp(d, owner)
 	if d.Init != nil || d.Field != nil {
-		c.errorf(d.P, "inline property cannot have a backing field")
+		c.errorf(d.P, "INLINE_PROPERTY_WITH_BACKING_FIELD", "inline property cannot have a backing field")
 	}
 }
 
@@ -516,7 +516,7 @@ func (c *Checker) virtualInlineProp(d *syntax.PropDecl, owner *types.ClassSym) b
 	case d.InlineSetter && d.Setter != nil:
 		p = d.Setter.P
 	}
-	c.errorf(p, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	c.errorf(p, "DECLARATION_CANT_BE_INLINED", "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
 	return true
 }
 
@@ -582,7 +582,7 @@ func (c *Checker) privateTypesInlined(d *syntax.FunDecl) {
 			return true
 		}
 		if k := usesPrivateClass(g); k != nil {
-			c.errorf(x.P, "private type '%s' is used in non-private inline function '%s' through '%s'", k.Name, d.Name, g.Name)
+			c.errorf(x.P, "", "private type '%s' is used in non-private inline function '%s' through '%s'", k.Name, d.Name, g.Name)
 		}
 		return true
 	}
@@ -764,11 +764,11 @@ func (c *Checker) inlinePropCycles() {
 				switch n := n.(type) {
 				case *syntax.Ident:
 					if n.Sym == d.Sym && n.Member == nil || n.Member != nil && self(n.Member) {
-						c.errorf(n.P, "the call of '%s' is a part of an inline call cycle", d.Name)
+						c.errorf(n.P, "INLINE_CALL_CYCLE", "the call of '%s' is a part of an inline call cycle", d.Name)
 					}
 				case *syntax.Member:
 					if self(n) {
-						c.errorf(n.P, "the call of '%s' is a part of an inline call cycle", d.Name)
+						c.errorf(n.P, "INLINE_CALL_CYCLE", "the call of '%s' is a part of an inline call cycle", d.Name)
 					}
 				}
 				return true
@@ -811,7 +811,7 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 		}
 		for _, tp := range d.TypeParams {
 			if tp.Reified {
-				c.errorf(tp.P, "only type parameters of inline functions can be reified")
+				c.errorf(tp.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified")
 			}
 		}
 	}
@@ -825,7 +825,7 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 				if p.Crossinline {
 					mod = "crossinline"
 				}
-				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
+				c.errorf(p.P, "ILLEGAL_INLINE_PARAMETER_MODIFIER", "modifier '%s' is allowed only for function parameters of an inline function", mod)
 			}
 		}
 	}
@@ -840,7 +840,7 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 				mod = "crossinline"
 			}
 			if !d.Inline || notInlinable(t) {
-				c.errorf(p.P, "modifier '%s' is allowed only for function parameters of an inline function", mod)
+				c.errorf(p.P, "ILLEGAL_INLINE_PARAMETER_MODIFIER", "modifier '%s' is allowed only for function parameters of an inline function", mod)
 			}
 		}
 		if !d.Inline || p.Noinline || !t.IsFunc() {
@@ -849,15 +849,15 @@ func (c *Checker) inlineDecl(d *syntax.FunDecl, local bool) {
 		if t.IsSuspendFunc() {
 			switch {
 			case !d.Suspend && !p.Crossinline:
-				c.errorf(p.P, "an inline suspend lambda parameter of a non-suspend function must be 'noinline' or 'crossinline'")
+				c.errorf(p.P, "INLINE_SUSPEND_FUNCTION_TYPE_UNSUPPORTED", "an inline suspend lambda parameter of a non-suspend function must be 'noinline' or 'crossinline'")
 			case p.Default != nil:
-				c.errorf(p.P, "suspend functional parameters with default values are not yet supported in inline functions")
+				c.errorf(p.P, "NOT_YET_SUPPORTED_IN_INLINE", "suspend functional parameters with default values are not yet supported in inline functions")
 			}
 		}
 		if t.N {
-			c.errorf(p.P, "inline-parameter '%s' of '%s' must not be nullable. Add 'noinline' modifier to the parameter declaration or make its type not nullable", p.Name, d.Name)
+			c.errorf(p.P, "NULLABLE_INLINE_PARAMETER", "inline-parameter '%s' of '%s' must not be nullable. Add 'noinline' modifier to the parameter declaration or make its type not nullable", p.Name, d.Name)
 		} else if invalidInlineDefault(p.Default) {
-			c.errorf(p.Default.Pos(), "invalid default value for an inline functional parameter: only lambdas, anonymous functions and callable references are supported")
+			c.errorf(p.Default.Pos(), "INVALID_DEFAULT_FUNCTIONAL_PARAMETER_FOR_INLINE", "invalid default value for an inline functional parameter: only lambdas, anonymous functions and callable references are supported")
 		}
 	}
 }

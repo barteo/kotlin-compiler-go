@@ -472,7 +472,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	c.sameContainer(own)
 	c.copiedFieldClashes(d)
 	if c.bigArityFuns(cls) {
-		c.errorf(d.P, "inherited platform declarations clash: class '%s' implements several function types with more than 22 parameters", cls.DisplayName())
+		c.errorf(d.P, "CONFLICTING_INHERITED_JVM_DECLARATIONS", "inherited platform declarations clash: class '%s' implements several function types with more than 22 parameters", cls.DisplayName())
 	}
 	inherited := c.inheritedMembers(cls)
 	this := cls.This()
@@ -488,13 +488,13 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 			continue
 		}
 		if !cls.Interface && !m.static && objectFinals[m.sig] {
-			c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
+			c.errorf(m.pos, "ACCIDENTAL_OVERRIDE", "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 			continue
 		}
 		for j := range inherited {
 			g := &inherited[j]
 			if g.sig == m.sig && (g.static || !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) && !c.joinedByJava(cls, m, g)) {
-				c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
+				c.errorf(m.pos, "ACCIDENTAL_OVERRIDE", "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 				if cls.Interface && withBody(m) && withBody(g) && defaultImpls == "" {
 					defaultImpls = m.sig
 				}
@@ -515,7 +515,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 			}
 		}
 		if defaultImpls != "" {
-			c.errorf(d.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", defaultImpls)
+			c.errorf(d.P, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following declarations have the same JVM signature (%s)", defaultImpls)
 		}
 	}
 	if comp := cls.Companion; comp != nil {
@@ -531,7 +531,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 		for j := i + 1; j < len(inherited); j++ {
 			h := &inherited[j]
 			if h.sig == g.sig && !h.static && !(g.via != nil && g.via == h.via) && !c.javaInherits(cls, g.owner(), h.owner()) && !(g.fun != nil && g.fun == h.fun || g.prop != nil && g.prop == h.prop && g.setter == h.setter) && (!c.sameMember(this, g, h) || c.javaNullabilityClash(g, h)) {
-				c.errorf(d.P, "inherited platform declarations clash: the following declarations have the same JVM signature (%s)", g.sig)
+				c.errorf(d.P, "CONFLICTING_INHERITED_JVM_DECLARATIONS", "inherited platform declarations clash: the following declarations have the same JVM signature (%s)", g.sig)
 				return
 			}
 		}
@@ -572,7 +572,7 @@ func (c *Checker) jvmStaticClashes(comp *types.ClassSym, inherited []jvmMember, 
 		sig := types.InstanceJVM(fd.Sym) + desc
 		for _, g := range inherited {
 			if g.sig == sig {
-				c.errorf(fd.P, "accidental override: the following declarations have the same JVM signature (%s)", sig)
+				c.errorf(fd.P, "ACCIDENTAL_OVERRIDE", "accidental override: the following declarations have the same JVM signature (%s)", sig)
 				break
 			}
 		}
@@ -603,9 +603,9 @@ func (c *Checker) sameContainer(ms []jvmMember) {
 		sig := strings.TrimPrefix(m.sig, "field ")
 		if !reported[first] && first.pos != m.pos {
 			reported[first] = true
-			c.errorf(first.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+			c.errorf(first.pos, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 		}
-		c.errorf(m.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+		c.errorf(m.pos, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 	}
 }
 
@@ -651,8 +651,8 @@ func (c *Checker) copiedFieldClashes(d *syntax.ClassDecl) {
 			continue
 		}
 		sig := q.Name + fd
-		c.errorf(q.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
-		c.errorf(o.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+		c.errorf(q.P, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
+		c.errorf(o.P, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 	}
 }
 
@@ -692,9 +692,9 @@ func (c *Checker) ctorClashes(d *syntax.ClassDecl) {
 					// At each of them, as the backend reports it.
 					if !g.reported {
 						g.reported = true
-						c.errorf(g.pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
+						c.errorf(g.pos, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
 					}
-					c.errorf(pos, "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
+					c.errorf(pos, "CONFLICTING_JVM_DECLARATIONS", "platform declaration clash: the following constructors have the same JVM signature (<init>%sV)", desc)
 					return
 				}
 			}
@@ -804,7 +804,7 @@ func (c *Checker) mixedOverrideClash(cls *types.ClassSym, m *jvmMember) bool {
 	if special == nil || special.JVM()+jvmDesc(special) == plain.JVM()+jvmDesc(plain) {
 		return false
 	}
-	c.errorf(m.pos, "this function accidentally overrides both '%s' defined in '%s' and %s '%s' defined in '%s' from JVM point of view because of mixed Java/Kotlin hierarchy",
+	c.errorf(m.pos, "ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE", "this function accidentally overrides both '%s' defined in '%s' and %s '%s' defined in '%s' from JVM point of view because of mixed Java/Kotlin hierarchy",
 		plain.Name, plain.Owner.DisplayName(), kind, special.Name, special.Owner.DisplayName())
 	return true
 }

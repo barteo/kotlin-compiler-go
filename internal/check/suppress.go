@@ -159,8 +159,10 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 			continue
 		}
 		for _, n := range r.names {
-			// As kotlinc, names match whatever their case.
-			if e.Name != "" && strings.EqualFold(e.Name, n.name) {
+			// As kotlinc, names match whatever their case. An error's name
+			// suppresses it only if suppressible lists it: the others
+			// leave code the backend can't generate.
+			if e.Name != "" && strings.EqualFold(e.Name, n.name) && (e.IsWarning() || suppressible[e.Name] != nil) {
 				return n, true
 			}
 			if m := suppressible[strings.ToUpper(n.name)]; m != nil && m.MatchString(e.Msg) {
