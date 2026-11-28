@@ -24,6 +24,9 @@ type localCall struct {
 func (c *Checker) localFun(s *syntax.LocalFun) {
 	d := s.Decl
 	c.localAnnotations(d.Annotations, localFunSite)
+	n := len(c.errs)
+	c.synchronized(&d.Modifiers, nil, "", d.Inline, d.Suspend)
+	c.dropRepeatedErrors(n)
 	c.localTypeParamAnnotations(d.TypeParams)
 	for _, p := range d.Params {
 		c.localAnnotations(p.Annotations, paramSite)

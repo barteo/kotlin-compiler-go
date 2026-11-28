@@ -1058,6 +1058,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
 		c.typeOfSuspend()
+		c.synchronizedLocks()
 		if !opts.Signatures {
 			c.localWarnings()
 		}
