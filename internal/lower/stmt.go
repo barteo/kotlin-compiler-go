@@ -12,15 +12,21 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 		l.failAt(l.posAt(len(l.src)), "expected '{'")
 	}
 	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	p := l.pos(lb)
 	if !lb.Valid() {
-		l.fail(n, "expected '{'")
+		// finally x: as FIR, recovering, the block of what follows,
+		// which psi starts with an empty error element.
+		if e := first(n); !l.recovering || e.NumericKind() != psi.KindERROR_ELEMENT || first(e).Valid() {
+			l.fail(n, "expected '{'")
+		}
+		p = l.pos(n)
 	}
 	end := l.pos(rb)
 	if !rb.Valid() {
 		l.missingBrace(n)
 		end = l.end(n)
 	}
-	b := &syntax.Block{P: l.pos(lb), End: end, Stmts: l.stmts(n)}
+	b := &syntax.Block{P: p, End: end, Stmts: l.stmts(n)}
 	return record(l, b, n)
 }
 
@@ -76,6 +82,7 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 			e2.Pos = l.pos(c)
 			l.errs[len(l.errs)-1] = &e2
 		}
+		l.lose(c)
 		if v := l.placeholderVar(c); v != nil {
 			out = append(out, v)
 		}
@@ -299,7 +306,14 @@ func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {
 				f.Type = l.typeRef(t)
 			}
 		}
-		f.Range = l.expr(exprChild(child(n, psi.KindLOOP_RANGE)))
+		if r := child(n, psi.KindLOOP_RANGE); l.recovering && (!r.Valid() || first(r).NumericKind() == psi.KindERROR_ELEMENT) {
+			// for (x) or for (x in ): as kotlinc, a range of no type,
+			// which has no iterator().
+			l.errorLater(l.pos(n), "for-loop range must have an 'iterator()' method")
+			f.Range = syntax.Invalid(l.pos(n))
+		} else {
+			f.Range = l.expr(exprChild(r))
+		}
 		f.Body = l.loopBody(n)
 		return record(l, f, n)
 	case psi.KindWHILE:
@@ -352,7 +366,15 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	if !name.Valid() {
 		l.failAt(l.end(kw), "expected a name")
 	}
+	var tps []*syntax.TypeParam
+	if c := child(n, psi.KindTYPE_PARAMETER_LIST); c.Valid() && !has(n, psi.KindTYPE_CONSTRAINT_LIST) {
+		tps = l.typeParams(c)
+		l.errorLater(l.pos(c), syntax.LocalTypeParamsMsg)
+	}
 	for _, k := range []psi.Kind{psi.KindTYPE_PARAMETER_LIST, psi.KindPROPERTY_ACCESSOR, psi.KindTYPE_CONSTRAINT_LIST} {
+		if k == psi.KindTYPE_PARAMETER_LIST && tps != nil {
+			continue
+		}
 		if c := child(n, k); c.Valid() {
 			l.unexpected(c)
 		}
@@ -360,7 +382,7 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	if c := prev(name); c.NumericKind() == psi.KindDOT {
 		l.unexpected(c)
 	}
-	vs := &syntax.VarStmt{P: l.pos(kw), Name: ident(name), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD}
+	vs := &syntax.VarStmt{P: l.pos(kw), Name: ident(name), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD, TypeParams: tps}
 	record(l, vs, n)
 	if t := child(n, psi.KindTYPE_REFERENCE); t.Valid() {
 		vs.Type = l.typeRef(t)

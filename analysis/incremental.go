@@ -54,6 +54,9 @@ type state struct {
 	// the other files were checked without it, so any change to such a
 	// file changes all it declares.
 	lost []bool
+	// lostDecls says which files recovery left out of what the rest of
+	// the module sees (lowered.lostDecls).
+	lostDecls []bool
 	// refs are the other snapshots each file's facts refer to.
 	refs [][]psi.SnapshotID
 	// syms are the symbols of res.symbols as the checker made them, or nil
@@ -457,7 +460,8 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 	provs := make([]*lower.Provenance, n)
 	diags := make([][]fileDiag, n)
 	broken := make([]bool, n)
-	anyBroken := false
+	lostDecls := make([]bool, n)
+	anyLostDecls := false
 	for i := range snaps {
 		lw := low[i]
 		if lw.file == nil {
@@ -467,14 +471,14 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		switch {
 		case isDeclared(i):
 		case !dirty[i]:
-			diags[i], broken[i] = st.diags[c.old[i]], st.broken[c.old[i]]
+			diags[i], broken[i], lostDecls[i] = st.diags[c.old[i]], st.broken[c.old[i]], st.lostDecls[c.old[i]]
 		default:
-			broken[i] = lw.broken
+			broken[i], lostDecls[i] = lw.broken, lw.lostDecls
 			for _, e := range lw.errs {
 				diags[i] = append(diags[i], fileDiag{diagnostic(snaps[i].Path(), e), diagLower})
 			}
 		}
-		anyBroken = anyBroken || broken[i]
+		anyLostDecls = anyLostDecls || lostDecls[i]
 	}
 	if duplicateClasses(files) != nil {
 		return nil, nil, false, whole("duplicate classes")
@@ -504,7 +508,7 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		if !found || !dirty[i] {
 			return nil, nil, false, whole("error of an unchecked file") // not a checked file's
 		}
-		if !e.IsWarning() && low[i].lines[e.Pos.Line] {
+		if !e.IsWarning() && low[i].lines[e.Pos.Line] || lostWarning(low[i].file, e) {
 			continue
 		}
 		diags[i] = append(diags[i], checkerDiag(snaps[i].Path(), e))
@@ -532,7 +536,7 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		builtSyms = b.syms
 	}
 	res = &Result{symbols: syms}
-	next = &state{key: st.key, res: res, snaps: snaps, diags: diags, broken: broken, extra: extra, lost: make([]bool, n), refs: refs, syms: make([]any, len(syms)), base: st.base,
+	next = &state{key: st.key, res: res, snaps: snaps, diags: diags, broken: broken, extra: extra, lost: make([]bool, n), lostDecls: lostDecls, refs: refs, syms: make([]any, len(syms)), base: st.base,
 		lookups: make([][]lookup, n), decls: c.decls, hashes: c.hashes, declared: declOnly}
 	// next.syms keeps the pointers of this update's symbols only: an
 	// earlier check's would keep its sources' symbols alive.
@@ -607,7 +611,7 @@ func (l *Library) incremental(ctx context.Context, snaps []*psi.Snapshot, opts O
 		}
 	}
 	res.setFiles(snaps, all)
-	res.diags = finish(extra, diags, anyBroken)
+	res.diags = finish(extra, diags, anyLostDecls)
 	if len(res.symbols) > 2*next.base+compactSlack {
 		next.compact()
 	}

@@ -918,14 +918,17 @@ type Options struct {
 	// INLINE_FROM_HIGHER_PLATFORM.
 	JVMTarget uint16
 	// Recovered says that the files are those of a program with syntax
-	// errors, as far as the parser recovered them: of the warnings, only
-	// recoveredWarnings are reported.
+	// errors, as far as the parser recovered them (syntax.File.Lost): of
+	// the warnings, only those RecoveredWarning names are reported in
+	// the bodies that lost statements (LostCode), or in the whole module
+	// if a declaration was lost (LostDeclarations).
 	Recovered bool
 	// Raw keeps what the module's errors and syntax errors would filter
 	// out: the JVM backend's errors (dropBackendErrors) and, with
-	// Recovered unset, the warnings recoveredWarnings leaves out; for a
+	// Recovered unset, the warnings RecoveredWarning leaves out; for a
 	// caller that checks some files of a module and filters what all of
-	// them report (IsBackendError, RecoveredWarning).
+	// them report (IsBackendError, RecoveredWarning, LostCode,
+	// LostDeclarations).
 	Raw bool
 	// ExtraWarnings also reports the warnings of kotlinc's extra checkers,
 	// which kotlinc reports only with -Wextra, as UNREACHABLE_CODE.
@@ -1074,7 +1077,15 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = dropBackendErrors(errs)
 	}
 	if opts.Recovered {
-		warns = slices.DeleteFunc(warns, func(w *syntax.Error) bool { return !recoveredWarnings[w.Name] })
+		byPath := map[string]*syntax.File{}
+		decls := false
+		for _, f := range files {
+			byPath[f.Path] = f
+			decls = decls || LostDeclarations(f)
+		}
+		warns = slices.DeleteFunc(warns, func(w *syntax.Error) bool {
+			return !RecoveredWarning(w) && (decls || LostCode(byPath[w.File], w.Pos))
+		})
 	}
 	if opts.Warnings {
 		errs = append(errs, warns...)
@@ -1105,8 +1116,30 @@ func IsBackendError(e *syntax.Error) bool {
 }
 
 // RecoveredWarning reports whether a module with syntax errors reports
-// the warning kotlinc names name (Options.Recovered).
-func RecoveredWarning(name string) bool { return recoveredWarnings[name] }
+// warning w wherever it is (Options.Recovered): one of recoveredWarnings,
+// or one judged by literals alone (syntax.Error.Robust).
+func RecoveredWarning(w *syntax.Error) bool { return recoveredWarnings[w.Name] || w.Robust }
+
+// LostDeclarations reports whether recovery from syntax errors left out
+// of file f what the rest of its module sees (syntax.Lost.Decls): then
+// only the warnings RecoveredWarning names are reported in the module.
+func LostDeclarations(f *syntax.File) bool { return f != nil && f.Lost != nil && f.Lost.Decls }
+
+// LostCode reports whether position p of file f is in a declaration
+// whose body recovery from syntax errors left statements out of
+// (syntax.Lost.Bodies): there, only the warnings RecoveredWarning names
+// are reported.
+func LostCode(f *syntax.File, p syntax.Pos) bool {
+	if f == nil || f.Lost == nil {
+		return false
+	}
+	for _, s := range f.Lost.Bodies {
+		if s.Contains(p) {
+			return true
+		}
+	}
+	return false
+}
 
 // signatures declares the files' declarations and resolves their
 // signatures: the phases of checking before bodies are checked, as opts
@@ -1282,6 +1315,16 @@ func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 // rolled back with errors. A warning at the same place, with the same
 // name, is reported once.
 func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
+	c.warn(false, p, name, format, args...)
+}
+
+// robustWarnf reports a warning as warnf does, judged by literals alone
+// (syntax.Error.Robust).
+func (c *Checker) robustWarnf(p syntax.Pos, name, format string, args ...any) {
+	c.warn(true, p, name, format, args...)
+}
+
+func (c *Checker) warn(robust bool, p syntax.Pos, name, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	k := warnKey{p, name, msg}
 	if c.warned[k] {
@@ -1291,7 +1334,7 @@ func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
 		c.warned = map[warnKey]bool{}
 	}
 	c.warned[k] = true
-	c.warns = append(c.warns, &syntax.Error{File: c.file.Path, Pos: p, Msg: msg, Severity: syntax.SevWarning, Name: name})
+	c.warns = append(c.warns, &syntax.Error{File: c.file.Path, Pos: p, Msg: msg, Severity: syntax.SevWarning, Name: name, Robust: robust})
 }
 
 type warnKey struct {

@@ -51,11 +51,32 @@ func (l *lowerer) expr(n psi.NodeRef) syntax.Expr {
 	if !n.Valid() {
 		l.failAt(l.posAt(len(l.src)), "expected an expression")
 	}
+	if k := n.NumericKind(); k == psi.KindCLASS || k == psi.KindOBJECT_DECLARATION {
+		return l.declExpr(n) // whose wrapper is no psi node's
+	}
 	x := l.expr1(n)
 	if _, ok := l.prov[x]; !ok {
 		l.prov[x] = n.ID()
 	}
 	return x
+}
+
+// declExpr lowers a class or object declaration where an expression is
+// expected, fun f() = class C {}, which TreeErrors reports. Recovering,
+// it is kept as FIR keeps it, and checked as a local class: in a lambda,
+// the expression of no type.
+func (l *lowerer) declExpr(n psi.NodeRef) syntax.Expr {
+	if !l.recovering {
+		l.fail(n, "expected an expression, found a declaration")
+	}
+	as, m, _, _ := l.stmtModifiers(n)
+	lc := l.localClass(n, m)
+	lc.Annotations = append(as, lc.Annotations...)
+	record(l, lc, n)
+	p := l.pos(n)
+	lam := &syntax.Lambda{Body: &syntax.Block{P: p, Stmts: []syntax.Stmt{lc}}}
+	lam.P = p
+	return &syntax.As{P: p, X: lam, Ref: &syntax.TypeRef{P: p, Known: &types.InvalidType}}
 }
 
 func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
@@ -124,7 +145,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
-			l.fail(t, "the value is out of range")
+			// As kotlinc, an error that leaves the code around it checked.
+			l.errorLater(l.pos(t), "the value is out of range")
+			return syntax.Invalid(l.pos(t))
 		}
 		return lit
 	case psi.KindFLOAT_CONSTANT:
@@ -413,6 +436,12 @@ func (l *lowerer) lastLeaf(n psi.NodeRef) psi.NodeRef {
 // qualified lowers a DOT_QUALIFIED_EXPRESSION or SAFE_ACCESS_EXPRESSION.
 func (l *lowerer) qualified(n psi.NodeRef) syntax.Expr {
 	ops := operands(n)
+	if len(ops) == 1 && l.recovering && emptySelector(child(n, psi.KindERROR_ELEMENT)) {
+		// a.b(). with no selector: as FIR, the receiver is checked, and
+		// the expression has no type.
+		x := l.expr(ops[0])
+		return &syntax.As{P: syntax.StartPos(x), X: x, Ref: &syntax.TypeRef{P: syntax.StartPos(x), Known: &types.InvalidType}}
+	}
 	if len(ops) != 2 {
 		l.failAt(l.end(n), "expected a name")
 	}
@@ -466,6 +495,9 @@ func (l *lowerer) typeArgsOf(n psi.NodeRef) []*syntax.TypeArg {
 
 // call lowers a CALL_EXPRESSION.
 func (l *lowerer) call(n psi.NodeRef) syntax.Expr {
+	if e := first(n); l.recovering && errorCallee(e) {
+		return l.callOn(syntax.Invalid(l.pos(e)), nil, n)
+	}
 	callee := exprChild(n)
 	if callee.NumericKind() == psi.KindREFERENCE_EXPRESSION && first(callee).Text() == "suspend" &&
 		!has(n, psi.KindTYPE_ARGUMENT_LIST) && !has(n, psi.KindVALUE_ARGUMENT_LIST) {
@@ -492,6 +524,11 @@ func (l *lowerer) callOn(fn syntax.Expr, targs []*syntax.TypeArg, n psi.NodeRef)
 				continue
 			}
 			v := first(a)
+			if l.recovering && emptyArgument(v) {
+				// f(g( with no argument: as FIR, one of no type.
+				c.Args = append(c.Args, syntax.Invalid(l.pos(v)))
+				continue
+			}
 			if v.NumericKind() == psi.KindVALUE_ARGUMENT_NAME {
 				for len(c.Names) < len(c.Args) {
 					c.Names = append(c.Names, "")
@@ -907,7 +944,17 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 				}
 				lam.P, lam.AnonCtx = l.pos(c), l.contextParams(c)
 			default:
-				l.unexpected(m)
+				if !c.IsLeaf() {
+					l.unexpected(m)
+				}
+				// tailrec fun () {}: the checker reports it. The function
+				// starts at its modifiers, as at its context parameters.
+				if lam.AnonMods == nil && lam.AnonCtx == nil {
+					lam.P = l.pos(c)
+				}
+				lam.AnonMods = append(lam.AnonMods, syntax.Mod{Name: c.Text(), P: l.pos(c)})
+				// As kotlinc, a suspend one's body is checked as suspend.
+				lam.SuspendMod = lam.SuspendMod || c.Text() == "suspend"
 			}
 		}
 		for _, a := range as {
@@ -1008,10 +1055,12 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w.P = l.pos(n)
 	if has(n, psi.KindLPAR) {
 		if dd := child(n, psi.KindDESTRUCTURING_DECLARATION); dd.Valid() && has(dd, psi.KindEQ) {
-			// As kotlinc, the initializer is the subject, and the names
-			// aren't declared.
+			// As kotlinc, the names aren't declared, and the subject is
+			// the declaration, of type Unit, which evaluates the
+			// initializer.
 			l.errorLater(l.pos(dd), "illegal variable declaration in 'when' subject: destructuring declaration; only 'val' variables with initializers are allowed")
-			w.Subject = l.expr(exprAfter(dd, psi.KindEQ))
+			x := l.expr(exprAfter(dd, psi.KindEQ))
+			w.Subject = &syntax.As{P: syntax.StartPos(x), X: x, Ref: &syntax.TypeRef{P: syntax.StartPos(x), Known: &types.UnitType}}
 		} else if pd := child(n, psi.KindPROPERTY); pd.Valid() {
 			if m := child(pd, psi.KindMODIFIER_LIST); m.Valid() || has(pd, psi.KindVAR_KEYWORD) {
 				if !has(pd, psi.KindEQ) || has(pd, psi.KindPROPERTY_DELEGATE) || has(pd, psi.KindTYPE_REFERENCE) && has(pd, psi.KindDOT) {
@@ -1045,6 +1094,7 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 			l.syntaxError(e)
 			br = l.whenEntry(w, e)
 		}) {
+			l.lose(e)
 			br = l.placeholderEntry(e)
 		}
 		w.Branches = append(w.Branches, record(l, br, e))

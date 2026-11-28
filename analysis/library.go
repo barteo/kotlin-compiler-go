@@ -134,6 +134,11 @@ type lowered struct {
 	// than statements of a closed body: the other files were checked
 	// without it.
 	lost bool
+	// lostDecls is set if recovery from syntax errors left out of the
+	// file what the rest of the module sees (check.LostDeclarations), or
+	// the file is left out: then the module reports only the warnings
+	// check.RecoveredWarning names.
+	lostDecls bool
 }
 
 // lowerSnapshot lowers s, recovering from its syntax errors as kotlinc
@@ -178,6 +183,7 @@ func lowerSnapshot(s *psi.Snapshot) lowered {
 		lw.lines[e.Pos.Line] = true
 	}
 	lw.lost = lw.file == nil || lostDeclarations(s, lw.file)
+	lw.lostDecls = lw.file == nil || check.LostDeclarations(lw.file)
 	return lw
 }
 
@@ -257,6 +263,13 @@ func lostDeclarations(s *psi.Snapshot, f *syntax.File) bool {
 	return false
 }
 
+// lostWarning reports whether e is a warning that statements recovery
+// from syntax errors left out of f can be the reason for, in the body
+// that lost them (check.LostCode), which the module doesn't report.
+func lostWarning(f *syntax.File, e *syntax.Error) bool {
+	return e.IsWarning() && !check.RecoveredWarning(e) && check.LostCode(f, e.Pos)
+}
+
 // diagKind is what a file's diagnostic is, for the filters of the
 // module's diagnostics (finish).
 type diagKind uint8
@@ -266,6 +279,7 @@ const (
 	diagError                   // the checker's
 	diagBackend                 // the checker's, of kotlinc's JVM backend
 	diagWarning                 // the checker's
+	diagRobust                  // the checker's warning check.RecoveredWarning names, which syntax errors don't filter
 )
 
 // fileDiag is a diagnostic of one file.
@@ -278,6 +292,8 @@ type fileDiag struct {
 func checkerDiag(path string, e *syntax.Error) fileDiag {
 	k := diagError
 	switch {
+	case e.IsWarning() && check.RecoveredWarning(e):
+		k = diagRobust
 	case e.IsWarning():
 		k = diagWarning
 	case check.IsBackendError(e):
@@ -288,9 +304,9 @@ func checkerDiag(path string, e *syntax.Error) fileDiag {
 
 // finish returns the module's diagnostics: extra, then each file's, as
 // kotlinc reports them: the JVM backend's errors only if there are no
-// others, and of the warnings of a module with syntax errors only those
-// check.RecoveredWarning says.
-func finish(extra []Diagnostic, files [][]fileDiag, broken bool) []Diagnostic {
+// others, and, if recovery from syntax errors left out declarations
+// (lostDecls), of the warnings only those check.RecoveredWarning names.
+func finish(extra []Diagnostic, files [][]fileDiag, lostDecls bool) []Diagnostic {
 	others := false
 	for _, ds := range files {
 		for _, d := range ds {
@@ -300,7 +316,7 @@ func finish(extra []Diagnostic, files [][]fileDiag, broken bool) []Diagnostic {
 	out := slices.Clone(extra)
 	for _, ds := range files {
 		for _, d := range ds {
-			if d.kind == diagBackend && others || d.kind == diagWarning && broken && !check.RecoveredWarning(d.Name) {
+			if d.kind == diagBackend && others || d.kind == diagWarning && lostDecls {
 				continue
 			}
 			out = append(out, d.Diagnostic)
@@ -341,13 +357,13 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 
 	res := &Result{}
 	var (
-		kept    []int // the indexes of the snapshots checked
-		files   []*syntax.File
-		provs   []*lower.Provenance
-		extra   []Diagnostic
-		broken  bool
-		perFile = make([][]fileDiag, n)
-		dropped bool
+		kept      []int // the indexes of the snapshots checked
+		files     []*syntax.File
+		provs     []*lower.Provenance
+		extra     []Diagnostic
+		perFile   = make([][]fileDiag, n)
+		dropped   bool
+		lostDecls bool
 	)
 	for i, lw := range low {
 		for _, e := range lw.errs {
@@ -357,7 +373,7 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 			dropped = true
 			continue
 		}
-		broken = broken || lw.broken
+		lostDecls = lostDecls || lw.lostDecls
 		kept = append(kept, i)
 		files = append(files, lw.file)
 		provs = append(provs, lw.prov)
@@ -379,6 +395,7 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 		files = slices.Delete(files, j, j+1)
 		provs = slices.Delete(provs, j, j+1)
 	}
+	lostDecls = lostDecls || dropped
 	keptSnaps := make([]*psi.Snapshot, len(kept))
 	for j, i := range kept {
 		keptSnaps[j] = snaps[i]
@@ -431,12 +448,12 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 		if !ok {
 			whole = false
 			d := checkerDiag(e.File, e)
-			if !(d.kind == diagWarning && broken && !check.RecoveredWarning(d.Name)) {
+			if !(d.kind == diagWarning && lostDecls) {
 				extra = append(extra, d.Diagnostic)
 			}
 			continue
 		}
-		if unchecked(i) || !e.IsWarning() && low[i].lines[e.Pos.Line] {
+		if unchecked(i) || !e.IsWarning() && low[i].lines[e.Pos.Line] || lostWarning(low[i].file, e) {
 			continue
 		}
 		perFile[i] = append(perFile[i], checkerDiag(snaps[i].Path(), e))
@@ -451,7 +468,7 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 		}
 	}
 	b.build()
-	res.diags = finish(extra, perFile, broken)
+	res.diags = finish(extra, perFile, lostDecls)
 	if probe != nil {
 		res.diags = slices.DeleteFunc(res.diags, placeholderDiagnostic)
 	}
@@ -468,10 +485,11 @@ func (l *Library) run(ctx context.Context, snaps []*psi.Snapshot, opts Options, 
 	if st == nil {
 		return res, nil, nil
 	}
-	st.diags, st.broken, st.lost, st.declared, st.extra = perFile, make([]bool, n), make([]bool, n), declOnly, extra
+	st.diags, st.broken, st.lost, st.lostDecls, st.declared, st.extra = perFile, make([]bool, n), make([]bool, n), make([]bool, n), declOnly, extra
 	for i := range low {
 		st.broken[i] = low[i].broken
 		st.lost[i] = low[i].lost
+		st.lostDecls[i] = low[i].lostDecls
 	}
 	parallel(n, jobs, func(i int) {
 		st.lookups[i] = rec.fileLookups(files[i])

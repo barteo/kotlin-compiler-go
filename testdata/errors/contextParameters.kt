@@ -133,3 +133,12 @@ context(x: CtxA)
 fun bothContexts(a: CtxBoth) {
     a.cb // ERROR overload resolution ambiguity: cb
 }
+
+// As kotlinc's parser, val or var after the first context parameter.
+context(_: Logger, val v: String) // ERROR 'val' on function parameter is not allowed
+fun valContext() = v
+
+fun namedInType(f: context(s: String) () -> Unit) { // ERROR named context parameters in function types are unsupported: use the syntax 'context(Type)' instead
+    namedInType { s } // ERROR unresolved reference: s
+    f("x")
+}

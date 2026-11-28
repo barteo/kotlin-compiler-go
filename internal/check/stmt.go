@@ -644,6 +644,14 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	// The site of the declaration, before checking its value: a lambda's
 	// block in the value moves c.site to its statements.
 	site := c.site
+	if s.TypeParams != nil {
+		// As kotlinc's, the bounds of type parameters lowering reported
+		// are checked, with the parameters in scope only there.
+		saved := c.tparams
+		c.tparams = append(c.declareTypeParams(s.TypeParams, nil, false), saved...)
+		c.resolveBounds(s.TypeParams)
+		c.tparams = saved
+	}
 	if s.Init != nil {
 		c.jvmFunctionInit(s.Type, s.Init)
 	}

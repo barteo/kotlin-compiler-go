@@ -25,6 +25,10 @@ type Error struct {
 	// Name is the name kotlinc gives the diagnostic, as DEPRECATION, if
 	// kc knows it: every warning has one. @Suppress names it.
 	Name string
+	// Robust is set on a warning judged by literals alone, as 1 is Int,
+	// which no code recovery from syntax errors leaves out can be the
+	// reason for (check.RecoveredWarning).
+	Robust bool
 }
 
 // Severity is a diagnostic's severity.

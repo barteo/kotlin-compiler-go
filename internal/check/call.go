@@ -2194,6 +2194,12 @@ func (c *Checker) memberResultClass(rt types.Type, name string) *types.ClassSym 
 func (c *Checker) arityError(x *syntax.Call, name string, cands []callee) {
 	report := func(p syntax.Pos) { c.errorf(p, "no function '%s' takes %d arguments", name, len(x.Args)) }
 	excess, vararg := excessArg(x, cands)
+	if excess < 0 && slices.ContainsFunc(x.Args, syntax.IsInvalid) {
+		// f( cut short by a syntax error: as kotlinc, whose candidates
+		// aren't inapplicable to an argument of no type, the arguments
+		// missing after it aren't reported.
+		return
+	}
 	switch {
 	case excess < 0 || len(cands) > 1:
 		report(x.P)

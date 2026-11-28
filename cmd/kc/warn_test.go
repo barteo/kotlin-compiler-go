@@ -147,3 +147,85 @@ fun <T : Int> k() { println($"a" + ) }
 		t.Errorf("warnings:\ngot  %v\nwant %v\noutput:\n%s", got, want, stderr.String())
 	}
 }
+
+// TestWarningsLostCode compiles programs with syntax errors whose
+// recovery leaves statements or declarations out: a statement left out
+// of a body filters the warnings in that body only, but for those judged
+// by literals alone, and a declaration left out filters them in the
+// whole module.
+func TestWarningsLostCode(t *testing.T) {
+	if _, err := classpath.FindJDK(); err != nil {
+		t.Skip(err) // the files are checked only with a class path
+	}
+	for _, tc := range []struct {
+		name  string
+		files []string
+		want  []string
+	}{
+		{
+			name: "statement",
+			files: []string{`fun g(x: Any, s: String) {
+    s?.length
+    x is Any
+    1 is Int
+    val y = 1 +
+}
+fun h(x: Any, s: String) {
+    s?.length
+    x is Any
+}
+`},
+			want: []string{
+				"a.kt:4:5 USELESS_IS_CHECK",      // judged by the literal alone
+				"a.kt:8:8 UNNECESSARY_SAFE_CALL", // in a body that lost nothing
+				"a.kt:9:5 USELESS_IS_CHECK",
+			},
+		},
+		{
+			name: "declaration",
+			files: []string{`fun g(s: String) {
+    s?.length
+    1 is Int
+}
+fun broken( {
+}
+`},
+			want: []string{"a.kt:3:5 USELESS_IS_CHECK"},
+		},
+		{
+			name:  "other file, statement",
+			files: []string{"fun g() {\n    val y = 1 +\n}\n", "fun h(s: String) {\n    s?.length\n}\n"},
+			want:  []string{"b.kt:2:8 UNNECESSARY_SAFE_CALL"},
+		},
+		{
+			name:  "other file, declaration",
+			files: []string{"fun broken( {\n}\n", "fun h(s: String) {\n    s?.length\n}\n"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var srcs []string
+			for i, f := range tc.files {
+				src := filepath.Join(dir, string(rune('a'+i))+".kt")
+				if err := os.WriteFile(src, []byte(f), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				srcs = append(srcs, src)
+			}
+			var stderr strings.Builder
+			code, _ := compile(append([]string{"-features", "-d", filepath.Join(dir, "out")}, srcs...), &stderr, nil)
+			if code != 1 {
+				t.Errorf("exit %d, want 1 for the syntax errors", code)
+			}
+			var got []string
+			for _, line := range strings.Split(stderr.String(), "\n") {
+				if f := strings.Split(line, "\t"); len(f) > 3 && f[2] == "warning" {
+					got = append(got, filepath.Base(f[0])+":"+f[1]+" "+f[3])
+				}
+			}
+			if strings.Join(got, ", ") != strings.Join(tc.want, ", ") {
+				t.Errorf("warnings:\ngot  %v\nwant %v\noutput:\n%s", got, tc.want, stderr.String())
+			}
+		})
+	}
+}

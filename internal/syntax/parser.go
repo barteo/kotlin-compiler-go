@@ -444,6 +444,12 @@ func (p *parser) contextParams() []*Param {
 			}
 		}
 		m := p.modifiers()
+		// As kotlinc's parser, val or var only on a context parameter
+		// after the first: before it, context( starts a property.
+		if t := p.tok(); (t.Kind == VAL || t.Kind == VAR) && len(ps) > 0 {
+			p.next()
+			ValOnParam(t.Kind.String(), "function", t.Pos, p)
+		}
 		if !p.at(IDENT) || p.toks[p.i+1].Kind != COLON {
 			p.failAt(p.tok().Pos, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
 		}
@@ -507,7 +513,28 @@ func (p *parser) contextAnonFun() bool {
 	}
 	for j++; p.toks[j].Kind == NL; j++ {
 	}
-	return p.toks[j].Kind == FUN && p.anonFunAt(j)
+	return p.toks[j].Kind == FUN && p.anonFunAt(j) || p.anonFunAfterMods(j)
+}
+
+// anonFunAfterMods reports whether modifier keywords at i are an
+// anonymous function's, tailrec fun () {}.
+func (p *parser) anonFunAfterMods(i int) bool {
+	j := i
+	for p.toks[j].Kind == IDENT && isModifier(p.toks[j].Text) {
+		j++
+	}
+	return j > i && p.toks[j].Kind == FUN && p.anonFunAt(j)
+}
+
+// anonMods parses the modifier keywords before an anonymous function's
+// fun.
+func (p *parser) anonMods() []Mod {
+	var ms []Mod
+	for t := p.tok(); t.Kind == IDENT && isModifier(t.Text); t = p.tok() {
+		p.next()
+		ms = append(ms, Mod{Name: t.Text, P: t.Pos})
+	}
+	return ms
 }
 
 // danglingContexts reports context parameters that no declaration
@@ -942,6 +969,11 @@ func (p *parser) parseType() *TypeRef {
 			p.failAt(p.tok().Pos, "expected a context parameter type")
 		}
 		for p.skipNL(); !p.at(RPAREN); p.skipNL() {
+			if t := p.tok(); t.Kind == IDENT && p.toks[p.i+1].Kind == COLON {
+				p.errorLater(t.Pos, NamedContextInTypeMsg)
+				p.next()
+				p.next()
+			}
 			ctx = append(ctx, p.parseType())
 			p.skipNL()
 			if !p.comma() {
@@ -2543,8 +2575,13 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 			d.Init = p.parseExpr()
 			return d
 		}
+		var tps []*TypeParam
+		if lt := p.tok(); lt.Kind == LT {
+			tps = p.parseTypeParams()
+			p.errorLater(lt.Pos, LocalTypeParamsMsg)
+		}
 		name := p.ident()
-		vs := &VarStmt{P: t.Pos, Name: name.Text, Mutable: t.Kind == VAR}
+		vs := &VarStmt{P: t.Pos, Name: name.Text, Mutable: t.Kind == VAR, TypeParams: tps}
 		if p.at(COLON) {
 			p.next()
 			p.skipNL()
@@ -2663,6 +2700,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 			case FUN:
 				if p.toks[j+1].Kind == INTERFACE {
 					return p.localClass(p.modifiers())
+				}
+				if p.anonFunAt(j) {
+					break // an anonymous function's: tailrec fun () {}
 				}
 				return p.localFun(p.modifiers())
 			case CLASS, INTERFACE, OBJECT:
@@ -3210,8 +3250,18 @@ func (p *parser) parsePrimary() Expr {
 			// context parameters.
 			ctx := p.contextParams()
 			p.skipNL()
+			mods := p.anonMods()
 			l := p.anonFun("")
-			l.P, l.AnonCtx = t.Pos, ctx
+			l.P, l.AnonCtx, l.AnonMods = t.Pos, ctx, mods
+			l.SuspendMod = slices.ContainsFunc(mods, func(m Mod) bool { return m.Name == "suspend" })
+			return l
+		}
+		if p.anonFunAfterMods(p.i) {
+			mods := p.anonMods()
+			l := p.anonFun("")
+			l.P, l.AnonMods = mods[0].P, mods // it starts at its modifiers
+			// As kotlinc, a suspend one's body is checked as suspend.
+			l.SuspendMod = slices.ContainsFunc(mods, func(m Mod) bool { return m.Name == "suspend" })
 			return l
 		}
 		if t.Text == "suspend" && p.toks[p.i+1].Kind == LBRACE {
@@ -3408,7 +3458,9 @@ func (p *parser) intLit(t Token) Expr {
 	}
 	lit, ok := IntLiteral(t.Pos, t.Text, t.Kind == UNSIGNED)
 	if !ok {
-		p.failAt(t.Pos, "the value is out of range")
+		// As kotlinc, an error that leaves the code around it checked.
+		p.errorLater(t.Pos, "the value is out of range")
+		return Invalid(t.Pos)
 	}
 	return lit
 }

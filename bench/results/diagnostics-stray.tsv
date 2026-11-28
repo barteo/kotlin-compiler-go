@@ -7,7 +7,6 @@ tests/KotlinActualAnnotationHasNoEffectInKotlin.kt	rejects invalid	KotlinActualA
 tests/PackageQualified.kt	rejects invalid	a.kt:3	unresolved import: java.*
 tests/ResolveToJava.kt	rejects invalid	a.kt:2	unresolved import: java.*
 tests/TraitOverrideObjectMethods.kt	rejects invalid	TraitOverrideObjectMethods.kt:6	'finalize' overrides nothing
-tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	rejects invalid	annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt:16	expected an expression
 tests/annotations/AnnotationInContract.kt	rejects invalid	AnnotationInContract.kt:6	error in contract description: the contract is empty
 tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:6	inheriting an annotation class is prohibited
 tests/annotations/inheritFromAnnotationClass2.kt	rejects invalid	test.kt:9	inheriting an annotation class is prohibited
@@ -286,7 +285,6 @@ tests/platformTypes/rawTypes/rawSupertypeOverride.kt	rejects invalid	main.kt:12	
 tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:6	unresolved reference: length
 tests/platformTypes/rawTypes/rawTypeSyntheticExtensions.kt	rejects invalid	main.kt:8	unresolved reference: foo
 tests/problems/invalidCode.kt	rejects invalid	a.kt:3	expected identifier, found newline
-tests/problems/kt27650.kt	rejects invalid	kt27650.kt:7	type mismatch: inferred type is Unit but () -> Unit was expected
 tests/problems/kt28430.kt	rejects invalid	kt28430.kt:13	unresolved reference: m1
 tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	class 'AB' must override 'a' because it inherits multiple implementations for it
 tests/problems/kt34064.kt	rejects invalid	kt34064.kt:14	class 'AB' is not abstract and does not implement abstract member 'a'

@@ -173,9 +173,10 @@ type diagConfig struct {
 	// and missedWarns the expected warnings (missedWarningLines).
 	missed      []string
 	missedWarns []string
-	// stdlibOnly are the standard library's top-level names that the
-	// minimal one doesn't have (stdlibOnlyNames).
-	stdlibOnly map[string]bool
+	// stdlibOnly and stdlibOnlyPackages are the standard library's
+	// top-level names and packages that the minimal one doesn't have
+	// (stdlibOnlyNames).
+	stdlibOnly, stdlibOnlyPackages map[string]bool
 }
 
 // missedLines returns the expected errors of the tests kc checked that
@@ -199,9 +200,9 @@ func missedLines(rs []*result, dts []*diagTest) []string {
 
 // missedWarningLines returns the expected warnings of the tests kc
 // compiled that it didn't report on their lines, as TSV lines like
-// missedLines': the cause is that kc's parser rejected the test, which
-// leaves out the warnings of what it didn't recover, that the warning is
-// in a module that wasn't compiled, or neither.
+// missedLines': the cause is that the warning is in code that kc's
+// recovery from syntax errors left out, that it is in a module that
+// wasn't compiled, or neither.
 func missedWarningLines(sev map[string]string, rs []*result, dts []*diagTest) []string {
 	var ls []string
 	for i, dt := range dts {
@@ -222,7 +223,7 @@ func missedWarningLines(sev map[string]string, rs []*result, dts []*diagTest) []
 // its line: the first of the causes that applies.
 func (dt *diagTest) warnMissCause(m mark) string {
 	switch {
-	case dt.parseErrs:
+	case dt.inDropped(m.file, m.line):
 		return causeParse
 	case dt.tried != nil && !dt.tried[m.file]:
 		return causeModule
@@ -318,21 +319,37 @@ type diagTest struct {
 	// it doesn't mark. Warnings don't decide the test's category.
 	kcWarns []diag
 	off     map[string]bool
-	// parseErrs is whether kc's parser rejects the test's code, and tried
-	// the files of the modules kc compiled or tried to: what missCause
-	// needs.
-	parseErrs bool
-	tried     map[string]bool
-	// stdlibOnly, for a test without WITH_STDLIB, are the top-level
-	// names of the standard library kc gets that kotlinc's minimal one
-	// doesn't have (environment), and nil otherwise.
-	stdlibOnly map[string]bool
+	// dropped are the lines of the code kc left out of its check when
+	// recovering from syntax errors, by file, and tried the files of the
+	// modules kc compiled or tried to: what missCause needs.
+	dropped map[string][]lineSpan
+	tried   map[string]bool
+	// stdlibOnly and stdlibOnlyPackages, for a test without WITH_STDLIB,
+	// are the top-level names and the packages of the standard library
+	// kc gets that kotlinc's minimal one doesn't have (environment), and
+	// nil otherwise.
+	stdlibOnly, stdlibOnlyPackages map[string]bool
+	// mockJDK is set for a test kotlinc compiles against the test
+	// infrastructure's mock JDK, which has no java.util.function, where
+	// kc gets the real one.
+	mockJDK bool
+}
+
+// inDropped reports whether line of file is in code kc left out of its
+// check (dropped).
+func (dt *diagTest) inDropped(file string, line int) bool {
+	for _, s := range dt.dropped[file] {
+		if line >= s.from && line <= s.to {
+			return true
+		}
+	}
+	return false
 }
 
 // The causes of an expected error that kc doesn't report on its line.
 const (
 	causeAccepted     = "accepted"            // kc compiled the test
-	causeParse        = "syntax-error"        // kc's parser rejected it, and checked only what it recovered
+	causeParse        = "syntax-error"        // it is in code kc's recovery from syntax errors left out
 	causeModule       = "module-not-compiled" // it is in a module after one that failed
 	causeEnvironment  = "environment"         // kc has a declaration kotlinc's test infrastructure leaves out (environment)
 	causeNearby       = "nearby"              // kc reported an error within cascadeLines of it, on a line without a mark
@@ -341,7 +358,7 @@ const (
 )
 
 // causes are the causes in the order the report lists them.
-var causes = []string{causeAccepted, causeParse, causeModule, causeEnvironment, causeNearby, causeMissingCheck}
+var causes = []string{causeAccepted, causeEnvironment, causeParse, causeModule, causeNearby, causeMissingCheck}
 
 // missCause returns why kc didn't report the expected error e on its
 // line, given the test's category: the first of the causes that applies.
@@ -349,12 +366,12 @@ func (dt *diagTest) missCause(category string, e mark) string {
 	switch {
 	case category == catAcceptsInvalid:
 		return causeAccepted
-	case dt.parseErrs:
+	case dt.environment(e):
+		return causeEnvironment
+	case dt.inDropped(e.file, e.line):
 		return causeParse
 	case dt.tried != nil && !dt.tried[e.file]:
 		return causeModule
-	case dt.environment(e):
-		return causeEnvironment
 	}
 	// An error on a line the markup expects another one on is most
 	// likely that one.
@@ -530,15 +547,21 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 	}
 	stdlib := t.has("WITH_STDLIB") || strings.HasPrefix(t.path, "testsWithStdLib/")
 	if !stdlib {
-		dt.stdlibOnly = c.stdlibOnly
+		dt.stdlibOnly, dt.stdlibOnlyPackages = c.stdlibOnly, c.stdlibOnlyPackages
 	}
+	dt.mockJDK = !t.has("FULL_JDK")
 	for _, f := range t.files() {
 		if !stdlib && strings.HasSuffix(f.name, ".kt") {
 			f.text = nonNullAnyCalls(f.text)
 		}
 		var es []expected
 		f.text, es = stripMarkup(f.text)
-		for _, e := range es {
+		lines := strings.Split(f.text, "\n")
+		for i, e := range es {
+			if e.name == "UNRESOLVED_IMPORT" && e.line <= len(lines) {
+				es[i].imported = importedPrefix(lines[e.line-1], e.text)
+				e = es[i]
+			}
 			m := mark{f.name, e}
 			dt.marks = append(dt.marks, m)
 			if c.sev[e.name] == sevError {
@@ -605,7 +628,7 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		return r, nil
 	}
 	dt.kcWarns, dt.off = cr.warns, switchedOff(t, dt.marks)
-	dt.parseErrs, dt.tried = len(parseErrs) > 0, cr.tried
+	dt.dropped, dt.tried = cr.dropped, cr.tried
 	rejected := false
 	switch {
 	case cr.crash != "":
@@ -848,16 +871,17 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		}
 		return strings.Compare(a.name, b.name)
 	})
-	fmt.Fprintf(&sb, "kc reports %d of %d expected errors (%s) on their lines.\n\n", totalHit, totalExp, pct(totalHit, totalExp))
-	fmt.Fprintf(&sb, "| Diagnostic | Expected | Reported | Missed |\n|:---|---:|---:|---:|\n")
-	for i, rc := range rl {
-		if i == 60 {
-			fmt.Fprintf(&sb, "| *%d more* | | | |\n", len(rl)-i)
-			break
+	// Only the diagnostics kc misses somewhere: the rest work.
+	gaps := slices.DeleteFunc(slices.Clone(rl), func(rc *recall) bool { return rc.hits == rc.expected })
+	fmt.Fprintf(&sb, "kc reports %d of %d expected errors (%s) on their lines. Of the %d diagnostics expected, kc reports every one of %d on its line; the table lists the other %d.\n\n",
+		totalHit, totalExp, pct(totalHit, totalExp), len(rl), len(rl)-len(gaps), len(gaps))
+	if len(gaps) > 0 {
+		fmt.Fprintf(&sb, "| Diagnostic | Expected | Reported | Missed |\n|:---|---:|---:|---:|\n")
+		for _, rc := range gaps {
+			fmt.Fprintf(&sb, "| `%s` | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.expected-rc.hits)
 		}
-		fmt.Fprintf(&sb, "| `%s` | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.expected-rc.hits)
+		fmt.Fprintln(&sb)
 	}
-	fmt.Fprintln(&sb)
 	reportMissCauses(&sb, missed, totalExp-totalHit)
 
 	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
@@ -903,8 +927,8 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 // (missCause), each with the diagnostics it misses most.
 func reportMissCauses(sb *strings.Builder, missed map[string]map[string]int, total int) {
 	fmt.Fprintf(sb, "### Missed errors by cause\n\n")
-	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one: *%s*, it compiled the test; *%s*, its parser rejected the code, and kc checked it as recovered from kotlinc's grammar, without the statements and declarations it couldn't lower; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal or a name that only the full one, which kc gets, declares at the top level (`println`, `listOf`); *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
-		causeAccepted, causeParse, causeModule, causeEnvironment, causeNearby, cascadeLines, causeMissingCheck)
+	fmt.Fprintf(sb, "Why kc reports no error on the line of an expected one, the first that applies: *%s*, it compiled the test; *%s*, the test has no `WITH_STDLIB`, which gives kotlinc the test infrastructure's minimal standard library, and the error is an unsigned literal, a name, index operator or package that only the full one, which kc gets, declares (`println`, `listOf`, `MutableMap.set`, `kotlin.math`), or the test has no `FULL_JDK`, which gives kotlinc the mock JDK, and the error is an import of a package that only the real one has (`java.util.function`); *%s*, kc's parser rejected the code, and kc checked it as recovered from kotlinc's grammar, and the error is in a statement or declaration that recovery left out; *%s*, the error is in a module after one that failed, which isn't compiled; *%s*, kc reported an error within %d lines of it on a line the markup expects none on (most likely the error, at another position); *%s*, none of those.\n\n",
+		causeAccepted, causeEnvironment, causeParse, causeModule, causeNearby, cascadeLines, causeMissingCheck)
 	fmt.Fprintf(sb, "| Cause | Missed | Share | Most missed |\n|:---|---:|---:|:---|\n")
 	for _, cause := range causes {
 		byName := missed[cause]

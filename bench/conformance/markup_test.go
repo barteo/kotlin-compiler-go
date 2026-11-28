@@ -12,15 +12,15 @@ func TestStripMarkup(t *testing.T) {
 		es        []expected
 	}{
 		{"val x = 1\n", "val x = 1\n", nil},
-		{"<!NO_TAIL_CALLS_FOUND!>tailrec<!> fun f()", "tailrec fun f()", []expected{{"NO_TAIL_CALLS_FOUND", 1, "tailrec"}}},
-		{"a\nreturn <!TYPE_MISMATCH(\"String; Nothing\")!>\"OK\"<!>", "a\nreturn \"OK\"", []expected{{"TYPE_MISMATCH", 2, `"OK"`}}},
-		{"<!A, B(\"x)!>\")!>y<!>", "y", []expected{{"A", 1, "y"}, {"B", 1, "y"}}},
-		{"<!A!>f(<!B!>x<!>)<!>", "f(x)", []expected{{"A", 1, "f(x)"}, {"B", 1, "x"}}},
-		{"<!A!>multi\nline<!> <!C{LT}!>z<!>", "multi\nline z", []expected{{"A", 1, "multi\nline"}, {"C", 2, "z"}}},
+		{"<!NO_TAIL_CALLS_FOUND!>tailrec<!> fun f()", "tailrec fun f()", []expected{{"NO_TAIL_CALLS_FOUND", 1, "tailrec", ""}}},
+		{"a\nreturn <!TYPE_MISMATCH(\"String; Nothing\")!>\"OK\"<!>", "a\nreturn \"OK\"", []expected{{"TYPE_MISMATCH", 2, `"OK"`, ""}}},
+		{"<!A, B(\"x)!>\")!>y<!>", "y", []expected{{"A", 1, "y", ""}, {"B", 1, "y", ""}}},
+		{"<!A!>f(<!B!>x<!>)<!>", "f(x)", []expected{{"A", 1, "f(x)", ""}, {"B", 1, "x", ""}}},
+		{"<!A!>multi\nline<!> <!C{LT}!>z<!>", "multi\nline z", []expected{{"A", 1, "multi\nline", ""}, {"C", 2, "z", ""}}},
 		{"if (a <!b) {}", "if (a <!b) {}", nil},
 		{"x <!= y", "x <!= y", nil},
 		{"<!DEBUG_INFO_EXPRESSION_TYPE(\"kotlin.Function1<kotlin.Int, kotlin.Unit>\")!>f<!>", "f",
-			[]expected{{"DEBUG_INFO_EXPRESSION_TYPE", 1, "f"}}},
+			[]expected{{"DEBUG_INFO_EXPRESSION_TYPE", 1, "f", ""}}},
 	}
 	for _, tt := range tests {
 		got, es := stripMarkup(tt.src)

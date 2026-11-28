@@ -227,6 +227,15 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 			}
 		}()
 	}
+	if *features {
+		// What recovery from syntax errors left out of a file, which
+		// isn't checked: path, the span, "dropped".
+		opts.Lost = func(path string, lost *syntax.Lost) {
+			for _, s := range lost.Dropped {
+				fmt.Fprintf(stderr, "%s\t%s-%s\tdropped\n", path, s.From, s.To)
+			}
+		}
+	}
 	warnings, err := driver.CompileWarnings(paths, opts)
 	if *nowarn {
 		warnings = nil

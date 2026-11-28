@@ -132,3 +132,29 @@ inline fun withLocals(f: () -> Unit) {
     }
 }
 fun notInline() { fun local() {} }
+
+// A local variable's type parameters are an error, but their bounds are
+// checked, and they aren't in scope.
+fun localTypeParams() {
+    val <T> a = 0 // ERROR local variables are not allowed to have type parameters
+    val <T : Undefined> b = 0 // ERROR unresolved or unsupported type: Undefined
+    val <T> c: T? = null // ERROR unresolved or unsupported type: T
+}
+
+// No modifier applies to an anonymous function: kotlinc keeps it.
+fun anonModifiers(): Any {
+    inline fun() {} // ERROR local inline functions are not yet supported
+    operator fun() {} // ERROR 'operator' modifier is inapplicable on this function: illegal function name
+    infix fun() {} // ERROR 'infix' modifier is inapplicable on this function
+    suspend fun() {} // ERROR anonymous suspend functions are prohibited
+    override fun() {} // ERROR modifier 'override' is not applicable to 'anonymous function'
+    return external fun() {} // ERROR external declaration cannot have a body
+}
+
+// An integer literal out of range is an error that leaves the code
+// around it checked.
+fun outOfRange(): Int {
+    val big = 99999999999999999999 // ERROR the value is out of range
+    val s: String = 1 // ERROR type mismatch
+    return big
+}
