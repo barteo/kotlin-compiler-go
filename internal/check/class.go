@@ -1685,7 +1685,9 @@ func descOf(t types.Type) string {
 func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool) {
 	cls := d.Sym
 	this := cls.This()
-	missing := func(name string) {
+	// missing reports the abstract member name of supertype s, which
+	// kotlinc names by whether s is a class or an interface.
+	missing := func(s *types.ClassSym, name string) {
 		if !reported[name] {
 			reported[name] = true
 			if d.Enum {
@@ -1699,10 +1701,14 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 				}
 				return
 			}
+			kind := "ABSTRACT_MEMBER_NOT_IMPLEMENTED"
+			if s != nil && !s.Interface {
+				kind = "ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED"
+			}
 			if cls.Anonymous {
-				c.errorf(d.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED", "object is not abstract and does not implement abstract member '%s'", name)
+				c.errorf(d.P, kind, "object is not abstract and does not implement abstract member '%s'", name)
 			} else {
-				c.errorf(d.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED", "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
+				c.errorf(d.P, kind, "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
 			}
 		}
 	}
@@ -1711,11 +1717,11 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 			switch m := m.(type) {
 			case *syntax.FunDecl:
 				if m.Abstract {
-					missing(m.Name)
+					missing(nil, m.Name)
 				}
 			case *syntax.PropDecl:
 				if m.Abstract {
-					missing(m.Name)
+					missing(nil, m.Name)
 				}
 			}
 		}
@@ -1778,7 +1784,7 @@ invisible:
 					if s.Name == charSequence && name == "charAt" {
 						name = "get"
 					}
-					missing(name)
+					missing(g.Owner, name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
 					// The intersection override of an inline function of a
@@ -1794,7 +1800,7 @@ invisible:
 		for _, name := range slices.Sorted(maps.Keys(s.ExtMethods)) {
 			for _, g := range s.ExtMethods[name] {
 				if g.Abstract && !c.implemented(cls, this, g) && !c.javaImplements(cls, g) {
-					missing(name)
+					missing(g.Owner, name)
 				}
 			}
 		}
@@ -1802,7 +1808,7 @@ invisible:
 			for _, p := range s.Props {
 				if p.Abstract {
 					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts, p.Mutable) {
-						missing(p.Name)
+						missing(p.Owner, p.Name)
 					} else {
 						c.inheritedPropImpl(d, cls, s, p, q)
 					}
@@ -1814,7 +1820,7 @@ invisible:
 				if kp.Getter.Abstract {
 					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, nil, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
 						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {
-						missing(name)
+						missing(s, name)
 					}
 				}
 			}

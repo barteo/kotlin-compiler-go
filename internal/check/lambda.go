@@ -492,7 +492,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				// for a () -> String, as kotlinc reports both. Not for a
 				// function type with a receiver or contexts, which a lambda may
 				// declare as its first parameters.
-				c.errorf(p.P, "CANNOT_INFER_VALUE_PARAMETER_TYPE", "cannot infer a type for this parameter. Please specify it explicitly.")
+				c.errorf(p.P, c.untypedParamName(x, w.known), "cannot infer a type for this parameter. Please specify it explicitly.")
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
 			syms = append(syms, p.Sym)
@@ -575,6 +575,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		// An inlined lambda's body is part of the enclosing function: return,
 		// break and continue can leave it, and a try in it is in the
 		// arguments of a constructor call that the lambda is.
+		c.loopsOutside = c.loopsOutside || len(c.loops) > 0
 		c.retAllowed, c.loops, c.ctorArgs = false, nil, false
 	}
 	c.allowRange = false
@@ -3910,7 +3911,7 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		}
 		for _, p := range x.Params {
 			if p.Type == nil {
-				c.errorf(p.P, "CANNOT_INFER_VALUE_PARAMETER_TYPE", "the parameters of an anonymous function need types")
+				c.errorf(p.P, c.untypedParamName(x, false), "the parameters of an anonymous function need types")
 				return false
 			}
 			ps = append(ps, c.resolveType(p.Type))
@@ -4093,4 +4094,69 @@ func (c *Checker) anonModifiers(mods []syntax.Mod) {
 			c.errorf(m.P, "WRONG_MODIFIER_TARGET", "modifier '%s' is not applicable to 'anonymous function'", m.Name)
 		}
 	}
+}
+
+// untypedParamName returns K2's name for a parameter of lambda or
+// anonymous function x that has no type and none is inferred: a lambda
+// passed to a call, or one whose expected type is a function type,
+// can't infer it (CANNOT_INFER_VALUE_PARAMETER_TYPE); one elsewhere, as
+// a property's initializer or a lambda called right away, needs it
+// written (VALUE_PARAMETER_WITHOUT_EXPLICIT_TYPE).
+func (c *Checker) untypedParamName(x *syntax.Lambda, known bool) string {
+	if known || c.argLambda(x) {
+		return "CANNOT_INFER_VALUE_PARAMETER_TYPE"
+	}
+	return "VALUE_PARAMETER_WITHOUT_EXPLICIT_TYPE"
+}
+
+// argLambda reports whether lambda x is analyzed as part of a call in
+// the file, as K2 does: an argument of a call, the value of a branch of
+// an if, a when or a try, which are K2's synthetic calls, or the result
+// of a lambda argument. It is only asked of lambdas with errors, so the
+// file's lambdas are found once, when first asked.
+func (c *Checker) argLambda(x *syntax.Lambda) bool {
+	if c.argLambdas == nil {
+		c.argLambdas = map[*syntax.Lambda]bool{}
+		mark := func(b *syntax.Block) {
+			if b == nil || len(b.Stmts) == 0 {
+				return
+			}
+			if es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt); ok {
+				if l, ok := es.X.(*syntax.Lambda); ok {
+					c.argLambdas[l] = true
+				}
+			}
+		}
+		var visit func(n any) bool
+		visit = func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Call:
+				for _, a := range n.Args {
+					if l, ok := a.(*syntax.Lambda); ok {
+						c.argLambdas[l] = true
+						mark(l.Body)
+					}
+				}
+			case *syntax.If:
+				mark(n.Then)
+				mark(n.Else)
+			case *syntax.When:
+				for _, br := range n.Branches {
+					mark(br.Body)
+				}
+			case *syntax.Try:
+				mark(n.Body)
+				for _, ct := range n.Catches {
+					mark(ct.Body)
+				}
+			case *syntax.ObjectExpr:
+				inspectClass(n.Decl, visit)
+			case *syntax.LocalClass:
+				inspectClass(n.Decl, visit)
+			}
+			return true
+		}
+		inspectClass(&syntax.ClassDecl{Members: c.file.Decls}, visit)
+	}
+	return c.argLambdas[x]
 }

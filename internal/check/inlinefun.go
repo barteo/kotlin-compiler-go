@@ -546,7 +546,11 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			return
 		}
 		if _, ok := v.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(v.Owner) {
-			c.errorf(p, "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "public-API inline function cannot access non-public-API property '%s'", v.Name)
+			diag := "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE"
+			if m := varModifiers(v); m != nil && m.Inline {
+				diag = "NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE"
+			}
+			c.errorf(p, diag, "public-API inline function cannot access non-public-API property '%s'", v.Name)
 		}
 	}
 	var visit func(n any) bool
@@ -595,7 +599,11 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 						break
 					}
 					if _, ok := f.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(f.Owner) && !c.hasErrorAt(n.P, "public-API inline") {
-						c.errorf(n.P, "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "public-API inline function cannot access non-public-API function '%s'", f.Name)
+						diag := "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE"
+						if fd.Modifiers.Inline {
+							diag = "NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE"
+						}
+						c.errorf(n.P, diag, "public-API inline function cannot access non-public-API function '%s'", f.Name)
 					}
 				}
 			}

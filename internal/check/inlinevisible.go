@@ -66,7 +66,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		return true
 	})
 	reported := map[syntax.Pos]map[string]bool{}
-	report := func(p syntax.Pos, format string, args ...any) {
+	report := func(p syntax.Pos, name, format string, args ...any) {
 		msg := fmt.Sprintf(format, args...)
 		if reported[p][msg] {
 			return
@@ -75,7 +75,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			reported[p] = map[string]bool{}
 		}
 		reported[p][msg] = true
-		c.errorf(p, "PRIVATE_CLASS_MEMBER_FROM_INLINE", "%s", msg)
+		c.errorf(p, name, "%s", msg)
 	}
 	// lessVisible returns how type t, or a type among its arguments, is
 	// less visible than d, and that type, or "".
@@ -104,7 +104,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			return
 		}
 		if why, u := lessVisible(t); why != "" {
-			report(p, "'%s' type '%s' is accessed from '%s' inline declaration", why, u, level)
+			report(p, "LESS_VISIBLE_TYPE_ACCESS_IN_INLINE_ERROR", "'%s' type '%s' is accessed from '%s' inline declaration", why, u, level)
 		}
 	}
 	// signature checks the use at p of a declaration named what, with the
@@ -115,7 +115,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		}
 		for _, t := range ts {
 			if why, u := lessVisible(t); why != "" {
-				report(p, "the signature of '%s' contains '%s' type '%s', but is accessed from '%s' inline declaration", what, why, u, level)
+				report(p, "LESS_VISIBLE_TYPE_IN_INLINE_ACCESSED_SIGNATURE_ERROR", "the signature of '%s' contains '%s' type '%s', but is accessed from '%s' inline declaration", what, why, u, level)
 			}
 		}
 	}
@@ -123,7 +123,7 @@ func (c *Checker) lessVisibleInline(d *syntax.FunDecl, cls *types.ClassSym) {
 		if publicAPI || owner == nil || !privateClassMember(owner) {
 			return
 		}
-		report(p, "non-private inline function '%s' cannot access members of private class '%s'", funText(d.Sym), what)
+		report(p, "PRIVATE_CLASS_MEMBER_FROM_INLINE", "non-private inline function '%s' cannot access members of private class '%s'", funText(d.Sym), what)
 	}
 	ownerType := func(owner *types.ClassSym, static bool) []types.Type {
 		if owner == nil || static {

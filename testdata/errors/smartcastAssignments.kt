@@ -208,14 +208,14 @@ fun readInInlined(arg: Int?) {
 fun readInCrossinline(arg: Int?) {
     var x = arg
     if (x == null) return
-    crossInlined { x.inc() } // ERROR only safe (?.) or non-null asserted
+    crossInlined { x.inc() } // ERROR smart cast to 'Int' is impossible, because 'x' is a local variable that is mutated in a capturing closure
     x = 42
 }
 
 fun readInEscaping(arg: Int?) {
     var x = arg
     if (x == null) return
-    escaping { x.inc() } // ERROR only safe (?.) or non-null asserted
+    escaping { x.inc() } // ERROR smart cast to 'Int' is impossible, because 'x' is a local variable that is mutated in a capturing closure
     x = 42
 }
 
@@ -307,7 +307,7 @@ fun assignedOtherInEscaping(x: Any) {
     escaping {
         y = 10
         y = "a"
-        y.length // ERROR unresolved reference: length
+        y.length // ERROR smart cast to 'String' is impossible, because 'y' is a local variable that is mutated in a capturing closure
     }
 }
 

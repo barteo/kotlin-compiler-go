@@ -121,6 +121,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	default:
 		c.fnName = d.Name
 	}
+	c.outerSuspend = c.inCoroutine()
 	c.fn, c.retType, c.retAllowed = sym, sym.Ret, sym.Resolved
 	c.declName = ""
 	declareNamedContexts(c.scope, d)
@@ -135,9 +136,11 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	c.loops, c.ctorArgs, c.allowRange = nil, false, false
 	// A default value can use the parameters before it, and what the
 	// enclosing code can.
-	for _, p := range d.Params {
+	for i, p := range d.Params {
 		if p.Default != nil {
+			c.uninitParams = d.Params[i:]
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos(), "INITIALIZER_TYPE_MISMATCH")
+			c.uninitParams = nil
 		}
 		c.scope.shadow(p.Sym)
 		c.scope.declare(p.Sym)

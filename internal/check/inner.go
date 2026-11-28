@@ -252,7 +252,9 @@ func (c *Checker) typeParamInScope(p *types.TypeParamSym) bool {
 func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	cls := c.lookupClass(ref.Name)
 	if cls == nil {
-		c.errorf(ref.P, "UNRESOLVED_REFERENCE", "unresolved or unsupported type: %s", ref.Name)
+		if !c.enumEntryType(ref) {
+			c.errorf(ref.P, "UNRESOLVED_REFERENCE", "unresolved or unsupported type: %s", ref.Name)
+		}
 		return types.InvalidType
 	}
 	if cls.Ensure(); !cls.Inner {
@@ -602,4 +604,27 @@ func inLocal(cls *types.ClassSym) bool {
 		}
 	}
 	return false
+}
+
+// enumEntryType reports kotlinc's error for type ref if it names an entry
+// of an enum class, E.A: an is check's IS_ENUM_ENTRY, or else
+// ENUM_ENTRY_AS_TYPE.
+func (c *Checker) enumEntryType(ref *syntax.TypeRef) bool {
+	i := strings.LastIndexByte(ref.Name, '.')
+	if i < 0 {
+		return false
+	}
+	cls := c.lookupClass(ref.Name[:i])
+	if cls == nil {
+		return false
+	}
+	if cls.Ensure(); !slices.Contains(cls.Entries, ref.Name[i+1:]) {
+		return false
+	}
+	if ref == c.isRef {
+		c.errorf(ref.P, "IS_ENUM_ENTRY", "'is' over enum entry is prohibited, use comparison instead")
+	} else {
+		c.errorf(ref.P, "ENUM_ENTRY_AS_TYPE", "use of enum entry names as types is prohibited, use enum type instead")
+	}
+	return true
 }

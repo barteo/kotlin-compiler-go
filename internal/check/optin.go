@@ -697,6 +697,19 @@ func (w *optWalker) deprecatedUse(p syntax.Pos, name string, d depr) {
 	}
 }
 
+// deprecatedPropUse is deprecatedUse of a property, which, deprecated
+// with level HIDDEN, is unresolved.
+func (w *optWalker) deprecatedPropUse(p syntax.Pos, name string, d depr) {
+	if w.hiddenOff {
+		d = notHidden(d)
+	}
+	if d.level == "HIDDEN" && !w.deprecated() {
+		w.errorf(p, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
+		return
+	}
+	w.deprecatedUse(p, name, d)
+}
+
 // warnf reports a warning once at a line, as errorf does an error.
 func (w *optWalker) warnf(p syntax.Pos, name, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
@@ -2068,13 +2081,12 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 	switch v.Kind {
 	case types.Global, types.Prop:
 		w.require(p, w.propMarkers(v, write))
+		// A property, or an accessor, deprecated with level HIDDEN can't
+		// be read or assigned: K2 reports the name unresolved.
 		if !write {
-			w.deprecatedUse(p, v.Name, w.propReadDeprecation(v, w.refReads[p]))
+			w.deprecatedPropUse(p, v.Name, w.propReadDeprecation(v, w.refReads[p]))
 		} else {
-			// A property, or a setter, deprecated with level HIDDEN
-			// can't be assigned, as it can't be read: K2 reports the
-			// assignment's name unresolved.
-			w.deprecatedUse(p, v.Name, w.propWriteDeprecation(v))
+			w.deprecatedPropUse(p, v.Name, w.propWriteDeprecation(v))
 		}
 	case types.Local, types.Param:
 		if !write {
@@ -2193,9 +2205,9 @@ func (w *optWalker) accessor(name string, get, set *types.FunSym, p syntax.Pos, 
 		// The program's extension property, or its accessor, deprecated:
 		// with level HIDDEN, K2 reports the name unresolved.
 		if f == set {
-			w.deprecatedUse(p, name, w.propWriteDeprecation(v))
+			w.deprecatedPropUse(p, name, w.propWriteDeprecation(v))
 		} else {
-			w.deprecatedUse(p, name, w.propReadDeprecation(v, w.refReads[p]))
+			w.deprecatedPropUse(p, name, w.propReadDeprecation(v, w.refReads[p]))
 		}
 	} else if f.Decl == nil {
 		w.funNamed(f, name, p, types.Type{})

@@ -135,6 +135,12 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		sym, t, cast, ok := c.lookupVar(x.Name)
 		if ok {
 			c.recursiveVarRef(sym, x.P)
+			if c.lastUnstable.K != types.Invalid {
+				if c.unstableCasts == nil {
+					c.unstableCasts = map[*syntax.Ident]types.Type{}
+				}
+				c.unstableCasts[x] = c.lastUnstable
+			}
 		}
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
@@ -228,6 +234,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return c.unsafeImplicitProp(x, rt)
 			} else if t, ok := c.inaccessibleOuterProp(x); ok {
 				return t
+			} else if c.headerInstance(x.Name, false) {
+				c.errorf(x.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "cannot access '<this>' before the instance has been initialized")
+			} else if i := slices.IndexFunc(c.uninitParams, func(p *syntax.Param) bool { return p.Name == x.Name && p.Sym != nil }); i >= 0 {
+				// A parameter that a default value before it uses: it has
+				// its type, as in kotlinc.
+				c.errorf(x.P, "UNINITIALIZED_PARAMETER", "parameter '%s' is uninitialized here", x.Name)
+				return c.uninitParams[i].Sym.Type
 			} else {
 				c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			}
@@ -255,7 +268,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			x.Unit = true // a local of type Unit has no storage
 		}
 		if sym.Suspend {
-			c.suspendCall(x.P, &types.FunSym{Name: sym.Name, Suspend: true})
+			c.suspendPropRead(x.P, sym.Name)
 		}
 		return t
 	case *syntax.Checked:
@@ -455,7 +468,11 @@ func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool)
 			c.capture(sym, depth)
 		}
 		t := c.scope.narrowed(sym)
+		c.lastUnstable = types.Type{}
 		if t != sym.Type && isVar(sym) && !c.varStable(sym, t) {
+			if !c.scope.narrowedStale(sym) {
+				c.lastUnstable = t
+			}
 			t = sym.Type // a lambda may assign it
 		}
 		return sym, t, needsCast(sym.Type, t), true
@@ -1358,17 +1375,35 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if !c.equalityInapplicable(op, xt, yt) {
 			return types.AnyType.Nullable()
 		}
-		name := "=="
-		if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
-			name = "==="
-		}
-		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+		c.equalityError(p, op, xt, yt)
 		return types.InvalidType
 	}
 	if xt.IsPrimitive() && yt.IsPrimitive() {
 		return xt
 	}
 	return xt.Nullable()
+}
+
+// equalityError reports that values of types xt and yt can't be compared
+// with op, under the name K2's FirEqualityCompatibilityChecker gives it:
+// an identity comparison of a primitive is FORBIDDEN_IDENTITY_EQUALS, and
+// one of enums that K1 let have subtypes, as two enums, or an enum and an
+// interface, INCOMPATIBLE_ENUM_COMPARISON_ERROR.
+func (c *Checker) equalityError(p syntax.Pos, op syntax.Kind, xt, yt types.Type) {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	identity := op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ
+	switch {
+	case identity && (types.IsPrimitiveKind(x.K) || types.IsPrimitiveKind(y.K)):
+		c.errorf(p, "FORBIDDEN_IDENTITY_EQUALS", "identity equality for arguments of types '%s' and '%s' is prohibited", xt, yt)
+	case (c.enumType(x) || c.enumType(y)) && canHaveSubtypesK1(x) && canHaveSubtypesK1(y):
+		c.errorf(p, "INCOMPATIBLE_ENUM_COMPARISON_ERROR", "comparison of incompatible enums '%s' and '%s' is always unsuccessful", xt, yt)
+	default:
+		name := "=="
+		if identity {
+			name = "==="
+		}
+		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+	}
 }
 
 // equalityInapplicable reports whether K2 rejects comparing values of
@@ -1859,6 +1894,38 @@ func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool
 	}
 	st := c.u.ext.funcs.SuspendType(ps, ft.A.List[n].T)
 	return st, len(c.extCallees(fn.Name, st)) > 0
+}
+
+// primitiveCtor returns the primitive type that a call of name, a
+// built-in type's name or a typealias of it, would construct, or "".
+func (c *Checker) primitiveCtor(name string) string {
+	t := types.InvalidType
+	if a := c.lookupAlias(name); a != nil {
+		c.resolveAlias(a)
+		t = a.Type
+	} else if !c.hidesBuiltin(name) && c.lookupClass(name) == nil {
+		t = map[string]types.Type{"Int": types.IntType, "Long": types.LongType, "Short": types.ShortType, "Byte": types.ByteType,
+			"Double": types.DoubleType, "Float": types.FloatType, "Boolean": types.BoolType, "Char": types.CharType}[name]
+	}
+	if t.N || types.PrimOf(t.K).Box == "" {
+		return ""
+	}
+	return t.String()
+}
+
+// namedOnNonNull reports whether the non-null type of a nullable receiver
+// of type t may have a function called name: a member, an extension, a
+// property that can be invoked. It is true where kc can't tell, as for a
+// type parameter's bounds or a built-in type's members.
+func (c *Checker) namedOnNonNull(t types.Type, name string) bool {
+	nn := t.NonNull()
+	switch {
+	case t.K == types.Null || anyMember[name]:
+		return true
+	case nn.K == types.Any, nn.K == types.Class && !nn.IsIntersection():
+		return c.hasNamed(nn, name)
+	}
+	return true
 }
 
 // builtinNamed reports whether builtin type t, as Int or String, has a
@@ -2715,8 +2782,27 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		if fn.Name == "plus" && (t.NonNull() == types.StringType || t.K == types.Null) {
 			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
+		if w, ok := c.smartcastImpossible(fn.X, fn.Name, true); ok {
+			fn.X = checked(fn.X, w)
+			return w, nil, true
+		}
+		if !c.namedOnNonNull(t, fn.Name) {
+			// kotlinc reports the unsafe call of a function it resolves
+			// on the non-null receiver, and an unresolved one otherwise:
+			// x.inc() of an Any? x.
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
+			return t, nil, false
+		}
 		c.errorf(fn.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return t, nil, false
+	}
+	if !fn.Safe && !c.namedOnNonNull(t, fn.Name) && len(c.extCallees(fn.Name, t)) == 0 {
+		// Nor does the declared type take it: kotlinc resolves it on the
+		// smart-cast type that a closure's assignment rules out.
+		if w, ok := c.smartcastImpossible(fn.X, fn.Name, false); ok {
+			fn.X = checked(fn.X, w)
+			return w, nil, true
+		}
 	}
 	return t.NonNull(), nil, true
 }
@@ -2976,7 +3062,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// A library's: kotlin.coroutines.coroutineContext.
 		x.Prop = v
 		if v.Suspend {
-			c.suspendCall(x.P, &types.FunSym{Name: v.Name, Suspend: true})
+			c.suspendPropRead(x.P, v.Name)
 		}
 		return v.Type
 	}
@@ -3042,16 +3128,28 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		if t, ok := c.extProp(x, xt); ok {
 			return t
 		}
-		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
 		// As kotlinc, the property is still read, on the non-null
 		// receiver, and has its type: val s: String = x.length, of a
 		// String? x, is a mismatch too, and run { x.length } an Int. If
-		// that takes another error, the read is the error type.
+		// that takes another error, the read is the error type; if the
+		// non-null receiver has no property of the name, kotlinc reports
+		// it unresolved rather than the unsafe call: x.length of an Any? x.
+		if w, ok := c.smartcastImpossible(x.X, x.Name, true); ok {
+			x.X = checked(x.X, w)
+			return c.memberOn(x, w)
+		}
 		n := len(c.errs)
-		if t := c.memberOn(x, xt); len(c.errs) == n {
+		t := c.memberOn(x, xt)
+		if len(c.errs) > n && c.errs[n].Name == "UNRESOLVED_REFERENCE" && c.errs[n].Pos == x.P && !c.namedOnNonNull(xt, x.Name) {
+			c.errs = c.errs[:n+1]
+			return types.InvalidType
+		}
+		ok := len(c.errs) == n
+		c.errs = c.errs[:n]
+		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
+		if ok {
 			return t
 		}
-		c.errs = c.errs[:n]
 		return types.InvalidType
 	}
 	return c.memberOn(x, xt)
@@ -3161,6 +3259,9 @@ func (c *Checker) memberOn(x *syntax.Member, xt types.Type) types.Type {
 	}
 	if !found {
 		if t, found = c.extProp(x, rt); !found {
+			if t, ok := c.unstableMember(x); ok {
+				return t
+			}
 			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 		}
 	}
@@ -3692,6 +3793,23 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		if t, ok := c.inaccessibleOuterCall(fn.P, name, nil); ok {
 			c.args(x, nil)
 			return t
+		}
+		if c.headerInstance(name, true) {
+			c.errorf(fn.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "cannot access '<this>' before the instance has been initialized")
+			c.args(x, nil)
+			return types.InvalidType
+		}
+		if p := c.primitiveCtor(name); p != "" {
+			// kotlinc's primitive types have a private constructor without
+			// parameters: Int() can't access it, and Int(42) passes it too
+			// many arguments.
+			if len(x.Args) == 0 {
+				c.errorf(fn.P, "INVISIBLE_REFERENCE", "cannot access 'constructor(): %s': it is private in 'kotlin/%s'", p, p)
+			} else {
+				c.errorf(x.Args[0].Pos(), "TOO_MANY_ARGUMENTS", "too many arguments for 'constructor(): %s'", p)
+			}
+			c.args(x, nil)
+			return types.InvalidType
 		}
 		c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", name)
 		c.args(x, nil)
@@ -5086,8 +5204,8 @@ func jumped(pending []pendingBranch, ts []types.Type, bodies []*syntax.Block) bo
 func incompatibleCond(errs []*syntax.Error) {
 	const eq = "operator '==' cannot be applied to "
 	for _, e := range errs {
-		if rest, ok := strings.CutPrefix(e.Msg, eq); ok {
-			e.Msg = "incompatible types " + rest
+		if rest, ok := strings.CutPrefix(e.Msg, eq); ok && e.Name == "EQUALITY_NOT_APPLICABLE" {
+			e.Msg, e.Name = "incompatible types "+rest, "INCOMPATIBLE_TYPES"
 		}
 	}
 }
@@ -5762,7 +5880,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 			if c.loopsOutside {
 				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' crosses a function boundary", x.Kind)
 			} else {
-				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' is not allowed outside a loop", x.Kind)
+				c.errorf(x.P, "BREAK_OR_CONTINUE_OUTSIDE_A_LOOP", "'%s' is not allowed outside a loop", x.Kind)
 			}
 			return
 		}
@@ -5861,4 +5979,27 @@ func starsBounded(t types.Type) types.Type {
 		n = n.Nullable()
 	}
 	return n
+}
+
+// headerInstance reports whether name, which nothing in scope has, is a
+// member or an extension of the class whose header the code is in, a
+// function if call is set: its instance doesn't exist yet, kotlinc's
+// INSTANCE_ACCESS_BEFORE_SUPER_CALL, as a of class A(n: Int = a).
+func (c *Checker) headerInstance(name string, call bool) bool {
+	cls := c.staticCls
+	if c.cls != nil || cls == nil || cls.Object || cls.Interface {
+		return false
+	}
+	cls.Ensure()
+	t := cls.This()
+	if call {
+		return len(c.javaMethods(cls, name)) > 0 || len(c.extCallees(name, t)) > 0
+	}
+	if c.memberProp(cls, name) != nil {
+		return true
+	}
+	n := len(c.errs)
+	_, found := c.extProp(&syntax.Member{Name: name}, t)
+	c.errs = c.errs[:n]
+	return found
 }

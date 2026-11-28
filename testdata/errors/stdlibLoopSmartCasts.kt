@@ -16,7 +16,7 @@ fun assign() {
     var x: Any? = materialize()
     require(x is String)
     for (i in 1..10) {
-        x.length // ERROR nullable receiver of type Any?
+        x.length // ERROR unresolved reference: length
         x = ""
     }
 }

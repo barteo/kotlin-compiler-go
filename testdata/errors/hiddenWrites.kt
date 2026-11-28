@@ -39,13 +39,13 @@ var String.ehs: Int
 fun test(c: C) {
     v3 = ""
     v4
-    v4 = "" // ERROR is deprecated with level HIDDEN
-    v6 = "" // ERROR is deprecated with level HIDDEN
-    c.p = 2 // ERROR is deprecated with level HIDDEN
+    v4 = "" // ERROR unresolved reference
+    v6 = "" // ERROR unresolved reference
+    c.p = 2 // ERROR unresolved reference
     c.q
-    c.q = 2 // ERROR is deprecated with level HIDDEN
+    c.q = 2 // ERROR unresolved reference
     "".eh // ERROR unresolved reference
     "".ee // ERROR is deprecated with level ERROR
     "".ehs
-    "".ehs = 2 // ERROR is deprecated with level HIDDEN
+    "".ehs = 2 // ERROR unresolved reference
 }

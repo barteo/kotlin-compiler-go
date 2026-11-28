@@ -23,7 +23,7 @@ tests/callableReference/resolve/moreSpecificAmbiguousExtensions.kt	rejects inval
 tests/callableReference/resolve/withExtFun.kt	rejects invalid	withExtFun.kt:23	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Unit but String was expected
 tests/cast/bare/ErrorsInSubstitution.kt	rejects invalid	ErrorsInSubstitution.kt:8	NO_TYPE_ARGUMENTS_ON_RHS	one type argument expected for G; use G<*> if you don't want to pass type arguments
 tests/cfa/reassignOfNonMemberProperty_lateInitialization.kt	rejects invalid	reassignOfNonMemberProperty_lateInitialization.kt:35	VAL_REASSIGNMENT	val cannot be reassigned
-tests/cfg/flowFromTwoInplaceLambdas.kt	rejects invalid	flowFromTwoInplaceLambdas.kt:89	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/cfg/flowFromTwoInplaceLambdas.kt	rejects invalid	flowFromTwoInplaceLambdas.kt:89	UNRESOLVED_REFERENCE	unresolved reference: length
 tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:23	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity for ::bar: specify the expected function type
 tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	test.kt:25	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity for ::baz: specify the expected function type
 tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	anonymousFunctionWithWrongShape.kt:10	INITIALIZER_TYPE_MISMATCH	the anonymous function's receiver doesn't match the expected function type
@@ -43,8 +43,8 @@ tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	
 tests/controlFlowAnalysis/assignmentInLocalsInConstructor.kt	rejects invalid	assignmentInLocalsInConstructor.kt:47	VAL_REASSIGNMENT	val cannot be reassigned
 tests/controlFlowAnalysis/uninitializedCompanionOfEnum.kt	rejects invalid	uninitializedCompanionOfEnum.kt:48	UNRESOLVED_REFERENCE	unresolved reference: extensionFun
 tests/controlStructures/kt10717.kt	rejects invalid	kt10717.kt:25	IMPLICIT_NOTHING_RETURN_TYPE	return type 'Nothing' needs to be specified explicitly
-tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:11	EQUALITY_NOT_APPLICABLE	incompatible types Int and Nothing
-tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:20	EQUALITY_NOT_APPLICABLE	incompatible types Int and Nothing
+tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:11	INCOMPATIBLE_TYPES	incompatible types Int and Nothing
+tests/controlStructures/kt786.kt	rejects invalid	kt786.kt:20	INCOMPATIBLE_TYPES	incompatible types Int and Nothing
 tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:2	-	there's a cycle in the inheritance hierarchy of 'A'
 tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:3	-	there's a cycle in the inheritance hierarchy of 'B.B2'
 tests/cyclicHierarchy/javaJavaCycle.kt	rejects invalid	main.kt:4	-	there's a cycle in the inheritance hierarchy of 'B.B2'
@@ -87,11 +87,11 @@ tests/incompleteCode/incompleteAssignment.kt	rejects invalid	incompleteAssignmen
 tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:19	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
 tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:23	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
 tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:27	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:31	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:37	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:56	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:62	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
-tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:68	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:31	MEMBER_PROJECTED_OUT	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:37	MEMBER_PROJECTED_OUT	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:56	MEMBER_PROJECTED_OUT	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:62	MEMBER_PROJECTED_OUT	type mismatch: inferred type is Any? but Nothing was expected
+tests/inference/capturedTypes/equalityOfStarProjection.kt	rejects invalid	equalityOfStarProjection.kt:68	MEMBER_PROJECTED_OUT	type mismatch: inferred type is Any? but Nothing was expected
 tests/inference/capturedTypes/nullableCaptruredTypeAgainstNullableVariable.kt	rejects invalid	main.kt:9	UPPER_BOUND_VIOLATED	type argument is not within its bounds: inferred type Number? of type parameter 'T' is not a subtype of Any
 tests/inference/coercionToUnit/coercionToUnitWithNothingType.kt	rejects invalid	test.kt:35	UNRESOLVED_REFERENCE	unresolved or unsupported type: dynamic
 tests/inference/commonSuperTypeOfErrorTypes.kt	rejects invalid	commonSuperTypeOfErrorTypes.kt:11	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
@@ -197,10 +197,10 @@ tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:7	USA
 tests/inline/binaryExpressions/assignment.kt	rejects invalid	assignment.kt:19	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'ext' in 'modAssign': add 'noinline' modifier to the parameter declaration
 tests/inline/binaryExpressions/contains.kt	rejects invalid	contains.kt:5	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'p' in 'contains': add 'noinline' modifier to the parameter declaration
 tests/inline/binaryExpressions/rangeTo.kt	rejects invalid	rangeTo.kt:5	USAGE_IS_NOT_INLINABLE	illegal usage of inline-parameter 'p' in 'rangeTo': add 'noinline' modifier to the parameter declaration
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:19	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:20	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:23	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' is not allowed outside a loop
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:24	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' is not allowed outside a loop
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:19	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' crosses a function boundary
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:20	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' crosses a function boundary
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:23	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'continue' crosses a function boundary
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	withOverrideByInline.kt:24	BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY	'break' crosses a function boundary
 tests/inline/superCallDepecation.kt	rejects invalid	main.kt:103	SUPER_CALL_FROM_PUBLIC_INLINE	accessing super members from public-API inline function is prohibited
 tests/inner/innerConstructorsFromQualifiersWithIrrelevantCandidate.kt	rejects invalid	Outer.kt:22	INNER_CLASS_CONSTRUCTOR_NO_RECEIVER	constructor of inner class Outer.Inner can be called only with receiver of containing class
 tests/innerClasses/inCallableReferenceLHS/withInvokeCall.kt	rejects invalid	withInvokeCall.kt:10	SYNTAX	expected expression, found ')'
@@ -315,18 +315,18 @@ tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects inval
 tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:14	UNRESOLVED_REFERENCE	unresolved reference: name
 tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	rejects invalid	p/test.kt:15	UNRESOLVED_REFERENCE	unresolved reference: name
 tests/smartCasts/intersectionScope/properties.kt	rejects invalid	properties.kt:20	UNRESOLVED_REFERENCE_WRONG_RECEIVER	type mismatch: inferred type is CheckTypeInv<String?> but CheckTypeInv<String> was expected
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndAssignmentOperator.kt	rejects invalid	lambdaWithCallInPlaceAndAssignmentOperator.kt:188	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndAssignmentOperator.kt	rejects invalid	lambdaWithCallInPlaceAndAssignmentOperator.kt:188	UNRESOLVED_REFERENCE	unresolved reference: length
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:228	UNRESOLVED_REFERENCE	unresolved reference: length
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndBounds.kt	rejects invalid	lambdaWithCallInPlaceAndBounds.kt:241	UNRESOLVED_REFERENCE	unresolved reference: length
-tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	lambdaWithCallInPlaceAssignmnetsAndCycles.kt:123	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	lambdaWithCallInPlaceAssignmnetsAndCycles.kt:123	UNRESOLVED_REFERENCE	unresolved reference: length
 tests/smartCasts/savedSmartcastResult.kt	rejects invalid	savedSmartcastResult.kt:34	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
 tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:7	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Some but T? was expected
 tests/smartCasts/smartCastOnObject.kt	rejects invalid	smartCastOnObject.kt:19	RETURN_TYPE_MISMATCH	type mismatch: inferred type is Some but T? was expected
 tests/smartCasts/smartcastToNothing.kt	rejects invalid	smartcastToNothing.kt:33	UNRESOLVED_REFERENCE	unresolved reference: length
-tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:14	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:108	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:14	SMARTCAST_IMPOSSIBLE	smart cast to 'String' is impossible, because 'y' is a local variable that is mutated in a capturing closure
+tests/smartCasts/variables/objectMembers.kt	rejects invalid	objectMembers.kt:108	SMARTCAST_IMPOSSIBLE	smart cast to 'String' is impossible, because 'x' is a local variable that is mutated in a capturing closure
 tests/smartCasts/variables/reassignedDependency.kt	rejects invalid	reassignedDependency.kt:71	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/smartCasts/variables/reassignedInRhs.kt	rejects invalid	reassignedInRhs.kt:33	UNSAFE_CALL	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+tests/smartCasts/variables/reassignedInRhs.kt	rejects invalid	reassignedInRhs.kt:33	UNRESOLVED_REFERENCE	unresolved reference: x
 tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	findClosestCorrespondingSupertype.kt:10	INITIALIZER_TYPE_MISMATCH	type mismatch: inferred type is B but X<Int> was expected
 tests/syntheticExtensions/javaProperties/OverrideGetterOnly.kt	rejects invalid	KotlinFile.kt:7	UNRESOLVED_REFERENCE	operator '+=' cannot be applied to Any!
 tests/syntheticSet.kt	rejects invalid	test.kt:12	ARGUMENT_TYPE_MISMATCH	type mismatch: inferred type is Any! but Nothing? was expected
@@ -375,7 +375,7 @@ tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	reje
 tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:34	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is T but Boolean was expected
 tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:36	CONDITION_TYPE_MISMATCH	type mismatch: inferred type is T but Boolean was expected
 testsWithStdLib/annotations/annotationAllRepeatable.kt	rejects invalid	annotationAllRepeatable.kt:32	REPEATED_ANNOTATION	this annotation is not repeatable
-testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	jvmName.kt:107	ABSTRACT_MEMBER_NOT_IMPLEMENTED	class 'D' is not abstract and does not implement abstract member 'privateAbstractFun'
+testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	jvmName.kt:107	ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED	class 'D' is not abstract and does not implement abstract member 'privateAbstractFun'
 testsWithStdLib/annotations/throws.kt	rejects invalid	main4.kt:15	OVERLOAD_RESOLUTION_AMBIGUITY	overload resolution ambiguity: Throws is a classifier of more than one import
 testsWithStdLib/callableReferences/beyoundCalls.kt	rejects invalid	beyoundCalls.kt:9	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'bar' take (String)
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/moreSpecificAmbiguousExtensions.kt	rejects invalid	moreSpecificAmbiguousExtensions.kt:17	OVERLOAD_RESOLUTION_AMBIGUITY	ambiguous call: 2 candidates for 'extFun' take (IB)
@@ -385,16 +385,16 @@ testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects inv
 testsWithStdLib/contracts/controlflow/flowInlining/labeledReturns.kt	rejects invalid	labeledReturns.kt:79	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
 testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:21	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
 testsWithStdLib/contracts/controlflow/flowInlining/throwIfNotCalled.kt	rejects invalid	throwIfNotCalled.kt:38	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:25	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
-testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:33	CAPTURED_VAL_INITIALIZATION	captured values cannot be initialized because of possible reassignments
+testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:25	VAL_REASSIGNMENT	val cannot be reassigned
+testsWithStdLib/contracts/fromSource/good/callsInPlace/atMostOnce.kt	rejects invalid	atMostOnce.kt:33	VAL_REASSIGNMENT	val cannot be reassigned
 testsWithStdLib/contracts/fromSource/good/returnsImplies/booleanOperators.kt	rejects invalid	booleanOperators.kt:66	UNRESOLVED_REFERENCE	unresolved reference: foo
 testsWithStdLib/coroutines/inference/extensionWithNonValuableConstraints.kt	rejects invalid	extensionWithNonValuableConstraints.kt:39	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'S'. Specify it explicitly.
 testsWithStdLib/coroutines/inference/plusAssignInCoroutineContext.kt	rejects invalid	plusAssignInCoroutineContext.kt:22	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	type checking has run into a recursive problem; specify the return type of 'foo'
 testsWithStdLib/coroutines/inference/plusAssignWithLambda.kt	rejects invalid	plusAssignWithLambda.kt:10	TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	type checking has run into a recursive problem; specify the return type of 'foo'
 testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfNoinlineOrdinary.kt	rejects invalid	inlineOrdinaryOfNoinlineOrdinary.kt:23	UNRESOLVED_REFERENCE	unresolved reference: startCoroutine
-testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfOrdinary.kt	rejects invalid	inlineOrdinaryOfOrdinary.kt:36	ILLEGAL_SUSPEND_FUNCTION_CALL	suspend function 'calculate' can only be called from a coroutine or another suspend function
+testsWithStdLib/coroutines/inlineCrossinline/inlineOrdinaryOfOrdinary.kt	rejects invalid	inlineOrdinaryOfOrdinary.kt:36	NON_LOCAL_SUSPENSION_POINT	suspension functions can only be called within coroutine body
 testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfNoinlineOrdinary.kt	rejects invalid	inlineSuspendOfNoinlineOrdinary.kt:23	UNRESOLVED_REFERENCE	unresolved reference: startCoroutine
-testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	inlineSuspendOfOrdinary.kt:33	ILLEGAL_SUSPEND_FUNCTION_CALL	suspend function 'calculate' can only be called from a coroutine or another suspend function
+testsWithStdLib/coroutines/inlineCrossinline/inlineSuspendOfOrdinary.kt	rejects invalid	inlineSuspendOfOrdinary.kt:33	NON_LOCAL_SUSPENSION_POINT	suspension functions can only be called within coroutine body
 testsWithStdLib/coroutines/kt18292.kt	rejects invalid	kt18292.kt:13	CANNOT_INFER_PARAMETER_TYPE	cannot infer type for type parameter 'T'. Specify it explicitly.
 testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:4	UNRESOLVED_REFERENCE	unresolved reference: nestedI
 testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt	rejects invalid	K1.kt:8	UNRESOLVED_REFERENCE	unresolved reference: nested

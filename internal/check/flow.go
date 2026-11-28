@@ -1251,7 +1251,7 @@ func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 	if sym == nil {
 		return narrow{}, false
 	}
-	return narrow{sym: sym, t: c.scope.narrowed(sym)}, true
+	return narrow{sym: sym, t: c.scope.narrowed(sym), stale: isVar(sym) && len(c.nestedAssigns[sym]) > 0}, true
 }
 
 // memberSym returns the stable property that m reads, or nil.
@@ -1852,4 +1852,79 @@ func (c *Checker) assignsIn(node any, name string) []*syntax.Assign {
 	}
 	c.frameMemo[key] = as
 	return as
+}
+
+// smartcastImpossible reports kotlinc's SMARTCAST_IMPOSSIBLE when x, the
+// receiver of a member name that its type doesn't take, is a local var
+// whose smart-cast type would take it, but a closure may assign it. It
+// returns that type, on which kotlinc goes on resolving.
+func (c *Checker) smartcastImpossible(x syntax.Expr, name string, nullable bool) (types.Type, bool) {
+	id, ok := x.(*syntax.Ident)
+	if !ok {
+		return types.Type{}, false
+	}
+	w, ok := c.unstableCasts[id]
+	if !ok || types.MayBeNull(w) || !c.namedOnNonNull(w, name) || !nullable && !c.unstableTakes(w, name) {
+		return types.Type{}, false
+	}
+	c.errorf(id.P, "SMARTCAST_IMPOSSIBLE", "smart cast to '%s' is impossible, because '%s' is a local variable that is mutated in a capturing closure", w, id.Name)
+	return w, true
+}
+
+// unstableMember checks x.Name, which x.X's type doesn't take, on the
+// smart-cast type a closure's assignment rules out, if x.X is such a local
+// var and that type takes it: kotlinc's SMARTCAST_IMPOSSIBLE.
+func (c *Checker) unstableMember(x *syntax.Member) (types.Type, bool) {
+	id, ok := x.X.(*syntax.Ident)
+	if !ok || x.Safe {
+		return types.Type{}, false
+	}
+	w, ok := c.unstableCasts[id]
+	if !ok || types.MayBeNull(w) {
+		return types.Type{}, false
+	}
+	n := len(c.errs)
+	x.X = checked(id, w)
+	t := c.memberOn(x, w)
+	if len(c.errs) > n && c.errs[n].Name == "UNRESOLVED_REFERENCE" && c.errs[n].Pos == x.P || libraryExt(x.Getter) {
+		c.errs, x.X = c.errs[:n], id
+		return types.Type{}, false
+	}
+	errs := slices.Clone(c.errs[n:])
+	c.errs = c.errs[:n]
+	c.errorf(id.P, "SMARTCAST_IMPOSSIBLE", "smart cast to '%s' is impossible, because '%s' is a local variable that is mutated in a capturing closure", w, id.Name)
+	c.errs = append(c.errs, errs...)
+	return t, true
+}
+
+// unstableTakes reports whether kotlinc resolves name on w, the type of an
+// unstable smart cast of a receiver whose own type doesn't take it: a
+// member of w does, or an extension of the program's, not one of the
+// libraries': of an Any y smart cast to String, y.length, not y.indices.
+func (c *Checker) unstableTakes(w types.Type, name string) bool {
+	if w == types.StringType {
+		switch name {
+		case "length", "get", "plus", "subSequence", "compareTo":
+			return true
+		}
+	} else if cls := c.classOf(w); cls != nil {
+		cls.Ensure()
+		if len(c.javaMethods(cls, name)) > 0 || c.hasProp(cls, name) {
+			return true
+		}
+	}
+	if slices.ContainsFunc(c.extCallees(name, w), func(e callee) bool { return e.f.Decl != nil }) {
+		return true
+	}
+	n := len(c.errs)
+	m := &syntax.Member{Name: name}
+	_, found := c.extProp(m, w)
+	c.errs = c.errs[:n]
+	return found && !libraryExt(m.Getter)
+}
+
+// libraryExt reports whether f is a top-level extension function read
+// from a class file.
+func libraryExt(f *types.FunSym) bool {
+	return f != nil && f.Owner == nil && f.Recv.K != types.Invalid && f.Decl == nil
 }

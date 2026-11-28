@@ -18,7 +18,7 @@ fun assignedInRepeatedLambda() {
     var x: Any? = materialize()
     require(x is String)
     atLeastOnce {
-        x.length // ERROR only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+        x.length // ERROR unresolved reference: length
         x = ""
     }
 }
@@ -28,7 +28,7 @@ fun aliasEndedByOpAssign() {
     var y = x
     later {
         require(y is String)
-        y += "" // ERROR nullable receiver of type Any?
-        x.length // ERROR only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+        y += "" // ERROR unresolved reference: plus
+        x.length // ERROR unresolved reference: length
     }
 }

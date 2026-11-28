@@ -46,6 +46,6 @@ fun calls() {
 val r = 1..10 // ERROR ranges are only supported
 
 fun identities(x: Int, l: Long, s: String, b: Box) {
-    println(x === l) // ERROR operator '===' cannot be applied to Int and Long
+    println(x === l) // ERROR identity equality for arguments of types 'Int' and 'Long' is prohibited
     println(s !== b) // ERROR operator '===' cannot be applied to String and Box
 }

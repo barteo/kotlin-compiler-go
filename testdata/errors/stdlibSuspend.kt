@@ -17,7 +17,7 @@ suspend fun inlined() {
 }
 
 suspend fun notInlined() {
-    Thread { one() } // ERROR can only be called from a coroutine
+    Thread { one() } // ERROR suspension functions can only be called within coroutine body
 }
 
 open class A {

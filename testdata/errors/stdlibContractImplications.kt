@@ -20,16 +20,16 @@ fun safeIsString(x: Any?): Boolean? {
 
 fun test(a: A?, s: Any?) {
     if (safeIsString(s) != true) {
-        s.length // ERROR nullable receiver of type Any?
+        s.length // ERROR unresolved reference: length
     }
     if (safeIsString(s) == false) {
-        s.length // ERROR nullable receiver of type Any?
+        s.length // ERROR unresolved reference: length
     }
     when (safeIsString(s)) {
         true -> {}
-        else -> s.length // ERROR nullable receiver of type Any?
+        else -> s.length // ERROR unresolved reference: length
     }
     if (a?.returnsNull(s) == null) {
-        s.length // ERROR nullable receiver of type Any?
+        s.length // ERROR unresolved reference: length
     }
 }

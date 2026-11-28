@@ -124,6 +124,10 @@ type assignment struct {
 	// inPlaceLambdas are those of the lambdas the code is in that a
 	// contract says are called in place, though maybe not once.
 	inPlaceLambdas int
+	// calledInPlace counts the lambdas the code is in that a contract
+	// says are called in place, inlined or not: a val they assign is
+	// reassigned, not captured, to kotlinc.
+	calledInPlace int
 	// concurrent counts, for the vals that more than one lambda of a
 	// call assigns, each called once, the walks of those lambdas the
 	// code is in: as K2 has it, they may run in either order, so each
@@ -181,6 +185,10 @@ func laterArgs(args []syntax.Expr) bool {
 // lambdaArg walks lambda l, call x's argument k, that x doesn't call
 // exactly once.
 func (a *assignment) lambdaArg(x *syntax.Call, k int, l *syntax.Lambda, s *daState) {
+	if l.InPlace {
+		a.calledInPlace++
+		defer func() { a.calledInPlace-- }()
+	}
 	if x.Sym != nil && (isInlineFun(x.Sym) || x.Sym.Declared != nil) {
 		a.inlined++
 		if l.InPlace {
@@ -639,6 +647,10 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 		a.c.errorf(p, "CAPTURED_MEMBER_VAL_INITIALIZATION", "initialization of captured member values is prohibited because of possible reassignments")
 	case !v.Mutable && a.concurrent[v] > 0:
 		a.c.errorf(p, "CAPTURED_VAL_INITIALIZATION", "captured values cannot be initialized because of possible reassignments")
+	case !v.Mutable && a.lambdas > a.depth[v] && a.lambdas-a.depth[v] <= a.calledInPlace:
+		// In lambdas a contract says are called in place, but maybe more
+		// than once, kotlinc reports the val as reassigned.
+		a.c.errorf(p, "VAL_REASSIGNMENT", "val cannot be reassigned")
 	case !v.Mutable && a.lambdas > a.depth[v]:
 		a.c.errorf(p, "CAPTURED_VAL_INITIALIZATION", "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && v.Kind == types.Prop && a.notInlined():

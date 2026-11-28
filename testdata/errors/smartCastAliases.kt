@@ -12,7 +12,7 @@ fun propertyOfAlias(x: AnyHolder) {
     if (b.value is String) x.value.length
     if (x.value is String) b.value.length
     val f = {
-        if (a.value is String) x.value.length // ERROR nullable receiver
+        if (a.value is String) x.value.length // ERROR unresolved reference: length
         if (b.value is String) x.value.length
     }
     a = AnyHolder("")

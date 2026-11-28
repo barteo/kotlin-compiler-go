@@ -500,7 +500,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 				ok = ok && eok
 				val.Elems = append(val.Elems, e)
 				for _, err := range c.errs[n:] {
-					if err.Msg == nonConstArgMsg {
+					if err.Msg == nonConstArgMsg || err.Name == "NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION" {
 						// Of KClasses, only a class literal's, T::class,
 						// not ""::class or a val's, which kotlinc
 						// reports as not being class literals.
@@ -746,7 +746,9 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 		return true
 	})
 	if len(c.errs) == before {
-		if bad := c.nonConst(x); bad != nil {
+		if bad := c.nonConst(x); bad != nil && nonConstRef(bad) {
+			c.errorf(bad.Pos(), "NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION", "only 'const val' can be used in constant expressions")
+		} else if bad != nil {
 			c.errorf(bad.Pos(), "ANNOTATION_ARGUMENT_MUST_BE_CONST", nonConstArgMsg)
 		} else if lit, ok := x.(*syntax.ClassLit); ok && vt.K == types.Invalid {
 			// A::class of a typealias of an unresolved class, whose

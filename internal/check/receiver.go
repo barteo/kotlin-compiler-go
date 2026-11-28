@@ -149,6 +149,11 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		return t
 	}
 	if c.cls == nil {
+		if k := c.staticCls; x.Label != "" && k != nil && !k.Object && x.Label == k.DisplayName()[strings.LastIndexByte(k.DisplayName(), '.')+1:] {
+			// this@A in A's header.
+			c.errorf(x.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "'this' is not defined in this context")
+			return types.InvalidType
+		}
 		if x.Label != "" {
 			c.errorf(x.P, "UNRESOLVED_LABEL", "unresolved label: %s", x.Label)
 			return types.InvalidType

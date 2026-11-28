@@ -22,7 +22,7 @@ fun main() {
     g(1, 2) // ERROR no function 'invoke' takes 2 arguments
     val h: () -> Unit = { return } // ERROR 'return' is not allowed here
     while (true) {
-        run { break } // ERROR 'break' is not allowed outside a loop
+        run { break } // ERROR 'break' crosses a function boundary
     }
     val k: Int = run { "s" } // ERROR inferred type is String but Int was expected
     val p: (Int) -> Int = square // ERROR unresolved reference: square

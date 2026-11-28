@@ -71,16 +71,45 @@ func (c *Checker) constInit(d *syntax.PropDecl) {
 	}
 }
 
-// nonConstRef reports whether x, not a constant, reads a variable or
-// property that isn't a const val.
+// nonConstRef reports whether x, not a constant as nonConst found it,
+// reads a variable or property that isn't a const val, also in a string
+// template: "a$i". kotlinc reports those as NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION.
 func nonConstRef(x syntax.Expr) bool {
 	switch x := x.(type) {
 	case *syntax.Ident:
-		return x.Sym != nil && !constVar(x.Sym)
+		if x.Sym == nil && x.Member != nil {
+			return nonConstRef(x.Member) // a property of this
+		}
+		return x.Sym != nil && couldBeConst(x.Sym)
 	case *syntax.Member:
-		return x.Prop != nil && !constVar(x.Prop)
+		return x.Prop != nil && couldBeConst(x.Prop)
+	case *syntax.Checked:
+		return nonConstRef(x.X)
+	case *syntax.StringLit:
+		for _, p := range x.Parts {
+			if p.X == nil {
+				continue
+			}
+			if !constType(p.X.Type()) {
+				return false
+			}
+			if r := nonConst(p.X, 1); r != nil {
+				return nonConstRef(r)
+			}
+		}
 	}
 	return false
+}
+
+// couldBeConst reports whether v, not a const val, would be one with the
+// modifier: a val of a class or file, with no getter, initialized with a
+// constant. kotlinc tells the code to use a const val only then.
+func couldBeConst(v *types.VarSym) bool {
+	if constVar(v) || v.Mutable || v.Kind != types.Global && v.Kind != types.Prop || !constType(v.Type) {
+		return false
+	}
+	d, ok := v.Decl.(*syntax.PropDecl)
+	return ok && d.Init != nil && d.Getter == nil && d.DelegateOf == nil && !d.Mutable && nonConst(d.Init, 1) == nil
 }
 
 // constCycle reports whether the const vals that x reads, and those
