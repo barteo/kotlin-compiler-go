@@ -21,7 +21,7 @@ fun nestedInPlace(items: List<List<Int>>) {
     var acc: Any = 0
     items.forEach { a ->
         a.forEach { b ->
-            if (acc is String) acc.length // ERROR unresolved reference: length
+            if (acc is String) acc.length // ERROR smart cast to 'String' is impossible
             acc = b
         }
     }
@@ -30,7 +30,7 @@ fun nestedInPlace(items: List<List<Int>>) {
 fun outerAssigns() {
     var x: Any = ""
     exactlyOnce {
-        exactlyOnce { if (x is String) x.length } // ERROR unresolved reference: length
+        exactlyOnce { if (x is String) x.length } // ERROR smart cast to 'String' is impossible
         x = "later, unchecked when read"
     }
 }
@@ -38,7 +38,7 @@ fun outerAssigns() {
 fun notInPlace() {
     var x: Any = ""
     later {
-        if (x is String) x.length // ERROR unresolved reference: length
+        if (x is String) x.length // ERROR smart cast to 'String' is impossible
         x = ""
     }
 }
@@ -47,7 +47,7 @@ fun localFunction() {
     var x: Any = ""
     require(x is String)
     fun local() {
-        exactlyOnce { x.length } // ERROR unresolved reference: length
+        exactlyOnce { x.length } // ERROR smart cast to 'String' is impossible
         x = ""
     }
 }
@@ -55,7 +55,7 @@ fun localFunction() {
 fun compoundAssignment() {
     var x: Any = ""
     later {
-        if (x is String) x.length // ERROR unresolved reference: length
+        if (x is String) x.length // ERROR smart cast to 'String' is impossible
         x += "" // ERROR operator '+=' cannot be applied to Any
     }
 }

@@ -28,7 +28,7 @@ fun nestedInPlace(arg: Int?) {
 fun inPlaceInEscaping(arg: Int?) {
     var x = arg
     if (x == null) return
-    noContract { inPlace { x.inc() } } // ERROR only safe (?.) or non-null asserted
+    noContract { inPlace { x.inc() } } // ERROR smart cast to 'Int' is impossible
     x = 42
 }
 

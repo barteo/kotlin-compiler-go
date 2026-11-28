@@ -97,7 +97,7 @@ class Constants
 """.trimIndent()))
 class MoreConstants
 
-@Num(notConst) // ERROR annotation argument must be a compile-time constant
+@Num(notConst) // ERROR only 'const val' can be used in constant expressions
 class NotConst
 
 @Num(CONST, mutable) // ERROR annotation argument must be a compile-time constant
@@ -106,7 +106,7 @@ class Mutable
 @Num(f()) // ERROR annotation argument must be a compile-time constant
 class Call
 
-@Num(Holder.plain) // ERROR annotation argument must be a compile-time constant
+@Num(Holder.plain) // ERROR only 'const val' can be used in constant expressions
 class ObjectVal
 
 @Num(holder.INNER) // ERROR annotation argument must be a compile-time constant
@@ -115,7 +115,7 @@ class ThroughVal
 @Plain("a" + E.A) // ERROR annotation argument must be a compile-time constant
 class EnumConcat
 
-@Names(arrayOf(TEXT, "$notConst")) // ERROR annotation argument must be a compile-time constant
+@Names(arrayOf(TEXT, "$notConst")) // ERROR only 'const val' can be used in constant expressions
 class ArrayElem
 
 annotation class Defaults(

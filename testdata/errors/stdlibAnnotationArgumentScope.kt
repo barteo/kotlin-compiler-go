@@ -45,7 +45,7 @@ class MyClass {
 class Gen<T> {
     val CONST = 2
     inner class I {
-        @Anno(CONST) fun s() {} // ERROR must be a compile-time constant
+        @Anno(CONST) fun s() {} // ERROR only 'const val' can be used in constant expressions
     }
 }
 

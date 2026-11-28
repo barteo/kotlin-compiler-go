@@ -8,7 +8,7 @@ const val cnst = "2"
 
 @Ann(
     arrayOf( // ERROR only 'const val' can be used in constant expressions
-        foo, // ERROR annotation argument must be a compile-time constant
+        foo, // ERROR only 'const val' can be used in constant expressions
         cnst
     )
 )
