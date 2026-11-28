@@ -21,6 +21,11 @@ func (c *Checker) classRules(d *syntax.ClassDecl) {
 	if d.Fun {
 		c.functionDelegateClash(d)
 	}
+	if st := recordSuper(d); st != nil {
+		c.errorf(st.Type.P, "classes cannot have explicit 'java.lang.Record' supertype")
+	} else if a := c.findAnnotation(d.Annotations, "", "JvmRecord", "kotlin/jvm/JvmRecord"); a != nil {
+		c.jvmRecord(d, a)
+	}
 	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && d.Sym != nil && d.Sym.IsSubclassOf(thr) {
 		// catch couldn't tell the instances apart by their type
 		// arguments, which the JVM erases.
@@ -29,6 +34,108 @@ func (c *Checker) classRules(d *syntax.ClassDecl) {
 			c.errorf(d.TypeParams[0].P, "subclass of 'Throwable' cannot have generic parameters")
 		case d.Sym.Inner && d.Sym.OuterParams > 0:
 			c.errorf(d.P, "inner class of generic class extending 'Throwable' is prohibited")
+		}
+	}
+}
+
+// recordSuper returns class d's first supertype if it is java.lang.Record,
+// which kotlinc's FirJvmRecordChecker reports, as a typealias of it too,
+// whether d is annotated @JvmRecord or not: kotlinc gives a record that
+// supertype.
+func recordSuper(d *syntax.ClassDecl) *syntax.SuperType {
+	if len(d.Supers) == 0 {
+		return nil
+	}
+	if st := d.Supers[0]; st.Type != nil && st.T.K == types.Class && st.T.C != nil && st.T.C.Name == "java/lang/Record" {
+		return st
+	}
+	return nil
+}
+
+// jvmRecord checks class d, annotated @JvmRecord with a, as kotlinc's
+// FirJvmRecordChecker does: a record is a final data class, neither local
+// nor inner, whose constructor's parameters, at least one, all vals and
+// only the last a vararg, are its only fields, for a JVM target of 16 or
+// later. As kotlinc, it reports the first of these errors, and then the
+// others about the class's members.
+func (c *Checker) jvmRecord(d *syntax.ClassDecl, a *syntax.Annotation) {
+	switch {
+	case c.u.jvmTarget < 60:
+		// At the start of the declaration, its annotations', as
+		// kotlinc.
+		p := a.P
+		earlier := func(q syntax.Pos) {
+			if q.Before(p) {
+				p = q
+			}
+		}
+		earlier(d.P)
+		for _, a := range d.Annotations {
+			if !a.Implicit {
+				earlier(a.P)
+			}
+		}
+		for _, m := range d.Written {
+			earlier(m.P)
+		}
+		c.errorf(p, "using @JvmRecord is only allowed with -jvm-target 16 or later (or -jvm-target 15 with the -Xjvm-enable-preview flag enabled)")
+		return
+	case d.Local:
+		c.errorf(a.P, "local '@JvmRecord' classes are prohibited")
+		return
+	case d.Inner:
+		c.errorf(modPos(d.Written, "inner", d.P), "'@JvmRecord' class cannot be inner")
+		return
+	case d.Open || d.Abstract || d.Sealed || d.Interface:
+		p := d.P
+		for _, m := range d.Written {
+			if m.Name == "open" || m.Name == "abstract" || m.Name == "sealed" {
+				p = m.P
+				break
+			}
+		}
+		c.errorf(p, "'@JvmRecord' class must be final")
+		return
+	case d.Enum:
+		c.errorf(modPos(d.Written, "enum", d.P), "'@JvmRecord' class cannot be an enum")
+		return
+	case !d.Data:
+		c.errorf(a.P, "only data classes are allowed to be marked as '@JvmRecord'")
+		return
+	}
+	if d.HasPrimary || d.Object {
+		if len(d.CtorParams) == 0 {
+			c.errorf(a.P, "primary constructor with parameters is required for '@JvmRecord' class")
+			return
+		}
+		for _, cp := range d.CtorParams[:len(d.CtorParams)-1] {
+			if cp.Param.Vararg {
+				c.errorf(cp.P, "only the last constructor parameter of '@JvmRecord' can be a vararg")
+			}
+		}
+	}
+	for _, cp := range d.CtorParams {
+		if cp.IsProp && cp.Mutable {
+			c.errorf(cp.P, "constructor parameter of '@JvmRecord' class must be a 'val'")
+		}
+	}
+	for _, m := range d.Members {
+		if pd, ok := m.(*syntax.PropDecl); ok && pd.DelegateOf == nil && !pd.Generated && pd.Sym != nil &&
+			(pd.Field != nil || pd.Sym.HasField()) {
+			c.errorf(pd.P, "non-constructor properties with backing field in '@JvmRecord' class are prohibited")
+		}
+	}
+	for _, st := range d.Supers {
+		if st.Delegate != nil {
+			c.errorf(st.Type.P, "delegation is prohibited for '@JvmRecord' classes")
+		}
+	}
+	if len(d.Supers) > 0 {
+		// Any, too, written as a supertype: not the one a class has
+		// without.
+		st := d.Supers[0]
+		if st.Type != nil && (st.Call != nil || st.T.K == types.Any || st.T.K == types.Class && st.T.C != nil && !st.T.C.Interface && !st.T.C.Object) {
+			c.errorf(d.P, "record cannot extend a class")
 		}
 	}
 }
