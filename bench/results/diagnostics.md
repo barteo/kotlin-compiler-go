@@ -128,7 +128,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `type mismatch: inferred type is _ but _ was expected` | 83 |
 | `unresolved reference: _` | 83 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 35 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 34 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 17 |
 | `unresolved or unsupported type: _` | 14 |
@@ -154,8 +154,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected a name` | 2 |
 | `expected parameter of type _` | 2 |
 | `incompatible types Int and Nothing` | 2 |
-| `missing return statement in function '_'` | 2 |
 | `multiple vararg-parameters are prohibited` | 2 |
+| `not enough information to infer type arguments of ::fix: specify the expected function type` | 2 |
 | *55 more* | |
 
 ## Unsupported features

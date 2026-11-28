@@ -226,6 +226,8 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return types.UnitType // as K2 types it: id(A) infers its T
 			} else if rt, ok := c.nullableImplicit(x.Name, nil); ok {
 				return c.unsafeImplicitProp(x, rt)
+			} else if t, ok := c.inaccessibleOuterProp(x); ok {
+				return t
 			} else {
 				c.errorf(x.P, "unresolved reference: %s", x.Name)
 			}
@@ -2719,6 +2721,83 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	return t.NonNull(), nil, true
 }
 
+// inaccessibleOuters returns the classes around the current one whose
+// instances its code has no receivers of, innermost first: those outside
+// a nested class that isn't inner. A companion object isn't such a class
+// for kotlinc, which reports an outer class's member there unresolved.
+func (c *Checker) inaccessibleOuters() []*types.ClassSym {
+	var out []*types.ClassSym
+	cut := false
+	for k := c.cls; k != nil; k = k.Outer {
+		if cut {
+			out = append(out, k)
+		} else if o := k.Outer; o != nil && !k.Inner && !k.Local && !k.Anonymous && o.Companion != k {
+			cut = true
+		}
+	}
+	return out
+}
+
+// inaccessibleOuterCall reports at p a call of function name, with a
+// receiver of type *recv or else none, that resolves only to a function
+// of a class of inaccessibleOuters, which needs an instance of it: a
+// member, a member extension taking the receiver, or, without one, an
+// extension of the class. As kotlinc, which reports the call
+// (INACCESSIBLE_OUTER_CLASS_RECEIVER), it has the function's result
+// type, if the call doesn't infer it. It reports whether there is one.
+func (c *Checker) inaccessibleOuterCall(p syntax.Pos, name string, recv *types.Type) (types.Type, bool) {
+	for _, o := range c.inaccessibleOuters() {
+		var fs []*types.FunSym
+		if recv == nil {
+			for _, f := range c.javaMethods(o, name) {
+				if !f.Static {
+					fs = append(fs, f)
+				}
+			}
+		}
+		for _, f := range o.ExtMethods[name] {
+			// Without a receiver, an implicit one's, as with(s) { f() }.
+			if recv == nil || f.Recv.K != types.Invalid && c.recvFits(*recv, f.Recv) {
+				fs = append(fs, f)
+			}
+		}
+		if len(fs) == 0 && recv == nil {
+			fs = calleeFuns(c.extCallees(name, o.This()))
+		}
+		if len(fs) == 0 {
+			continue
+		}
+		c.errorf(p, "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
+		if len(fs) > 1 {
+			return types.InvalidType, true
+		}
+		f := fs[0]
+		if ensureFun(f); !f.Resolved || len(f.TypeParams) > 0 || f.Ret.K == types.Invalid || f.Ret.HasParams() || f.Ret.HasVars() {
+			return types.InvalidType, true
+		}
+		return f.Ret, true
+	}
+	return types.InvalidType, false
+}
+
+// inaccessibleOuterProp reports the read x of a property of a class of
+// inaccessibleOuters, which needs an instance of it, and returns the
+// property's type, as kotlinc's. It reports whether there is one.
+func (c *Checker) inaccessibleOuterProp(x *syntax.Ident) (types.Type, bool) {
+	for _, o := range c.inaccessibleOuters() {
+		p := c.userProp(o, x.Name)
+		if p == nil {
+			continue
+		}
+		c.errorf(x.P, "outer class '%s' of non-inner class cannot be used as receiver", o.DisplayName())
+		if ensureVar(p); !p.Resolved || p.Type.HasParams() || p.Type.HasVars() {
+			return types.InvalidType, true
+		}
+		return p.Type, true
+	}
+	return types.InvalidType, false
+}
+
 // nullableImplicit returns the type of the innermost implicit receiver
 // whose type is nullable and whose non-null type has a member or an
 // extension named name, a property if call is nil, else a function call
@@ -3609,6 +3688,10 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 			c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
 			c.args(x, nil)
 			return c.unsafeCallResult(x, rt, name)
+		}
+		if t, ok := c.inaccessibleOuterCall(fn.P, name, nil); ok {
+			c.args(x, nil)
+			return t
 		}
 		c.errorf(fn.P, "unresolved reference: %s", name)
 		c.args(x, nil)
@@ -4560,6 +4643,10 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			// so that 0.0.equals(-0.0) is false, as in Kotlin.
 			return c.resolve(x, c.memberCallees(c.javaMethods(object, fn.Name), types.AnyType), want, sink)
 		}
+		if t, ok := c.inaccessibleOuterCall(fn.P, fn.Name, &rt); ok {
+			c.args(x, nil)
+			return t
+		}
 		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
 		return types.InvalidType
@@ -5490,6 +5577,14 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	}
 	covered := x.Subject != nil && c.covers(st, &cov)
 	exhaustive := hasElse || covered
+	// The subject or the first condition, which is always evaluated,
+	// jumps: when (x) { return "" if g -> {} } returns, as in kotlinc.
+	jumps := x.Subject != nil && x.Subject.Type().K == types.Nothing
+	if len(x.Branches) > 0 && len(x.Branches[0].Conds) > 0 {
+		if cx := x.Branches[0].Conds[0].X; cx != nil && cx.Type().K == types.Nothing {
+			jumps = true
+		}
+	}
 	if !exhaustive {
 		exits = append(exits, c.startExit(vars, later)) // no branch matched
 	}
@@ -5517,6 +5612,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			return types.InvalidType
 		}
 		c.completeBranches(pending, types.NothingType, noWant, false, false)
+		if jumps {
+			return types.NothingType
+		}
 		return types.UnitType
 	}
 	if !hasElse {
@@ -5540,7 +5638,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				allJump = allJump && inferredJump(bts[i], br.Body).K == types.Nothing
 			}
 		}
-		if allJump {
+		if allJump || jumps {
 			return types.NothingType
 		}
 		return types.UnitType

@@ -289,7 +289,6 @@ tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	invokeAndSmartCast.kt
 tests/resolve/invoke/invokeOnVariableWithExtensionFunctionType.kt	rejects invalid	1.kt:14	unresolved reference: foo
 tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:19	unresolved reference: extensionProperty
 tests/resolve/invoke/kt30695_2.kt	rejects invalid	test.kt:31	unresolved reference: extensionProperty
-tests/resolve/missingOuterClassReceiver.kt	rejects invalid	missingOuterClassReceiver.kt:17	cannot infer type for type parameter 'R'. Specify it explicitly.
 tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:32	type mismatch: inferred type is String but Int was expected
 tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:60	no function '<init>' takes 0 arguments
 tests/resolve/operatorAndInfixResolve.kt	rejects invalid	operatorAndInfixResolve.kt:80	unresolved reference: getValue
@@ -376,7 +375,6 @@ tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSy
 tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	type mismatch: inferred type is String & Boolean but Boolean was expected
 tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	deprecatedSyntaxInConditionsNoSubject.kt:53	type mismatch: inferred type is String & Boolean but Boolean was expected
 tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	rejects invalid	exhaustiveWithComplementaryLowersFromNegativeCheck.kt:22	'when' expression must be exhaustive, add necessary 'else' branch
-tests/when/guard/returnAnalysis.kt	rejects invalid	returnAnalysis.kt:15	missing return statement in function 'returnInCondition'
 tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:34	type mismatch: inferred type is T but Boolean was expected
 tests/when/guard/typeCheckerBehaves.kt	rejects invalid	typeCheckerBehaves.kt:36	type mismatch: inferred type is T but Boolean was expected
 testsWithStdLib/annotations/annotationAllRepeatable.kt	rejects invalid	annotationAllRepeatable.kt:32	this annotation is not repeatable
