@@ -3469,6 +3469,11 @@ func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Typ
 		return types.InvalidType
 
 	case *syntax.Member:
+		if id, ok := fn.X.(*syntax.Ident); ok && fn.Static != nil && id.Object == nil {
+			// A static call checked before, as argTypes checks arguments:
+			// f() of import p.J.f is J.f(), and J may not be in scope.
+			return c.staticCall(x, fn, fn.Static, want, sink)
+		}
 		if fn.Safe && c.qualifierValue(fn.X) {
 			c.noteQualifierSafe(fn)
 			c.args(x, nil)
