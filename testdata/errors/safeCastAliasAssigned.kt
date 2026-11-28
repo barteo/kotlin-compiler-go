@@ -8,7 +8,7 @@ fun g(a: Any?): Int {
     val d = v as? S
     v = null
     if (d != null) {
-        return v.foo // ERROR only safe (?.) or non-null asserted (!!.) calls are allowed
+        return v.foo // ERROR unresolved reference: foo
     }
     return 0
 }

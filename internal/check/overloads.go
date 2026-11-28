@@ -77,7 +77,7 @@ func conflicts(checkers []*Checker) {
 		}
 		ovs = javaCtorOverloads(ovs, name, reported)
 		overloadConflicts(ovs, reported)
-		redeclarations(decls, reported)
+		redeclarations(decls, reported, false)
 		for _, c := range pkgs[name] {
 			ovs = c.propOverloads(ovs, c.file.Decls, nil)
 		}
@@ -113,7 +113,7 @@ func conflicts(checkers []*Checker) {
 				}
 			}
 			overloadConflicts(ovs, reported)
-			redeclarations(decls, reported)
+			redeclarations(decls, reported, true)
 			c.inheritedConflicts(d, reported)
 			props := c.propOverloads(nil, d.Members, d)
 			contextualShadowing(append(ovs, props...), true)
@@ -460,8 +460,9 @@ func (c *Checker) namedDecls(out []namedDecl, d syntax.Decl) []namedDecl {
 
 // redeclarations reports the properties and classifiers of one scope
 // with the same name. Properties with the same name, and classifiers,
-// are reported where they are declared.
-func redeclarations(decls []namedDecl, reported map[any]bool) {
+// are reported where they are declared. member says the scope is a
+// class's.
+func redeclarations(decls []namedDecl, reported map[any]bool, member bool) {
 	byName := map[string][]int{}
 	for i := range decls {
 		byName[decls[i].name] = append(byName[decls[i].name], i)
@@ -480,7 +481,13 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 				for _, o := range []*namedDecl{a, b} {
 					if !reported[o.decl] && !o.c.hasErrorAt(o.pos, "redeclaration") {
 						reported[o.decl] = true
-						o.c.errorf(o.pos, "CLASSIFIER_REDECLARATION", "redeclaration: %s", o.name)
+						// kotlinc names the classifiers of a package so, and
+						// those of a class, and enum entries, as any other.
+						name := "CLASSIFIER_REDECLARATION"
+						if member {
+							name = "REDECLARATION"
+						}
+						o.c.errorf(o.pos, name, "redeclaration: %s", o.name)
 					}
 				}
 			}

@@ -39,6 +39,7 @@ func init() {
 		"NO_EXPLICIT_RETURN_TYPE_IN_API_MODE":               `^return type must be specified in explicit API mode`,
 		"NO_EXPLICIT_VISIBILITY_IN_API_MODE":                `^visibility must be specified in explicit API mode`,
 		"NON_PUBLIC_CALL_FROM_PUBLIC_INLINE":                `^public-API inline function cannot access non-public-API `,
+		"NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE":         `^public-API inline function cannot access non-public-API `,
 		"PRIVATE_PROPERTY_IN_INTERFACE":                     `^abstract property in an interface cannot be private`,
 		"PRIVATE_SETTER_FOR_ABSTRACT_PROPERTY":              `^private setters are not allowed for abstract properties`,
 		"SUBCLASS_OPT_IN_INAPPLICABLE":                      `^'@SubclassOptInRequired' is not applicable to `,

@@ -15,7 +15,7 @@ fun fromObject(): Int {
     // AutoCloseable { } keeps its lambda in an object.
     val c = AutoCloseable { return } // ERROR 'return' is not allowed here
     for (i in 0..1) {
-        compareBy<Int> { if (it > i) continue; it } // ERROR 'continue' is not allowed outside a loop
+        compareBy<Int> { if (it > i) continue; it } // ERROR 'continue' crosses a function boundary
     }
     return 0
 }

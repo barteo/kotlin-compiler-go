@@ -7,7 +7,7 @@ fun main() {
     }
     outer@ while (cond()) {
         run {
-            continue@outer // ERROR 'continue' is not allowed outside a loop
+            continue@outer // ERROR 'continue' crosses a function boundary
         }
     }
     do {

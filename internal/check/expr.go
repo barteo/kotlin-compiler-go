@@ -1861,6 +1861,21 @@ func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool
 	return st, len(c.extCallees(fn.Name, st)) > 0
 }
 
+// namedOnNonNull reports whether the non-null type of a nullable receiver
+// of type t may have a function called name: a member, an extension, a
+// property that can be invoked. It is true where kc can't tell, as for a
+// type parameter's bounds or a built-in type's members.
+func (c *Checker) namedOnNonNull(t types.Type, name string) bool {
+	nn := t.NonNull()
+	switch {
+	case t.K == types.Null || anyMember[name]:
+		return true
+	case nn.K == types.Any, nn.K == types.Class && !nn.IsIntersection():
+		return c.hasNamed(nn, name)
+	}
+	return true
+}
+
 // builtinNamed reports whether builtin type t, as Int or String, has a
 // member or extension name.
 func (c *Checker) builtinNamed(t types.Type, name string) bool {
@@ -2715,6 +2730,13 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		if fn.Name == "plus" && (t.NonNull() == types.StringType || t.K == types.Null) {
 			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
+		if !c.namedOnNonNull(t, fn.Name) {
+			// kotlinc reports the unsafe call of a function it resolves
+			// on the non-null receiver, and an unresolved one otherwise:
+			// x.inc() of an Any? x.
+			c.errorf(fn.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", fn.Name)
+			return t, nil, false
+		}
 		c.errorf(fn.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return t, nil, false
 	}
@@ -3042,16 +3064,24 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		if t, ok := c.extProp(x, xt); ok {
 			return t
 		}
-		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
 		// As kotlinc, the property is still read, on the non-null
 		// receiver, and has its type: val s: String = x.length, of a
 		// String? x, is a mismatch too, and run { x.length } an Int. If
-		// that takes another error, the read is the error type.
+		// that takes another error, the read is the error type; if the
+		// non-null receiver has no property of the name, kotlinc reports
+		// it unresolved rather than the unsafe call: x.length of an Any? x.
 		n := len(c.errs)
-		if t := c.memberOn(x, xt); len(c.errs) == n {
+		t := c.memberOn(x, xt)
+		if len(c.errs) > n && c.errs[n].Name == "UNRESOLVED_REFERENCE" && c.errs[n].Pos == x.P && !c.namedOnNonNull(xt, x.Name) {
+			c.errs = c.errs[:n+1]
+			return types.InvalidType
+		}
+		ok := len(c.errs) == n
+		c.errs = c.errs[:n]
+		c.errorf(x.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
+		if ok {
 			return t
 		}
-		c.errs = c.errs[:n]
 		return types.InvalidType
 	}
 	return c.memberOn(x, xt)
@@ -5762,7 +5792,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 			if c.loopsOutside {
 				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' crosses a function boundary", x.Kind)
 			} else {
-				c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' is not allowed outside a loop", x.Kind)
+				c.errorf(x.P, "BREAK_OR_CONTINUE_OUTSIDE_A_LOOP", "'%s' is not allowed outside a loop", x.Kind)
 			}
 			return
 		}

@@ -26,7 +26,7 @@ fun main() {
     while (true) {
         val e = object : Runnable {
             override fun run() {
-                break // ERROR 'break' is not allowed outside a loop
+                break // ERROR 'break' crosses a function boundary
             }
         }
     }

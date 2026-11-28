@@ -679,8 +679,8 @@ type state struct {
 	// localCalls are the calls of local functions in the body being
 	// checked, shared by the local functions and lambdas in it.
 	localCalls *[]localCall
-	// loopsOutside is set in a local function declared in a loop, which
-	// break and continue can't leave.
+	// loopsOutside is set in a local function or a lambda that isn't
+	// inlined, declared in a loop, which break and continue can't leave.
 	loopsOutside bool
 	// init is set in a class's constructor code: property initializers,
 	// init blocks and secondary constructors, which can assign its vals

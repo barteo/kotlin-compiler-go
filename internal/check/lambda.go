@@ -575,6 +575,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		// An inlined lambda's body is part of the enclosing function: return,
 		// break and continue can leave it, and a try in it is in the
 		// arguments of a constructor call that the lambda is.
+		c.loopsOutside = c.loopsOutside || len(c.loops) > 0
 		c.retAllowed, c.loops, c.ctorArgs = false, nil, false
 	}
 	c.allowRange = false
