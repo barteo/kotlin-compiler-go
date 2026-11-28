@@ -255,7 +255,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			x.Unit = true // a local of type Unit has no storage
 		}
 		if sym.Suspend {
-			c.suspendCall(x.P, &types.FunSym{Name: sym.Name, Suspend: true})
+			c.suspendPropRead(x.P, sym.Name)
 		}
 		return t
 	case *syntax.Checked:
@@ -1358,17 +1358,35 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if !c.equalityInapplicable(op, xt, yt) {
 			return types.AnyType.Nullable()
 		}
-		name := "=="
-		if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
-			name = "==="
-		}
-		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+		c.equalityError(p, op, xt, yt)
 		return types.InvalidType
 	}
 	if xt.IsPrimitive() && yt.IsPrimitive() {
 		return xt
 	}
 	return xt.Nullable()
+}
+
+// equalityError reports that values of types xt and yt can't be compared
+// with op, under the name K2's FirEqualityCompatibilityChecker gives it:
+// an identity comparison of a primitive is FORBIDDEN_IDENTITY_EQUALS, and
+// one of enums that K1 let have subtypes, as two enums, or an enum and an
+// interface, INCOMPATIBLE_ENUM_COMPARISON_ERROR.
+func (c *Checker) equalityError(p syntax.Pos, op syntax.Kind, xt, yt types.Type) {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	identity := op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ
+	switch {
+	case identity && (types.IsPrimitiveKind(x.K) || types.IsPrimitiveKind(y.K)):
+		c.errorf(p, "FORBIDDEN_IDENTITY_EQUALS", "identity equality for arguments of types '%s' and '%s' is prohibited", xt, yt)
+	case (c.enumType(x) || c.enumType(y)) && canHaveSubtypesK1(x) && canHaveSubtypesK1(y):
+		c.errorf(p, "INCOMPATIBLE_ENUM_COMPARISON_ERROR", "comparison of incompatible enums '%s' and '%s' is always unsuccessful", xt, yt)
+	default:
+		name := "=="
+		if identity {
+			name = "==="
+		}
+		c.errorf(p, "EQUALITY_NOT_APPLICABLE", "operator '%s' cannot be applied to %s and %s", name, xt, yt)
+	}
 }
 
 // equalityInapplicable reports whether K2 rejects comparing values of
@@ -3015,7 +3033,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// A library's: kotlin.coroutines.coroutineContext.
 		x.Prop = v
 		if v.Suspend {
-			c.suspendCall(x.P, &types.FunSym{Name: v.Name, Suspend: true})
+			c.suspendPropRead(x.P, v.Name)
 		}
 		return v.Type
 	}
@@ -5145,8 +5163,8 @@ func jumped(pending []pendingBranch, ts []types.Type, bodies []*syntax.Block) bo
 func incompatibleCond(errs []*syntax.Error) {
 	const eq = "operator '==' cannot be applied to "
 	for _, e := range errs {
-		if rest, ok := strings.CutPrefix(e.Msg, eq); ok {
-			e.Msg = "incompatible types " + rest
+		if rest, ok := strings.CutPrefix(e.Msg, eq); ok && e.Name == "EQUALITY_NOT_APPLICABLE" {
+			e.Msg, e.Name = "incompatible types "+rest, "INCOMPATIBLE_TYPES"
 		}
 	}
 }

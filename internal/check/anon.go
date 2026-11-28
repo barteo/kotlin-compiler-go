@@ -38,6 +38,9 @@ type anonCtx struct {
 	// loopsOutside is set for a class declared in a loop, which break
 	// and continue in its code can't leave.
 	loopsOutside bool
+	// outerSuspend is set for a class that a suspend function or lambda
+	// encloses.
+	outerSuspend bool
 }
 
 // inAnon makes the state of code in class cls, if it is an object
@@ -73,7 +76,7 @@ func (c *Checker) inAnon(cls *types.ClassSym) {
 	c.ctxs = append(ctx.ctxs[:len(ctx.ctxs):len(ctx.ctxs)], ownCtx...)
 	c.tparams = append(c.tparams[:len(c.tparams):len(c.tparams)], ctx.tparams...)
 	c.localCalls = ctx.localCalls
-	c.loopsOutside = ctx.loopsOutside
+	c.loopsOutside, c.outerSuspend = ctx.loopsOutside, ctx.outerSuspend
 }
 
 // ownProp reports whether the object expression, inner class or local
@@ -207,7 +210,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	depth := len(c.lambdas)
 	ctx := &anonCtx{scope: c.scope, lambdas: append(c.lambdas[:depth:depth], frame),
 		lrets: append(c.lrets[:len(c.lrets):len(c.lrets)], &lambdaResult{}), tparams: c.tparams, localCalls: c.localCalls,
-		loopsOutside: c.loopsOutside || len(c.loops) > 0}
+		loopsOutside: c.loopsOutside || len(c.loops) > 0, outerSuspend: c.inCoroutine()}
 	if c.cls == nil {
 		ctx.staticCls = c.staticCls
 	}
@@ -382,7 +385,7 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 	outer := d.Sym.Outer
 	oc := c.anon[outer]
 	depth := len(oc.lambdas)
-	ctx := &anonCtx{scope: oc.scope, lambdas: oc.lambdas, lrets: oc.lrets, tparams: oc.tparams, localCalls: oc.localCalls, loopsOutside: oc.loopsOutside}
+	ctx := &anonCtx{scope: oc.scope, lambdas: oc.lambdas, lrets: oc.lrets, tparams: oc.tparams, localCalls: oc.localCalls, loopsOutside: oc.loopsOutside, outerSuspend: oc.outerSuspend}
 	for _, r := range oc.recvs {
 		if r.depth >= depth {
 			v := &types.VarSym{Name: r.sym.Name, Kind: types.Local, Type: r.sym.Type, OuterOf: d.OuterThis, OuterCls: outer}
@@ -403,7 +406,7 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 // checks it: class C { class D { fun c(): C = C() } } in a function.
 func (c *Checker) localNested(d *syntax.ClassDecl) {
 	oc := c.anon[d.Sym.Outer]
-	c.anon[d.Sym] = &anonCtx{scope: oc.scope, lambdas: oc.lambdas, lrets: oc.lrets, tparams: oc.tparams, localCalls: oc.localCalls, loopsOutside: oc.loopsOutside}
+	c.anon[d.Sym] = &anonCtx{scope: oc.scope, lambdas: oc.lambdas, lrets: oc.lrets, tparams: oc.tparams, localCalls: oc.localCalls, loopsOutside: oc.loopsOutside, outerSuspend: oc.outerSuspend}
 }
 
 // localName names a local class as kotlinc does: after the class or the

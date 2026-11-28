@@ -48,13 +48,40 @@ func (c *Checker) suspendScope1() (l *syntax.Lambda, ok, critical, monitor bool)
 	return nil, c.fn != nil && c.fn.Suspend, critical, monitor
 }
 
+// inCoroutine reports whether a suspend function or a suspend lambda
+// encloses the code, however far out.
+func (c *Checker) inCoroutine() bool {
+	if c.fn != nil && c.fn.Suspend || c.outerSuspend {
+		return true
+	}
+	return slices.ContainsFunc(c.lambdas, func(l *syntax.Lambda) bool { return l.Suspend })
+}
+
 // suspendCall checks a call at p of f, if it is a suspend function.
 func (c *Checker) suspendCall(p syntax.Pos, f *types.FunSym) {
+	c.suspendUse(p, f, false)
+}
+
+// suspendPropRead checks a read at p of suspend property name.
+func (c *Checker) suspendPropRead(p syntax.Pos, name string) {
+	c.suspendUse(p, &types.FunSym{Name: name, Suspend: true}, true)
+}
+
+// suspendUse checks a call at p of f, or with prop, a read of a property
+// whose getter f is, if it is a suspend function.
+func (c *Checker) suspendUse(p syntax.Pos, f *types.FunSym, prop bool) {
 	if f == nil || !f.Suspend {
 		return
 	}
 	l, ok, critical, monitor := c.suspendScope1()
 	switch {
+	case !ok && c.inCoroutine():
+		// As K2, a suspend function or lambda encloses the call, but a
+		// lambda that isn't inlined, or a local function or class, is
+		// between them.
+		c.errorf(p, "NON_LOCAL_SUSPENSION_POINT", "suspension functions can only be called within coroutine body")
+	case !ok && prop:
+		c.errorf(p, "ILLEGAL_SUSPEND_PROPERTY_ACCESS", "suspend property '%s' can only be accessed from a coroutine or another suspend function", f.Name)
 	case !ok:
 		c.errorf(p, "ILLEGAL_SUSPEND_FUNCTION_CALL", "suspend function '%s' can only be called from a coroutine or another suspend function", f.Name)
 	case critical:

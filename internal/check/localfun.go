@@ -121,6 +121,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	default:
 		c.fnName = d.Name
 	}
+	c.outerSuspend = c.inCoroutine()
 	c.fn, c.retType, c.retAllowed = sym, sym.Ret, sym.Resolved
 	c.declName = ""
 	declareNamedContexts(c.scope, d)

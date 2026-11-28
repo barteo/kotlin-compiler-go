@@ -195,6 +195,9 @@ type Checker struct {
 	// interfaceSupers are the classes the interfaces inherit from, which
 	// is reported: as in FIR, their members override those classes'.
 	interfaceSupers map[*syntax.ClassDecl][]*types.ClassSym
+	// argLambdas are the lambdas that are arguments of calls in the
+	// file, once argLambda has looked for them.
+	argLambdas map[*syntax.Lambda]bool
 	// orderDependent is the property whose type extFuncVar couldn't use
 	// because it is being inferred or its inference ran into a cycle.
 	orderDependent *types.VarSym
@@ -682,6 +685,10 @@ type state struct {
 	// loopsOutside is set in a local function or a lambda that isn't
 	// inlined, declared in a loop, which break and continue can't leave.
 	loopsOutside bool
+	// outerSuspend is set in a local function or class that a suspend
+	// function or lambda encloses, where a suspend call is still a
+	// non-local suspension point to kotlinc.
+	outerSuspend bool
 	// init is set in a class's constructor code: property initializers,
 	// init blocks and secondary constructors, which can assign its vals
 	// declared without a value.
