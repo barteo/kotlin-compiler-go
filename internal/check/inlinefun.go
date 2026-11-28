@@ -18,7 +18,7 @@ import (
 // noinline, that its body only invokes.
 func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if virtualMember(d.Modifiers, owner) {
-		c.errorf(d.P, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+		c.errorf(d.P, "DECLARATION_CANT_BE_INLINED", "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
 	} else if d.Override {
 		// A call through the overridden function isn't inlined.
 		c.warnf(d.P, "OVERRIDE_BY_INLINE", "override by an inline function")
@@ -316,7 +316,7 @@ func inspectClass(d *syntax.ClassDecl, f func(any) bool) {
 // function d inlines, and records whether non-local jumps can leave them.
 func (c *Checker) sourceInlineCall(x *syntax.Call, cl *callee, d *syntax.FunDecl) {
 	if c.state.fn == cl.f {
-		c.errorf(x.P, "inline function '%s' cannot be recursive", d.Name)
+		c.errorf(x.P, "RECURSION_IN_INLINE", "inline function '%s' cannot be recursive", d.Name)
 		return
 	}
 	c.recordInlineCall(x, cl)
@@ -402,7 +402,7 @@ func (c *Checker) inlineCycles() {
 	for _, ic := range c.inlineCalls {
 		if !reported[ic.p] && reaches(ic.targets(), ic.from) {
 			reported[ic.p] = true
-			c.errorf(ic.p, "the call of '%s' is a part of an inline call cycle", ic.callee.Name)
+			c.errorf(ic.p, "INLINE_CALL_CYCLE", "the call of '%s' is a part of an inline call cycle", ic.callee.Name)
 		}
 	}
 }
@@ -454,29 +454,29 @@ func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst,
 		ts[i] = t
 		switch {
 		case tp.Reified && len(written) == len(f.TypeParams) && written[i].Type != nil && written[i].Type.And != nil:
-			c.errorf(written[i].P, "cannot use definitely-non-nullable type as a reified type argument")
+			c.errorf(written[i].P, "DEFINITELY_NON_NULLABLE_AS_REIFIED", "cannot use definitely-non-nullable type as a reified type argument")
 		case tp.Reified && t.IsParam() && !t.Param().Reified:
-			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
+			c.errorf(pos, "TYPE_PARAMETER_AS_REIFIED", "cannot use '%s' as reified type parameter", t.Param().Name)
 		case tp.Reified && erasedArrayElem(t) != nil:
 			p := pos
 			if len(written) == len(f.TypeParams) {
 				p = written[i].P
 			}
-			c.errorf(p, "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(t).Name)
+			c.errorf(p, "TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR", "cannot use an array of type parameter '%s' as a reified type argument", erasedArrayElem(t).Name)
 		case tp.Reified && s != nil && s.captured(sub[tp]):
-			c.errorf(pos, "cannot use captured type as reified type parameter")
+			c.errorf(pos, "REIFIED_TYPE_FORBIDDEN_SUBSTITUTION", "cannot use captured type as reified type parameter")
 		case tp.Reified && t.K == types.Nothing && !t.N:
 			// Nothing has no class; Nothing? is Void's.
-			c.errorf(pos, "cannot use 'Nothing' as reified type parameter")
+			c.errorf(pos, "REIFIED_TYPE_FORBIDDEN_SUBSTITUTION", "cannot use 'Nothing' as reified type parameter")
 		}
 	}
 	if f.Builtin == types.TypeOf && hasSuspendFunc(ts[0]) {
 		// kotlin.reflect has no KType of a suspend function type.
-		c.errorf(pos, "suspend function types can't be used in 'typeOf'")
+		c.errorf(pos, "TYPEOF_SUSPEND_TYPE", "suspend function types can't be used in 'typeOf'")
 	}
 	if f.Builtin == types.TypeOf {
 		if p := recursiveBound(ts[0], nil); p != nil {
-			c.errorf(pos, "non-reified type parameters with recursive bounds are not supported yet: %s", p.Name)
+			c.errorf(pos, "TYPEOF_NON_REIFIED_TYPE_PARAMETER_WITH_RECURSIVE_BOUND", "non-reified type parameters with recursive bounds are not supported yet: %s", p.Name)
 		}
 	}
 	return ts
@@ -528,7 +528,11 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			return
 		}
 		if m.Visibility == syntax.Private || m.Visibility == syntax.Internal {
-			c.errorf(p, "public-API inline function cannot access non-public-API %s '%s'", what, name)
+			diag := "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE"
+			if what == "function" && m.Inline {
+				diag = "NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE"
+			}
+			c.errorf(p, diag, "public-API inline function cannot access non-public-API %s '%s'", what, name)
 		}
 	}
 	// prop checks a use at p of property v, which mustn't be private or
@@ -542,7 +546,7 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			return
 		}
 		if _, ok := v.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(v.Owner) {
-			c.errorf(p, "public-API inline function cannot access non-public-API property '%s'", v.Name)
+			c.errorf(p, "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "public-API inline function cannot access non-public-API property '%s'", v.Name)
 		}
 	}
 	var visit func(n any) bool
@@ -574,7 +578,7 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 					switch {
 					case !ok || localType(types.ClassType(k)):
 					case !publicAPIClass(k):
-						c.errorf(n.P, "public-API inline function cannot access non-public-API class '%s'", k.DisplayName())
+						c.errorf(n.P, "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "public-API inline function cannot access non-public-API class '%s'", k.DisplayName())
 					case f.Decl != nil && !cd.Enum:
 						var m *syntax.Modifiers
 						switch fd := f.Decl.(type) {
@@ -591,7 +595,7 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 						break
 					}
 					if _, ok := f.Owner.Decl.(*syntax.ClassDecl); ok && !publicAPIClass(f.Owner) && !c.hasErrorAt(n.P, "public-API inline") {
-						c.errorf(n.P, "public-API inline function cannot access non-public-API function '%s'", f.Name)
+						c.errorf(n.P, "NON_PUBLIC_CALL_FROM_PUBLIC_INLINE", "public-API inline function cannot access non-public-API function '%s'", f.Name)
 					}
 				}
 			}
@@ -681,7 +685,7 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 			c.unsupported(id.P, "non-local jump from a try", "passing inline parameter '%s' to '%s' isn't supported: kc doesn't copy its finally block", id.Name, cl.f.Name)
 			continue
 		}
-		c.errorf(id.P, "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", id.Name, d.Name)
+		c.errorf(id.P, "USAGE_IS_NOT_INLINABLE", "illegal usage of inline-parameter '%s' in '%s': add 'noinline' modifier to the parameter declaration", id.Name, d.Name)
 	}
 }
 
@@ -696,7 +700,7 @@ func (c *Checker) typeOfSuspend() {
 	for _, x := range c.suspendReified {
 		for i, t := range x.Reified {
 			if i < len(x.Sym.TypeParams) && x.Sym.TypeParams[i].Reified && hasSuspendFunc(t) && reachesTypeOf(x.Sym, x.Sym.TypeParams[i], map[*types.TypeParamSym]bool{}) {
-				c.errorf(x.P, "suspend function types can't be used in 'typeOf'")
+				c.errorf(x.P, "TYPEOF_SUSPEND_TYPE", "suspend function types can't be used in 'typeOf'")
 				break
 			}
 		}

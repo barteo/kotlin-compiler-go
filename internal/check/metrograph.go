@@ -129,7 +129,7 @@ func (gr *mGraph) name(kind byte, n int) string {
 
 func (gr *mGraph) errorf(format string, args ...any) {
 	gr.failed = true
-	gr.m.errorf(gr.c, gr.pos, format, args...)
+	gr.m.errorf(gr.c, gr.pos, "", format, args...)
 }
 
 func (gr *mGraph) unsupported(format string, args ...any) {

@@ -168,7 +168,7 @@ func (c *Checker) ambiguousNamedArgs(x *syntax.Call, cls *types.ClassSym, rt typ
 			continue
 		}
 		if slices.ContainsFunc(gr, func(g *types.FunSym) bool { return g.Params[j].Name != name }) {
-			c.errorf(a.Pos(), "named argument is prohibited for parameter with an ambiguous name")
+			c.errorf(a.Pos(), "NAME_FOR_AMBIGUOUS_PARAMETER", "named argument is prohibited for parameter with an ambiguous name")
 		}
 	}
 }

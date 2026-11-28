@@ -173,6 +173,9 @@ type diagConfig struct {
 	// and missedWarns the expected warnings (missedWarningLines).
 	missed      []string
 	missedWarns []string
+	// misnamed are the expected errors kc didn't report under their
+	// names on their lines, as misnamed-errors TSV lines (misnamedLines).
+	misnamed []string
 	// stdlibOnly and stdlibOnlyPackages are the standard library's
 	// top-level names and packages that the minimal one doesn't have
 	// (stdlibOnlyNames).
@@ -196,6 +199,51 @@ func missedLines(rs []*result, dts []*diagTest) []string {
 	}
 	slices.Sort(ls)
 	return ls
+}
+
+// misnamedLines returns the expected errors of the tests kc checked that
+// it didn't report under their names on their lines, as TSV lines: the
+// test's path, file:line, the diagnostic's name, and the names of kc's
+// errors on the line, "-" for one kc doesn't name, or "missed" if there
+// are none, sorted.
+func misnamedLines(rs []*result, dts []*diagTest) []string {
+	var ls []string
+	for i, dt := range dts {
+		if dt == nil || !marksChecked(rs[i].category) {
+			continue
+		}
+		for _, e := range dt.errors {
+			if !dt.named(e) {
+				ls = append(ls, fmt.Sprintf("%s\t%s:%d\t%s\t%s", rs[i].path, e.file, e.line, e.name, dt.namesOn(e)))
+			}
+		}
+	}
+	slices.Sort(ls)
+	return ls
+}
+
+// misnamedHeader is the first line of a misnamed-errors TSV file.
+const misnamedHeader = "path\tfile:line\tname\tkc"
+
+// namesOn returns the names of kc's errors on the line of e, distinct,
+// sorted and separated by commas, with "-" for an error kc doesn't
+// name, or "missed" if kc reported none there.
+func (dt *diagTest) namesOn(e mark) string {
+	var ns []string
+	for _, d := range dt.kc {
+		if d.file == e.file && d.line == e.line {
+			n := d.name
+			if n == "" {
+				n = "-"
+			}
+			ns = append(ns, n)
+		}
+	}
+	if len(ns) == 0 {
+		return "missed"
+	}
+	slices.Sort(ns)
+	return strings.Join(slices.Compact(ns), ",")
 }
 
 // missedWarningLines returns the expected warnings of the tests kc
@@ -424,6 +472,7 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 		}
 	}
 	c.missed = missedLines(results, dts)
+	c.misnamed = misnamedLines(results, dts)
 	c.missedWarns = missedWarningLines(c.sev, results, dts)
 	return results, reportDiagnostics(c, results, dts, tag), nil
 }
@@ -470,7 +519,11 @@ func writeStray(name string, rs []*result, dts []*diagTest) error {
 		}
 		for _, d := range dt.stray() {
 			msg := strings.NewReplacer("\t", " ", "\n", " ").Replace(d.msg)
-			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\n", rs[i].path, rs[i].category, d.file, d.line, msg)
+			name := d.name
+			if name == "" {
+				name = "-"
+			}
+			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\t%s\n", rs[i].path, rs[i].category, d.file, d.line, name, msg)
 		}
 	}
 	return os.WriteFile(name, []byte(sb.String()), 0o644)
@@ -492,7 +545,7 @@ func (dt *diagTest) stray() []diag {
 // the markup leaves it out.
 func (dt *diagTest) switchedOff(d diag) bool {
 	for name := range dt.off {
-		if check.IsNamed(d.msg, name) {
+		if d.name == name || check.IsNamed(d.msg, name) {
 			return true
 		}
 		if re := offNames[name]; re != nil && re.MatchString(d.msg) {
@@ -728,6 +781,17 @@ func (dt *diagTest) hit(e mark) bool {
 	return false
 }
 
+// named reports whether kc reported an error on the line of e under its
+// name.
+func (dt *diagTest) named(e mark) bool {
+	for _, d := range dt.kc {
+		if d.file == e.file && d.line == e.line && d.name == e.name {
+			return true
+		}
+	}
+	return false
+}
+
 // hitAny reports whether kc reported an error on the line of any
 // expected error, or of any expected diagnostic if none is an error.
 func (dt *diagTest) hitAny() bool {
@@ -825,13 +889,11 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 	reportKeys(&sb, rs, catRejectsValid, "First error", 40, false)
 
 	fmt.Fprintf(&sb, "## Errors by diagnostic\n\nFor each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.\n\n")
-	type recall struct {
-		name           string
-		expected, hits int
-	}
-	byName := map[string]*recall{}
+	byName := map[string]*nameRecall{}
 	extra := map[string]int{}
 	missed := map[string]map[string]int{} // by cause, by name
+	misnamed := map[string]int{}          // by name and kc's names on its line
+	kcUnknown := map[string]int{}         // kc's error names kotlinc doesn't declare as errors
 	for i, dt := range dts {
 		if dt == nil || rs[i].category == catUnsupported || rs[i].category == catCrash || rs[i].category == catKc {
 			continue
@@ -839,10 +901,15 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		for _, e := range dt.errors {
 			rc := byName[e.name]
 			if rc == nil {
-				rc = &recall{name: e.name}
+				rc = &nameRecall{name: e.name}
 				byName[e.name] = rc
 			}
 			rc.expected++
+			if dt.named(e) {
+				rc.named++
+			} else if n := dt.namesOn(e); n != "missed" {
+				misnamed[e.name+"\t"+n]++
+			}
 			if dt.hit(e) {
 				rc.hits++
 			} else {
@@ -855,24 +922,30 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		}
 		// kc's errors on lines without an expected diagnostic.
 		for _, d := range dt.stray() {
-			extra[template(d.msg)]++
+			extra[strayKey(d)]++
+		}
+		for _, d := range dt.kc {
+			if d.name != "" && d.feature == "" && c.sev[d.name] != sevError {
+				kcUnknown[d.name]++
+			}
 		}
 	}
-	var rl []*recall
-	totalExp, totalHit := 0, 0
+	var rl []*nameRecall
+	totalExp, totalHit, totalNamed := 0, 0, 0
 	for _, rc := range byName {
 		rl = append(rl, rc)
 		totalExp += rc.expected
 		totalHit += rc.hits
+		totalNamed += rc.named
 	}
-	slices.SortFunc(rl, func(a, b *recall) int {
+	slices.SortFunc(rl, func(a, b *nameRecall) int {
 		if d := (b.expected - b.hits) - (a.expected - a.hits); d != 0 {
 			return d
 		}
 		return strings.Compare(a.name, b.name)
 	})
 	// Only the diagnostics kc misses somewhere: the rest work.
-	gaps := slices.DeleteFunc(slices.Clone(rl), func(rc *recall) bool { return rc.hits == rc.expected })
+	gaps := slices.DeleteFunc(slices.Clone(rl), func(rc *nameRecall) bool { return rc.hits == rc.expected })
 	fmt.Fprintf(&sb, "kc reports %d of %d expected errors (%s) on their lines. Of the %d diagnostics expected, kc reports every one of %d on its line; the table lists the other %d.\n\n",
 		totalHit, totalExp, pct(totalHit, totalExp), len(rl), len(rl)-len(gaps), len(gaps))
 	if len(gaps) > 0 {
@@ -883,8 +956,13 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		fmt.Fprintln(&sb)
 	}
 	reportMissCauses(&sb, missed, totalExp-totalHit)
+	var nrl []nameRecall
+	for _, rc := range rl {
+		nrl = append(nrl, *rc)
+	}
+	reportNames(&sb, nrl, misnamed, kcUnknown, totalExp, totalHit, totalNamed)
 
-	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, with names replaced by _. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
+	fmt.Fprintf(&sb, "## Errors kotlinc doesn't report\n\nkc's errors on lines where the markup expects no diagnostic, in the tests it checked, by their names, or by their messages with names replaced by _ for those kc doesn't name. Not those of an error the test's `DIAGNOSTICS` directive switches off, which kotlinc reports too, as far as kc's messages name it. In a test kotlinc compiles, one is a false error; in one it rejects, it can also be the same error on another line, or one kotlinc doesn't report after a first.\n\n")
 	type kc struct {
 		key string
 		n   int
@@ -966,4 +1044,77 @@ func reportKeysSole(sb *strings.Builder, rs []*result, category, keyName string,
 	var t strings.Builder
 	reportKeys(&t, rs, category, keyName, limit, true)
 	sb.WriteString(strings.Replace(t.String(), "| Only blocker |", "| Only error |", 1))
+}
+
+// strayKey is the key of d, one of kc's errors on a line without an
+// expected diagnostic, in the report: its name, or its message with
+// names replaced by _ if kc doesn't name it.
+func strayKey(d diag) string {
+	if d.name != "" {
+		return d.name
+	}
+	return template(d.msg)
+}
+
+// nameRecall is how many of the expected errors of a diagnostic kc
+// reports on their lines, and how many of those under its name.
+type nameRecall struct {
+	name                  string
+	expected, hits, named int
+}
+
+// reportNames writes how many of the expected errors kc reports under
+// kotlinc's names, the diagnostics it names least, the names it gives
+// those it doesn't, and the names of its errors that kotlinc doesn't
+// declare as errors.
+func reportNames(sb *strings.Builder, rl []nameRecall, misnamed, unknown map[string]int, totalExp, totalHit, totalNamed int) {
+	fmt.Fprintf(sb, "### Errors by name\n\n")
+	fmt.Fprintf(sb, "kc reports %d of the %d expected errors (%s) on their lines under kotlinc's names, and %d (%s of those it reports on their lines) under other names: the error is found, but called something else, or kc reports another error first. [diagnostics-misnamed.tsv](diagnostics-misnamed.tsv) lists each expected error kc doesn't report under its name, with the names kc reports on its line.\n\n",
+		totalNamed, totalExp, pct(totalNamed, totalExp), totalHit-totalNamed, pct(totalHit-totalNamed, totalHit))
+	slices.SortFunc(rl, func(a, b nameRecall) int {
+		if d := (b.hits - b.named) - (a.hits - a.named); d != 0 {
+			return d
+		}
+		return strings.Compare(a.name, b.name)
+	})
+	fmt.Fprintf(sb, "The diagnostics kc reports most often under other names:\n\n| Diagnostic | Expected | Reported | Named | Other name |\n|:---|---:|---:|---:|---:|\n")
+	for i, rc := range rl {
+		if i == 40 || rc.hits == rc.named {
+			break
+		}
+		fmt.Fprintf(sb, "| `%s` | %d | %d | %d | %d |\n", rc.name, rc.expected, rc.hits, rc.named, rc.hits-rc.named)
+	}
+	fmt.Fprintln(sb)
+	type pair struct {
+		key string
+		n   int
+	}
+	var ps []pair
+	for k, n := range misnamed {
+		ps = append(ps, pair{k, n})
+	}
+	slices.SortFunc(ps, func(a, b pair) int {
+		if a.n != b.n {
+			return b.n - a.n
+		}
+		return strings.Compare(a.key, b.key)
+	})
+	fmt.Fprintf(sb, "What kc reports instead, by the expected error and kc's names of the errors on its line (`-` for an error kc doesn't name):\n\n| Expected | kc | Count |\n|:---|:---|---:|\n")
+	for i, p := range ps {
+		if i == 40 {
+			fmt.Fprintf(sb, "| *%d more* | | |\n", len(ps)-i)
+			break
+		}
+		exp, kc, _ := strings.Cut(p.key, "\t")
+		fmt.Fprintf(sb, "| `%s` | %s | %d |\n", exp, cell(kc), p.n)
+	}
+	fmt.Fprintln(sb)
+	if len(unknown) > 0 {
+		var us []string
+		for n, k := range unknown {
+			us = append(us, fmt.Sprintf("`%s` (%d)", n, k))
+		}
+		slices.Sort(us)
+		fmt.Fprintf(sb, "Names kc gives its errors that kotlinc doesn't declare as errors (a plugin's, or a mistake): %s.\n\n", strings.Join(us, ", "))
+	}
 }

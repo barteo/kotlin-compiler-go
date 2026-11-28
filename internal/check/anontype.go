@@ -38,7 +38,7 @@ func (c *Checker) ambiguousAnon(d syntax.Decl, cls *types.ClassSym, t types.Type
 		return
 	}
 	if t.Has(ambiguousAnonType) {
-		c.errorf(at, "right-hand side has anonymous type. Please specify type explicitly")
+		c.errorf(at, "AMBIGUOUS_ANONYMOUS_TYPE_INFERRED", "right-hand side has anonymous type. Please specify type explicitly")
 	}
 }
 

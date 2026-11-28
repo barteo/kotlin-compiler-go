@@ -354,7 +354,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	fail := func(format string, args ...any) { c.unsupported(cd.P, "serialization", format, args...) }
 	switch {
 	case cd.Annotation:
-		c.errorf(cd.P, "annotation classes can't be @Serializable")
+		c.errorf(cd.P, "", "annotation classes can't be @Serializable")
 		return
 	case cd.Interface && !cd.Sealed:
 		fail("@Serializable interfaces that aren't sealed are not supported")
@@ -420,7 +420,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	serial := &syntax.Serial{Name: name}
 	for _, cp := range cd.CtorParams {
 		if !cp.IsProp {
-			c.errorf(cp.P, "this class is not serializable automatically because it has primary constructor parameters that are not properties")
+			c.errorf(cp.P, "PRIMARY_CONSTRUCTOR_PARAMETER_IS_NOT_A_PROPERTY", "this class is not serializable automatically because it has primary constructor parameters that are not properties")
 			return
 		}
 		if a := deniedAnnotation(cp.Modifiers.Annotations); a != nil {
@@ -429,7 +429,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 		}
 		if c.findSerial(cp.Modifiers.Annotations, "Transient") != nil {
 			if cp.Default == nil {
-				c.errorf(cp.P, "this property is marked as @Transient and therefore must have an initializing expression")
+				c.errorf(cp.P, "TRANSIENT_MISSING_INITIALIZER", "this property is marked as @Transient and therefore must have an initializing expression")
 				return
 			}
 			continue
@@ -456,7 +456,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 			serial.Props = append(serial.Props, &syntax.SerialProp{Name: c.serialName(pd.Annotations, pd.Name), Prop: pd})
 		case transient:
 			if pd.Init == nil && pd.Getter == nil && !pd.Lateinit {
-				c.errorf(pd.P, "this property is marked as @Transient and therefore must have an initializing expression")
+				c.errorf(pd.P, "TRANSIENT_MISSING_INITIALIZER", "this property is marked as @Transient and therefore must have an initializing expression")
 				return
 			}
 		case pd.Init == nil && (pd.Getter != nil || pd.Abstract):
@@ -509,7 +509,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	}
 	members, err := parseMembers(c.file.Path, cd.P, src.String())
 	if err != nil {
-		c.errorf(cd.P, "serialization: %v", err)
+		c.errorf(cd.P, "", "serialization: %v", err)
 		return
 	}
 	in.writeSelf = members[0].(*syntax.FunDecl)
@@ -645,7 +645,7 @@ func (c *Checker) serialValueClass(in *serialInfo) {
 	}
 	members, err := parseMembers(c.file.Path, cd.P, serializerObjectSrc(in.fq, ""))
 	if err != nil {
-		c.errorf(cd.P, "serialization: %v", err)
+		c.errorf(cd.P, "", "serialization: %v", err)
 		return
 	}
 	in.ser = members[0].(*syntax.ClassDecl)
@@ -769,7 +769,7 @@ func (c *Checker) serialLazy(in *serialInfo, obj *syntax.ClassDecl, x string) {
 	if obj != nil {
 		members, err := parseMembers(c.file.Path, obj.P, src)
 		if err != nil {
-			c.errorf(obj.P, "serialization: %v", err)
+			c.errorf(obj.P, "", "serialization: %v", err)
 			return
 		}
 		members[0].(*syntax.PropDecl).Plugin = true
@@ -787,7 +787,7 @@ func (c *Checker) serialLazy(in *serialInfo, obj *syntax.ClassDecl, x string) {
 func (c *Checker) serialCompanion(cd *syntax.ClassDecl, src string) []syntax.Decl {
 	members, err := parseMembers(c.file.Path, cd.P, src)
 	if err != nil {
-		c.errorf(cd.P, "serialization: %v", err)
+		c.errorf(cd.P, "", "serialization: %v", err)
 		return nil
 	}
 	for _, m := range cd.Members {
@@ -1258,7 +1258,7 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ts 
 func (c *Checker) serialParse(cd *syntax.ClassDecl, src string) *syntax.FunDecl {
 	members, err := parseMembers(c.file.Path, cd.P, src)
 	if err != nil {
-		c.errorf(cd.P, "serialization: %v", err)
+		c.errorf(cd.P, "", "serialization: %v", err)
 		return nil
 	}
 	return members[0].(*syntax.FunDecl)
@@ -1330,7 +1330,7 @@ func (c *Checker) sealedSerializer(in *serialInfo) {
 	src := fmt.Sprintf("val x: kotlin.Lazy<kotlinx.serialization.KSerializer<*>> = kotlin.lazy(kotlin.LazyThreadSafetyMode.PUBLICATION) { %s }\n", x)
 	members, err := parseMembers(c.file.Path, in.cd.P, src)
 	if err != nil {
-		c.errorf(in.cd.P, "serialization: %v", err)
+		c.errorf(in.cd.P, "", "serialization: %v", err)
 		return
 	}
 	in.lazy.Init = members[0].(*syntax.PropDecl).Init
@@ -1430,7 +1430,7 @@ func (c *Checker) propSerializer(as []syntax.Annotation, pos syntax.Pos, report 
 	cls := c.withClass(toks, pos)
 	if cls == nil {
 		if report {
-			c.errorf(pos, "unresolved reference '%s'", tokensText(toks))
+			c.errorf(pos, "UNRESOLVED_REFERENCE", "unresolved reference '%s'", tokensText(toks))
 		}
 		return "", false
 	}

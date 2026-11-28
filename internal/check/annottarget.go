@@ -152,20 +152,20 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 			t, name = types.TargetSetter, "setter"
 		}
 		if cls.Targets&t == 0 {
-			c.errorf(a.P, "this annotation is not applicable to target '%s'", name)
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET", "this annotation is not applicable to target '%s'", name)
 		}
 	case a.Target == "":
 		if cls.Targets&site.targets == 0 {
-			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET", "this annotation is not applicable to target '%s'", site.name)
 		}
 	case a.Target == "all":
 		// A property's are checked by allTargets, and the other
 		// declarations' by noAllTarget.
 		switch site.kind {
 		case siteType:
-			c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@all'", site.name)
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target '%s' and use-site target '@all'", site.name)
 		case siteExpr:
-			c.errorf(a.P, "this annotation is not applicable to target '%s'", site.name)
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET", "this annotation is not applicable to target '%s'", site.name)
 		}
 	default:
 		want, ok := useSiteTargets[a.Target]
@@ -173,7 +173,7 @@ func (c *Checker) annotationTarget(a *syntax.Annotation, cls *types.ClassSym, si
 			return
 		}
 		if cls.Targets&want == 0 || !useSiteOn(a.Target, site) {
-			c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@%s'", site.name, a.Target)
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target '%s' and use-site target '@%s'", site.name, a.Target)
 		}
 	}
 }
@@ -249,7 +249,7 @@ func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annot
 			}
 			k := repeatKey{cls, t}
 			if seen[k] && !reported {
-				c.errorf(a.P, "this annotation is not repeatable")
+				c.errorf(a.P, "REPEATED_ANNOTATION", "this annotation is not repeatable")
 				reported = true
 			}
 			seen[k] = true
@@ -284,7 +284,7 @@ func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annot
 	}
 	k := repeatKey{cls, target}
 	if seen[k] {
-		c.errorf(a.P, "this annotation is not repeatable")
+		c.errorf(a.P, "REPEATED_ANNOTATION", "this annotation is not repeatable")
 	}
 	seen[k] = true
 }

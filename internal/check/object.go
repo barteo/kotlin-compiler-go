@@ -404,7 +404,7 @@ func (c *Checker) entriesEnum() *types.ClassSym {
 func (c *Checker) enumEntries(x *syntax.Member, cls *types.ClassSym) types.Type {
 	ee := c.u.ext.pkgClass("kotlin.enums", "EnumEntries")
 	if ee == nil {
-		c.errorf(x.P, "unresolved reference: entries")
+		c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: entries")
 		return types.InvalidType
 	}
 	t := types.GenericType(ee, []types.Arg{{T: types.ClassType(cls)}})

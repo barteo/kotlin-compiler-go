@@ -105,11 +105,11 @@ func conflicts(checkers []*Checker) {
 				decls = append(decls, namedDecl{c: c, name: e.Name, pos: e.P, decl: e, prop: true, entry: true})
 				if e.Name == "name" || e.Name == "ordinal" {
 					// Enum's properties.
-					c.errorf(e.P, "redeclaration: %s", e.Name)
-					c.errorf(d.P, "redeclaration: %s", e.Name)
+					c.errorf(e.P, "REDECLARATION", "redeclaration: %s", e.Name)
+					c.errorf(d.P, "REDECLARATION", "redeclaration: %s", e.Name)
 				}
 				if e.Name == "entries" {
-					c.errorf(e.P, "conflicting declarations: the enum entry 'entries' and the property 'Enum.entries' (KT-48872)")
+					c.errorf(e.P, "DECLARATION_OF_ENUM_ENTRY_ENTRIES_ERROR", "conflicting declarations: the enum entry 'entries' and the property 'Enum.entries' (KT-48872)")
 				}
 			}
 			overloadConflicts(ovs, reported)
@@ -419,7 +419,7 @@ func overloadConflicts(ovs []overload, reported map[any]bool) {
 				}
 				if !reported[o.decl] {
 					reported[o.decl] = true
-					o.c.errorf(o.pos, "conflicting overloads: %s", o.name)
+					o.c.errorf(o.pos, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", o.name)
 				}
 			}
 		}
@@ -480,7 +480,7 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 				for _, o := range []*namedDecl{a, b} {
 					if !reported[o.decl] && !o.c.hasErrorAt(o.pos, "redeclaration") {
 						reported[o.decl] = true
-						o.c.errorf(o.pos, "redeclaration: %s", o.name)
+						o.c.errorf(o.pos, "CLASSIFIER_REDECLARATION", "redeclaration: %s", o.name)
 					}
 				}
 			}
@@ -496,7 +496,7 @@ func redeclarations(decls []namedDecl, reported map[any]bool) {
 			for _, o := range []*namedDecl{a, b} {
 				if !reported[o.decl] {
 					reported[o.decl] = true
-					o.c.errorf(o.pos, "redeclaration: %s", o.name)
+					o.c.errorf(o.pos, "REDECLARATION", "redeclaration: %s", o.name)
 				}
 			}
 		}
@@ -524,7 +524,7 @@ func propRedeclarations(a *namedDecl, decls []namedDecl, is []int, reported map[
 			msg = "redeclaration"
 			if !reported[b.decl] && !b.c.hasErrorAt(b.pos, msg) {
 				reported[b.decl] = true
-				b.c.errorf(b.pos, "%s: %s", msg, b.name)
+				b.c.errorf(b.pos, "REDECLARATION", "%s: %s", msg, b.name)
 			}
 		case a.c == b.c:
 			if !b.c.hasErrorAt(b.pos, "conflicting declarations") || !propsConflict(a.decl, b.decl) {
@@ -535,7 +535,7 @@ func propRedeclarations(a *namedDecl, decls []namedDecl, is []int, reported map[
 		}
 		if !reported[a.decl] && !a.c.hasErrorAt(a.pos, "conflicting declarations") && !a.c.hasErrorAt(a.pos, "redeclaration") {
 			reported[a.decl] = true
-			a.c.errorf(a.pos, "%s: %s", msg, a.name)
+			a.c.errorf(a.pos, "REDECLARATION", "%s: %s", msg, a.name)
 		}
 	}
 }
@@ -634,7 +634,7 @@ func classNames(checkers []*Checker) {
 		for i, pc := range cs[1:] {
 			if pc.kotlin != cs[i].kotlin {
 				for _, pc := range cs {
-					pc.c.errorf(pc.d.P, "duplicate JVM class name '%s'", pc.d.Sym.Name)
+					pc.c.errorf(pc.d.P, "DUPLICATE_CLASS_NAMES", "duplicate JVM class name '%s'", pc.d.Sym.Name)
 				}
 				break
 			}
@@ -644,7 +644,7 @@ func classNames(checkers []*Checker) {
 		pkg := c.file.Package
 		for n := pkg; n != ""; {
 			if kotlin[n] {
-				c.errorf(c.file.PackageP, "package '%s' conflicts with class '%s'", pkg, n)
+				c.errorf(c.file.PackageP, "PACKAGE_CONFLICTS_WITH_CLASSIFIER", "package '%s' conflicts with class '%s'", pkg, n)
 				break
 			}
 			i := strings.LastIndexByte(n, '.')
@@ -671,9 +671,9 @@ func localClassNames(checkers []*Checker) {
 				classes = programClasses(checkers)
 			}
 			if cs := classes[sym.Name]; len(cs) > 0 {
-				c.errorf(d.P, "duplicate JVM class name '%s'", sym.Name)
+				c.errorf(d.P, "DUPLICATE_CLASS_NAMES", "duplicate JVM class name '%s'", sym.Name)
 				for _, pc := range cs {
-					pc.c.errorf(pc.d.P, "duplicate JVM class name '%s'", sym.Name)
+					pc.c.errorf(pc.d.P, "DUPLICATE_CLASS_NAMES", "duplicate JVM class name '%s'", sym.Name)
 				}
 			}
 		}
@@ -730,7 +730,7 @@ func (c *Checker) inheritedConflicts(d *syntax.ClassDecl, reported map[any]bool)
 				}
 				reported[fd] = true
 				c.u.conflicted[fd.Sym] = true
-				c.errorf(fd.P, "conflicting overloads: %s", fd.Name)
+				c.errorf(fd.P, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", fd.Name)
 				return false
 			}
 			return true
@@ -785,7 +785,7 @@ func (c *Checker) inheritedTypeParamConflicts(d *syntax.ClassDecl) {
 					continue
 				}
 				if !c.hasErrorAt(d.P, classKind(d.Sym)+" inherits conflicting members") {
-					c.errorf(d.P, "%s inherits conflicting members '%s': functions that take the same parameters but not as many type parameters", classKind(d.Sym), name)
+					c.errorf(d.P, "CONFLICTING_INHERITED_MEMBERS", "%s inherits conflicting members '%s': functions that take the same parameters but not as many type parameters", classKind(d.Sym), name)
 				}
 				break pairs
 			}
@@ -870,7 +870,7 @@ func aliasedPropConflicts(ovs []overload) {
 			// so report both of the pair here.
 			for _, o := range []*overload{a, b} {
 				if !o.c.hasErrorAt(o.pos, "conflicting declarations") {
-					o.c.errorf(o.pos, "conflicting declarations: %s", o.name)
+					o.c.errorf(o.pos, "REDECLARATION", "conflicting declarations: %s", o.name)
 				}
 			}
 			break

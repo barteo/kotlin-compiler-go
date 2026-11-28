@@ -38,9 +38,9 @@ import (
 func (c *Checker) checkInfix(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case owner == nil && d.Recv == nil:
-		c.errorf(d.P, "'infix' modifier is inapplicable on this function: must be a member or an extension function")
+		c.errorf(d.P, "INAPPLICABLE_INFIX_MODIFIER", "'infix' modifier is inapplicable on this function: must be a member or an extension function")
 	case len(d.Params) != 1 || d.Params[0].Vararg:
-		c.errorf(d.P, "'infix' modifier is inapplicable on this function: must have a single value parameter")
+		c.errorf(d.P, "INAPPLICABLE_INFIX_MODIFIER", "'infix' modifier is inapplicable on this function: must have a single value parameter")
 	}
 }
 
@@ -48,16 +48,16 @@ func (c *Checker) checkInfix(d *syntax.FunDecl, owner *types.ClassSym) {
 // declaration, what.
 func (c *Checker) funModifiers(m syntax.Modifiers, p syntax.Pos, what string) {
 	if m.External {
-		c.errorf(m.ExternalP, "modifier 'external' is not applicable to '%s'", what)
+		c.errorf(m.ExternalP, "WRONG_MODIFIER_TARGET", "modifier 'external' is not applicable to '%s'", what)
 	}
 	if m.Operator {
-		c.errorf(m.PosOf("operator", p), "modifier 'operator' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("operator", p), "WRONG_MODIFIER_TARGET", "modifier 'operator' is not applicable to '%s'", what)
 	}
 	if m.Infix {
-		c.errorf(m.PosOf("infix", p), "modifier 'infix' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("infix", p), "WRONG_MODIFIER_TARGET", "modifier 'infix' is not applicable to '%s'", what)
 	}
 	if m.Annotation && what != "class" {
-		c.errorf(m.PosOf("annotation", p), "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(m.PosOf("annotation", p), "WRONG_MODIFIER_TARGET", "modifier 'annotation' is not applicable to '%s'", what)
 	}
 }
 
@@ -115,7 +115,7 @@ func (c *Checker) missingExtAccessors(d *syntax.PropDecl) {
 	if d.Abstract || d.Init != nil || d.BackingField != nil || d.Getter != nil && (!d.Mutable || d.Setter != nil) {
 		return
 	}
-	c.errorf(d.P, "extension property must have accessors or be abstract")
+	c.errorf(d.P, "EXTENSION_PROPERTY_MUST_HAVE_ACCESSORS_OR_BE_ABSTRACT", "extension property must have accessors or be abstract")
 	if d.Getter == nil {
 		d.Getter = &syntax.FunDecl{P: d.P, Name: "get", Property: d.Name, Ret: d.Type}
 	}
@@ -163,9 +163,9 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	c.funModifiers(d.Modifiers, d.P, "property")
 	switch {
 	case d.Init != nil:
-		c.errorf(d.Init.Pos(), "extension property cannot be initialized because it has no backing field")
+		c.errorf(d.Init.Pos(), "EXTENSION_PROPERTY_WITH_BACKING_FIELD", "extension property cannot be initialized because it has no backing field")
 	case d.Getter == nil, d.Mutable && d.Setter == nil:
-		c.errorf(d.P, "extension property must have accessors or be abstract")
+		c.errorf(d.P, "EXTENSION_PROPERTY_MUST_HAVE_ACCESSORS_OR_BE_ABSTRACT", "extension property must have accessors or be abstract")
 	}
 	g := d.Getter
 	if g == nil {
@@ -191,7 +191,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		case !tp.Reified, virtual:
 		case !d.Inline && !d.InlineGetter || d.Setter != nil && !d.Inline && !d.InlineSetter,
 			gs.Owner != nil && !copiedMember(d.Modifiers, gs.Owner): // an open member isn't inlined
-			c.errorf(tp.P, "only type parameters of inline functions can be reified")
+			c.errorf(tp.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified")
 		default:
 			// Reads copy the getter and writes the setter, as calls of
 			// an inline function do.
@@ -236,7 +236,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 			c.setterParamType(d)
 		}
 	case g.ExprBody == nil:
-		c.errorf(d.P, "this property must have a type, be initialized, or have a getter with an expression body")
+		c.errorf(d.P, "PROPERTY_WITH_NO_TYPE_NO_INITIALIZER", "this property must have a type, be initialized, or have a getter with an expression body")
 		sym.Type, sym.Resolved = types.InvalidType, true
 		gs.Ret, gs.Resolved = types.InvalidType, true
 	default:
@@ -295,10 +295,10 @@ func (c *Checker) jvmStaticExtProp(d *syntax.PropDecl, cls *types.ClassSym) {
 	}
 	switch {
 	case !cls.Object || cls.Anonymous:
-		c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+		c.errorf(d.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 	case cls.CompanionOf != nil:
 	case d.Override:
-		c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
+		c.errorf(d.P, "OVERRIDE_CANNOT_BE_STATIC", "override member cannot be '@JvmStatic' in an object")
 	default:
 		d.Getter.Sym.Static = true
 		if d.Setter != nil {
@@ -344,15 +344,15 @@ func (c *Checker) checkExtPropOverrides(d *syntax.ClassDecl) {
 		over := c.overriddenExtProps(d.Sym, pd.Name, pd.Getter.Sym)
 		switch {
 		case len(over) == 0 && pd.Override && !c.errorSupers[d]:
-			c.errorf(pd.P, "'%s' overrides nothing", pd.Name)
+			c.errorf(pd.P, "NOTHING_TO_OVERRIDE", "'%s' overrides nothing", pd.Name)
 		case len(over) > 0 && !pd.Override:
-			c.errorf(pd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", pd.Name, over[0].Owner.DisplayName())
+			c.errorf(pd.P, "VIRTUAL_MEMBER_HIDDEN", "'%s' hides member of supertype '%s' and needs 'override' modifier", pd.Name, over[0].Owner.DisplayName())
 		}
 		f := pd.Getter.Sym
 		own := types.InstanceJVM(f) + memberDesc(f)
 		for _, o := range over {
 			if o.Final {
-				c.errorf(pd.P, "'%s' in '%s' is final and cannot be overridden", pd.Name, o.Owner.DisplayName())
+				c.errorf(pd.P, "OVERRIDING_FINAL_MEMBER", "'%s' in '%s' is final and cannot be overridden", pd.Name, o.Owner.DisplayName())
 				continue
 			}
 			if od, ok := o.Decl.(*syntax.FunDecl); ok && od.Visibility == syntax.Protected && !pd.Explicit {
@@ -517,7 +517,7 @@ func (c *Checker) unusedPropTypeParams(d *syntax.PropDecl, recv types.Type, ctxs
 	}
 	for _, tp := range d.TypeParams {
 		if tp.Sym != nil && !used[tp.Sym] {
-			c.errorf(tp.P, "type parameter of a property must be used in its receiver type or context parameters")
+			c.errorf(tp.P, "INCORRECT_TYPE_PARAMETER_OF_PROPERTY", "type parameter of a property must be used in its receiver type or context parameters")
 		}
 	}
 }

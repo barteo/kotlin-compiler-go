@@ -48,7 +48,7 @@ func (c *Checker) initBeforeDecl(d *syntax.ClassDecl) {
 				if m, ok := n.Target.(*syntax.Member); ok {
 					p = m.X.Pos()
 				}
-				c.errorf(p, "variable cannot be initialized before declaration")
+				c.errorf(p, "INITIALIZATION_BEFORE_DECLARATION", "variable cannot be initialized before declaration")
 			}
 		}
 		return true

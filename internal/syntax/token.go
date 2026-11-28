@@ -22,8 +22,10 @@ type Error struct {
 	// Severity is SevError, or SevWarning for a warning, which doesn't
 	// stop the compile.
 	Severity Severity
-	// Name is the name kotlinc gives the diagnostic, as DEPRECATION, if
-	// kc knows it: every warning has one. @Suppress names it.
+	// Name is the name kotlinc gives the diagnostic, as DEPRECATION or
+	// UNRESOLVED_REFERENCE: every warning has one, and every error but
+	// those about kc's own limits and those kotlinc reports differently.
+	// @Suppress names it.
 	Name string
 	// Robust is set on a warning judged by literals alone, as 1 is Int,
 	// which no code recovery from syntax errors leaves out can be the

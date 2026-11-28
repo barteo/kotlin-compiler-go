@@ -39,13 +39,13 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	suppressInline := c.suppressLocalInline || suppresses(d.Annotations, "NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION")
 	switch {
 	case d.Open, d.Abstract, d.Override, d.Final:
-		c.errorf(d.P, "modifiers open, abstract, override and final are not applicable to local functions")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifiers open, abstract, override and final are not applicable to local functions")
 	case d.Inline && suppressInline:
 		d.Inline = false
 	case d.Inline:
-		c.errorf(d.P, "local inline functions are not yet supported")
+		c.errorf(d.P, "NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION", "local inline functions are not yet supported")
 	case c.inInlineFun:
-		c.errorf(d.P, "local functions are not yet supported in inline functions")
+		c.errorf(d.P, "NOT_YET_SUPPORTED_IN_INLINE", "local functions are not yet supported in inline functions")
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
 		c.unsupported(d.P, "compose", "local composable functions are not supported")
 	}
@@ -94,9 +94,9 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		od := other.Decl.(*syntax.LocalFun).Decl
 		if !c.done[od] {
 			c.done[od] = true // reported once
-			c.errorf(od.P, "conflicting overloads: %s", d.Name)
+			c.errorf(od.P, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", d.Name)
 		}
-		c.errorf(d.P, "conflicting overloads: %s", d.Name)
+		c.errorf(d.P, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", d.Name)
 	} else {
 		c.localCtorConflicts(sym, d, saved.scope)
 		c.localShadowing(saved.scope, sym, d)
@@ -137,7 +137,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	// enclosing code can.
 	for _, p := range d.Params {
 		if p.Default != nil {
-			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
+			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos(), "INITIALIZER_TYPE_MISMATCH")
 		}
 		c.scope.shadow(p.Sym)
 		c.scope.declare(p.Sym)
@@ -148,10 +148,10 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	case d.Body != nil:
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY", "missing return statement in function '%s'", d.Name)
 		}
 	case sym.Resolved:
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody), "RETURN_TYPE_MISMATCH")
 	default:
 		sym.InProgress = true
 		rets := []exprRet{}
@@ -159,7 +159,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		t := c.safeUnit(d.ExprBody, types.ApproxFlexNothing(c.expr(d.ExprBody, noWant)))
 		defer c.checkExprReturns(rets, t, d.Name)
 		if t.K == types.Range {
-			c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
+			c.errorf(d.ExprBody.Pos(), "", "ranges are only supported in 'for' loops and 'in' checks")
 			t = types.InvalidType
 		}
 		sym.Ret, sym.Resolved, sym.InProgress = t, true, false
@@ -185,7 +185,7 @@ func (c *Checker) callLocal(x *syntax.Call, fs []*types.FunSym, depth int, want 
 			continue
 		}
 		if _, fits := mapArgs(f, x); fits || len(fs) == 1 {
-			c.errorf(x.P, "type checking has run into a recursive problem: '%s' needs an explicit return type", f.Name)
+			c.errorf(x.P, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem: '%s' needs an explicit return type", f.Name)
 			c.args(x, nil)
 			return types.InvalidType
 		}
@@ -309,11 +309,11 @@ func (c *Checker) localCtorConflicts(sym *types.FunSym, d *syntax.FunDecl, s *sc
 			}
 			if k := (conflictReported{ctor.Decl}); !c.done[k] {
 				c.done[k] = true
-				c.errorf(pos, "conflicting overloads: %s", d.Name)
+				c.errorf(pos, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", d.Name)
 			}
 			if !reported {
 				reported = true
-				c.errorf(d.P, "conflicting overloads: %s", d.Name)
+				c.errorf(d.P, "CONFLICTING_OVERLOADS", "conflicting overloads: %s", d.Name)
 			}
 		}
 	}

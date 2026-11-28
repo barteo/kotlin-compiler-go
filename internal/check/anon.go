@@ -95,7 +95,7 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 	d := x.Decl
 	for _, m := range d.Members {
 		if sc, ok := m.(*syntax.SecondaryCtor); ok {
-			c.errorf(sc.P, "constructors are not allowed for objects")
+			c.errorf(sc.P, "CONSTRUCTOR_IN_OBJECT", "constructors are not allowed for objects")
 			return types.InvalidType
 		}
 	}
@@ -171,10 +171,10 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	if (c.fn != nil && c.fn.Decl != nil && syntax.SourceInline(c.fn) != nil || c.inInlineFun && c.inlineAccessorBody()) && d.Local {
 		// Reported, with its functions, as kotlinc does; its code is
 		// still checked, which the error keeps from being generated.
-		c.errorf(d.P, "local classes are not yet supported in inline functions")
+		c.errorf(d.P, "NOT_YET_SUPPORTED_IN_INLINE", "local classes are not yet supported in inline functions")
 		for _, m := range d.Members {
 			if fd, ok := m.(*syntax.FunDecl); ok && !fd.Generated {
-				c.errorf(fd.P, "local functions are not yet supported in inline functions")
+				c.errorf(fd.P, "NOT_YET_SUPPORTED_IN_INLINE", "local functions are not yet supported in inline functions")
 			}
 		}
 	}
@@ -334,7 +334,7 @@ func (c *Checker) genericThrowable(sym *types.ClassSym, ctx *anonCtx, p syntax.P
 		return
 	}
 	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && sym.IsSubclassOf(thr) {
-		c.errorf(p, "inner class of generic class extending 'Throwable' is prohibited")
+		c.errorf(p, "INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS", "inner class of generic class extending 'Throwable' is prohibited")
 	}
 }
 
@@ -350,15 +350,15 @@ func (c *Checker) localMembers(d *syntax.ClassDecl, what string) bool {
 		}
 		switch {
 		case m.Companion:
-			c.errorf(m.P, "modifier 'companion' is not applicable inside '%s'", what)
+			c.errorf(m.P, "WRONG_MODIFIER_CONTAINING_DECLARATION", "modifier 'companion' is not applicable inside '%s'", what)
 		case m.Object:
-			c.errorf(m.P, "named object '%s' cannot be local. Try to use an anonymous object instead", m.Name)
+			c.errorf(m.P, "LOCAL_OBJECT_NOT_ALLOWED", "named object '%s' cannot be local. Try to use an anonymous object instead", m.Name)
 		case m.Enum:
-			c.errorf(m.P, "modifier 'enum' is not applicable to 'local class'")
+			c.errorf(m.P, "WRONG_MODIFIER_TARGET", "modifier 'enum' is not applicable to 'local class'")
 		case m.Interface:
-			c.errorf(m.P, "'Interface' is prohibited here")
+			c.errorf(m.P, "NESTED_CLASS_NOT_ALLOWED", "'Interface' is prohibited here")
 		case !m.Inner:
-			c.errorf(m.P, "'Class' is prohibited here")
+			c.errorf(m.P, "NESTED_CLASS_NOT_ALLOWED", "'Class' is prohibited here")
 		default:
 			ok = c.localMembers(m, what) && ok
 			continue

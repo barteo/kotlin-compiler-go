@@ -50,12 +50,12 @@ func (c *Checker) checkMemberImport(mi memberImport) {
 	switch {
 	case mi.owner.Object && !c.importedStatic(mi) && c.inheritedPrivate(mi.owner, mi.name) != nil:
 		p := c.inheritedPrivate(mi.owner, mi.name)
-		c.errorf(mi.p, "cannot access '%s': it is private in '%s'", mi.name, p.Owner.DisplayName())
+		c.errorf(mi.p, "INVISIBLE_REFERENCE", "cannot access '%s': it is private in '%s'", mi.name, p.Owner.DisplayName())
 	case c.importedStatic(mi) || mi.owner.Object && c.objectHas(mi.owner, mi.name):
 	case c.objectHas(mi.owner, mi.name):
-		c.errorf(mi.p, "cannot import '%s'. Functions and properties can only be imported from packages or objects", mi.name)
+		c.errorf(mi.p, "CANNOT_BE_IMPORTED", "cannot import '%s'. Functions and properties can only be imported from packages or objects", mi.name)
 	default:
-		c.errorf(mi.p, "unresolved import: %s", mi.path)
+		c.errorf(mi.p, "UNRESOLVED_IMPORT", "unresolved import: %s", mi.path)
 	}
 }
 
@@ -247,12 +247,12 @@ func (c *Checker) checkClassImport(ci memberImport) {
 	case !cls.Private:
 		if o := c.invisibleJavaOuter(cls); o != nil {
 			// import p.Foo.Nested of a package-private p.Foo.
-			c.errorf(ci.p, "cannot access '%s': it is package-private in '%s'", o.DisplayName(), o.DisplayName())
+			c.errorf(ci.p, "INVISIBLE_REFERENCE", "cannot access '%s': it is package-private in '%s'", o.DisplayName(), o.DisplayName())
 		}
 	case cls.Internal:
-		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
+		c.errorf(ci.p, "INVISIBLE_REFERENCE", "cannot access '%s': it is internal in module", ci.name)
 	case ci.path != c.file.Package:
-		c.errorf(ci.p, "cannot access '%s': it is private in file", ci.name)
+		c.errorf(ci.p, "INVISIBLE_REFERENCE", "cannot access '%s': it is private in file", ci.name)
 	}
 }
 
@@ -343,12 +343,12 @@ func (c *Checker) importedAlias(path string) *types.AliasSym {
 func (c *Checker) resolveAliasStars() {
 	for _, s := range c.aliasStars {
 		if owner := c.aliasClass(s.alias); owner != nil && owner.Object && !owner.External {
-			c.errorf(s.imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+			c.errorf(s.imp.P, "CANNOT_ALL_UNDER_IMPORT_FROM_SINGLETON", "cannot import on demand from object '%s'", owner.DisplayName())
 			c.importMembers(owner, s.imp) // all the same, as K2 does
 		} else if owner != nil {
 			c.importMembers(owner, s.imp)
 		} else {
-			c.errorf(s.imp.P, "unresolved import: %s.*", s.imp.Path)
+			c.errorf(s.imp.P, "UNRESOLVED_IMPORT", "unresolved import: %s.*", s.imp.Path)
 		}
 	}
 }
@@ -375,7 +375,7 @@ func (c *Checker) starObject(name string, cls *types.ClassSym) *types.ClassSym {
 // x is the name, which resolved to one of them.
 func (c *Checker) importAmbiguity(x *syntax.Ident) {
 	if c.importedValues(x.Name) > 1 {
-		c.errorf(x.P, "overload resolution ambiguity: %s is imported more than once", x.Name)
+		c.errorf(x.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is imported more than once", x.Name)
 	}
 }
 

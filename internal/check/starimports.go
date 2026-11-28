@@ -120,7 +120,7 @@ func (c *Checker) starAmbiguity(name string, p syntax.Pos) bool {
 		}
 	}
 	if n > 1 {
-		c.errorf(p, "overload resolution ambiguity: %s is a classifier of more than one star import", name)
+		c.errorf(p, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is a classifier of more than one star import", name)
 		return true
 	}
 	return false
@@ -162,10 +162,10 @@ func (c *Checker) starQualifierAmbiguity(id *syntax.Ident) bool {
 	}
 	switch {
 	case values > 1:
-		c.errorf(id.P, "overload resolution ambiguity: %s is a classifier of more than one star import", id.Name)
+		c.errorf(id.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is a classifier of more than one star import", id.Name)
 		return true
 	case values == 0 && !c.defaultClassifier(id.Name):
-		c.errorf(id.P, "none of the classifiers named %s that star imports give is a value", id.Name)
+		c.errorf(id.P, "UNRESOLVED_REFERENCE", "none of the classifiers named %s that star imports give is a value", id.Name)
 		return true
 	}
 	return false

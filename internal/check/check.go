@@ -1313,8 +1313,11 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 	return cls
 }
 
-func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	e := &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)}
+// errorf reports an error, which kotlinc names name, or which has no
+// name in kotlinc if name is empty: an error about kc's own limits, or one
+// kotlinc reports differently.
+func (c *Checker) errorf(p syntax.Pos, name, format string, args ...any) {
+	e := &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Name: name}
 	c.errs = append(c.errs, e)
 	if len(c.pclaRuns) > 0 {
 		c.pclaLate(e, format, args)
@@ -1418,7 +1421,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		return c.innerType(ref)
 	}
 	if c.lookupTypeParam(ref.Name) == nil && !c.starAmbiguity(ref.Name, ref.P) && c.conflictingImports[ref.Name] && c.nestedClassifier(ref.Name) == (classifier{}) {
-		c.errorf(ref.P, "overload resolution ambiguity: %s is a classifier of more than one import", ref.Name)
+		c.errorf(ref.P, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is a classifier of more than one import", ref.Name)
 	}
 	if a != nil {
 		c.u.typeUses.Store(ref, a)
@@ -1439,14 +1442,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 			if s := t.String(); strings.IndexAny(s, "<?") >= 0 {
 				name += s[strings.IndexAny(s, "<?"):] // its arguments and ?
 			}
-			c.errorf(ref.P, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", name)
+			c.errorf(ref.P, "MISSING_DEPENDENCY_CLASS", "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", name)
 		}
 		return t
 	}
 	var t types.Type
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
 		if ref.Args != nil {
-			c.errorf(ref.Args[0].P, "type arguments are not allowed for type parameters")
+			c.errorf(ref.Args[0].P, "TYPE_ARGUMENTS_NOT_ALLOWED", "type arguments are not allowed for type parameters")
 			return types.InvalidType
 		}
 		t = types.ParamType(tp)
@@ -1488,7 +1491,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				if f, ok := unsupportedTypes[ref.Name]; ok {
 					c.unsupported(ref.P, f, "unresolved or unsupported type: %s", ref.Name)
 				} else {
-					c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
+					c.errorf(ref.P, "UNRESOLVED_REFERENCE", "unresolved or unsupported type: %s", ref.Name)
 				}
 				// As in K2, the members of a value of the type are
 				// unresolved: c.isInstance(x) for a c: j.Class<T>.
@@ -1512,7 +1515,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {
-			c.errorf(ref.Args[0].P, "no type arguments expected for class %s", ref.Name)
+			c.errorf(ref.Args[0].P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for class %s", ref.Name)
 			return types.InvalidType
 		}
 	}
@@ -1550,7 +1553,7 @@ func (c *Checker) funcTypeNames(ref *syntax.TypeRef) {
 			continue
 		}
 		if seen[name] {
-			c.errorf(ref.P, "duplicate parameter name in a function type")
+			c.errorf(ref.P, "DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE", "duplicate parameter name in a function type")
 			return
 		}
 		seen[name] = true
@@ -1559,7 +1562,7 @@ func (c *Checker) funcTypeNames(ref *syntax.TypeRef) {
 
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
-		c.errorf(ref.P, "function types with more than %d parameters are prohibited", types.MaxVarArity)
+		c.errorf(ref.P, "FUNCTION_TYPE_OF_TOO_LARGE_ARITY", "function types with more than %d parameters are prohibited", types.MaxVarArity)
 		return types.InvalidType
 	}
 	ps := make([]types.Type, len(ref.Params))
@@ -1609,7 +1612,7 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	case ref.Suspend && !c.coroutines(ref.P):
 		return types.InvalidType
 	case ref.Suspend && len(ps)+1 > types.MaxVarArity:
-		c.errorf(ref.P, "suspend function types with more than %d parameters are prohibited", types.MaxVarArity-1)
+		c.errorf(ref.P, "FUNCTION_TYPE_OF_TOO_LARGE_ARITY", "suspend function types with more than %d parameters are prohibited", types.MaxVarArity-1)
 		return types.InvalidType
 	case ref.Suspend:
 		t = c.u.ext.funcs.SuspendType(ps, r)
@@ -1633,7 +1636,7 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 // at p.
 func (c *Checker) coroutines(p syntax.Pos) bool {
 	if !c.u.ext.kotlin {
-		c.errorf(p, "suspend functions need the Kotlin standard library")
+		c.errorf(p, "", "suspend functions need the Kotlin standard library")
 		return false
 	}
 	return true
@@ -1646,7 +1649,7 @@ func (c *Checker) nullable(t types.Type, ref *syntax.TypeRef) types.Type {
 			// value on the JVM, so this is the object's class.
 			u := c.u.ext.class("kotlin/Unit")
 			if u == nil {
-				c.errorf(ref.P, "Unit? is not supported")
+				c.errorf(ref.P, "", "Unit? is not supported")
 				return types.InvalidType
 			}
 			return types.ClassType(u).Nullable()
@@ -1678,7 +1681,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			}
 		}
 		if len(ref.Args) != n {
-			c.errorf(ref.P, "%s expected for class %s", countArgs(n), cls.DisplayName())
+			c.errorf(ref.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for class %s", countArgs(n), cls.DisplayName())
 			if len(ref.Args) < len(ps) {
 				return types.InvalidType
 			}
@@ -1711,9 +1714,9 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			p = ref.Args[0].P
 		}
 		if len(ps) == 0 {
-			c.errorf(p, "no type arguments expected for class %s", cls.DisplayName())
+			c.errorf(p, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for class %s", cls.DisplayName())
 		} else {
-			c.errorf(p, "%s expected for class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
+			c.errorf(p, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
 		}
 		return types.InvalidType
 	}
@@ -1733,7 +1736,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		if a.Underscore && args[i].T.K == types.TypeParam {
 			// Foo<_> of a type parameter named _, which K2 makes write
 			// in backticks (UNDERSCORE_USAGE_WITHOUT_BACKTICKS).
-			c.errorf(a.Type.P, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+			c.errorf(a.Type.P, "UNDERSCORE_USAGE_WITHOUT_BACKTICKS", "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
 		}
 		c.projection(a, ps[i], cls)
 	}
@@ -1784,7 +1787,7 @@ func (c *Checker) checkBoundsOf(t types.Type, ref *syntax.TypeRef, n int) {
 				continue
 			}
 			if b = s.Apply(b); !c.subtype(a.T, b) {
-				c.errorf(p, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
+				c.errorf(p, "UPPER_BOUND_VIOLATED", "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 			}
 		}
 	}
@@ -1827,11 +1830,11 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 	for i, d := range decls {
 		for _, e := range decls[:i] {
 			if e.Name == d.Name {
-				c.errorf(d.P, "conflicting declarations: %s", d.Name)
+				c.errorf(d.P, "REDECLARATION", "conflicting declarations: %s", d.Name)
 			}
 		}
 		if d.Variance != types.Inv && !allowVariance {
-			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
+			c.errorf(d.P, "VARIANCE_ON_TYPE_PARAMETER_NOT_ALLOWED", "variance annotations are only allowed for type parameters of classes")
 		}
 		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
 		for _, a := range d.Annotations {
@@ -1844,7 +1847,7 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 		}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
-				c.errorf(d.P, "only type parameters of inline functions can be reified")
+				c.errorf(d.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified")
 			}
 		}
 		out = append(out, d.Sym)
@@ -1867,7 +1870,7 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 		d.Sym.Bounds = nil
 		for _, ref := range d.Bounds {
 			if ref.Ret != nil && (ref.Recv != nil || ref.Contexts != nil) && !c.hasErrorAt(ref.P, "an extension function type") {
-				c.errorf(ref.P, "an extension function type or a function type with context parameters can't be an upper bound")
+				c.errorf(ref.P, "UPPER_BOUND_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE", "an extension function type or a function type with context parameters can't be an upper bound")
 			}
 			if b := c.resolveType(ref); b.K != types.Invalid {
 				d.Sym.Bounds = append(d.Sym.Bounds, b)
@@ -1891,13 +1894,13 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 		}
 	}
 	for _, d := range cyclic {
-		c.errorf(d.P, "type parameter %s has cyclic upper bounds", d.Name)
+		c.errorf(d.P, "CYCLIC_GENERIC_UPPER_BOUND", "type parameter %s has cyclic upper bounds", d.Name)
 		d.Sym.Bounds = nil
 	}
 	c.boundDefNotNull = savedDNN
 	for _, x := range dnn {
 		if !x.p.NullableBound() {
-			c.errorf(x.ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
+			c.errorf(x.ref.P, "INCORRECT_LEFT_COMPONENT_OF_INTERSECTION", "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
 		}
 	}
 	c.noBoundChecks = saved
@@ -1934,10 +1937,10 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 	for i, b := range d.Sym.Bounds {
 		switch {
 		case b.IsParam():
-			c.errorf(refs[i].P, "type parameter cannot have any other bounds if it's bounded by another type parameter")
+			c.errorf(refs[i].P, "BOUNDS_NOT_ALLOWED_IF_BOUNDED_BY_TYPE_PARAMETER", "type parameter cannot have any other bounds if it's bounded by another type parameter")
 		case classUpperBound(b):
 			if classes++; classes == 2 {
-				c.errorf(refs[i].P, "only one of the upper bounds can be a class")
+				c.errorf(refs[i].P, "ONLY_ONE_CLASS_BOUND_ALLOWED", "only one of the upper bounds can be a class")
 			}
 		}
 	}
@@ -1988,7 +1991,7 @@ func (c *Checker) declare() {
 			}
 			alt := dup && altProp(prev, d)
 			if dup && !alt {
-				c.errorf(d.P, "conflicting declarations: %s", d.Name)
+				c.errorf(d.P, "REDECLARATION", "conflicting declarations: %s", d.Name)
 			}
 			sym := &types.VarSym{Name: d.Name, Kind: types.Global, Mutable: d.Mutable, Facade: c.file.Class(), Decl: d,
 				Const: d.Const, JvmField: d.Find("", "JvmField") != nil,
@@ -1998,7 +2001,7 @@ func (c *Checker) declare() {
 				// its field.
 				sym.Facade, sym.Part = c.file.Facade, c.file.Part
 				if sym.JvmField {
-					c.errorf(d.Find("", "JvmField").P, "JvmField cannot be applied to top level property of a file annotated with JvmMultifileClass")
+					c.errorf(d.Find("", "JvmField").P, "INAPPLICABLE_JVM_FIELD", "JvmField cannot be applied to top level property of a file annotated with JvmMultifileClass")
 				}
 			}
 			sym.Private = d.Visibility == syntax.Private && d.Getter == nil && d.Setter == nil && d.Field == nil &&
@@ -2021,9 +2024,9 @@ func (c *Checker) declare() {
 			}
 		case *syntax.TypeAliasDecl:
 			if _, dup := c.pkg.Classes[d.Name]; dup {
-				c.errorf(d.P, "redeclaration: typealias %s", d.Name)
+				c.errorf(d.P, "CLASSIFIER_REDECLARATION", "redeclaration: typealias %s", d.Name)
 			} else if _, dup := c.pkg.Aliases[d.Name]; dup {
-				c.errorf(d.P, "redeclaration: typealias %s", d.Name)
+				c.errorf(d.P, "CLASSIFIER_REDECLARATION", "redeclaration: typealias %s", d.Name)
 			}
 			// The name stays the first declaration's, as kotlinc resolves it.
 			if a := c.declareAlias(d, nil); c.pkg.Aliases[d.Name] == nil && c.pkg.Classes[d.Name] == nil {
@@ -2033,10 +2036,10 @@ func (c *Checker) declare() {
 			_, dup := c.pkg.Classes[d.Name]
 			dup = (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>"
 			if dup {
-				c.errorf(d.P, "redeclaration: class %s", d.Name)
+				c.errorf(d.P, "CLASSIFIER_REDECLARATION", "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
-				c.errorf(d.P, "modifier 'companion' is only allowed on objects in classes")
+				c.errorf(d.P, "WRONG_MODIFIER_CONTAINING_DECLARATION", "modifier 'companion' is only allowed on objects in classes")
 			}
 			if sym := c.declareClass(d, prefix+d.Name, nil); !dup {
 				c.pkg.Classes[d.Name] = sym
@@ -2100,7 +2103,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 					break
 				}
 			}
-			c.errorf(pos, "modifier 'enum' is only allowed on final classes")
+			c.errorf(pos, "WRONG_MODIFIER_TARGET", "modifier 'enum' is only allowed on final classes")
 		}
 		for _, m := range d.Members {
 			// An enum may declare abstract members, which its entries
@@ -2114,16 +2117,16 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		}
 	}
 	if d.Sealed && (d.Object || d.Open || d.Data) {
-		c.errorf(d.P, "modifier 'sealed' is only allowed on classes and interfaces")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifier 'sealed' is only allowed on classes and interfaces")
 	}
 	if d.Object && (d.Open || d.Abstract) {
-		c.errorf(d.P, "modifiers open and abstract are not allowed on objects")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifiers open and abstract are not allowed on objects")
 	}
 	if d.Data && (d.Open || d.Abstract || d.Interface) {
-		c.errorf(d.P, "modifier 'data' is incompatible with open, abstract and interfaces")
+		c.errorf(d.P, "INCOMPATIBLE_MODIFIERS", "modifier 'data' is incompatible with open, abstract and interfaces")
 	}
 	if d.Object && len(d.TypeParams) > 0 {
-		c.errorf(d.P, "an object can't have type parameters")
+		c.errorf(d.P, "TYPE_PARAMETERS_IN_OBJECT", "an object can't have type parameters")
 	}
 	olds := make([]*types.TypeParamSym, len(d.TypeParams))
 	for i, tp := range d.TypeParams {
@@ -2146,7 +2149,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	for _, m := range d.Members {
 		if ad, ok := m.(*syntax.TypeAliasDecl); ok {
 			if sym.Nested[ad.Name] != nil || sym.Aliases[ad.Name] != nil {
-				c.errorf(ad.P, "redeclaration: typealias %s", ad.Name)
+				c.errorf(ad.P, "REDECLARATION", "redeclaration: typealias %s", ad.Name)
 			}
 			sym.Aliases[ad.Name] = c.declareAlias(ad, sym)
 			continue
@@ -2163,7 +2166,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			continue
 		}
 		if _, dup := sym.Nested[md.Name]; (dup || sym.Aliases[md.Name] != nil) && md.Name != "<no name provided>" {
-			c.errorf(md.P, "redeclaration: class %s", md.Name)
+			c.errorf(md.P, "REDECLARATION", "redeclaration: class %s", md.Name)
 		}
 		n := c.declareClass(md, name+"$"+md.Name, sym)
 		sym.Nested[md.Name] = n
@@ -2171,9 +2174,9 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		if md.Companion {
 			switch {
 			case d.Object:
-				c.errorf(md.P, "a companion object is not allowed in an object")
+				c.errorf(md.P, "WRONG_MODIFIER_CONTAINING_DECLARATION", "a companion object is not allowed in an object")
 			case sym.Companion != nil:
-				c.errorf(md.P, "only one companion object is allowed in a class")
+				c.errorf(md.P, "MANY_COMPANION_OBJECTS", "only one companion object is allowed in a class")
 			default:
 				sym.Companion, n.CompanionOf = n, sym
 			}
@@ -2417,7 +2420,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		if owner == nil {
 			what = "top level function"
 		}
-		c.errorf(d.PosOf("annotation", d.P), "modifier 'annotation' is not applicable to '%s'", what)
+		c.errorf(d.PosOf("annotation", d.P), "WRONG_MODIFIER_TARGET", "modifier 'annotation' is not applicable to '%s'", what)
 	}
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
 	c.tparams = funTypeParams(sym, owner)
@@ -2432,17 +2435,17 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Find("", "JvmStatic") != nil {
 		switch {
 		case owner == nil || !owner.Object || owner.Anonymous:
-			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+			c.errorf(d.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		case d.External && owner.CompanionOf != nil && owner.CompanionOf.Interface:
-			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+			c.errorf(d.P, "JVM_STATIC_ON_EXTERNAL_IN_INTERFACE", "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
 		case owner.CompanionOf != nil && owner.CompanionOf.Interface && d.Visibility != syntax.Public:
 			// JVM_STATIC_ON_NON_PUBLIC_MEMBER: an interface's static
 			// methods are public.
-			c.errorf(d.Find("", "JvmStatic").P, jvmStaticNonPublic)
+			c.errorf(d.Find("", "JvmStatic").P, "JVM_STATIC_ON_NON_PUBLIC_MEMBER", jvmStaticNonPublic)
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
 		case d.Override:
-			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
+			c.errorf(d.P, "OVERRIDE_CANNOT_BE_STATIC", "override member cannot be '@JvmStatic' in an object")
 		default:
 			// Only a static method of the object's class, as kotlinc
 			// writes it.
@@ -2460,12 +2463,16 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	case d.External:
 		sym.External = c.external(d, owner, d.Abstract, d.P) && bodyless
 	case sym.Abstract && !bodyless:
-		c.errorf(d.P, "an abstract function cannot have a body")
+		c.errorf(d.P, "ABSTRACT_FUNCTION_WITH_BODY", "an abstract function cannot have a body")
 	case !sym.Abstract && bodyless && !d.Expect:
-		c.errorf(d.P, "function '%s' must have a body", d.Name)
+		name := "NON_ABSTRACT_FUNCTION_WITH_NO_BODY"
+		if owner == nil {
+			name = "NON_MEMBER_FUNCTION_NO_BODY"
+		}
+		c.errorf(d.P, name, "function '%s' must have a body", d.Name)
 	case owner != nil && owner.Interface && bodyless && !d.Abstract && d.Visibility == syntax.Private:
 		// Abstract, as it has no body, but no class can implement it.
-		c.errorf(modPos(d.Written, "private", d.P), "private function '%s' in an interface must have a body", d.Name)
+		c.errorf(modPos(d.Written, "private", d.P), "PRIVATE_FUNCTION_WITH_NO_BODY", "private function '%s' in an interface must have a body", d.Name)
 	}
 	c.paramClashes(d.Contexts, d.Params)
 	for _, p := range d.Params {
@@ -2527,15 +2534,15 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		switch {
 		case !tp.Reified:
 		case !d.Inline:
-			c.errorf(tp.P, "only type parameters of inline functions can be reified")
+			c.errorf(tp.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified")
 		case d.Override:
 			// REIFIED_TYPE_PARAMETER_IN_OVERRIDE: a call through the
 			// overridden function couldn't pass the type.
-			c.errorf(tp.P, "override by a function with reified type parameter")
+			c.errorf(tp.P, "REIFIED_TYPE_PARAMETER_IN_OVERRIDE", "override by a function with reified type parameter")
 		case virtualMember(d.Modifiers, owner):
 			// Reported as a virtual inline member.
 		case owner != nil && !copiedMember(d.Modifiers, owner):
-			c.errorf(tp.P, "only type parameters of inline functions can be reified") // an open member isn't inlined
+			c.errorf(tp.P, "REIFIED_TYPE_PARAMETER_NO_INLINE", "only type parameters of inline functions can be reified") // an open member isn't inlined
 		}
 	}
 }
@@ -2546,14 +2553,14 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 	sym := &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: decl, Default: p.Default != nil,
 		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type), Exact: p.Type != nil && p.Type.Exact}
 	if p.External {
-		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
+		c.errorf(p.ExternalP, "WRONG_MODIFIER_TARGET", "modifier 'external' is not applicable to 'value parameter'")
 	}
 	if p.Vararg {
 		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
-			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+			c.errorf(p.P, "FORBIDDEN_VARARG_PARAMETER_TYPE", "prohibited vararg parameter type '%s'", t)
 		}
 		if nothingLike(t) {
-			c.errorf(varargPos(p), "forbidden vararg parameter type: %s", t)
+			c.errorf(varargPos(p), "FORBIDDEN_VARARG_PARAMETER_TYPE", "forbidden vararg parameter type: %s", t)
 		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
@@ -2581,7 +2588,7 @@ func (c *Checker) checkVarargs(ps []*syntax.Param) {
 	}
 	for _, p := range ps {
 		if p.Vararg {
-			c.errorf(p.P, "multiple vararg-parameters are prohibited")
+			c.errorf(p.P, "MULTIPLE_VARARG_PARAMETERS", "multiple vararg-parameters are prohibited")
 		}
 	}
 }
@@ -2590,9 +2597,9 @@ func (c *Checker) checkVarargs(ps []*syntax.Param) {
 func (c *Checker) memberModifiers(m syntax.Modifiers, owner *types.ClassSym, p syntax.Pos, what string) {
 	switch {
 	case owner == nil && (m.Open || m.Abstract || m.Override):
-		c.errorf(p, "modifiers open, abstract and override are only allowed on members of classes")
+		c.errorf(p, "WRONG_MODIFIER_TARGET", "modifiers open, abstract and override are only allowed on members of classes")
 	case owner != nil && m.Abstract && !owner.Abstract:
-		c.errorf(p, "abstract %s in non-abstract class '%s'", what, owner.DisplayName())
+		c.errorf(p, "ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS", "abstract %s in non-abstract class '%s'", what, owner.DisplayName())
 	}
 }
 
@@ -2601,20 +2608,20 @@ func (c *Checker) memberModifiers(m syntax.Modifiers, owner *types.ClassSym, p s
 // abstract is set if it or its property is abstract, declared at at.
 func (c *Checker) external(d *syntax.FunDecl, owner *types.ClassSym, abstract bool, at syntax.Pos) bool {
 	ok := true
-	report := func(p syntax.Pos, msg string) {
-		c.errorf(p, "%s", msg)
+	report := func(p syntax.Pos, name, msg string) {
+		c.errorf(p, name, "%s", msg)
 		ok = false
 	}
 	switch {
 	case abstract:
-		report(at, "external declaration cannot be abstract")
+		report(at, "EXTERNAL_DECLARATION_CANNOT_BE_ABSTRACT", "external declaration cannot be abstract")
 	case owner != nil && owner.Interface:
-		report(d.ExternalP, "members of interfaces cannot be external")
+		report(d.ExternalP, "EXTERNAL_DECLARATION_IN_INTERFACE", "members of interfaces cannot be external")
 	case d.Inline:
-		report(d.ExternalP, "inline functions cannot be external")
+		report(d.ExternalP, "EXTERNAL_DECLARATION_CANNOT_BE_INLINED", "inline functions cannot be external")
 	}
 	if hasBody(d) {
-		report(d.ExternalP, "external declaration cannot have a body")
+		report(d.ExternalP, "EXTERNAL_DECLARATION_CANNOT_HAVE_BODY", "external declaration cannot have a body")
 	}
 	return ok
 }
@@ -2713,9 +2720,9 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.Find("", "JvmStatic") != nil {
 		switch {
 		case owner == nil || !owner.Object || owner.Anonymous:
-			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+			c.errorf(d.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "only members in named objects and companion objects can be annotated with '@JvmStatic'")
 		case d.Override && owner.CompanionOf == nil:
-			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
+			c.errorf(d.P, "OVERRIDE_CANNOT_BE_STATIC", "override member cannot be '@JvmStatic' in an object")
 		default:
 			sym.JvmStatic = true
 			sym.StaticGetter, sym.StaticSetter = true, d.Mutable
@@ -2734,7 +2741,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		}
 		for _, a := range as {
 			if a != nil {
-				c.errorf(a.P, "%s", msg)
+				c.errorf(a.P, "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "%s", msg)
 				break
 			}
 		}
@@ -2747,19 +2754,19 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		if p.Line == 0 {
 			p = d.Getter.P
 		}
-		c.errorf(p, "const 'val' should not have a getter")
+		c.errorf(p, "CONST_VAL_WITH_GETTER", "const 'val' should not have a getter")
 	}
 	if owner != nil {
 		// kc doesn't support const outside objects, which is an error.
 		sym.Const = d.Const && owner.Object
 		if d.Const && (!owner.Object || owner.Anonymous) {
-			c.errorf(modPos(d.Written, "const", d.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+			c.errorf(modPos(d.Written, "const", d.P), "CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT", "const 'val' are only allowed on top level, in named objects, or in companion objects")
 		}
 		sym.Private = !sym.Const && d.Visibility == syntax.Private && privateField(owner) && d.Getter == nil && d.Setter == nil && d.Field == nil
 		sym.JvmField = !sym.Private && d.Find("", "JvmField") != nil && !owner.Interface && d.Getter == nil && d.Field == nil
 		// Also through a typealias of JvmStatic.
 		if a := c.findAnnotation(d.Annotations, "", "JvmStatic", "kotlin/jvm/JvmStatic"); a != nil && owner.Object && !owner.Anonymous && (sym.JvmField || d.Const) {
-			c.errorf(a.P, "'@JvmStatic' annotation is useless for const or '@JvmField' properties")
+			c.errorf(a.P, "JVM_STATIC_ON_CONST_OR_JVM_FIELD", "'@JvmStatic' annotation is useless for const or '@JvmField' properties")
 		}
 
 	}
@@ -2785,13 +2792,13 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		sym.FieldUsed = true
 	}
 	if a := cmp.Or(d.Find("", "JvmStatic"), d.Find("get", "JvmStatic"), d.Find("set", "JvmStatic")); ext && a != nil && owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
-		c.errorf(a.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
+		c.errorf(a.P, "JVM_STATIC_ON_EXTERNAL_IN_INTERFACE", "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
 	} else if owner != nil && owner.CompanionOf != nil && owner.CompanionOf.Interface {
 		c.jvmStaticInInterfaceCompanion(d)
 	}
 	if d.Lateinit {
 		if sym.Abstract && d.Mutable && d.Field == nil {
-			c.errorf(d.P, "'lateinit' modifier is not allowed on abstract properties")
+			c.errorf(d.P, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on abstract properties")
 		} else {
 			c.lateinitChecks(d.P, d.Mutable, d.Init != nil, d.Getter != nil || d.Setter != nil || d.Field != nil, types.InvalidType)
 		}
@@ -2799,48 +2806,54 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	}
 	if owner != nil && owner.Interface && d.Visibility == syntax.Private && !d.Abstract && d.Init == nil && d.Getter == nil && d.Field == nil {
 		// Abstract, as it has no value, but no class can implement it.
-		c.errorf(modPos(d.Written, "private", d.P), "abstract property in an interface cannot be private")
+		c.errorf(modPos(d.Written, "private", d.P), "PRIVATE_PROPERTY_IN_INTERFACE", "abstract property in an interface cannot be private")
 	}
 	switch {
 	case d.Abstract && ext:
 		// Reported with the accessors, by externalAccessors.
 	case sym.Abstract && (d.Init != nil || d.Getter != nil || d.Setter != nil):
-		c.errorf(d.P, "an abstract property cannot have an initializer or accessors")
+		name := "ABSTRACT_PROPERTY_WITH_INITIALIZER"
+		if d.Init == nil && d.Getter != nil {
+			name = "ABSTRACT_PROPERTY_WITH_GETTER"
+		} else if d.Init == nil {
+			name = "ABSTRACT_PROPERTY_WITH_SETTER"
+		}
+		c.errorf(d.P, name, "an abstract property cannot have an initializer or accessors")
 	case owner != nil && owner.Interface && d.Init != nil:
-		c.errorf(d.Init.Pos(), "property initializers are not allowed in interfaces")
+		c.errorf(d.Init.Pos(), "PROPERTY_INITIALIZER_IN_INTERFACE", "property initializers are not allowed in interfaces")
 	case d.Field != nil && owner != nil && owner.Interface:
-		c.errorf(d.P, "delegated properties are not allowed in interfaces")
+		c.errorf(d.P, "DELEGATED_PROPERTY_IN_INTERFACE", "delegated properties are not allowed in interfaces")
 	case d.Field != nil && d.Abstract:
-		c.errorf(d.P, "this property cannot be abstract and delegated")
+		c.errorf(d.P, "ABSTRACT_DELEGATED_PROPERTY", "this property cannot be abstract and delegated")
 	case owner != nil && owner.Interface && hasField:
-		c.errorf(d.P, "property in an interface cannot have a backing field")
+		c.errorf(d.P, "BACKING_FIELD_IN_INTERFACE", "property in an interface cannot have a backing field")
 	case d.Init != nil && !hasField && !fieldUsed:
-		c.errorf(d.Init.Pos(), "initializer is not allowed here because this property has no backing field")
+		c.errorf(d.Init.Pos(), "PROPERTY_INITIALIZER_NO_BACKING_FIELD", "initializer is not allowed here because this property has no backing field")
 	case d.SetterVis == syntax.Private && d.Mutable && sym.Abstract && d.SetterVisP.Line != 0 && d.Visibility != syntax.Private:
-		c.errorf(d.SetterVisP, "private setters are not allowed for abstract properties")
+		c.errorf(d.SetterVisP, "PRIVATE_SETTER_FOR_ABSTRACT_PROPERTY", "private setters are not allowed for abstract properties")
 	case d.SetterVis == syntax.Private && d.Mutable && !sym.Final && !sym.Abstract && owner != nil && !owner.Final:
 		p := d.P
 		if d.SetterVisP.Line != 0 {
 			p = d.SetterVisP // at the modifier, as kotlinc
 		}
-		c.errorf(p, "private setters are not allowed for open properties")
+		c.errorf(p, "PRIVATE_SETTER_FOR_OPEN_PROPERTY", "private setters are not allowed for open properties")
 	case !sym.Abstract && d.Init == nil && hasField && !d.Lateinit && !d.Expect && (owner != nil || d.BackingField == nil || len(d.Contexts) > 0):
 		// A top-level explicit backing field without an initializer is
 		// reported as such (backingFieldDecl); a class's, if its
 		// constructors don't assign it (definite assignment).
 		switch {
 		case owner == nil || owner.Interface:
-			c.errorf(d.P, "property must be initialized or be abstract")
+			c.errorf(d.P, "MUST_BE_INITIALIZED", "property must be initialized or be abstract")
 		case d.Mutable && d.Setter != nil && hasBody(d.Setter):
 			// The constructor's assignment would call the setter.
-			c.errorf(d.P, "property must be initialized")
+			c.errorf(d.P, "MUST_BE_INITIALIZED", "property must be initialized")
 			c.initReported(sym)
 		case !sym.Final && !owner.Final && d.Visibility != syntax.Private:
 			// A subclass's override would be assigned instead.
 			if d.Getter != nil && hasBody(d.Getter) {
-				c.errorf(d.P, "property must be initialized or be final")
+				c.errorf(d.P, "MUST_BE_INITIALIZED", "property must be initialized or be final")
 			} else {
-				c.errorf(d.P, "property must be initialized, be final, or be abstract")
+				c.errorf(d.P, "MUST_BE_INITIALIZED_OR_FINAL_OR_ABSTRACT", "property must be initialized, be final, or be abstract")
 			}
 			c.initReported(sym)
 		}
@@ -2909,7 +2922,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			c.setterParamType(d)
 		}
 	case d.Init == nil && (d.Getter == nil || d.Getter.ExprBody == nil):
-		c.errorf(d.P, "this property must have a type, be initialized, or have a getter with an expression body")
+		c.errorf(d.P, "PROPERTY_WITH_NO_TYPE_NO_INITIALIZER", "this property must have a type, be initialized, or have a getter with an expression body")
 		sym.Type, sym.Resolved = types.InvalidType, true
 		if d.Getter != nil {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = types.InvalidType, true
@@ -2944,10 +2957,10 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		d.HasPrimary = true
 	}
 	if d.Enum && d.CtorMods.Explicit && d.CtorMods.Visibility != syntax.Private {
-		c.errorf(d.P, "constructor must be private in enum class")
+		c.errorf(d.P, "NON_PRIVATE_CONSTRUCTOR_IN_ENUM", "constructor must be private in enum class")
 	}
 	if d.CtorMods.External {
-		c.errorf(d.CtorMods.ExternalP, "modifier 'external' is not applicable to 'constructor'")
+		c.errorf(d.CtorMods.ExternalP, "WRONG_MODIFIER_TARGET", "modifier 'external' is not applicable to 'constructor'")
 	}
 	ctor := &types.FunSym{Name: "<init>", Owner: cls, Ret: cls.This(), Resolved: true, Decl: d,
 		Hidden: d.CtorMods.Hidden(), Private: privateCtor(d, &d.CtorMods)}
@@ -2961,28 +2974,28 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 			if d, ok := p.Decl.(*syntax.PropDecl); ok && (altProp(prev, d) || hiddenFinalProp(prev, d)) {
 				addAlt(prev, p)
 			} else {
-				c.errorf(pos, "conflicting declarations: %s", p.Name)
+				c.errorf(pos, "REDECLARATION", "conflicting declarations: %s", p.Name)
 				if pd, ok := prev.Decl.(*syntax.PropDecl); ok && local && !c.hasErrorAt(pd.P, "conflicting declarations") {
 					// And the first, as kotlinc; conflicts does that for
 					// the other classes' (see propRedeclarations).
-					c.errorf(pd.P, "conflicting declarations: %s", p.Name)
+					c.errorf(pd.P, "REDECLARATION", "conflicting declarations: %s", p.Name)
 				}
 			}
 		}
 		cls.Props = append(cls.Props, p)
 	}
 	if d.Interface && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
-		c.errorf(d.P, "an interface may not have a constructor")
+		c.errorf(d.P, "CONSTRUCTOR_IN_INTERFACE", "an interface may not have a constructor")
 	}
 	if d.Object && (len(d.CtorParams) > 0 || d.WrittenPrimary) {
-		c.errorf(d.P, "constructors are not allowed for objects")
+		c.errorf(d.P, "CONSTRUCTOR_IN_OBJECT", "constructors are not allowed for objects")
 	}
 	for _, cp := range d.CtorParams {
 		if cp.Const && cp.IsProp {
-			c.errorf(modPos(cp.Written, "const", cp.P), "const 'val' are only allowed on top level, in named objects, or in companion objects")
+			c.errorf(modPos(cp.Written, "const", cp.P), "CONST_VAL_NOT_TOP_LEVEL_OR_OBJECT", "const 'val' are only allowed on top level, in named objects, or in companion objects")
 		}
 		if cp.Lateinit && cp.IsProp {
-			c.errorf(modPos(cp.Written, "lateinit", cp.P), "'lateinit' modifier is not allowed on primary constructor parameters")
+			c.errorf(modPos(cp.Written, "lateinit", cp.P), "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on primary constructor parameters")
 		}
 		c.tparams = cls.TypeParams
 		cp.Sym = c.paramSym(&cp.Param, c.resolveType(cp.Type), cp)
@@ -2998,7 +3011,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		}
 		t := cp.Sym.Type
 		if cp.Param.Vararg && d.Data {
-			c.errorf(cp.P, "primary constructor vararg parameters are forbidden for data classes")
+			c.errorf(cp.P, "DATA_CLASS_VARARG_PARAMETER", "primary constructor vararg parameters are forbidden for data classes")
 		}
 		ctor.Params = append(ctor.Params, cp.Sym)
 		cls.CtorParams = append(cls.CtorParams, cp.Sym)
@@ -3010,11 +3023,11 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 			cp.PropSym.JvmField = cp.Find("", "JvmField") != nil && !cp.PropSym.Private
 			c.memberModifiers(cp.Modifiers, cls, cp.P, "property '"+cp.Name+"'")
 			if cp.Abstract {
-				c.errorf(cp.P, "a constructor property cannot be abstract")
+				c.errorf(cp.P, "ABSTRACT_PROPERTY_IN_PRIMARY_CONSTRUCTOR_PARAMETERS", "a constructor property cannot be abstract")
 			}
 			addProp(cp.PropSym, cp.P)
 		} else if cp.Open || cp.Abstract || cp.Override {
-			c.errorf(cp.P, "modifiers open, abstract and override are only allowed on properties")
+			c.errorf(cp.P, "WRONG_MODIFIER_TARGET", "modifiers open, abstract and override are only allowed on properties")
 		}
 	}
 	if cls.Value {
@@ -3067,7 +3080,7 @@ func (c *Checker) enumMembers(d *syntax.ClassDecl) {
 	cls.Fields = map[string]*types.VarSym{}
 	for _, e := range d.Entries {
 		if _, dup := cls.Fields[e.Name]; dup {
-			c.errorf(e.P, "conflicting declarations: %s", e.Name)
+			c.errorf(e.P, "REDECLARATION", "conflicting declarations: %s", e.Name)
 		}
 		cls.Fields[e.Name] = &types.VarSym{Name: e.Name, Type: t, Kind: types.Static, Owner: cls, Resolved: true}
 	}
@@ -3085,12 +3098,12 @@ func (c *Checker) enumMembers(d *syntax.ClassDecl) {
 func (c *Checker) dataMembers(d *syntax.ClassDecl) {
 	cls := d.Sym
 	if len(d.CtorParams) == 0 {
-		c.errorf(d.P, "data class must have at least one primary constructor parameter")
+		c.errorf(d.P, "DATA_CLASS_WITHOUT_PARAMETERS", "data class must have at least one primary constructor parameter")
 	}
 	var params []*types.VarSym
 	for i, cp := range d.CtorParams {
 		if !cp.IsProp {
-			c.errorf(cp.P, "data class primary constructor must only have property (val / var) parameters")
+			c.errorf(cp.P, "DATA_CLASS_NOT_PROPERTY_PARAMETER", "data class primary constructor must only have property (val / var) parameters")
 			continue
 		}
 		params = append(params, &types.VarSym{Name: cp.Name, Type: cp.Sym.Type, Kind: types.Param, Default: true})
@@ -3147,10 +3160,10 @@ func (c *Checker) defNotNull(ref *syntax.TypeRef) types.Type {
 	case t.K == types.Invalid || and.K == types.Invalid:
 		return types.InvalidType
 	case and != types.AnyType:
-		c.errorf(ref.And.P, "intersection types are supported only for definitely non-nullable types: right part must be non-nullable 'Any'")
+		c.errorf(ref.And.P, "INCORRECT_RIGHT_COMPONENT_OF_INTERSECTION", "intersection types are supported only for definitely non-nullable types: right part must be non-nullable 'Any'")
 		return types.InvalidType
 	case !t.IsParam() || t.N || !t.Param().NullableBound():
-		c.errorf(ref.P, "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
+		c.errorf(ref.P, "INCORRECT_LEFT_COMPONENT_OF_INTERSECTION", "intersection types are supported only for definitely non-nullable types: left part must be a type parameter with nullable bounds")
 		return types.InvalidType
 	case c.boundDefNotNull != nil:
 		*c.boundDefNotNull = append(*c.boundDefNotNull, boundDNN{ref, t.Param()}) // checked again once the bounds are
@@ -3322,7 +3335,7 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 	case types.TypeParam:
 		if v := t.Param().Var; v != types.Inv && v != pos {
 			if report {
-				c.errorf(at, "type parameter %s is declared as '%s' but occurs in '%s' position in type %s", t.Param().Name, positionNames[v], positionNames[pos], whole)
+				c.errorf(at, "TYPE_VARIANCE_CONFLICT_ERROR", "type parameter %s is declared as '%s' but occurs in '%s' position in type %s", t.Param().Name, positionNames[v], positionNames[pos], whole)
 			}
 			ok = false
 		}
@@ -3583,7 +3596,7 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	sym.InProgress = false
 	sym.Resolved = true
 	if sym.Reentered > 0 && sym.ReentryReported == 0 {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
+		c.errorf(d.P, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the return type of '%s'", d.Name)
 	}
 	sym.Cyclic = c.u.reentries.Load() > before && sym.Ret.K == types.Invalid
 	c.markPrivateToThis(d, sym.Owner)
@@ -3601,7 +3614,7 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 // overridden function's.
 func (c *Checker) implicitNothingRet(d *syntax.FunDecl) {
 	if d.Ret == nil && d.ExprBody != nil && !d.Override && d.Sym.Ret.K == types.Nothing {
-		c.errorf(d.P, "return type 'Nothing' needs to be specified explicitly")
+		c.errorf(d.P, "IMPLICIT_NOTHING_RETURN_TYPE", "return type 'Nothing' needs to be specified explicitly")
 	}
 }
 
@@ -3643,7 +3656,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	}
 	if d.Type == nil && d.DelegateOf == nil && !d.Override && sym.Type.K == types.Nothing {
 		// As implicitNothingRet, kotlinc's IMPLICIT_NOTHING_PROPERTY_TYPE.
-		c.errorf(d.P, "property type 'Nothing' needs to be specified explicitly")
+		c.errorf(d.P, "IMPLICIT_NOTHING_PROPERTY_TYPE", "property type 'Nothing' needs to be specified explicitly")
 	}
 	c.done[d] = true
 	c.state = saved
@@ -3652,7 +3665,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	// A delegate's field, x$delegate, re-entered through x's getter, is
 	// reported as x.
 	if sym.Reentered > 0 && sym.ReentryReported == 0 && (d.DelegateOf == nil || d.DelegateOf.Sym.ReentryReported == 0) {
-		c.errorf(d.P, "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
+		c.errorf(d.P, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the type of '%s'", d.Name)
 	}
 	sym.RanIntoCycle = c.u.reentries.Load() > before
 	sym.Cyclic = sym.RanIntoCycle && sym.Type.K == types.Invalid
@@ -3679,7 +3692,7 @@ func (c *Checker) recursiveFunRef(f *types.FunSym, p syntax.Pos) {
 		if f.InProgress {
 			c.u.reentries.Add(1)
 		}
-		c.errorf(p, "type checking has run into a recursive problem; specify the return type of '%s'", f.Name)
+		c.errorf(p, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the return type of '%s'", f.Name)
 	}
 }
 
@@ -3696,7 +3709,7 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 			f.ReentryReported++
 			v.ReentryReported++
 			c.u.reentries.Add(1)
-			c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+			c.errorf(p, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
 			return
 		}
 	}
@@ -3708,7 +3721,7 @@ func (c *Checker) recursiveVarRef(v *types.VarSym, p syntax.Pos) {
 		if v.InProgress {
 			c.u.reentries.Add(1)
 		}
-		c.errorf(p, "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
+		c.errorf(p, "TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM", "type checking has run into a recursive problem; specify the type of '%s'", v.Name)
 	}
 }
 
@@ -3717,7 +3730,7 @@ func (c *Checker) checkBodies() {
 	defer func() {
 		for l, r := range c.pclaKept {
 			if slices.ContainsFunc(r.checks, func(k pclaCheck) bool { return k.l == l }) {
-				c.errorf(l.P, "internal error: the check of a builder's lambda was never committed")
+				c.errorf(l.P, "", "internal error: the check of a builder's lambda was never committed")
 			}
 		}
 	}()
@@ -3765,7 +3778,7 @@ func (c *Checker) inlinedLambdaAnnotations() {
 				continue // Compose's @Composable, which its plugin reads
 			}
 			if cls := c.lookupClass(as[i].Name); cls != nil && cls.Annotation && cls.Retention != types.RetentionSource {
-				c.errorf(as[i].P, "the lambda expression here is an inlined argument, so this annotation cannot be stored anywhere")
+				c.errorf(as[i].P, "NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION", "the lambda expression here is an inlined argument, so this annotation cannot be stored anywhere")
 			}
 		}
 	}
@@ -3938,7 +3951,7 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 				c.checkProp(m, d.Sym)
 			case *syntax.InitBlock:
 				if d.Interface {
-					c.errorf(m.P, "anonymous initializers are not allowed in interfaces")
+					c.errorf(m.P, "ANONYMOUS_INITIALIZER_IN_INTERFACE", "anonymous initializers are not allowed in interfaces")
 				}
 				c.state = state{scope: c.initScope(d.Sym), cls: d.Sym, this: newThis(d.Sym), tparams: d.Sym.TypeParams, init: true}
 				c.inAnon(d.Sym)
@@ -3975,10 +3988,10 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 			c.defaultParam = i
 			before := len(c.errs)
 			c.annotDefault = ctor && cls != nil && cls.Annotation
-			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
+			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos(), "INITIALIZER_TYPE_MISMATCH")
 			c.annotDefault = false
 			if ctor && cls != nil && cls.Annotation && len(c.errs) == before && c.nonConst(p.Default) != nil {
-				c.errorf(p.Default.Pos(), "default value of annotation parameter must be a compile-time constant")
+				c.errorf(p.Default.Pos(), "ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT", "default value of annotation parameter must be a compile-time constant")
 			}
 		}
 		s.declare(p.Sym)
@@ -4019,7 +4032,7 @@ func (c *Checker) inheritDefaults() {
 			}
 			for _, p := range fd.Params {
 				if p.Default != nil {
-					c.errorf(p.Default.Pos(), "an overriding function is not allowed to specify default values for its parameters")
+					c.errorf(p.Default.Pos(), "DEFAULT_VALUE_NOT_ALLOWED_IN_OVERRIDE", "an overriding function is not allowed to specify default values for its parameters")
 				}
 			}
 			c.multipleDefaults(fd)
@@ -4078,7 +4091,7 @@ func (c *Checker) inheritDefaults() {
 				}
 				for i, p := range fd.Sym.Params {
 					if fd.Inline && o.Params[i].Default && !p.Default {
-						c.errorf(fd.Params[i].P, "functional parameters with inherited default values are not yet supported in inline functions")
+						c.errorf(fd.Params[i].P, "NOT_YET_SUPPORTED_IN_INLINE", "functional parameters with inherited default values are not yet supported in inline functions")
 					}
 					p.Default = p.Default || o.Params[i].Default
 				}
@@ -4144,7 +4157,7 @@ func (c *Checker) multipleDefaults(fd *syntax.FunDecl) {
 			}
 		}
 		if n > 1 {
-			c.errorf(p.P, "more than one overridden descriptor declares a default value for '%s'", p.Name)
+			c.errorf(p.P, "MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES", "more than one overridden descriptor declares a default value for '%s'", p.Name)
 			continue
 		}
 		// kotlinc counts those of all supertypes, and for those it
@@ -4241,11 +4254,11 @@ func (c *Checker) initReported(v *types.VarSym) {
 func (c *Checker) lateinitChecks(p syntax.Pos, mutable, init, accessors bool, t types.Type) {
 	switch {
 	case !mutable:
-		c.errorf(p, "'lateinit' modifier is allowed only on mutable properties")
+		c.errorf(p, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is allowed only on mutable properties")
 	case init:
-		c.errorf(p, "'lateinit' modifier is not allowed on properties with an initializer")
+		c.errorf(p, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties with an initializer")
 	case accessors:
-		c.errorf(p, "'lateinit' modifier is not allowed on properties with a custom getter or setter, or delegated ones")
+		c.errorf(p, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties with a custom getter or setter, or delegated ones")
 	default:
 		c.lateinitType(p, t)
 	}
@@ -4257,9 +4270,9 @@ func (c *Checker) lateinitType(p syntax.Pos, t types.Type) {
 	switch {
 	case t.K == types.Invalid:
 	case types.MayBeNull(t):
-		c.errorf(p, "'lateinit' modifier is not allowed on properties of nullable types")
+		c.errorf(p, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties of nullable types")
 	case t.IsPrimitive() || types.Unboxed(t):
-		c.errorf(p, "'lateinit' modifier is not allowed on properties of primitive types")
+		c.errorf(p, "INAPPLICABLE_LATEINIT_MODIFIER", "'lateinit' modifier is not allowed on properties of primitive types")
 	}
 }
 
@@ -4338,7 +4351,7 @@ func (c *Checker) getterRetType(d *syntax.PropDecl) {
 	if t.K == types.Invalid || pt.K == types.Invalid || t == pt || t.HasVars() || pt.HasVars() || c.subtype(t, pt) && c.subtype(pt, t) {
 		return // the same type, or a platform type's other nullability
 	}
-	c.errorf(g.Ret.P, "getter return type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+	c.errorf(g.Ret.P, "WRONG_GETTER_RETURN_TYPE", "getter return type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
 	g.Sym.Ret = t
 }
 
@@ -4357,7 +4370,7 @@ func (c *Checker) setterParamType(d *syntax.PropDecl) {
 		return
 	}
 	if t := c.resolveType(p.Type); t.K != types.Invalid && t != d.Sym.Type {
-		c.errorf(p.P, "setter parameter type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
+		c.errorf(p.P, "WRONG_SETTER_PARAMETER_TYPE", "setter parameter type must be equal to the type of the property, i.e. '%s'", d.Sym.Type)
 		if p.Sym != nil {
 			// In the setter's body, the parameter is of the type
 			// written, as in kotlinc: field = value is a mismatch. Its
@@ -4470,13 +4483,13 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	if d.Tailrec {
 		defer c.tailCalls(d)
 		if cls != nil && !sym.Final && !(cls.Final && cls.Entries == nil) {
-			c.errorf(d.P, "tailrec is not allowed on open members")
+			c.errorf(d.P, "TAILREC_ON_VIRTUAL_MEMBER_ERROR", "tailrec is not allowed on open members")
 		}
 	}
 	if d.Body != nil {
 		t := c.block(d.Body, noWant, false)
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
-			c.errorf(closing(d.Body), "missing return statement in function '%s'", d.Name)
+			c.errorf(closing(d.Body), "NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY", "missing return statement in function '%s'", d.Name)
 		}
 		return
 	}
@@ -4485,7 +4498,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	if sym.Resolved {
-		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody))
+		c.assignable(c.returnValue(d.ExprBody, sym.Ret), sym.Ret, syntax.StartPos(d.ExprBody), "RETURN_TYPE_MISMATCH")
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
@@ -4494,7 +4507,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	t := c.safeUnit(d.ExprBody, types.ApproxFlexNothing(c.expr(d.ExprBody, noWant)))
 	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
-		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
+		c.errorf(d.ExprBody.Pos(), "", "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
 	}
 	c.ambiguousAnon(d, cls, t)
@@ -4532,7 +4545,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	}
 	if sym.Resolved {
 		c.markRecvParam(d.Init)
-		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init))
+		c.assignable(c.value(d.Init, sym.Type), sym.Type, syntax.StartPos(d.Init), "INITIALIZER_TYPE_MISMATCH")
 		return
 	}
 	var t types.Type
@@ -4832,14 +4845,19 @@ func funTypeParams(f *types.FunSym, cls *types.ClassSym) []*types.TypeParamSym {
 	return append(f.TypeParams[:len(f.TypeParams):len(f.TypeParams)], cls.TypeParams...)
 }
 
-func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
+func (c *Checker) assignable(from, to types.Type, p syntax.Pos, name string) {
 	if c.pclaSub != nil {
 		// A fixup run again with what a builder's variables were inferred
 		// as (see pclaCommit) has the types it was made with.
 		from, to = c.pclaSub.Apply(from), c.pclaSub.Apply(to)
 	}
 	if !c.subtype(from, to) {
-		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
+		if from.K == types.Null && strings.HasSuffix(name, "_TYPE_MISMATCH") {
+			// kotlinc names null where a non-null value is expected so,
+			// whatever expects it.
+			name = "NULL_FOR_NONNULL_TYPE"
+		}
+		c.errorf(p, name, "type mismatch: inferred type is %s but %s was expected", from, to)
 	}
 }
 
@@ -4909,13 +4927,13 @@ func (c *Checker) jvmStaticInInterfaceCompanion(d *syntax.PropDecl) {
 		setter = d.SetterVis
 	}
 	if a := d.Find("", "JvmStatic"); a != nil && (d.Visibility != syntax.Public || d.Mutable && setter != syntax.Public) {
-		c.errorf(a.P, jvmStaticNonPublic)
+		c.errorf(a.P, "JVM_STATIC_ON_NON_PUBLIC_MEMBER", jvmStaticNonPublic)
 	}
 	if a := d.Find("get", "JvmStatic"); a != nil && d.Visibility != syntax.Public {
-		c.errorf(a.P, jvmStaticNonPublic)
+		c.errorf(a.P, "JVM_STATIC_ON_NON_PUBLIC_MEMBER", jvmStaticNonPublic)
 	}
 	if a := d.Find("set", "JvmStatic"); a != nil && d.Mutable && setter != syntax.Public {
-		c.errorf(a.P, jvmStaticNonPublic)
+		c.errorf(a.P, "JVM_STATIC_ON_NON_PUBLIC_MEMBER", jvmStaticNonPublic)
 	}
 }
 

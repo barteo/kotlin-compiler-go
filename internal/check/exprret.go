@@ -41,11 +41,11 @@ func (c *Checker) checkExprReturns(rets []exprRet, ret types.Type, fn string) {
 		switch {
 		case ret.K == types.Invalid || r.t.K == types.Invalid:
 		case ret.K == types.Nothing && !ret.N:
-			c.errorf(r.x.P, "'return' needs an explicit return type on '%s'", fn)
+			c.errorf(r.x.P, "RETURN_TYPE_MISMATCH", "'return' needs an explicit return type on '%s'", fn)
 		case r.x.X != nil:
-			c.assignable(r.t, ret, syntax.StartPos(r.x.X))
+			c.assignable(r.t, ret, syntax.StartPos(r.x.X), "RETURN_TYPE_MISMATCH")
 		case ret.K != types.Unit:
-			c.errorf(r.x.P, "return type mismatch: expected %s, actual Unit", ret)
+			c.errorf(r.x.P, "RETURN_TYPE_MISMATCH", "return type mismatch: expected %s, actual Unit", ret)
 		}
 	}
 }

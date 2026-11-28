@@ -158,9 +158,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			// Unlike a call, an annotation entry doesn't infer its
 			// type arguments; a typealias may give them.
 			if len(ps) == 0 {
-				c.errorf(a.P, "no type arguments expected for annotation class %s", cls.DisplayName())
+				c.errorf(a.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for annotation class %s", cls.DisplayName())
 			} else {
-				c.errorf(a.P, "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
+				c.errorf(a.P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
 			}
 		} else if c.u.rec != nil {
 			// The type arguments, @A<String>, are only reported: a
@@ -202,7 +202,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			arg := &a.Args[j]
 			elems, array, err := syntax.ParseAnnotationArg(c.file.Path, arg)
 			if err != nil {
-				c.errorf(err.Pos, "%s", err.Msg)
+				c.errorf(err.Pos, "SYNTAX", "%s", err.Msg)
 				ok = false
 				continue
 			}
@@ -401,7 +401,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 		case arg.name != "":
 			j = slices.IndexFunc(params, func(v *types.VarSym) bool { return v.Name == arg.name })
 			if j < 0 {
-				c.errorf(arg.pos, "cannot find a parameter with this name: %s", arg.name)
+				c.errorf(arg.pos, "NAMED_PARAMETER_NOT_FOUND", "cannot find a parameter with this name: %s", arg.name)
 				ok = false
 				continue
 			}
@@ -416,7 +416,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 				next++
 			}
 		default:
-			c.errorf(arg.pos, "too many arguments for annotation %s", cls.Name)
+			c.errorf(arg.pos, "TOO_MANY_ARGUMENTS", "too many arguments for annotation %s", cls.Name)
 			ok = false
 			continue
 		}
@@ -430,7 +430,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 				// No arguments for a vararg parameter: kotlinc writes [].
 				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true, Omitted: true})
 			case !v.Default && (cls.Annotation || javaAnnotation(cls) || cls.External && cls.FromKotlin && cls.AnnotationParams != nil):
-				c.errorf(p, "no value passed for parameter '%s'", v.Name)
+				c.errorf(p, "NO_VALUE_FOR_PARAMETER", "no value passed for parameter '%s'", v.Name)
 				ok = false
 			}
 			continue
@@ -456,12 +456,12 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 			if v.Vararg && arg.name == "" && arg.array && val.Array {
 				// [a, b] in a vararg's place is one element, an array:
 				// @A([""]) of vararg s: String, unlike @A(*[""]).
-				c.errorf(arg.pos, "argument type mismatch: actual type is %s but %s was expected", types.ArrayOf(elem), elem)
+				c.errorf(arg.pos, "ARGUMENT_TYPE_MISMATCH", "argument type mismatch: actual type is %s but %s was expected", types.ArrayOf(elem), elem)
 				ok = false
 				continue
 			}
 			if sp, spread := firstSpread(elems); spread && !v.Vararg {
-				c.errorf(sp.P, "the spread operator (*foo) can only be applied in a vararg position")
+				c.errorf(sp.P, "NON_VARARG_SPREAD", "the spread operator (*foo) can only be applied in a vararg position")
 				ok = false
 				continue
 			}
@@ -476,16 +476,16 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 					array = elems[0].Pos()
 					if got := arrayFactoryType(elems[0]); got.K != types.Invalid && got.C != t.C && t.K != types.Invalid {
 						// intArrayOf() for a vararg of Strings
-						c.errorf(elems[0].Pos(), "argument type mismatch: actual type is %s but %s was expected", got, t)
+						c.errorf(elems[0].Pos(), "ARGUMENT_TYPE_MISMATCH", "argument type mismatch: actual type is %s but %s was expected", got, t)
 						ok = false
 						continue
 					}
 					elems = inner
 				} else if _, spread := elems[0].(*syntax.Spread); !spread {
 					if v.Vararg {
-						c.errorf(elems[0].Pos(), "assigning single elements to varargs in named form is prohibited")
+						c.errorf(elems[0].Pos(), "ASSIGNING_SINGLE_ELEMENT_TO_VARARG_IN_NAMED_FORM_ANNOTATION_ERROR", "assigning single elements to varargs in named form is prohibited")
 					} else {
-						c.errorf(elems[0].Pos(), "argument type mismatch: a single value is passed, but %s was expected", t)
+						c.errorf(elems[0].Pos(), "ANNOTATION_ARGUMENT_MUST_BE_CONST", "argument type mismatch: a single value is passed, but %s was expected", t)
 					}
 					ok = false
 				}
@@ -512,7 +512,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, targs []*syntax.TypeArg,
 			}
 			if nonConst && array.Line > 0 {
 				// As kotlinc, the array isn't constant either.
-				c.errorf(array, "only 'const val' can be used in constant expressions")
+				c.errorf(array, "NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION", "only 'const val' can be used in constant expressions")
 			}
 			if ok && arg.array && targs != nil && !v.Vararg && val.Array {
 				ok = c.literalAnnotations(cls, targs, v.Type, elems, arg.pos)
@@ -616,7 +616,7 @@ func (c *Checker) literalAnnotations(cls *types.ClassSym, targs []*syntax.TypeAr
 		elem = c.lub(elem, t)
 	}
 	got := types.GenericType(want.C, []types.Arg{{V: types.Inv, T: elem}})
-	c.errorf(pos, "argument type mismatch: actual type is %s but %s was expected", got, want)
+	c.errorf(pos, "ARGUMENT_TYPE_MISMATCH", "argument type mismatch: actual type is %s but %s was expected", got, want)
 	return false
 }
 
@@ -696,7 +696,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 		if t.C.Retention != types.NoRetention {
 			call, ok := x.(*syntax.Call)
 			if !ok {
-				c.errorf(x.Pos(), "an annotation argument must be an annotation: %s", t)
+				c.errorf(x.Pos(), "ANNOTATION_ARGUMENT_MUST_BE_CONST", "an annotation argument must be an annotation: %s", t)
 				return syntax.AnnotationElem{}, false
 			}
 			args := make([]annotArg, len(call.Args))
@@ -721,7 +721,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 				}
 				if targs != nil {
 					n := len(c.errs)
-					c.assignable(types.GenericType(t.C, targs), t, call.Pos())
+					c.assignable(types.GenericType(t.C, targs), t, call.Pos(), "ARGUMENT_TYPE_MISMATCH")
 					ok = len(c.errs) == n
 				}
 			}
@@ -734,7 +734,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	}
 	before := len(c.errs)
 	vt := c.value(x, t)
-	c.assignable(vt, t, x.Pos())
+	c.assignable(vt, t, x.Pos(), "ARGUMENT_TYPE_MISMATCH")
 	// The post-pass over the code doesn't enter annotations: their
 	// arguments' warnings, which don't depend on smart casts, are
 	// reported here, with an error too, as kotlinc does.
@@ -747,7 +747,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	})
 	if len(c.errs) == before {
 		if bad := c.nonConst(x); bad != nil {
-			c.errorf(bad.Pos(), nonConstArgMsg)
+			c.errorf(bad.Pos(), "ANNOTATION_ARGUMENT_MUST_BE_CONST", nonConstArgMsg)
 		} else if lit, ok := x.(*syntax.ClassLit); ok && vt.K == types.Invalid {
 			// A::class of a typealias of an unresolved class, whose
 			// error is the alias's: kotlinc has no class to write.
@@ -757,7 +757,7 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 			} else if lit.X != nil {
 				p = syntax.StartPos(lit.X)
 			}
-			c.errorf(p, nonConstArgMsg)
+			c.errorf(p, "ANNOTATION_ARGUMENT_MUST_BE_CONST", nonConstArgMsg)
 		}
 	}
 	return syntax.AnnotationElem{X: x}, len(c.errs) == before
@@ -905,7 +905,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			if cp.IsProp {
 				for _, a := range cp.Modifiers.Annotations {
 					if a.Target == "delegate" {
-						c.errorf(a.P, delegateNoDelegate)
+						c.errorf(a.P, "INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE", delegateNoDelegate)
 					}
 				}
 			}
@@ -951,7 +951,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 func (c *Checker) setOnImmutable(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "set" || a.Target == "setparam" {
-			c.errorf(a.P, "'@%s:' annotations could be applied only to mutable properties", a.Target)
+			c.errorf(a.P, "INAPPLICABLE_TARGET_PROPERTY_IMMUTABLE", "'@%s:' annotations could be applied only to mutable properties", a.Target)
 		}
 	}
 }
@@ -966,7 +966,7 @@ const ctorParamNoProp = "constructor parameters without corresponding property (
 func (c *Checker) noAllTarget(as []syntax.Annotation, why string) {
 	for _, a := range as {
 		if a.Target == "all" && !a.OnAccessor {
-			c.errorf(a.P, "'@all:' annotations cannot be applied to %s", why)
+			c.errorf(a.P, "INAPPLICABLE_ALL_TARGET", "'@all:' annotations cannot be applied to %s", why)
 		}
 	}
 }
@@ -987,12 +987,12 @@ func (c *Checker) allTargets(as []syntax.Annotation, ctorParam, mutable, hasFiel
 		}
 		t := cls.Targets
 		if t&types.TargetField != 0 && t&types.TargetProperty == 0 && !hasField {
-			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field or delegate'")
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET", "this annotation is not applicable to target 'member property without backing field or delegate'")
 			continue
 		}
 		if t&types.TargetProperty == 0 && (t&types.TargetField == 0 || !hasField) && t&types.TargetGetter == 0 &&
 			(t&types.TargetValueParameter == 0 || !ctorParam && !mutable) {
-			c.errorf(a.P, "this annotation is not applicable to target 'member property' and use-site target '@all'")
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target 'member property' and use-site target '@all'")
 		}
 	}
 }
@@ -1002,7 +1002,7 @@ func (c *Checker) allTargets(as []syntax.Annotation, ctorParam, mutable, hasFiel
 func (c *Checker) noReceiver(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "receiver" {
-			c.errorf(a.P, "this annotation is not applicable to target 'declaration' and use-site target '@receiver'")
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target 'declaration' and use-site target '@receiver'")
 		}
 	}
 }
@@ -1013,7 +1013,7 @@ func (c *Checker) noReceiver(as []syntax.Annotation) {
 func (c *Checker) noParamTarget(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "param" {
-			c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+			c.errorf(a.P, "INAPPLICABLE_PARAM_TARGET", "'@param:' annotations could be applied only to primary constructor parameters")
 		}
 	}
 }
@@ -1024,7 +1024,7 @@ func (c *Checker) noParamTarget(as []syntax.Annotation) {
 func (c *Checker) noFileTarget(as []syntax.Annotation) {
 	for _, a := range as {
 		if a.Target == "file" {
-			c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+			c.errorf(a.P, "INAPPLICABLE_FILE_TARGET", "'@file:' annotations could be applied only to the file")
 		}
 	}
 }
@@ -1040,13 +1040,13 @@ func (c *Checker) onAccessor(as []syntax.Annotation) {
 		}
 		switch a.Target {
 		case "get", "set", "property", "setparam":
-			c.errorf(a.P, "'@%s:' annotations could be applied only to property declarations", a.Target)
+			c.errorf(a.P, "INAPPLICABLE_TARGET_ON_PROPERTY", "'@%s:' annotations could be applied only to property declarations", a.Target)
 		case "param":
-			c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+			c.errorf(a.P, "INAPPLICABLE_PARAM_TARGET", "'@param:' annotations could be applied only to primary constructor parameters")
 		case "file":
-			c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+			c.errorf(a.P, "INAPPLICABLE_FILE_TARGET", "'@file:' annotations could be applied only to the file")
 		default:
-			c.errorf(a.P, "this annotation is not applicable to target 'getter' and use-site target '@%s'", a.Target)
+			c.errorf(a.P, "INAPPLICABLE_ALL_TARGET", "this annotation is not applicable to target 'getter' and use-site target '@%s'", a.Target)
 		}
 	}
 }
@@ -1058,15 +1058,15 @@ func (c *Checker) localUseSite(a *syntax.Annotation, site annotSite) {
 	switch a.Target {
 	case "", "delegate":
 	case "get", "set", "property", "setparam":
-		c.errorf(a.P, "'@%s:' annotations could be applied only to property declarations", a.Target)
+		c.errorf(a.P, "INAPPLICABLE_TARGET_ON_PROPERTY", "'@%s:' annotations could be applied only to property declarations", a.Target)
 	case "param":
-		c.errorf(a.P, "'@param:' annotations could be applied only to primary constructor parameters")
+		c.errorf(a.P, "INAPPLICABLE_PARAM_TARGET", "'@param:' annotations could be applied only to primary constructor parameters")
 	case "file":
-		c.errorf(a.P, "'@file:' annotations could be applied only to the file")
+		c.errorf(a.P, "INAPPLICABLE_FILE_TARGET", "'@file:' annotations could be applied only to the file")
 	case "all":
-		c.errorf(a.P, "'@all:' annotations cannot be applied to local properties, only member or top-level properties are allowed")
+		c.errorf(a.P, "INAPPLICABLE_ALL_TARGET", "'@all:' annotations cannot be applied to local properties, only member or top-level properties are allowed")
 	default:
-		c.errorf(a.P, "this annotation is not applicable to target '%s' and use-site target '@%s'", site.name, a.Target)
+		c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target '%s' and use-site target '@%s'", site.name, a.Target)
 	}
 }
 
@@ -1083,7 +1083,7 @@ func (c *Checker) fieldless(d *syntax.PropDecl) {
 	if d.Field == nil {
 		for _, a := range d.Annotations {
 			if a.Target == "delegate" {
-				c.errorf(a.P, delegateNoDelegate)
+				c.errorf(a.P, "INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE", delegateNoDelegate)
 			}
 		}
 	}
@@ -1099,9 +1099,9 @@ func (c *Checker) fieldless(d *syntax.PropDecl) {
 		}
 		switch {
 		case d.Field != nil:
-			c.errorf(a.P, "'@field:' annotations could be applied only to properties with backing fields")
+			c.errorf(a.P, "INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD", "'@field:' annotations could be applied only to properties with backing fields")
 		case !d.Sym.HasField():
-			c.errorf(a.P, "this annotation is not applicable to target 'member property without backing field or delegate' and use-site target '@field'")
+			c.errorf(a.P, "WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET", "this annotation is not applicable to target 'member property without backing field or delegate' and use-site target '@field'")
 		}
 	}
 }
@@ -1130,7 +1130,7 @@ func (c *Checker) repeatedSetparam(d *syntax.PropDecl) {
 		}
 		for _, b := range on {
 			if b.Target == "" && cmp.Or(b.Class, b.Source) == cls {
-				c.errorf(a.P, "this annotation is not repeatable")
+				c.errorf(a.P, "REPEATED_ANNOTATION", "this annotation is not repeatable")
 				break
 			}
 		}

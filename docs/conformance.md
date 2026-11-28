@@ -29,9 +29,8 @@ key and detail. Flags after the mode go to the harness:
   (the first field of a TSV line; `#` starts a comment).
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
-  file and line, and the message. It leaves out errors of a kind the
-  test's `DIAGNOSTICS` directive switches off, where `kc`'s message names
-  the kind (`check.IsNamed`). `bench/kotlin-tests.sh diagnostics` writes
+  file and line, the error's name and the message. It leaves out errors
+  of a kind the test's `DIAGNOSTICS` directive switches off. `bench/kotlin-tests.sh diagnostics` writes
   it to [bench/results/diagnostics-stray.tsv](../bench/results/diagnostics-stray.tsv),
   the backlog of errors `kotlinc` doesn't report.
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
@@ -72,6 +71,17 @@ key and detail. Flags after the mode go to the harness:
   the backlog of missed warnings. A warning's cause is *syntax-error*
   (in a range recovery left out), *module-not-compiled* or
   *missing-check*.
+- `-misnamed FILE` and `-misnamed-baseline FILE` (diagnostics) do the
+  same for the expected errors `kc` doesn't report under their names on
+  their lines: each line has the test, the file and line, the
+  diagnostic, and the names of `kc`'s errors on the line (`-` for one
+  `kc` doesn't name), or `missed` if there are none. `kc` gives each
+  error the name `kotlinc` gives it, as it does its warnings, so an
+  error on the right line under another name is a different error, or
+  the right one called something else. `bench/kotlin-tests.sh
+  diagnostics` writes it to
+  [bench/results/diagnostics-misnamed.tsv](../bench/results/diagnostics-misnamed.tsv),
+  the backlog of misnamed errors.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -340,7 +350,11 @@ Kotlin 2.4.21's tests on `kc`:
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 99% of the diagnostics tests, and reports
-21,910 of the 22,025 expected errors (99.5%) on their lines, and 3,600 of
+21,910 of the 22,025 expected errors (99.5%) on their lines, 18,164 of
+them (82.5%) under the names `kotlinc` gives them (the rest is the
+backlog in
+[diagnostics-misnamed.tsv](../bench/results/diagnostics-misnamed.tsv)),
+and 3,600 of
 the 3,667 expected warnings (98.2%), with 13 warnings on lines that expect
 none. It reports 447 errors on lines that expect none, in 243 tests, all
 of which `kotlinc` rejects for another error

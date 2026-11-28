@@ -92,9 +92,9 @@ func (c *Checker) useArity(n int) {
 func (c *Checker) arityOK(p syntax.Pos, n int, what string) bool {
 	switch {
 	case n > types.MaxVarArity:
-		c.errorf(p, "%s with more than %d parameters are prohibited", what, types.MaxVarArity)
+		c.errorf(p, "FUNCTION_TYPE_OF_TOO_LARGE_ARITY", "%s with more than %d parameters are prohibited", what, types.MaxVarArity)
 	case n > types.MaxArity && c.u.ext.funcs == types.KcFunctions:
-		c.errorf(p, "%s with more than %d parameters need the Kotlin standard library", what, types.MaxArity)
+		c.errorf(p, "", "%s with more than %d parameters need the Kotlin standard library", what, types.MaxArity)
 	default:
 		return true
 	}
@@ -196,7 +196,7 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 	t := c.lambdaType(x, ps, r)
 	if x.Anon && isSuspendFunc(want) && proper {
 		// Of its own function type, which isn't suspend: see anonWant.
-		c.assignable(t, want, x.P)
+		c.assignable(t, want, x.P, "ARGUMENT_TYPE_MISMATCH")
 		return types.InvalidType
 	}
 	if x.Ref != nil && c.u.ext.kotlin && (want.K == types.Invalid || want.NonNull().K == types.Any) && t.K == types.Class && len(ps) <= types.MaxArity {
@@ -291,13 +291,13 @@ func refAdaptation(x *syntax.Lambda, call *syntax.Call) (bool, int32) {
 func (c *Checker) lambdaType(x *syntax.Lambda, ps []types.Type, r types.Type) types.Type {
 	x.Ret = r
 	if n := len(ps); x.Suspend && n+1 > types.MaxVarArity {
-		c.errorf(x.P, "suspend lambdas with more than %d parameters are prohibited", types.MaxVarArity-1)
+		c.errorf(x.P, "FUNCTION_TYPE_OF_TOO_LARGE_ARITY", "suspend lambdas with more than %d parameters are prohibited", types.MaxVarArity-1)
 		return types.InvalidType
 	} else if x.Suspend && x.Ref != nil && n >= types.MaxArity {
 		// Its KSuspendFunctionN, whose invoke takes a continuation too,
 		// can't be called: kotlinc's
 		// K_SUSPEND_FUNCTION_TYPE_OF_DANGEROUSLY_LARGE_ARITY.
-		c.errorf(x.P, "references to suspend functions with %d or more parameters are prohibited", types.MaxArity)
+		c.errorf(x.P, "", "references to suspend functions with %d or more parameters are prohibited", types.MaxArity)
 		return types.InvalidType
 	} else if !c.arityOK(x.P, n, "lambdas") {
 		return types.InvalidType
@@ -426,7 +426,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				if p.Type == nil {
 					// A lambda the checker made, which only names them.
 				} else if pt := c.resolveType(p.Type); !c.subtype(t, pt) {
-					c.errorf(p.P, "expected context parameter of type %s", t)
+					c.errorf(p.P, "EXPECTED_PARAMETER_TYPE_MISMATCH", "expected context parameter of type %s", t)
 					ok = false
 				}
 			}
@@ -452,7 +452,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			// fun String.() {} for an Int.() -> Unit: as a parameter's
 			// type, the receiver's may be a supertype of the expected one.
 			if rt := c.resolveType(x.AnonRecv); rt.K != types.Invalid && params[0].K != types.Invalid && !c.subtype(params[0], rt) {
-				c.errorf(x.AnonRecv.P, "expected receiver of type %s", params[0])
+				c.errorf(x.AnonRecv.P, "INITIALIZER_TYPE_MISMATCH", "expected receiver of type %s", params[0])
 				ok = false
 			}
 		}
@@ -470,7 +470,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	case x.Arrow:
 		count := !w.known || len(x.Params) == len(params)
 		if !count {
-			c.errorf(x.P, "expected %s, but %d were declared", paramsString(params), len(x.Params))
+			c.errorf(x.P, "ARGUMENT_TYPE_MISMATCH", "expected %s, but %d were declared", paramsString(params), len(x.Params))
 			ok = false
 		}
 		for i, p := range x.Params {
@@ -479,20 +479,20 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			case p.Type != nil:
 				t = c.resolveType(p.Type)
 				if count && w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
-					c.errorf(p.P, "expected parameter of type %s", params[i])
+					c.errorf(p.P, "EXPECTED_PARAMETER_TYPE_MISMATCH", "expected parameter of type %s", params[i])
 					ok = false
 				}
 			case w.known && i < len(params):
 				t = params[i]
 				if t == cyclicParamType && !w.recover && ok && len(c.errs) == errs0 {
-					c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+					c.errorf(p.P, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer a type for this parameter. Please specify it explicitly.")
 				}
 			case !w.recover && (ok || !count && !w.recv && w.ctx == 0 && i >= len(params)):
 				// Also one past those expected: x and y of foo { x, y -> }
 				// for a () -> String, as kotlinc reports both. Not for a
 				// function type with a receiver or contexts, which a lambda may
 				// declare as its first parameters.
-				c.errorf(p.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+				c.errorf(p.P, "CANNOT_INFER_VALUE_PARAMETER_TYPE", "cannot infer a type for this parameter. Please specify it explicitly.")
 			}
 			p.Sym = &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: p}
 			syms = append(syms, p.Sym)
@@ -505,10 +505,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	case w.known && len(params) == 1:
 		x.It = &types.VarSym{Name: "it", Type: params[0], Kind: types.Param}
 		if params[0] == cyclicParamType && ok && len(c.errs) == errs0 {
-			c.errorf(x.P, "cannot infer a type for this parameter. Please specify it explicitly.")
+			c.errorf(x.P, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer a type for this parameter. Please specify it explicitly.")
 		}
 	case w.known && len(params) > 1:
-		c.errorf(x.P, "expected %s, but 0 were declared", paramsString(params))
+		c.errorf(x.P, "ARGUMENT_TYPE_MISMATCH", "expected %s, but 0 were declared", paramsString(params))
 		x.It = &types.VarSym{Name: "it", Type: types.InvalidType, Kind: types.Param}
 		ok = false
 	}
@@ -534,7 +534,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		lp, _ := s.Decl.(*syntax.LambdaParam)
 		if (s.Name != "_" || lp != nil && lp.Quoted) && !c.scope.declare(s) {
-			c.errorf(lp.P, "conflicting declarations: %s", s.Name)
+			c.errorf(lp.P, "REDECLARATION", "conflicting declarations: %s", s.Name)
 			// As in kotlinc, the name is the later parameter's.
 			for i, v := range c.scope.vars {
 				if v.Name == s.Name {
@@ -545,7 +545,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	for _, p := range x.AnonCtx {
 		if p.Name != "_" && p.Sym != nil && !c.scope.declare(p.Sym) {
-			c.errorf(p.P, "conflicting declarations: %s", p.Name)
+			c.errorf(p.P, "REDECLARATION", "conflicting declarations: %s", p.Name)
 		}
 	}
 	c.anonModifiers(x.AnonMods)
@@ -602,7 +602,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			// lambda's is: (fun() = "1") isn't a () -> Unit.
 			if e := tailExpr(x.Body); e != nil {
 				if t := c.safeUnit(e, e.Type()); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
-					c.errorf(e.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+					c.errorf(e.Pos(), "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but Unit was expected", t)
 				}
 			}
 		}
@@ -664,7 +664,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		unit = true
 		for i, t := range lr.types {
 			if v := lr.vals[i]; v != nil && t.K != types.Invalid && !c.subtype(t, types.UnitType) {
-				c.errorf(v.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+				c.errorf(v.Pos(), "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but Unit was expected", t)
 			}
 		}
 	}
@@ -672,7 +672,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		for _, t := range lr.types {
 			j, ok := c.join(bt, t)
 			if !ok {
-				c.errorf(x.P, "type mismatch: lambda results have incompatible types %s and %s", bt, t)
+				c.errorf(x.P, "", "type mismatch: lambda results have incompatible types %s and %s", bt, t)
 			}
 			bt = j
 		}
@@ -690,7 +690,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			// But a bare return@l, which is an error for a Unit?, drops
 			// the last expression's value: val f: () -> Unit? = l@ {
 			// if (b) return@l; "" }.
-			c.assignable(bt, w.ret, resultPos(x))
+			c.assignable(bt, w.ret, resultPos(x), "RETURN_TYPE_MISMATCH")
 		}
 		return ps, w.ret, ok
 	}
@@ -1051,7 +1051,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 		}
 		return false
 	case i < 0:
-		c.errorf(x.P, "unresolved label: %s", x.Label)
+		c.errorf(x.P, "UNRESOLVED_LABEL", "unresolved label: %s", x.Label)
 		return fail()
 	case !c.leave(i+1, x):
 		return fail()
@@ -1076,12 +1076,12 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 				t = c.value(x.X, types.UnitType)
 			}
 			if t.K != types.Invalid && !c.subtype(t, types.UnitType) {
-				c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+				c.errorf(x.X.Pos(), "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but Unit was expected", t)
 			}
 		}
 	case x.X == nil:
 		if lr.check && lr.want.K != types.Invalid && !(lr.varRet && c.subtype(types.UnitType, lr.want)) {
-			c.errorf(x.P, "this lambda must return a value of type %s", lr.want)
+			c.errorf(x.P, "RETURN_TYPE_MISMATCH", "this lambda must return a value of type %s", lr.want)
 		}
 		lr.types = append(lr.types, types.UnitType)
 		lr.vals = append(lr.vals, nil)
@@ -1099,7 +1099,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 		}
 		switch {
 		case lr.check && lr.want.K != types.Invalid:
-			c.assignable(t, lr.want, syntax.StartPos(x.X))
+			c.assignable(t, lr.want, syntax.StartPos(x.X), "RETURN_TYPE_MISMATCH")
 		case len(c.errs) > n && simpleExpr(x.X):
 			// As kotlinc postpones its type variables, the value is
 			// checked against the lambda's other results.
@@ -1139,11 +1139,11 @@ func (c *Checker) leave(from int, x *syntax.Jump) bool {
 		j := c.jumps[l]
 		switch {
 		case !l.Inline && x.Label != "":
-			c.errorf(x.P, "'%s' is not allowed here: it would leave the innermost lambda", what)
+			c.errorf(x.P, "RETURN_NOT_ALLOWED", "'%s' is not allowed here: it would leave the innermost lambda", what)
 		case !l.Inline:
-			c.errorf(x.P, "'%s' is not allowed here", what)
+			c.errorf(x.P, "RETURN_NOT_ALLOWED", "'%s' is not allowed here", what)
 		case j.crossinline:
-			c.errorf(x.P, "'%s' is not allowed here: '%s' takes the lambda as crossinline", what, j.callee)
+			c.errorf(x.P, "BREAK_OR_CONTINUE_JUMPS_ACROSS_FUNCTION_BOUNDARY", "'%s' is not allowed here: '%s' takes the lambda as crossinline", what, j.callee)
 		case j.inTry:
 			c.unsupported(x.P, "non-local jump from a try", "a non-local %s from '%s' isn't supported: kc doesn't copy its finally block", x.Kind, j.callee)
 		case j.composable:
@@ -1262,7 +1262,7 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		// no invoke to call: its name is unresolved. (Not in a lambda,
 		// where kotlinc's builder inference can still infer the values
 		// kc fails to.)
-		c.errorf(id.P, "unresolved reference: %s", id.Name)
+		c.errorf(id.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", id.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -1273,7 +1273,7 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 	if m, ok := x.Fun.(*syntax.Member); ok && x.Operator {
 		// a + b is a.plus(b) for a function plus, not a property's
 		// value invoked.
-		c.errorf(x.P, "property '%s' cannot be used as operator", m.Name)
+		c.errorf(x.P, "NOT_FUNCTION_AS_OPERATOR", "property '%s' cannot be used as operator", m.Name)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -1290,15 +1290,15 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 			}
 		}
 		if id, ok := x.Fun.(*syntax.Ident); ok {
-			c.errorf(x.Fun.Pos(), "expression '%s' of type %s cannot be invoked as a function", id.Name, ft)
+			c.errorf(x.Fun.Pos(), "FUNCTION_EXPECTED", "expression '%s' of type %s cannot be invoked as a function", id.Name, ft)
 		} else {
-			c.errorf(x.Fun.Pos(), "expression of type %s cannot be invoked as a function", ft)
+			c.errorf(x.Fun.Pos(), "FUNCTION_EXPECTED", "expression of type %s cannot be invoked as a function", ft)
 		}
 		c.args(x, nil)
 		return types.InvalidType
 	}
 	if types.MayBeNull(ft) && !ft.P {
-		c.errorf(x.Fun.Pos(), "reference has a nullable type '%s', use explicit '?.invoke()' to make a function-like call instead", ft)
+		c.errorf(x.Fun.Pos(), "UNSAFE_IMPLICIT_INVOKE_CALL", "reference has a nullable type '%s', use explicit '?.invoke()' to make a function-like call instead", ft)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -1309,11 +1309,11 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 		if m, ok := x.Fun.(*syntax.Member); ok {
 			p = m.P
 		}
-		c.errorf(p, "'infix' modifier is required on 'invoke'")
+		c.errorf(p, "INFIX_MODIFIER_REQUIRED", "'infix' modifier is required on 'invoke'")
 	}
 	rt := ft.NonNull()
 	if x.Recv && !rt.IsExtFunc() {
-		c.errorf(x.P, "no receiver can be passed to a value of type %s", ft)
+		c.errorf(x.P, "NO_RECEIVER_ALLOWED", "no receiver can be passed to a value of type %s", ft)
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -1328,13 +1328,13 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 	x.Invoke = true
 	c.useArity(rt.A.Len() - 1)
 	if len(x.TypeArgs) > 0 {
-		c.errorf(x.TypeArgs[0].P, "no type arguments expected for 'invoke'")
+		c.errorf(x.TypeArgs[0].P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for 'invoke'")
 		x.TypeArgs = nil
 	}
 	for i := range x.Args {
 		if x.Name(i) != "" {
 			// Function types' parameter names are documentation only.
-			c.errorf(x.Args[i].Pos(), "named arguments are not allowed for function types")
+			c.errorf(x.Args[i].Pos(), "NAMED_ARGUMENTS_NOT_ALLOWED", "named arguments are not allowed for function types")
 			x.Names = nil
 			break
 		}
@@ -1489,7 +1489,7 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 	for _, m := range d.Members {
 		if p, ok := m.(*syntax.PropDecl); ok && p.Sym != nil && p.Sym.Abstract {
 			own[p.Sym] = true
-			c.errorf(p.P, "fun interfaces cannot have abstract properties")
+			c.errorf(p.P, "FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES", "fun interfaces cannot have abstract properties")
 		}
 	}
 	props := false
@@ -1500,11 +1500,11 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 		return true
 	})
 	if props {
-		c.errorf(d.P, "fun interfaces cannot have abstract properties")
+		c.errorf(d.P, "FUN_INTERFACE_CANNOT_HAVE_ABSTRACT_PROPERTIES", "fun interfaces cannot have abstract properties")
 	}
 	ms := abstractMethods(d.Sym)
 	if len(ms) != 1 {
-		c.errorf(d.P, "fun interfaces must have exactly one abstract method")
+		c.errorf(d.P, "FUN_INTERFACE_WRONG_COUNT_OF_ABSTRACT_MEMBERS", "fun interfaces must have exactly one abstract method")
 		return
 	}
 	f := ms[0]
@@ -1519,7 +1519,7 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 		if decl != nil && len(decl.TypeParams) > 0 {
 			p = decl.TypeParams[0].P
 		}
-		c.errorf(p, "single abstract member cannot declare type parameters")
+		c.errorf(p, "FUN_INTERFACE_ABSTRACT_METHOD_WITH_TYPE_PARAMETERS", "single abstract member cannot declare type parameters")
 	}
 	for i, p := range f.Params {
 		if p.Default {
@@ -1527,7 +1527,7 @@ func (c *Checker) checkFunInterface(d *syntax.ClassDecl) {
 			if decl != nil && i < len(decl.Params) {
 				pos = decl.Params[i].P
 			}
-			c.errorf(pos, "single abstract member cannot declare default values")
+			c.errorf(pos, "FUN_INTERFACE_ABSTRACT_METHOD_WITH_DEFAULT_VALUE", "single abstract member cannot declare default values")
 			break
 		}
 	}
@@ -3334,7 +3334,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		case pt.HasVars():
 			s.sub(lt, pt)
 		default:
-			c.assignable(lt, pt, l.P)
+			c.assignable(lt, pt, l.P, "INAPPLICABLE_CANDIDATE")
 		}
 		return
 	}
@@ -3394,12 +3394,12 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 			// As kotlinc, the variable whose value is a lambda with a
 			// parameter it can't infer can't be inferred either: T of
 			// callParam { p -> p } for a callParam(arg: T).
-			s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+			s.errs = append(s.errs, inferError{tv.pos, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 		}
 		if pt.HasVars() {
 			s.sub(lt, pt)
 		} else {
-			c.assignable(lt, pt, l.P)
+			c.assignable(lt, pt, l.P, "ARGUMENT_TYPE_MISMATCH")
 		}
 		return
 	}
@@ -3435,7 +3435,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 						want = s.apply(tv.lower[0])
 					}
 				}
-				c.errorf(l.P, "type mismatch: inferred type is %s but %s was expected", d, want)
+				c.errorf(l.P, "ARGUMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", d, want)
 			}
 			params[i], declared = d, true
 		}
@@ -3482,7 +3482,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		if tv := vars[i]; tv != nil && params[i].K == types.Invalid && l.Arrow && l.Ref == nil && !ft.Flex().E && ft.Flex().Contexts() == 0 &&
 			i < len(l.Params) && l.Params[i].Type == nil &&
 			slices.ContainsFunc(s.errs[errs0:], func(e inferError) bool { return e.pos == tv.pos }) {
-			s.errs = append(s.errs, inferError{l.Params[i].P, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+			s.errs = append(s.errs, inferError{l.Params[i].P, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 		}
 		// Or has a type argument that wasn't inferred: this of
 		// materialize().apply { plain(this) } for a Processor<M>.
@@ -3504,7 +3504,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		lt := c.lambda(l, noWant)
 		l.T = lt
 		if lt.K != types.Invalid {
-			c.assignable(lt, s.apply(ft), l.P)
+			c.assignable(lt, s.apply(ft), l.P, "ARGUMENT_TYPE_MISMATCH")
 		}
 		return
 	}
@@ -3575,7 +3575,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		// Checked to choose the overload, with these parameter types.
 		bt = pre
 		if w.check && w.ret.K != types.Unit {
-			c.assignable(bt, w.ret, resultPos(l))
+			c.assignable(bt, w.ret, resultPos(l), "RETURN_TYPE_MISMATCH")
 			bt = w.ret
 		}
 	} else {
@@ -3609,7 +3609,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 				continue
 			}
 			if endsInAnonFun(l) {
-				c.errorf(resultPos(l), "type mismatch: inferred type is %s but %s was expected", bt, u)
+				c.errorf(resultPos(l), "RETURN_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", bt, u)
 				break
 			}
 			contradicts = true
@@ -3631,7 +3631,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type, noS
 		rr := c.nullableUnit(ret, s.final(ret))
 		if r.HasVars() && rr.K != types.Unit && rr.K != types.Invalid {
 			bt := s.final(bt) // the call it ends with may have been inferred with s
-			c.assignable(bt, captured(bt, ret, rr), resultPos(l))
+			c.assignable(bt, captured(bt, ret, rr), resultPos(l), "RETURN_TYPE_MISMATCH")
 		}
 		if sam != nil {
 			l.SAM, l.Ret, l.T = sam, rr, s.final(pt)
@@ -3910,17 +3910,17 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		}
 		for _, p := range x.Params {
 			if p.Type == nil {
-				c.errorf(p.P, "the parameters of an anonymous function need types")
+				c.errorf(p.P, "CANNOT_INFER_VALUE_PARAMETER_TYPE", "the parameters of an anonymous function need types")
 				return false
 			}
 			ps = append(ps, c.resolveType(p.Type))
 		}
 		*w = lambdaWant{params: ps, known: true, recv: x.AnonRecv != nil, ctx: len(x.AnonCtx), ret: noWant}
 	} else if x.AnonRecv != nil != w.recv && !anonRecvParam(x, *w) {
-		c.errorf(x.P, "the anonymous function's receiver doesn't match the expected function type")
+		c.errorf(x.P, "INITIALIZER_TYPE_MISMATCH", "the anonymous function's receiver doesn't match the expected function type")
 		return false
 	} else if len(x.AnonCtx) != w.ctx && !c.leadingContexts(x, *w) {
-		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
+		c.errorf(x.P, "ARGUMENT_TYPE_MISMATCH", "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
 	// Unlike a lambda, an anonymous function is never suspend, nor
@@ -4078,19 +4078,19 @@ func (c *Checker) anonModifiers(mods []syntax.Mod) {
 	for _, m := range mods {
 		switch m.Name {
 		case "inline":
-			c.errorf(m.P, "local inline functions are not yet supported")
+			c.errorf(m.P, "NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION", "local inline functions are not yet supported")
 		case "tailrec":
 			c.warnf(m.P, "NO_TAIL_CALLS_FOUND", "a function is marked as tail-recursive but no tail calls are found")
 		case "operator":
-			c.errorf(m.P, "'operator' modifier is inapplicable on this function: illegal function name")
+			c.errorf(m.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: illegal function name")
 		case "infix":
-			c.errorf(m.P, "'infix' modifier is inapplicable on this function: must be a member or an extension function")
+			c.errorf(m.P, "INAPPLICABLE_INFIX_MODIFIER", "'infix' modifier is inapplicable on this function: must be a member or an extension function")
 		case "external":
-			c.errorf(m.P, "external declaration cannot have a body")
+			c.errorf(m.P, "EXTERNAL_DECLARATION_CANNOT_HAVE_BODY", "external declaration cannot have a body")
 		case "suspend":
-			c.errorf(m.P, "anonymous suspend functions are prohibited")
+			c.errorf(m.P, "ANONYMOUS_SUSPEND_FUNCTION", "anonymous suspend functions are prohibited")
 		default:
-			c.errorf(m.P, "modifier '%s' is not applicable to 'anonymous function'", m.Name)
+			c.errorf(m.P, "WRONG_MODIFIER_TARGET", "modifier '%s' is not applicable to 'anonymous function'", m.Name)
 		}
 	}
 }

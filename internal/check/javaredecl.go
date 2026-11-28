@@ -11,6 +11,6 @@ func (c *Checker) javaRedeclaration(d *syntax.ClassDecl, name string) {
 		return
 	}
 	if cp := c.u.ext.cp; cp != nil && cp.IsSource(name) {
-		c.errorf(d.P, "redeclaration: class %s is also declared in the Java sources", d.Name)
+		c.errorf(d.P, "CLASSIFIER_REDECLARATION", "redeclaration: class %s is also declared in the Java sources", d.Name)
 	}
 }

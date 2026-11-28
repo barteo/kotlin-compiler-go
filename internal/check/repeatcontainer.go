@@ -37,7 +37,7 @@ func (c *Checker) repeatedWithContainer(applied []appliedAnnotation) {
 		}
 		for _, y := range applied {
 			if y.a.Target == x.a.Target && isContainerOf(y.cls, x.cls) {
-				c.errorf(x.a.P, "repeated annotation cannot be used with its container annotation")
+				c.errorf(x.a.P, "REPEATED_ANNOTATION_WITH_CONTAINER", "repeated annotation cannot be used with its container annotation")
 				break
 			}
 		}

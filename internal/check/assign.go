@@ -460,11 +460,11 @@ func (c *Checker) classAssignment(d *syntax.ClassDecl) {
 				// field, unless it has an initializer that what else
 				// the property has keeps from being its own.
 				if bf.Init == nil && pd.Getter == nil && pd.Setter == nil {
-					c.errorf(bf.P, "an explicit backing field must be initialized")
+					c.errorf(bf.P, "EXPLICIT_FIELD_MUST_BE_INITIALIZED", "an explicit backing field must be initialized")
 				}
 				continue
 			}
-			c.errorf(pd.P, "property must be initialized or be abstract")
+			c.errorf(pd.P, "MUST_BE_INITIALIZED_OR_BE_ABSTRACT", "property must be initialized or be abstract")
 		}
 	}
 	for _, pd := range lates {
@@ -608,7 +608,7 @@ func (a *assignment) read(v *types.VarSym, p syntax.Pos, s *daState) {
 		return
 	}
 	a.reported[p] = true
-	a.c.errorf(p, "variable '%s' must be initialized", v.Name)
+	a.c.errorf(p, "UNINITIALIZED_VARIABLE", "variable '%s' must be initialized", v.Name)
 }
 
 // assign records an assignment of v.
@@ -624,7 +624,7 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	}
 	if a.foreign > 0 {
 		if !v.Mutable && v.Kind == types.Local && a.lambdas > a.depth[v] && a.quiet == 0 && !s.dead {
-			a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+			a.c.errorf(p, "CAPTURED_VAL_INITIALIZATION", "captured values cannot be initialized because of possible reassignments")
 		}
 		return
 	}
@@ -633,20 +633,20 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 	case s.dead:
 		// Code no path reaches, which kotlinc checks too.
 		if !v.Mutable && s.maybe[v] && a.lambdas <= a.depth[v] {
-			a.c.errorf(p, "val cannot be reassigned")
+			a.c.errorf(p, "VAL_REASSIGNMENT", "val cannot be reassigned")
 		}
 	case !v.Mutable && a.concurrent[v] > 0 && v.Kind == types.Prop:
-		a.c.errorf(p, "initialization of captured member values is prohibited because of possible reassignments")
+		a.c.errorf(p, "CAPTURED_MEMBER_VAL_INITIALIZATION", "initialization of captured member values is prohibited because of possible reassignments")
 	case !v.Mutable && a.concurrent[v] > 0:
-		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+		a.c.errorf(p, "CAPTURED_VAL_INITIALIZATION", "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && a.lambdas > a.depth[v]:
-		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
+		a.c.errorf(p, "CAPTURED_VAL_INITIALIZATION", "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && v.Kind == types.Prop && a.notInlined():
 		// The lambda's contract says it runs once, but in its own
 		// method, which can't assign the class's final field.
-		a.c.errorf(p, "initialization of captured member values must be inlined")
+		a.c.errorf(p, "NON_INLINE_MEMBER_VAL_INITIALIZATION", "initialization of captured member values must be inlined")
 	case !v.Mutable && s.maybe[v]:
-		a.c.errorf(p, "val cannot be reassigned")
+		a.c.errorf(p, "VAL_REASSIGNMENT", "val cannot be reassigned")
 	}
 	if !v.Mutable && v.Kind == types.Local {
 		for _, o := range a.once {
@@ -1260,7 +1260,7 @@ func (a *assignment) entry(v *types.VarSym, p syntax.Pos) {
 	if v == nil || !a.entries[v] || a.quiet > 0 || a.lambdas > a.inlined {
 		return
 	}
-	a.c.errorf(p, "enum entry '%s' is uninitialized here", v.Name)
+	a.c.errorf(p, "UNINITIALIZED_ENUM_ENTRY", "enum entry '%s' is uninitialized here", v.Name)
 }
 
 // companion reports an access of the enum's companion object in its
@@ -1269,7 +1269,7 @@ func (a *assignment) companion(p syntax.Pos) {
 	if a.quiet > 0 || a.lambdas > a.inPlaceLambdas || a.libOnce > 0 {
 		return
 	}
-	a.c.errorf(p, "companion object of enum class '%s' is uninitialized here", a.comp.Outer.Name)
+	a.c.errorf(p, "UNINITIALIZED_ENUM_COMPANION", "companion object of enum class '%s' is uninitialized here", a.comp.Outer.Name)
 }
 
 // getterField reports whether property d's getter uses its backing field.

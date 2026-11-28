@@ -26,7 +26,7 @@ func (c *Checker) classLit(x *syntax.ClassLit, java bool) types.Type {
 			return vt
 		}
 		if types.MayBeNull(vt) && !vt.P {
-			c.errorf(x.P, "expression in a class literal has a nullable type '%s', use !! to make the type non-nullable", vt)
+			c.errorf(x.P, "EXPRESSION_OF_NULLABLE_TYPE_IN_CLASS_LITERAL_LHS", "expression in a class literal has a nullable type '%s', use !! to make the type non-nullable", vt)
 			return types.InvalidType
 		}
 		t, x.Bound = vt.NonNull(), true
@@ -41,11 +41,11 @@ func (c *Checker) classLit(x *syntax.ClassLit, java bool) types.Type {
 	} else if c.u.ext.kotlin {
 		cls = c.u.ext.class("kotlin/reflect/KClass")
 	} else {
-		c.errorf(x.P, "class literals need the Kotlin standard library; use ::class.java for the Java class")
+		c.errorf(x.P, "", "class literals need the Kotlin standard library; use ::class.java for the Java class")
 		return types.InvalidType
 	}
 	if cls == nil {
-		c.errorf(x.P, "class literals need java.lang.Class and kotlin.reflect.KClass on the class path")
+		c.errorf(x.P, "", "class literals need java.lang.Class and kotlin.reflect.KClass on the class path")
 		return types.InvalidType
 	}
 	arg := types.Arg{T: t}
@@ -102,13 +102,13 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
 		if ref.Nullable && !callable {
-			c.errorf(ref.P, "type in a class literal must not be nullable")
+			c.errorf(ref.P, "NULLABLE_TYPE_IN_CLASS_LITERAL_LHS", "type in a class literal must not be nullable")
 			return types.InvalidType
 		}
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
 		}
-		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
+		c.errorf(ref.P, "TYPE_PARAMETER_AS_REIFIED", "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
 	if o := ref.Outer; o != nil && o.Outer == nil && c.packageQualifierArgs(ref) {
@@ -159,7 +159,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	}
 	if t.N {
 		// A?::class, or a typealias of a nullable type.
-		c.errorf(ref.P, "type in a class literal must not be nullable")
+		c.errorf(ref.P, "NULLABLE_TYPE_IN_CLASS_LITERAL_LHS", "type in a class literal must not be nullable")
 		return types.InvalidType
 	}
 	if t.IsArray() {
@@ -167,14 +167,14 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		// Array<Int?> and Array<Array<Any?>?>, not Array<T> or
 		// Array<List<String>>.
 		if args != nil && !classLitArray(t) { // Array::class is fine
-			c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+			c.errorf(ref.P, "CLASS_LITERAL_LHS_NOT_A_CLASS", "only classes are allowed on the left hand side of a class literal")
 			return types.InvalidType
 		}
 		return t
 	}
 	if ref.Outer != nil || len(args) > 0 {
 		// A<*>::class too: only A::class is.
-		c.errorf(ref.P, "only classes are allowed on the left hand side of a class literal")
+		c.errorf(ref.P, "CLASS_LITERAL_LHS_NOT_A_CLASS", "only classes are allowed on the left hand side of a class literal")
 		return types.InvalidType
 	}
 	return t
@@ -347,7 +347,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				if e := c.lookupClass(name); r.Name == "entries" && e != nil && e.Entries != nil && c.u.ext.kotlin {
 					// An enum's entries and its nested class entries's
 					// constructor: as in K2, neither wins.
-					c.errorf(p, "overload resolution ambiguity: %s is both the entries of %s and the constructor of its nested class", refString(r), e.DisplayName())
+					c.errorf(p, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity: %s is both the entries of %s and the constructor of its nested class", refString(r), e.DisplayName())
 					return nil, types.InvalidType, false
 				}
 				nested = cls
@@ -376,7 +376,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		t := c.value(r.X, noWant)
 		if t.K == types.Invalid {
 			if reportedError(t) {
-				c.errorf(p, "unresolved reference: %s", r.Name)
+				c.errorf(p, "UNRESOLVED_REFERENCE", "unresolved reference: %s", r.Name)
 			}
 			return nil, types.InvalidType, false
 		}
@@ -388,12 +388,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	}
 	if r.X == nil && r.Type == nil {
 		if v, _ := c.scope.find(r.Name); v != nil && c.variableRef(v, r.Name) {
-			c.errorf(p, "references to variables aren't supported yet")
+			c.errorf(p, "UNSUPPORTED", "references to variables aren't supported yet")
 			return nil, types.InvalidType, false
 		}
 		// Only a Kotlin fun interface has a constructor to refer to.
 		if cls := c.lookupClass(r.Name); cls != nil && !cls.Fun && cls.KotlinName == "" && c.sam(cls) != nil {
-			c.errorf(p, "Java SAM interface constructor references are prohibited: %s", refString(r))
+			c.errorf(p, "JAVA_SAM_INTERFACE_CONSTRUCTOR_REFERENCE", "Java SAM interface constructor references are prohibited: %s", refString(r))
 			return nil, types.InvalidType, false
 		}
 	}
@@ -456,7 +456,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				ctors = append([]*types.FunSym{nested.Ctor}, ctors...)
 			}
 			if len(ctors) != 1 || len(nested.TypeParams) > 0 {
-				c.errorf(p, "not enough information to infer the constructor of %s: specify the expected function type", refString(r))
+				c.errorf(p, "OVERLOAD_RESOLUTION_AMBIGUITY", "not enough information to infer the constructor of %s: specify the expected function type", refString(r))
 				return nil, types.InvalidType, false
 			}
 			ps = nil
@@ -520,7 +520,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 			forms = append(forms, staticForm(ps))
 		}
 		if len(forms) == 0 {
-			c.errorf(p, "type mismatch: %s needs a receiver of type %s, but (%s) -> %s was expected",
+			c.errorf(p, "NONE_APPLICABLE", "type mismatch: %s needs a receiver of type %s, but (%s) -> %s was expected",
 				refString(r), recvType, typesString(ps), w.ret)
 			return nil, types.InvalidType, false
 		}
@@ -547,7 +547,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 					if c.refFunsToo(r, recvType, static, recv != nil) {
 						// As in K2, without an expected type a property
 						// and a function of the name are ambiguous.
-						c.errorf(p, "overload resolution ambiguity for %s: specify the expected type", refString(r))
+						c.errorf(p, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity for %s: specify the expected type", refString(r))
 						return nil, types.InvalidType, false
 					}
 					return ps, rt, ok
@@ -692,7 +692,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 		ps, rt, ok := c.checkLambda1(x, w)
 		if ok && len(c.errs) == n && samConvertedArg(x) {
-			c.errorf(p, "inapplicable candidate: %s takes a fun interface, which a callable reference's parameter isn't converted to", refString(r))
+			c.errorf(p, "INAPPLICABLE_CANDIDATE", "inapplicable candidate: %s takes a fun interface, which a callable reference's parameter isn't converted to", refString(r))
 		}
 		if len(c.errs) == n || i == len(forms)-1 {
 			if tail != nil {
@@ -735,7 +735,7 @@ func (c *Checker) unitRefVar(x *syntax.Lambda, p syntax.Pos) {
 	if t := call.Type().NonNull(); t.K == types.Unit || t.K == types.Invalid {
 		return
 	}
-	c.errorf(p, "cannot infer type for type parameter '%s'. Specify it explicitly.", call.Sym.Ret.Param().Name)
+	c.errorf(p, "CANNOT_INFER_PARAMETER_TYPE", "cannot infer type for type parameter '%s'. Specify it explicitly.", call.Sym.Ret.Param().Name)
 }
 
 // memberExtRef reports, if the checked body of reference x calls or reads
@@ -764,7 +764,7 @@ func (c *Checker) memberExtRef(x *syntax.Lambda) bool {
 		bad = inClass(e.Getter)
 	}
 	if bad {
-		c.errorf(x.P, "%s: a reference to an extension declared in a class is not allowed", refString(x.Ref))
+		c.errorf(x.P, "EXTENSION_IN_CLASS_REFERENCE_NOT_ALLOWED", "%s: a reference to an extension declared in a class is not allowed", refString(x.Ref))
 	}
 	return bad
 }
@@ -912,10 +912,10 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 	case len(fs) == 0:
 		return nil, true
 	case len(fs) > 1:
-		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
+		c.errorf(p, "OVERLOAD_RESOLUTION_AMBIGUITY", "overload resolution ambiguity for %s: specify the expected function type", refString(r))
 		return nil, false
 	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) && !c.implicitRecvTypeArgsOK(fs[0], r, recvType, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
-		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
+		c.errorf(p, "CANNOT_INFER_PARAMETER_TYPE", "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
 		return nil, false
 	}
 	return fs[0], true
@@ -1260,7 +1260,7 @@ func (c *Checker) kpropType(x *syntax.Lambda, ps []types.Type, rt types.Type) ty
 	}
 	cls := c.u.ext.class(name)
 	if cls == nil {
-		c.errorf(x.P, "property references need kotlin.reflect: compile with the standard library")
+		c.errorf(x.P, "", "property references need kotlin.reflect: compile with the standard library")
 		return types.InvalidType
 	}
 	x.Ret = rt
@@ -1407,7 +1407,7 @@ func (c *Checker) kfunRef(x *syntax.Lambda, want, fn types.Type) types.Type {
 			// As kotlinc: a reference that leaves parameters to their
 			// defaults or varargs, ignores a result or converts to a
 			// suspend function isn't a KFunction.
-			c.errorf(x.P, "adapted callable reference cannot be used against a reflection type")
+			c.errorf(x.P, "INITIALIZER_TYPE_MISMATCH", "adapted callable reference cannot be used against a reflection type")
 			return types.InvalidType
 		}
 	}

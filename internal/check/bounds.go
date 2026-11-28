@@ -31,7 +31,7 @@ func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 		if d.Sym != nil && slices.ContainsFunc(d.Sym.Bounds, types.Type.IsArray) {
 			// A subtype of an array type is the array type: the type
 			// parameter would be it.
-			c.errorf(d.P, "upper bound of a type parameter cannot be an array")
+			c.errorf(d.P, "UPPER_BOUND_CANNOT_BE_ARRAY", "upper bound of a type parameter cannot be an array")
 		}
 		if d.Sym != nil && len(d.Bounds) == len(d.Sym.Bounds) && !c.overrideBounds && !overrideOwner(d.Sym.Owner) {
 			for i, b := range d.Sym.Bounds {
@@ -51,17 +51,17 @@ func (c *Checker) checkBoundSets(decls []*syntax.TypeParam) {
 				continue
 			}
 			if seen[k] {
-				c.errorf(d.Bounds[i].P, "repeated upper bound")
+				c.errorf(d.Bounds[i].P, "REPEATED_BOUND", "repeated upper bound")
 				repeated = true
 			}
 			seen[k] = true
 		}
 		if c.conflictingBounds(d.Sym.Bounds) {
-			c.errorf(d.P, "upper bounds of '%s' have empty intersection", d.Name)
+			c.errorf(d.P, "CONFLICTING_UPPER_BOUNDS", "upper bounds of '%s' have empty intersection", d.Name)
 		}
 		if !repeated {
 			if s := c.inconsistentBounds(d.Sym.Bounds); s != "" {
-				c.errorf(d.P, "type parameter '%s' has inconsistent bounds: %s", d.Name, s)
+				c.errorf(d.P, "INCONSISTENT_TYPE_PARAMETER_BOUNDS", "type parameter '%s' has inconsistent bounds: %s", d.Name, s)
 			}
 		}
 	}
@@ -282,7 +282,7 @@ func (c *Checker) checkClassTypeParams(d *syntax.ClassDecl) {
 		return
 	}
 	if d.Enum {
-		c.errorf(d.TypeParams[0].P, "enum class cannot have type parameters")
+		c.errorf(d.TypeParams[0].P, "TYPE_PARAMETERS_IN_ENUM", "enum class cannot have type parameters")
 	}
 	saved := c.tparams
 	c.tparams = d.Sym.TypeParams
@@ -306,10 +306,10 @@ func (c *Checker) checkClassTypeParams(d *syntax.ClassDecl) {
 	c.headerVariance(d)
 	c.checkBoundSets(d.TypeParams)
 	if p := finiteBoundsViolation(d.Sym); p != nil {
-		c.errorf(d.TypeParams[p.Index].P, "this type parameter violates the Finite Bound Restriction")
+		c.errorf(d.TypeParams[p.Index].P, "FINITE_BOUNDS_VIOLATION", "this type parameter violates the Finite Bound Restriction")
 	}
 	for _, p := range expansiveParams(d.Sym) {
-		c.errorf(d.TypeParams[p.Index].P, "this type parameter violates the Non-Expansive Inheritance Restriction")
+		c.errorf(d.TypeParams[p.Index].P, "EXPANSIVE_INHERITANCE", "this type parameter violates the Non-Expansive Inheritance Restriction")
 	}
 }
 

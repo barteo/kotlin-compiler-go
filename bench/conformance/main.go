@@ -63,6 +63,8 @@ func main() {
 	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line, or for a warning that warning (path, category, file:line, name, severity, hit or miss, and a missed diagnostic's cause)")
 	missedOut := flag.String("missed", "", "diagnostics mode: the TSV file to write the expected errors kc didn't report on their lines to (path, file:line, name, cause)")
 	missedBase := flag.String("missed-baseline", "", "diagnostics mode: a -missed file of an earlier run to compare with, read before -missed is written; with -baseline, the harness fails if an expected error kc reported on its line is missed")
+	misnamedOut := flag.String("misnamed", "", "diagnostics mode: the TSV file to write the expected errors kc didn't report under their names on their lines to (path, file:line, name, and kc's names of the errors on the line, or \"missed\" if none)")
+	misnamedBase := flag.String("misnamed-baseline", "", "diagnostics mode: a -misnamed file of an earlier run to compare with, read before -misnamed is written; with -baseline, the harness fails if an expected error kc reported under its name on its line no longer is")
 	missedWarnsOut := flag.String("missed-warnings", "", "diagnostics mode: the TSV file to write the expected warnings kc didn't report on their lines to (path, file:line, name, cause)")
 	missedWarnsBase := flag.String("missed-warnings-baseline", "", "diagnostics mode: a -missed-warnings file of an earlier run to compare with, read before -missed-warnings is written; with -baseline, the harness fails if an expected warning kc reported on its line is missed")
 	strayWarns := flag.String("warnings", "", "diagnostics mode: the TSV file to write kc's warnings on lines that don't expect them to (path, category, file:line, name, message)")
@@ -120,6 +122,16 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	var misnamedData []byte
+	if *misnamedBase != "" {
+		if *baseline == "" {
+			log.Fatal("-misnamed-baseline needs -baseline")
+		}
+		var err error
+		if misnamedData, err = os.ReadFile(*misnamedBase); err != nil {
+			log.Fatal(err)
+		}
+	}
 	var missedWarnsData []byte
 	if *missedWarnsBase != "" {
 		if *baseline == "" {
@@ -169,7 +181,7 @@ func main() {
 
 	var rs []*result
 	var report string
-	var missed, missedWarns []string // diagnostics mode: missedLines, missedWarningLines
+	var missed, misnamed, missedWarns []string // diagnostics mode: missedLines, misnamedLines, missedWarningLines
 	good := func(cat string) bool { return cat == catPass }
 	switch *mode {
 	case "box":
@@ -202,7 +214,7 @@ func main() {
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}
-		missed, missedWarns = c.missed, c.missedWarns
+		missed, misnamed, missedWarns = c.missed, c.misnamed, c.missedWarns
 		good = func(cat string) bool { return cat == catRejectsInvalid || cat == catAcceptsValid }
 	}
 	elapsed := time.Since(start).Round(time.Second)
@@ -226,6 +238,12 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if *misnamedOut != "" {
+		data := misnamedHeader + "\n" + strings.Join(misnamed, "\n") + "\n"
+		if err := os.WriteFile(*misnamedOut, []byte(data), 0o644); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if *missedWarnsOut != "" {
 		data := missedHeader + "\n" + strings.Join(missedWarns, "\n") + "\n"
 		if err := os.WriteFile(*missedWarnsOut, []byte(data), 0o644); err != nil {
@@ -240,6 +258,11 @@ func main() {
 	}
 	if *missedBase != "" {
 		if err := compareMissed("errors", *missedBase, missedData, baselineCategories(baselineData), rs, missed); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if *misnamedBase != "" {
+		if err := compareMissed("named errors", *misnamedBase, misnamedData, baselineCategories(baselineData), rs, misnamed); err != nil {
 			failed = append(failed, err)
 		}
 	}

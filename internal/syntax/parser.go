@@ -276,13 +276,15 @@ func (p *parser) next() Token {
 }
 
 func (p *parser) failAt(pos Pos, format string, args ...any) {
-	p.err = &Error{File: p.file, Pos: pos, Msg: fmt.Sprintf(format, args...)}
+	msg := fmt.Sprintf(format, args...)
+	p.err = &Error{File: p.file, Pos: pos, Msg: msg, Name: ErrorName(msg)}
 	panic(bailout{})
 }
 
 // errorLater records an error that parsing goes on after.
 func (p *parser) errorLater(pos Pos, format string, args ...any) {
-	p.later = append(p.later, &Error{File: p.file, Pos: pos, Msg: fmt.Sprintf(format, args...)})
+	msg := fmt.Sprintf(format, args...)
+	p.later = append(p.later, &Error{File: p.file, Pos: pos, Msg: msg, Name: ErrorName(msg)})
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support.

@@ -62,26 +62,26 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 	}
 	switch {
 	case !ok:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: illegal function name")
 	case d.Name == "mod" || d.Name == "modAssign":
 		// % calls rem, and %= remAssign: mod is an operator no longer.
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: illegal function name")
 	case owner == nil && d.Recv == nil:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member or an extension function")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must be a member or an extension function")
 	case n >= 0 && len(d.Params) != n && !((d.Name == "inc" || d.Name == "dec") && defaultsOnly(d.Params)):
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
 	case n < 0 && n != -0x7fff && len(d.Params) < -n:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
 	case d.Suspend && (d.Name == "equals" || d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate"):
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must not be suspend")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must not be suspend")
 	case n >= 0 && d.Name != "inc" && d.Name != "dec" && slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Vararg || p.Default != nil }):
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: should not have varargs or parameters with default values")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: should not have varargs or parameters with default values")
 	case d.Name == "equals" && d.Recv != nil:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member function")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must be a member function")
 	case d.Name == "equals" && d.Params[0].Sym != nil && d.Params[0].Sym.Type != types.AnyType.Nullable():
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must override ''equals()'' in Any")
 	case (d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate") && !c.takesKProperty(d.Params[1]):
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: second parameter must be of type KProperty<*> or its supertype")
 	case d.Sym.Resolved:
 		c.operatorReturn(d, owner)
 	}
@@ -96,11 +96,11 @@ func (c *Checker) operatorReturn(d *syntax.FunDecl, owner *types.ClassSym) {
 	}
 	switch {
 	case d.Name == "compareTo" && ret != types.IntType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must return Int")
 	case (d.Name == "contains" || d.Name == "hasNext") && ret != types.BoolType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must return Boolean")
 	case strings.HasSuffix(d.Name, "Assign") && ret != types.UnitType:
-		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Unit")
+		c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: must return Unit")
 	case d.Name == "inc" || d.Name == "dec":
 		// The result is assigned to the receiver.
 		recv := d.Sym.Recv
@@ -111,7 +111,7 @@ func (c *Checker) operatorReturn(d *syntax.FunDecl, owner *types.ClassSym) {
 			recv = owner.This()
 		}
 		if recv.K != types.Invalid && !c.subtype(d.Sym.Ret, recv) {
-			c.errorf(d.P, "'operator' modifier is inapplicable on this function: receiver must be a supertype of the return type")
+			c.errorf(d.P, "INAPPLICABLE_OPERATOR_MODIFIER", "'operator' modifier is inapplicable on this function: receiver must be a supertype of the return type")
 		}
 	}
 }
@@ -241,7 +241,7 @@ func (c *Checker) binaryOp(x *syntax.Binary, xt types.Type, want types.Type) typ
 		call, t := c.opCall(x.P, recv, "compareTo", []syntax.Expr{x.Y}, noWant)
 		x.Call = call
 		if t.K != types.Invalid && t.Flex() != types.IntType {
-			c.errorf(x.P, "'compareTo' must return Int, not %s", t)
+			c.errorf(x.P, "COMPARE_TO_TYPE_MISMATCH", "'compareTo' must return Int, not %s", t)
 		}
 		return types.BoolType
 	}
@@ -261,13 +261,13 @@ func (c *Checker) containsOp(x *syntax.Binary) types.Type {
 	call, t := c.opCall(x.P, checked(x.Y, yt), "contains", []syntax.Expr{x.X}, types.BoolType)
 	x.Call = call
 	if t.K != types.Invalid && t.Flex() != types.BoolType {
-		c.errorf(x.P, "'contains' must return Boolean, not %s", t)
+		c.errorf(x.P, "RESULT_TYPE_MISMATCH", "'contains' must return Boolean, not %s", t)
 	}
 	if f := call.Sym; f != nil && f.Name == "contains" && len(f.Params) == 1 && types.MayBeNull(f.Params[0].Type) && f.Params[0].Type.Flex().NonNull() == types.AnyType {
 		// ConcurrentHashMap's contains(Object), which Kotlin calls for in
 		// as for its other operators, is containsValue, not containsKey.
 		if cls := c.classOf(yt.Flex().NonNull()); cls != nil && c.isSubclassOf(cls, "java/util/concurrent/ConcurrentHashMap") {
-			c.errorf(x.P, "method 'contains' from ConcurrentHashMap may have unexpected semantics: it calls 'containsValue' instead of 'containsKey'; use the explicit call or cast the value to kotlin.collections.Map")
+			c.errorf(x.P, "CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR", "method 'contains' from ConcurrentHashMap may have unexpected semantics: it calls 'containsValue' instead of 'containsKey'; use the explicit call or cast the value to kotlin.collections.Map")
 		}
 	}
 	return types.BoolType
@@ -379,7 +379,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		// As kotlinc's BUILDER_INFERENCE_STUB_RECEIVER, an element of a
 		// builder's type doesn't fix it here, as it does in get(0) + "K":
 		// this[0] += "K" in buildList { add("O") } is an error.
-		c.errorf(ix.P, "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", et.Flex().Param().Name)
+		c.errorf(ix.P, "BUILDER_INFERENCE_STUB_RECEIVER", "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", et.Flex().Param().Name)
 		return stmts, elem, true
 	}
 	if assignOp != "" && !builtinOperand(et) && c.hasFun(et.NonNull(), assignOp, &syntax.Call{Args: []syntax.Expr{arg}}) {
@@ -388,7 +388,7 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		opName := strings.TrimSuffix(assignOp, "Assign")
 		probe := &syntax.Call{Args: []syntax.Expr{arg}}
 		if c.hasFun(et.NonNull(), opName, probe) && c.setFits(xt, len(idx), et, opName, probe) {
-			c.errorf(p, "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
+			c.errorf(p, "ASSIGN_OPERATOR_AMBIGUITY", "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
 			c.unresolvedArg(arg)
 			return stmts, elem, true
 		}
@@ -545,7 +545,7 @@ func (c *Checker) unresolvedArg(v syntax.Expr) {
 
 func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 	if t.K != types.Invalid && t.K != types.Unit {
-		c.errorf(p, "function '%s' should return Unit", name)
+		c.errorf(p, "ASSIGNMENT_OPERATOR_SHOULD_RETURN_UNIT", "function '%s' should return Unit", name)
 	}
 }
 
@@ -572,7 +572,7 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 	}
 	switch {
 	case fits:
-		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
+		c.errorf(s.P, "ASSIGN_OPERATOR_AMBIGUITY", "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
 		c.unresolvedArg(s.Value)
 		return false
 	case hasAssign:
@@ -581,10 +581,10 @@ func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool
 		s.Stmts = []syntax.Stmt{&syntax.ExprStmt{X: call}}
 		return true
 	case !hasOp:
-		c.errorf(s.P, "operator '%s' cannot be applied to %s", s.Op, rt)
+		c.errorf(s.P, "UNRESOLVED_REFERENCE", "operator '%s' cannot be applied to %s", s.Op, rt)
 		return false
 	case !mutable:
-		c.errorf(s.Target.Pos(), "val cannot be reassigned")
+		c.errorf(s.Target.Pos(), "VARIABLE_EXPECTED", "val cannot be reassigned")
 		return false
 	}
 	op := arithOf(s.Op)

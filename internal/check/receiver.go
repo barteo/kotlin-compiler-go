@@ -112,7 +112,7 @@ func (c *Checker) lambdaLabels(label string) int {
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
 	if x.Label != "" && !x.Class && x.Recv == nil && c.ambiguousLabel(x.Label) {
-		c.errorf(x.P, "ambiguous label: %s", x.Label)
+		c.errorf(x.P, "AMBIGUOUS_LABEL", "ambiguous label: %s", x.Label)
 	} else if x.Label != "" && !x.Class && x.Recv == nil && c.lambdaLabels(x.Label) > 1 {
 		// this@block in lambdas of nested block { } calls: the
 		// innermost, of which kotlinc warns.
@@ -136,7 +136,7 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 				if c.uninferredThis == nil {
 					c.uninferredThis = map[*syntax.Lambda][]*syntax.Error{}
 				}
-				c.uninferredThis[l] = append(c.uninferredThis[l], &syntax.Error{File: c.file.Path, Pos: x.P,
+				c.uninferredThis[l] = append(c.uninferredThis[l], &syntax.Error{File: c.file.Path, Pos: x.P, Name: "CANNOT_INFER_PARAMETER_TYPE",
 					Msg: fmt.Sprintf("cannot infer type for type parameter '%s'. Specify it explicitly.", name)})
 			}
 		}
@@ -150,14 +150,14 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 	}
 	if c.cls == nil {
 		if x.Label != "" {
-			c.errorf(x.P, "unresolved label: %s", x.Label)
+			c.errorf(x.P, "UNRESOLVED_LABEL", "unresolved label: %s", x.Label)
 			return types.InvalidType
 		}
-		c.errorf(x.P, "'this' is not defined in this context")
+		c.errorf(x.P, "INSTANCE_ACCESS_BEFORE_SUPER_CALL", "'this' is not defined in this context")
 		return types.InvalidType
 	}
 	if name := c.cls.DisplayName(); x.Label != "" && x.Label != name[strings.LastIndexByte(name, '.')+1:] {
-		c.errorf(x.P, "unresolved label: %s", x.Label)
+		c.errorf(x.P, "UNRESOLVED_LABEL", "unresolved label: %s", x.Label)
 		return types.InvalidType
 	}
 	c.captureThis()

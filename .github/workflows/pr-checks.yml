@@ -205,6 +205,7 @@ jobs:
             -missed-baseline bench/results/diagnostics-missed.tsv -missed "$RUNNER_TEMP/diagnostics-missed.tsv" \
             -missed-warnings-baseline bench/results/diagnostics-missed-warnings.tsv \
             -missed-warnings "$RUNNER_TEMP/diagnostics-missed-warnings.tsv" \
+            -misnamed-baseline bench/results/diagnostics-misnamed.tsv -misnamed "$RUNNER_TEMP/diagnostics-misnamed.tsv" \
             -o "$RUNNER_TEMP/diagnostics.md" -tsv "$RUNNER_TEMP/diagnostics.tsv" 2>&1 | tee "$RUNNER_TEMP/diagnostics.log"
 
       - name: Summary
@@ -216,13 +217,17 @@ jobs:
             {
               echo "### $mode"
               echo '```'
-              grep -E '^[0-9]+ tests in |^  [a-z/ ]+ +[0-9]+$|^baseline |^missed (errors|warnings) |^  (regression|fixed|newly missed): ' "$log" || true
+              grep -E '^[0-9]+ tests in |^  [a-z/ ]+ +[0-9]+$|^baseline |^missed (errors|warnings|named errors) |^  (regression|fixed|newly missed): ' "$log" || true
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             fixed=$(grep -c '^  fixed: ' "$log" || true)
             reported=$(sed -n 's/^missed errors .*: [0-9]* newly missed, \([0-9]*\) newly reported$/\1/p' "$log")
             if [ "${reported:-0}" -gt 0 ]; then
               echo "::warning::$mode: kc now reports $reported more expected errors; update the baseline with bench/kotlin-tests.sh $mode"
+            fi
+            named=$(sed -n 's/^missed named errors .*: [0-9]* newly missed, \([0-9]*\) newly reported$/\1/p' "$log")
+            if [ "${named:-0}" -gt 0 ]; then
+              echo "::warning::$mode: kc now reports $named more expected errors under their names; update the baseline with bench/kotlin-tests.sh $mode"
             fi
             warned=$(sed -n 's/^missed warnings .*: [0-9]* newly missed, \([0-9]*\) newly reported$/\1/p' "$log")
             if [ "${warned:-0}" -gt 0 ]; then

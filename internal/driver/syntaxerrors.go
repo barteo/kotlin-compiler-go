@@ -40,7 +40,7 @@ func syntaxErrors(path, src string, s *psi.Snapshot, errs, lerrs []*syntax.Error
 		if err != nil {
 			continue
 		}
-		out = append(out, &syntax.Error{File: path, Pos: syntax.Pos{Line: line, Col: col}, Msg: d.Message})
+		out = append(out, &syntax.Error{File: path, Pos: syntax.Pos{Line: line, Col: col}, Msg: d.Message, Name: "SYNTAX"})
 	}
 	// What kotlinc's grammar accepts and its raw FIR builder doesn't:
 	// kc's parser stops at the first.

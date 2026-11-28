@@ -156,20 +156,20 @@ func argQualifier(toks []syntax.Token) (string, bool) {
 func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 	switch {
 	case d.Interface:
-		c.errorf(d.P, "modifier 'annotation' is not applicable to 'interface'")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifier 'annotation' is not applicable to 'interface'")
 	case d.Object:
-		c.errorf(d.P, "modifier 'annotation' is not applicable to 'object'")
+		c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifier 'annotation' is not applicable to 'object'")
 	}
 	for _, m := range []struct {
 		set  bool
 		name string
 	}{{d.Open, "open"}, {d.Abstract, "abstract"}, {d.Sealed, "sealed"}, {d.Data, "data"}, {d.Enum, "enum"}} {
 		if m.set {
-			c.errorf(d.P, "modifier '%s' is not applicable to 'annotation class'", m.name)
+			c.errorf(d.P, "WRONG_MODIFIER_TARGET", "modifier '%s' is not applicable to 'annotation class'", m.name)
 		}
 	}
 	if len(d.Supers) > 0 {
-		c.errorf(d.Supers[0].Type.P, "annotation class cannot have supertypes")
+		c.errorf(d.Supers[0].Type.P, "SUPERTYPES_FOR_ANNOTATION_CLASS", "annotation class cannot have supertypes")
 	}
 	if ret, targets := declaredAnnotation(&d.Modifiers); ret != types.RetentionSource && targets&types.TargetExpression != 0 {
 		// Class files don't keep an expression's annotations.
@@ -179,7 +179,7 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 		} else if a := d.Find("", "Target"); a != nil {
 			p = a.P
 		}
-		c.errorf(p, "expression annotations with retention other than SOURCE are prohibited")
+		c.errorf(p, "RESTRICTED_RETENTION_FOR_EXPRESSION_ANNOTATION_ERROR", "expression annotations with retention other than SOURCE are prohibited")
 	}
 	for _, m := range d.Members {
 		var p syntax.Pos
@@ -195,7 +195,7 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 		case *syntax.SecondaryCtor:
 			p = m.P
 		}
-		c.errorf(p, "members are prohibited in annotation classes")
+		c.errorf(p, "ANNOTATION_CLASS_MEMBER", "members are prohibited in annotation classes")
 	}
 }
 
@@ -204,16 +204,16 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 func (c *Checker) annotationParam(cls *types.ClassSym, cp *syntax.CtorParam) {
 	switch {
 	case !cp.IsProp:
-		c.errorf(cp.P, "'val' keyword is missing in annotation parameter")
+		c.errorf(cp.P, "MISSING_VAL_ON_ANNOTATION_PARAMETER", "'val' keyword is missing in annotation parameter")
 	case cp.Mutable:
-		c.errorf(cp.P, "an annotation parameter cannot be 'var'")
+		c.errorf(cp.P, "VAR_ANNOTATION_PARAMETER", "an annotation parameter cannot be 'var'")
 	}
 	switch t := cp.Sym.Type; {
 	case t.K == types.Invalid:
 	case t.N:
-		c.errorf(cp.Type.P, "annotation parameters cannot be nullable")
+		c.errorf(cp.Type.P, "NULLABLE_TYPE_OF_ANNOTATION_MEMBER", "annotation parameters cannot be nullable")
 	case !annotationType(t, true):
-		c.errorf(cp.Type.P, "invalid type of annotation member")
+		c.errorf(cp.Type.P, "INVALID_TYPE_OF_ANNOTATION_MEMBER", "invalid type of annotation member")
 	}
 	cls.AnnotationParams = append(cls.AnnotationParams, cp.Sym)
 }
@@ -224,7 +224,7 @@ func (c *Checker) annotationParam(cls *types.ClassSym, cp *syntax.CtorParam) {
 func (c *Checker) annotationCycles(d *syntax.ClassDecl) {
 	for _, cp := range d.CtorParams {
 		if t := cp.Sym.Type; t.K == types.Class && !t.N && annotationCycle(t.C, d.Sym, map[*types.ClassSym]bool{}) {
-			c.errorf(cp.P, "type of this annotation parameter refers back to its annotation class")
+			c.errorf(cp.P, "CYCLE_IN_ANNOTATION_PARAMETER_ERROR", "type of this annotation parameter refers back to its annotation class")
 		}
 	}
 }
@@ -375,6 +375,6 @@ func completeDefault(v *classfile.ElementValue, t types.Type) bool {
 // class, which Kotlin doesn't allow.
 func (c *Checker) localAnnotationClass(d *syntax.ClassDecl) {
 	if d.Annotation {
-		c.errorf(d.P, "annotation class cannot be local")
+		c.errorf(d.P, "LOCAL_ANNOTATION_CLASS_ERROR", "annotation class cannot be local")
 	}
 }

@@ -60,7 +60,7 @@ func dropContracts(checkers []*Checker) {
 // of a local class or object.
 func (c *Checker) misplacedContracts(body *syntax.Block, exprBody syntax.Expr, imported bool) {
 	if call, ok := exprBody.(*syntax.Call); ok && c.contractCall(call, imported) {
-		c.errorf(call.Fun.Pos(), "contracts are only allowed in function body blocks")
+		c.errorf(call.Fun.Pos(), "CONTRACT_NOT_ALLOWED", "contracts are only allowed in function body blocks")
 		exprBody = nil
 		for _, a := range call.Args {
 			c.contractsIn(a, imported, false)
@@ -103,9 +103,9 @@ func (c *Checker) contractsIn(n any, imported, local bool) {
 		case *syntax.Call:
 			if c.contractCall(x, imported) {
 				if local {
-					c.errorf(x.Fun.Pos(), "contracts are not allowed for local functions")
+					c.errorf(x.Fun.Pos(), "CONTRACT_NOT_ALLOWED", "contracts are not allowed for local functions")
 				} else {
-					c.errorf(x.Fun.Pos(), "contract should be the first statement")
+					c.errorf(x.Fun.Pos(), "CONTRACT_NOT_ALLOWED", "contract should be the first statement")
 				}
 			}
 		}
@@ -212,14 +212,14 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
-		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
+		c.errorf(call.P, "CONTRACT_NOT_ALLOWED", "contract is not allowed here: its argument must be a lambda")
 		return nil, nil, nil, nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	if c.file != nil && c.file.Annotated != nil {
 		syntax.Inspect(l.Body, func(n any) bool {
 			for _, a := range c.file.Annotated[n] {
-				c.errorf(a.P, "annotations are prohibited inside contracts")
+				c.errorf(a.P, "ANNOTATION_IN_CONTRACT_ERROR", "annotations are prohibited inside contracts")
 			}
 			// As kotlinc, they suppress what they name all the same.
 			if as, ok := c.file.Annotated[n]; ok {
@@ -582,7 +582,7 @@ type contractOwner struct {
 // checks, comparisons with null, !, && and ||.
 func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o contractOwner) {
 	if len(l.Body.Stmts) == 0 {
-		c.errorf(call.P, "error in contract description: the contract is empty")
+		c.errorf(call.P, "ERROR_IN_CONTRACT_DESCRIPTION", "error in contract description: the contract is empty")
 		return
 	}
 	for _, s := range l.Body.Stmts {
@@ -595,7 +595,7 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 		}
 		if p, ok := o.contextCallsInPlace(x); ok {
 			// As kotlinc, at the contract call.
-			c.errorf(call.P, "error in contract description: callsInPlace contract cannot be applied to context parameter '%s' because context arguments can never be lambdas", p)
+			c.errorf(call.P, "ERROR_IN_CONTRACT_DESCRIPTION", "error in contract description: callsInPlace contract cannot be applied to context parameter '%s' because context arguments can never be lambdas", p)
 			continue
 		}
 		if x == nil || !o.effect(x) {
@@ -615,7 +615,7 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 			if x != nil {
 				p = x.Pos()
 			}
-			c.errorf(p, "error in contract description: not an effect that a contract can declare")
+			c.errorf(p, "ERROR_IN_CONTRACT_DESCRIPTION", "error in contract description: not an effect that a contract can declare")
 		}
 	}
 }

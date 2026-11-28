@@ -20,7 +20,7 @@ func (c *Checker) block(b *syntax.Block, want types.Type, valueUsed bool) types.
 	if lf, ok := braceless(b).(*syntax.LocalFun); ok {
 		// for (x in xs) fun f() {}: a body without braces is an
 		// expression, which a named function can't be.
-		c.errorf(lf.Decl.P, "anonymous functions with names are prohibited")
+		c.errorf(lf.Decl.P, "ANONYMOUS_FUNCTION_WITH_NAME", "anonymous functions with names are prohibited")
 	}
 	c.push()
 	t := c.stmts(b, want, valueUsed)
@@ -637,7 +637,7 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 		}
 	}
 	if t.K == types.Range {
-		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
+		c.errorf(x.Pos(), "", "ranges are only supported in 'for' loops and 'in' checks")
 	}
 	if t.K == types.Nothing {
 		return t
@@ -682,7 +682,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	case s.Type != nil:
 		t = c.resolveType(s.Type)
 		c.markRecvParam(s.Init)
-		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init))
+		c.assignable(c.value(s.Init, t), t, syntax.StartPos(s.Init), "INITIALIZER_TYPE_MISMATCH")
 	default:
 		c.elvisFull, _ = s.Init.(*syntax.Binary) // see elvisHint
 		nerrs := len(c.errs)
@@ -717,11 +717,11 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
-		c.errorf(s.P, "conflicting declarations: %s", s.Name)
+		c.errorf(s.P, "REDECLARATION", "conflicting declarations: %s", s.Name)
 		// And the local it conflicts with, as kotlinc.
 		for _, w := range c.scope.vars {
 			if prev, ok := w.Decl.(*syntax.VarStmt); ok && w.Name == s.Name && !c.hasErrorAt(prev.P, "conflicting declarations") {
-				c.errorf(prev.P, "conflicting declarations: %s", s.Name)
+				c.errorf(prev.P, "REDECLARATION", "conflicting declarations: %s", s.Name)
 			}
 		}
 	}
@@ -930,7 +930,7 @@ func (c *Checker) destructure(s *syntax.Destructure) {
 	for i, vs := range s.Stmts {
 		c.varStmt(vs)
 		if call, ok := vs.Init.(*syntax.Call); ok && i > 0 && call.Sym != nil && !call.Sym.Operator {
-			c.errorf(s.P, "'operator' modifier is required on '%s'", call.Sym.Name)
+			c.errorf(s.P, "OPERATOR_MODIFIER_REQUIRED", "'operator' modifier is required on '%s'", call.Sym.Name)
 		}
 	}
 }
@@ -967,7 +967,7 @@ func (c *Checker) castThisAssign(target syntax.Expr, p *types.VarSym) (types.Typ
 		c.castThisAssigns = map[syntax.Expr]bool{}
 	}
 	c.castThisAssigns[target] = true
-	c.errorf(target.Pos(), "val cannot be reassigned")
+	c.errorf(target.Pos(), "VAL_REASSIGNMENT", "val cannot be reassigned")
 	return t, true
 }
 
@@ -1005,7 +1005,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	case *syntax.Ident:
 		sym, _, _, ok := c.lookupVar(x.Name)
 		if !ok {
-			c.errorf(x.P, "unresolved reference: %s", x.Name)
+			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 			return types.InvalidType, false
 		}
 		if p := propParam(sym); p != nil {
@@ -1020,7 +1020,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			return t, false
 		}
 		if !sym.Mutable && !c.assignsDeferred(sym) {
-			c.errorf(x.P, "val cannot be reassigned")
+			c.errorf(x.P, "VAL_REASSIGNMENT", "val cannot be reassigned")
 			return sym.Type, false
 		}
 		if c.propVisible(sym) && !c.setterVisible(sym) {
@@ -1061,15 +1061,15 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			}
 			return t, true
 		case x.Field != nil:
-			c.errorf(x.P, "val cannot be reassigned")
+			c.errorf(x.P, "VAL_REASSIGNMENT", "val cannot be reassigned")
 			return t, false
 		case x.Getter != nil && x.Setter == nil:
 			if !missingAccessor(x.Getter) {
-				c.errorf(x.P, "val cannot be reassigned")
+				c.errorf(x.P, "VAL_REASSIGNMENT", "val cannot be reassigned")
 			}
 			return t, false
 		case x.Getter != nil && !c.javaSetterVisible(x.Setter, x.X):
-			c.errorf(x.P, invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
+			c.errorf(x.P, "INVISIBLE_SETTER", invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
 			return t, false
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class && kotlinGetter(x.Getter):
 			// A Kotlin override of a Java getter gives the property its
@@ -1093,7 +1093,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		if x.Prop == nil {
 			if t.K != types.Invalid {
-				c.errorf(x.P, "variable expected")
+				c.errorf(x.P, "VARIABLE_EXPECTED", "variable expected")
 			}
 			return types.InvalidType, false
 		}
@@ -1103,7 +1103,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			}
 		}
 		if _, this := x.X.(*syntax.This); !x.Prop.Mutable && !(this && c.assignsDeferred(x.Prop)) {
-			c.errorf(x.P, "val cannot be reassigned")
+			c.errorf(x.P, "VAL_REASSIGNMENT", "val cannot be reassigned")
 			return t, false
 		}
 		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) ||
@@ -1121,7 +1121,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		return t, true
 	}
-	c.errorf(x.Pos(), "variable expected")
+	c.errorf(x.Pos(), "VARIABLE_EXPECTED", "variable expected")
 	return types.InvalidType, false
 }
 
@@ -1203,7 +1203,7 @@ func (c *Checker) starWrite(target syntax.Expr, vt types.Type) {
 	}
 	want := types.GenericType(wt.C, args)
 	if !c.subtype(vt.NonNull(), want) {
-		c.errorf(x.P, "type mismatch: inferred type is %s but %s was expected", vt, want)
+		c.errorf(x.P, "ASSIGNMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", vt, want)
 	}
 }
 
@@ -1218,7 +1218,7 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 			// An extension of a nullable receiver: T?.iterator().
 			return c.forCalls(s)
 		}
-		c.errorf(s.Range.Pos(), "not nullable value required to call an 'iterator()' method on for-loop range")
+		c.errorf(s.Range.Pos(), "ITERATOR_ON_NULLABLE", "not nullable value required to call an 'iterator()' method on for-loop range")
 		return types.InvalidType
 	}
 	if t.NonNull().IsArray() {
@@ -1291,7 +1291,7 @@ func (c *Checker) forCalls(s *syntax.For) types.Type {
 	p, t := s.Range.Pos(), s.Range.Type()
 	none := &syntax.Call{}
 	if !c.hasFun(t, "iterator", none) {
-		c.errorf(p, "for-loop range must have an 'iterator()' method")
+		c.errorf(p, "ITERATOR_MISSING", "for-loop range must have an 'iterator()' method")
 		return types.InvalidType
 	}
 	iter, it := c.opCall(p, checked(s.Range, t), "iterator", nil, noWant)
@@ -1300,7 +1300,11 @@ func (c *Checker) forCalls(s *syntax.For) types.Type {
 	}
 	iv := c.temp(p, "iterator", iter, it)
 	if !c.hasFun(it, "hasNext", none) || !c.hasFun(it, "next", none) {
-		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		name := "HAS_NEXT_MISSING"
+		if c.hasFun(it, "hasNext", none) {
+			name = "NEXT_MISSING"
+		}
+		c.errorf(p, name, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
 		return types.InvalidType
 	}
 	hasNext, ht := c.opCall(p, tempRef(iv, p), "hasNext", nil, noWant)
@@ -1309,7 +1313,7 @@ func (c *Checker) forCalls(s *syntax.For) types.Type {
 		return types.InvalidType
 	}
 	if ht.Flex() != types.BoolType {
-		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		c.errorf(p, "HAS_NEXT_FUNCTION_TYPE_MISMATCH", "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
 		return types.InvalidType
 	}
 	s.IterVar, s.HasNextX, s.NextX = iv, hasNext, next
@@ -1505,7 +1509,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	if s.Op == syntax.ASSIGN {
 		n := len(c.errs)
 		vt := c.value(s.Value, tt)
-		c.assignable(vt, tt, syntax.StartPos(s.Value))
+		c.assignable(vt, tt, syntax.StartPos(s.Value), "ASSIGNMENT_TYPE_MISMATCH")
 		if id, ok := s.Value.(*syntax.Ident); len(c.errs) == n && !(ok && strings.HasPrefix(id.Name, "$p")) {
 			// Not a property reference's set, which is mutable still,
 			// as kotlinc's: Klass<*>::mutableProperty.
@@ -1562,7 +1566,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if kt, ok := c.loopKept[v]; v != nil && ok && len(c.errs) == n {
 			// A loop around kept v smart cast to kt for its whole body.
 			if t := c.scope.narrowed(v); t != kt {
-				c.errorf(s.P, "smart cast to '%s' is impossible, because '%s' is a local variable that the loop changes to %s", kt, v.Name, t)
+				c.errorf(s.P, "UNRESOLVED_REFERENCE", "smart cast to '%s' is impossible, because '%s' is a local variable that the loop changes to %s", kt, v.Name, t)
 			}
 		}
 		return
@@ -1603,14 +1607,14 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// An extension property plusAssign of a function type isn't an
 		// operator, though x.plusAssign(v) invokes it.
 		if mutable {
-			c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", opNames[s.Op], opNames[arithOf(s.Op)])
+			c.errorf(s.P, "ASSIGN_OPERATOR_AMBIGUITY", "assignment operators ambiguity: '%s' and '%s' both apply", opNames[s.Op], opNames[arithOf(s.Op)])
 		} else {
-			c.errorf(s.P, "property '%s' cannot be used as operator", opNames[s.Op])
+			c.errorf(s.P, "NOT_FUNCTION_AS_OPERATOR", "property '%s' cannot be used as operator", opNames[s.Op])
 		}
 		return
 	}
 	if notVar {
-		c.errorf(s.Target.Pos(), "variable expected")
+		c.errorf(s.Target.Pos(), "VARIABLE_EXPECTED", "variable expected")
 		return
 	}
 	s.OpType = tt
@@ -1631,9 +1635,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// type Nothing, an out-projected property's setter, whose
 		// assignment is an error.
 	case !ok:
-		c.errorf(s.P, "operator '%s' cannot be applied to %s and %s", s.Op, tt, vt)
+		c.errorf(s.P, "NONE_APPLICABLE", "operator '%s' cannot be applied to %s and %s", s.Op, tt, vt)
 	case rt != tt.Flex():
-		c.errorf(s.Value.Pos(), "type mismatch: inferred type is %s but %s was expected", rt, tt)
+		c.errorf(s.Value.Pos(), "ASSIGNMENT_TYPE_MISMATCH", "type mismatch: inferred type is %s but %s was expected", rt, tt)
 	default:
 		s.OpType = op
 	}
@@ -1732,8 +1736,8 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 			// As in K2, which doesn't fix a builder's variable for the
 			// element that x[i]++ reads and writes: its get and its set
 			// aren't found.
-			c.errorf(ix.P, "unresolved reference: get")
-			c.errorf(ix.P, "unresolved reference: set")
+			c.errorf(ix.P, "UNRESOLVED_REFERENCE", "unresolved reference: get")
+			c.errorf(ix.P, "UNRESOLVED_REFERENCE", "unresolved reference: set")
 			return types.InvalidType
 		}
 		// An element of a list or a map: x.set(i, x.get(i).inc()).
@@ -1787,7 +1791,7 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return result(c.incDecOp(u, t, keep))
 	}
 	if t.K != types.Invalid && !t.Flex().IsNumeric() && t.Flex() != types.CharType {
-		c.errorf(u.P, "operator '%s' cannot be applied to %s", u.Op, t)
+		c.errorf(u.P, "UNRESOLVED_REFERENCE", "operator '%s' cannot be applied to %s", u.Op, t)
 		return types.InvalidType
 	}
 	return t
@@ -1837,7 +1841,7 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		p, recv = m.Prop, m.X
 	}
 	if p == nil || !p.Lateinit || p.Kind != types.Prop && p.Kind != types.Global {
-		c.errorf(x.P, "this declaration can only be called on a reference to a lateinit property")
+		c.errorf(x.P, "LATEINIT_INTRINSIC_CALL_ON_NON_LATEINIT", "this declaration can only be called on a reference to a lateinit property")
 		return types.InvalidType
 	}
 	// Where its backing field is: in its class, or for a top-level one
@@ -1847,13 +1851,13 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		inside = k == p.Owner
 	}
 	if !inside {
-		c.errorf(x.P, "backing field of 'var %s: %s' is not accessible at this point", p.Name, p.Type)
+		c.errorf(x.P, "LATEINIT_INTRINSIC_CALL_ON_NON_ACCESSIBLE_PROPERTY", "backing field of 'var %s: %s' is not accessible at this point", p.Name, p.Type)
 		return types.InvalidType
 	}
 	if fd, ok := c.fnDecl(); ok && c.inInlineFun && len(c.lambdas) == c.base && (fd.Inline || inlineAccessorDecl(fd)) {
 		// Its copies elsewhere couldn't read the field; a lambda's
 		// can, as kotlinc has it.
-		c.errorf(x.P, "this declaration cannot be used inside an inline function")
+		c.errorf(x.P, "LATEINIT_INTRINSIC_CALL_IN_INLINE_FUNCTION", "this declaration cannot be used inside an inline function")
 	}
 	x.X, x.Prop, x.Builtin = recv, p, types.IsInitialized
 	return types.BoolType
@@ -1873,7 +1877,7 @@ func (c *Checker) fnDecl() (*syntax.FunDecl, bool) {
 // replaces with a read of the field.
 func (c *Checker) lateinitIntrinsic(x *syntax.Member) {
 	if g := x.Getter; g != nil && g.Ext && g.Name == "isInitialized" && g.Facade == "kotlin/LateinitKt" {
-		c.errorf(x.P, "this declaration can only be called on a property literal (e.g. 'Foo::bar')")
+		c.errorf(x.P, "LATEINIT_INTRINSIC_CALL_ON_NON_LITERAL", "this declaration can only be called on a property literal (e.g. 'Foo::bar')")
 	}
 }
 

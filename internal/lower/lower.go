@@ -320,7 +320,8 @@ func (l *lowerer) end(n psi.NodeRef) syntax.Pos { return l.posAt(n.Range().End) 
 // ---- errors ----
 
 func (l *lowerer) failAt(pos syntax.Pos, format string, args ...any) {
-	l.err = &syntax.Error{File: l.path, Pos: pos, Msg: fmt.Sprintf(format, args...)}
+	msg := fmt.Sprintf(format, args...)
+	l.err = &syntax.Error{File: l.path, Pos: pos, Msg: msg, Name: syntax.ErrorName(msg)}
 	panic(bailout{})
 }
 
@@ -334,7 +335,8 @@ func (l *lowerer) unsupported(pos syntax.Pos, feature, format string, args ...an
 }
 
 func (l *lowerer) errorLater(pos syntax.Pos, format string, args ...any) {
-	l.later = append(l.later, &syntax.Error{File: l.path, Pos: pos, Msg: fmt.Sprintf(format, args...)})
+	msg := fmt.Sprintf(format, args...)
+	l.later = append(l.later, &syntax.Error{File: l.path, Pos: pos, Msg: msg, Name: syntax.ErrorName(msg)})
 }
 
 // Fail, Later and Unsupported report the errors of the checks shared with

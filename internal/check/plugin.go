@@ -17,7 +17,7 @@ func (c *Checker) coerceCall(x *syntax.Call) types.Type {
 	x.Builtin = types.UnsafeCoerce
 	x.Sym = &types.FunSym{Name: "kc$coerce", Resolved: true}
 	if len(x.TypeArgs) != 1 || x.TypeArgs[0].Type == nil || len(x.Args) != 1 {
-		c.errorf(x.P, "kc$coerce takes a type argument and an argument")
+		c.errorf(x.P, "", "kc$coerce takes a type argument and an argument")
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -27,7 +27,7 @@ func (c *Checker) coerceCall(x *syntax.Call) types.Type {
 		return types.InvalidType
 	}
 	if !(types.Unboxed(from) && c.sameType(types.Repr(from), to) || types.Unboxed(to) && c.sameType(types.Repr(to), from)) {
-		c.errorf(x.P, "kc$coerce can't coerce %s to %s", from, to)
+		c.errorf(x.P, "", "kc$coerce can't coerce %s to %s", from, to)
 		return types.InvalidType
 	}
 	return to

@@ -68,12 +68,12 @@ func expectActual(checkers []*Checker) {
 	for _, c := range checkers {
 		for _, d := range c.file.Expects {
 			if k, p, ok := declKey(c.file.Package, d); ok && !actuals[k] {
-				c.errorf(p, "the 'expect' declaration '%s' has no 'actual' declaration", k.name)
+				c.errorf(p, "NOT_A_MULTIPLATFORM_COMPILATION", "the 'expect' declaration '%s' has no 'actual' declaration", k.name)
 			}
 		}
 		for _, d := range c.file.Decls {
 			if k, p, ok := declKey(c.file.Package, d); ok && actual(d) && !expects[k] {
-				c.errorf(p, "'%s' has no corresponding 'expect' declaration", k.name)
+				c.errorf(p, "NOT_A_MULTIPLATFORM_COMPILATION", "'%s' has no corresponding 'expect' declaration", k.name)
 			}
 		}
 	}
@@ -100,7 +100,7 @@ func (c *Checker) notMultiplatform(d syntax.Decl) {
 	if m != nil {
 		for _, w := range m.Written {
 			if w.Name == "expect" || w.Name == "actual" {
-				c.errorf(w.P, "'expect' and 'actual' declarations can be used only in multiplatform projects (-Xmulti-platform)")
+				c.errorf(w.P, "NOT_A_MULTIPLATFORM_COMPILATION", "'expect' and 'actual' declarations can be used only in multiplatform projects (-Xmulti-platform)")
 			}
 		}
 	}
@@ -130,20 +130,20 @@ func (c *Checker) checkExpect(d syntax.Decl) {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		if d.Body != nil || d.ExprBody != nil {
-			c.errorf(d.P, "'expect' declaration cannot have a body")
+			c.errorf(d.P, "EXPECTED_DECLARATION_WITH_BODY", "'expect' declaration cannot have a body")
 		}
 	case *syntax.PropDecl:
 		switch {
 		case d.Init != nil:
-			c.errorf(d.P, "'expect' property cannot have an initializer")
+			c.errorf(d.P, "EXPECTED_PROPERTY_INITIALIZER", "'expect' property cannot have an initializer")
 		case d.Getter != nil:
-			c.errorf(d.P, "'expect' declaration cannot have a body")
+			c.errorf(d.P, "EXPECTED_DECLARATION_WITH_BODY", "'expect' declaration cannot have a body")
 		}
 	case *syntax.ClassDecl:
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.InitBlock:
-				c.errorf(m.P, "'expect' declaration cannot have a body")
+				c.errorf(m.P, "EXPECTED_DECLARATION_WITH_BODY", "'expect' declaration cannot have a body")
 			default:
 				c.checkExpect(m)
 			}
@@ -161,15 +161,15 @@ func (c *Checker) expectMembers(d *syntax.ClassDecl) {
 		switch m := m.(type) {
 		case *syntax.FunDecl:
 			if m.Expect {
-				c.errorf(m.ExpectP, "modifier 'expect' is not applicable to 'member function'")
+				c.errorf(m.ExpectP, "WRONG_MODIFIER_TARGET", "modifier 'expect' is not applicable to 'member function'")
 			}
 		case *syntax.PropDecl:
 			if m.Expect {
-				c.errorf(m.ExpectP, "modifier 'expect' is not applicable to 'member property'")
+				c.errorf(m.ExpectP, "WRONG_MODIFIER_TARGET", "modifier 'expect' is not applicable to 'member property'")
 			}
 		case *syntax.ClassDecl:
 			if m.Expect {
-				c.errorf(m.ExpectP, "modifier 'expect' is not applicable to 'nested class'")
+				c.errorf(m.ExpectP, "WRONG_MODIFIER_TARGET", "modifier 'expect' is not applicable to 'nested class'")
 			}
 		}
 	}

@@ -114,7 +114,7 @@ func (c *Checker) javaNamedArgs(x *syntax.Call, f *types.FunSym) {
 	}
 	for i, a := range x.Args {
 		if x.Name(i) != "" {
-			c.errorf(a.Pos(), "named arguments are not allowed for non-Kotlin functions")
+			c.errorf(a.Pos(), "NAMED_ARGUMENTS_NOT_ALLOWED", "named arguments are not allowed for non-Kotlin functions")
 			return
 		}
 	}

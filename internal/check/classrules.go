@@ -18,13 +18,13 @@ func (c *Checker) classRules(d *syntax.ClassDecl) {
 		c.sealedConstructors(d)
 	}
 	if d.Sealed && d.Fun {
-		c.errorf(modPos(d.Written, "sealed", d.P), "'sealed' modifier is not allowed on fun interfaces")
+		c.errorf(modPos(d.Written, "sealed", d.P), "UNSUPPORTED_SEALED_FUN_INTERFACE", "'sealed' modifier is not allowed on fun interfaces")
 	}
 	if d.Fun {
 		c.functionDelegateClash(d)
 	}
 	if st := recordSuper(d); st != nil {
-		c.errorf(st.Type.P, "classes cannot have explicit 'java.lang.Record' supertype")
+		c.errorf(st.Type.P, "ILLEGAL_JAVA_LANG_RECORD_SUPERTYPE", "classes cannot have explicit 'java.lang.Record' supertype")
 	} else if a := c.findAnnotation(d.Annotations, "", "JvmRecord", "kotlin/jvm/JvmRecord"); a != nil {
 		c.jvmRecord(d, a)
 	}
@@ -33,9 +33,9 @@ func (c *Checker) classRules(d *syntax.ClassDecl) {
 		// arguments, which the JVM erases.
 		switch {
 		case len(d.TypeParams) > 0:
-			c.errorf(d.TypeParams[0].P, "subclass of 'Throwable' cannot have generic parameters")
+			c.errorf(d.TypeParams[0].P, "GENERIC_THROWABLE_SUBCLASS", "subclass of 'Throwable' cannot have generic parameters")
 		case d.Sym.Inner && d.Sym.OuterParams > 0:
-			c.errorf(d.P, "inner class of generic class extending 'Throwable' is prohibited")
+			c.errorf(d.P, "INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS", "inner class of generic class extending 'Throwable' is prohibited")
 		}
 	}
 }
@@ -95,13 +95,13 @@ func (c *Checker) jvmRecord(d *syntax.ClassDecl, a *syntax.Annotation) {
 		for _, m := range d.Written {
 			earlier(m.P)
 		}
-		c.errorf(p, "using @JvmRecord is only allowed with -jvm-target 16 or later (or -jvm-target 15 with the -Xjvm-enable-preview flag enabled)")
+		c.errorf(p, "JVM_RECORDS_ILLEGAL_BYTECODE_TARGET", "using @JvmRecord is only allowed with -jvm-target 16 or later (or -jvm-target 15 with the -Xjvm-enable-preview flag enabled)")
 		return
 	case d.Local:
-		c.errorf(a.P, "local '@JvmRecord' classes are prohibited")
+		c.errorf(a.P, "LOCAL_JVM_RECORD", "local '@JvmRecord' classes are prohibited")
 		return
 	case d.Inner:
-		c.errorf(modPos(d.Written, "inner", d.P), "'@JvmRecord' class cannot be inner")
+		c.errorf(modPos(d.Written, "inner", d.P), "INNER_JVM_RECORD", "'@JvmRecord' class cannot be inner")
 		return
 	case d.Open || d.Abstract || d.Sealed || d.Interface:
 		p := d.P
@@ -111,40 +111,40 @@ func (c *Checker) jvmRecord(d *syntax.ClassDecl, a *syntax.Annotation) {
 				break
 			}
 		}
-		c.errorf(p, "'@JvmRecord' class must be final")
+		c.errorf(p, "NON_FINAL_JVM_RECORD", "'@JvmRecord' class must be final")
 		return
 	case d.Enum:
-		c.errorf(modPos(d.Written, "enum", d.P), "'@JvmRecord' class cannot be an enum")
+		c.errorf(modPos(d.Written, "enum", d.P), "ENUM_JVM_RECORD", "'@JvmRecord' class cannot be an enum")
 		return
 	case !d.Data:
-		c.errorf(a.P, "only data classes are allowed to be marked as '@JvmRecord'")
+		c.errorf(a.P, "NON_DATA_CLASS_JVM_RECORD", "only data classes are allowed to be marked as '@JvmRecord'")
 		return
 	}
 	if d.HasPrimary || d.Object {
 		if len(d.CtorParams) == 0 {
-			c.errorf(a.P, "primary constructor with parameters is required for '@JvmRecord' class")
+			c.errorf(a.P, "JVM_RECORD_WITHOUT_PRIMARY_CONSTRUCTOR_PARAMETERS", "primary constructor with parameters is required for '@JvmRecord' class")
 			return
 		}
 		for _, cp := range d.CtorParams[:len(d.CtorParams)-1] {
 			if cp.Param.Vararg {
-				c.errorf(cp.P, "only the last constructor parameter of '@JvmRecord' can be a vararg")
+				c.errorf(cp.P, "JVM_RECORD_NOT_LAST_VARARG_PARAMETER", "only the last constructor parameter of '@JvmRecord' can be a vararg")
 			}
 		}
 	}
 	for _, cp := range d.CtorParams {
 		if cp.IsProp && cp.Mutable {
-			c.errorf(cp.P, "constructor parameter of '@JvmRecord' class must be a 'val'")
+			c.errorf(cp.P, "JVM_RECORD_NOT_VAL_PARAMETER", "constructor parameter of '@JvmRecord' class must be a 'val'")
 		}
 	}
 	for _, m := range d.Members {
 		if pd, ok := m.(*syntax.PropDecl); ok && pd.DelegateOf == nil && !pd.Generated && pd.Sym != nil &&
 			(pd.Field != nil || pd.Sym.HasField()) {
-			c.errorf(pd.P, "non-constructor properties with backing field in '@JvmRecord' class are prohibited")
+			c.errorf(pd.P, "FIELD_IN_JVM_RECORD", "non-constructor properties with backing field in '@JvmRecord' class are prohibited")
 		}
 	}
 	for _, st := range d.Supers {
 		if st.Delegate != nil {
-			c.errorf(st.Type.P, "delegation is prohibited for '@JvmRecord' classes")
+			c.errorf(st.Type.P, "DELEGATION_BY_IN_JVM_RECORD", "delegation is prohibited for '@JvmRecord' classes")
 		}
 	}
 	if len(d.Supers) > 0 {
@@ -152,7 +152,7 @@ func (c *Checker) jvmRecord(d *syntax.ClassDecl, a *syntax.Annotation) {
 		// without.
 		st := d.Supers[0]
 		if st.Type != nil && (st.Call != nil || st.T.K == types.Any || st.T.K == types.Class && st.T.C != nil && !st.T.C.Interface && !st.T.C.Object) {
-			c.errorf(d.P, "record cannot extend a class")
+			c.errorf(d.P, "JVM_RECORD_EXTENDS_CLASS", "record cannot extend a class")
 		}
 	}
 }
@@ -170,7 +170,7 @@ func (c *Checker) dataObjectEquality(d *syntax.ClassDecl) {
 		equals := fd.Name == "equals" && len(ps) == 1 && ps[0].Type.K == types.Any && ps[0].Type.N
 		hashCode := fd.Name == "hashCode" && len(ps) == 0
 		if equals || hashCode {
-			c.errorf(modPos(fd.Written, "override", fd.P), "data objects cannot have custom implementations of 'equals' or 'hashCode'")
+			c.errorf(modPos(fd.Written, "override", fd.P), "DATA_OBJECT_CUSTOM_EQUALS_OR_HASH_CODE", "data objects cannot have custom implementations of 'equals' or 'hashCode'")
 		}
 	}
 }
@@ -184,11 +184,11 @@ func (c *Checker) sealedConstructors(d *syntax.ClassDecl) {
 	}
 	const msg = "constructors of sealed classes can only be protected or private"
 	if open(d.CtorMods) {
-		c.errorf(modPos(d.CtorMods.Written, "", d.P), msg)
+		c.errorf(modPos(d.CtorMods.Written, "", d.P), "NON_PRIVATE_OR_PROTECTED_CONSTRUCTOR_IN_SEALED", msg)
 	}
 	for _, sc := range d.Secondaries() {
 		if open(sc.Modifiers) {
-			c.errorf(modPos(sc.Written, "", sc.P), msg)
+			c.errorf(modPos(sc.Written, "", sc.P), "NON_PRIVATE_OR_PROTECTED_CONSTRUCTOR_IN_SEALED", msg)
 		}
 	}
 }
@@ -209,7 +209,7 @@ func modPos(written []syntax.Mod, name string, def syntax.Pos) syntax.Pos {
 // is never null.
 func (c *Checker) superSafeCall(x *syntax.Member) {
 	if x.Safe {
-		c.errorf(x.P, "the safe call operator is not allowed on super")
+		c.errorf(x.P, "UNEXPECTED_SAFE_CALL", "the safe call operator is not allowed on super")
 	}
 }
 
@@ -224,7 +224,7 @@ func (c *Checker) publishedApi(m *syntax.Modifiers) {
 		return
 	}
 	if a := m.Find("", "PublishedApi"); a != nil && m.Visibility != syntax.Internal {
-		c.errorf(a.P, "@PublishedApi annotation is only applicable for internal declaration")
+		c.errorf(a.P, "NON_INTERNAL_PUBLISHED_API", "@PublishedApi annotation is only applicable for internal declaration")
 	}
 }
 
@@ -238,11 +238,11 @@ func (c *Checker) functionDelegateClash(d *syntax.ClassDecl) {
 		switch m := m.(type) {
 		case *syntax.PropDecl:
 			if m.Name == "functionDelegate" && m.Recv == nil {
-				c.errorf(m.P, msg, m.Name)
+				c.errorf(m.P, "FUNCTION_DELEGATE_MEMBER_NAME_CLASH", msg, m.Name)
 			}
 		case *syntax.FunDecl:
 			if m.Name == "getFunctionDelegate" && m.Recv == nil && len(m.Params) == 0 {
-				c.errorf(m.P, msg, m.Name)
+				c.errorf(m.P, "FUNCTION_DELEGATE_MEMBER_NAME_CLASH", msg, m.Name)
 			}
 		}
 	}

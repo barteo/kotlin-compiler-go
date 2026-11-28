@@ -53,7 +53,7 @@ func (c *Checker) delegations() {
 					key = "ext " + key + " " + g.Recv.String()
 				}
 				if other := from[key]; other != nil && other != st {
-					c.errorf(d.P, "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), g.Name)
+					c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), g.Name)
 					continue
 				}
 				from[key] = st
@@ -606,7 +606,7 @@ func (c *Checker) delegatedProps(d *syntax.ClassDecl, st *syntax.SuperType, from
 			}
 			key := "prop " + p.name
 			if other := from[key]; other != nil && other != st {
-				c.errorf(d.P, "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), p.name)
+				c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), p.name)
 				continue
 			}
 			from[key] = st
@@ -727,7 +727,7 @@ func (c *Checker) delegatedExtProps(d *syntax.ClassDecl, st *syntax.SuperType, f
 		}
 		key := "ext prop " + p.name + " " + recv(p.getter).String()
 		if other := from[key]; other != nil && other != st {
-			c.errorf(d.P, "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), p.name)
+			c.errorf(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), p.name)
 			continue
 		}
 		from[key] = st
@@ -817,7 +817,7 @@ func (c *Checker) checkDelegates(d *syntax.ClassDecl) {
 		}
 		t := c.value(st.Delegate, want)
 		if want.K != types.Invalid {
-			c.assignable(t, want, st.Delegate.Pos())
+			c.assignable(t, want, st.Delegate.Pos(), "TYPE_MISMATCH")
 		}
 	}
 }

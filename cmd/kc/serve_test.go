@@ -65,7 +65,7 @@ func TestServe(t *testing.T) {
 	}{
 		{0, "", false},
 		{0, "", false},
-		{1, "bad.kt\t1:14\terror\t\t\ttype mismatch", false},
+		{1, "bad.kt\t1:14\terror\tINITIALIZER_TYPE_MISMATCH\t\ttype mismatch", false},
 		{2, "flag provided but not defined: -bogus", false},
 		{1, "not a directory", true},
 	} {

@@ -119,19 +119,19 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		if t.IsParam() && t.Param() != nil && !t.Param().Reified {
 			// The JVM's exception table names a class, which only an
 			// inlined copy knows.
-			c.errorf(cb.Type.P, "non-reified type parameters cannot be used by catch parameters")
+			c.errorf(cb.Type.P, "TYPE_PARAMETER_IN_CATCH_CLAUSE", "non-reified type parameters cannot be used by catch parameters")
 			t = types.InvalidType
 		}
 		if t.K == types.Nothing && !t.N {
-			c.errorf(cb.Type.P, "throwable type mismatch: actual type is 'Nothing'")
+			c.errorf(cb.Type.P, "THROWABLE_TYPE_MISMATCH", "throwable type mismatch: actual type is 'Nothing'")
 			t = types.InvalidType
 		}
 		if t.K != types.Invalid && !c.throwable(t) {
-			c.errorf(cb.Type.P, "the type of a catch parameter must be a subtype of Throwable")
+			c.errorf(cb.Type.P, "THROWABLE_TYPE_MISMATCH", "the type of a catch parameter must be a subtype of Throwable")
 			t = types.InvalidType
 		}
 		if t.N {
-			c.errorf(cb.Type.P, "a catch parameter can't be nullable")
+			c.errorf(cb.Type.P, "THROWABLE_TYPE_MISMATCH", "a catch parameter can't be nullable")
 		}
 		cb.Sym = &types.VarSym{Name: cb.Name, Type: t.NonNull(), Kind: types.Local, Decl: cb}
 		c.push()
@@ -149,7 +149,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		if valueUsed {
 			j, ok := c.joinBranch(result, bt, want, x.P)
 			if !ok {
-				c.errorf(cb.Body.P, "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
+				c.errorf(cb.Body.P, "", "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
 				if x.Finally != nil {
 					c.finallies = c.finallies[:len(c.finallies)-1]
 				}
@@ -335,7 +335,7 @@ func (c *Checker) throw(x *syntax.Jump) {
 	}
 	if t.K != types.Invalid && t.K != types.Nothing && (!c.throwable(t.NonNull()) || types.MayBeNull(t) && !t.P) {
 		// A platform value may be thrown, but not a nullable one.
-		c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Throwable was expected", t)
+		c.errorf(x.X.Pos(), "TYPE_MISMATCH", "type mismatch: inferred type is %s but Throwable was expected", t)
 	}
 }
 
@@ -356,7 +356,7 @@ func (c *Checker) assertCall(x *syntax.Call, b types.Builtin, name string, want 
 	c.noSpread(x)
 	args, msg := syntax.AssertArgs(x)
 	if len(x.TypeArgs) > 0 {
-		c.errorf(x.TypeArgs[0].P, "no type arguments expected for '%s'", name)
+		c.errorf(x.TypeArgs[0].P, "WRONG_NUMBER_OF_TYPE_ARGUMENTS", "no type arguments expected for '%s'", name)
 	}
 	exc := map[types.Builtin]string{
 		types.Require: "java/lang/IllegalArgumentException", types.RequireNotNull: "java/lang/IllegalArgumentException",
@@ -368,7 +368,7 @@ func (c *Checker) assertCall(x *syntax.Call, b types.Builtin, name string, want 
 	}
 	x.Sym = &types.FunSym{Name: name, Facade: exc, Resolved: true}
 	wrong := func() types.Type {
-		c.errorf(x.P, "no function '%s' takes %d arguments", name, len(x.Args))
+		c.errorf(x.P, "TOO_MANY_ARGUMENTS", "no function '%s' takes %d arguments", name, len(x.Args))
 		c.args(x, nil)
 		return types.InvalidType
 	}
@@ -388,14 +388,14 @@ func (c *Checker) assertCall(x *syntax.Call, b types.Builtin, name string, want 
 		}
 		ft := c.u.ext.funcs.Type(nil, types.AnyType)
 		c.useArity(0)
-		c.assignable(c.value(msg, ft), ft, msg.Pos())
+		c.assignable(c.value(msg, ft), ft, msg.Pos(), "ARGUMENT_TYPE_MISMATCH")
 	}
 	switch b {
 	case types.Require, types.Check:
 		if len(args) != 1 {
 			return wrong()
 		}
-		c.assignable(c.value(args[0], types.BoolType), types.BoolType, args[0].Pos())
+		c.assignable(c.value(args[0], types.BoolType), types.BoolType, args[0].Pos(), "ARGUMENT_TYPE_MISMATCH")
 		return types.UnitType
 	case types.RequireNotNull, types.CheckNotNull:
 		if len(args) != 1 {
@@ -420,7 +420,7 @@ func (c *Checker) assertCall(x *syntax.Call, b types.Builtin, name string, want 
 			return wrong()
 		}
 		if len(args) == 1 {
-			c.assignable(c.value(args[0], types.StringType), types.StringType, args[0].Pos())
+			c.assignable(c.value(args[0], types.StringType), types.StringType, args[0].Pos(), "ARGUMENT_TYPE_MISMATCH")
 		}
 	}
 	return types.NothingType

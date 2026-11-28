@@ -201,12 +201,12 @@ func (m *modChecker) deprecatedMod(written []syntax.Mod, mod, name, msg string) 
 	}
 }
 
-func (m *modChecker) errorf(p syntax.Pos, format string, args ...any) {
+func (m *modChecker) errorf(p syntax.Pos, name, format string, args ...any) {
 	if m.lines[p.Line] {
 		return
 	}
 	m.lines[p.Line] = true
-	m.c.errs = append(m.c.errs, &syntax.Error{File: m.c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	m.c.errs = append(m.c.errs, &syntax.Error{File: m.c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Name: name})
 }
 
 // mods checks the modifiers written on a declaration whose targets are
@@ -220,16 +220,16 @@ func (m *modChecker) mods(written []syntax.Mod, targets, parent tgt, isClass boo
 			prev := written[j]
 			if prev.Name == w.Name {
 				if !reported[i] {
-					m.errorf(w.P, "repeated '%s'", w.Name)
+					m.errorf(w.P, "REPEATED_MODIFIER", "repeated '%s'", w.Name)
 					reported[i] = true
 				}
 			} else if incompatibleMods(prev.Name, w.Name, isClass) {
 				if !reported[j] {
-					m.errorf(prev.P, "modifier '%s' is incompatible with '%s'", prev.Name, w.Name)
+					m.errorf(prev.P, "INCOMPATIBLE_MODIFIERS", "modifier '%s' is incompatible with '%s'", prev.Name, w.Name)
 					reported[j] = true
 				}
 				if !reported[i] {
-					m.errorf(w.P, "modifier '%s' is incompatible with '%s'", w.Name, prev.Name)
+					m.errorf(w.P, "INCOMPATIBLE_MODIFIERS", "modifier '%s' is incompatible with '%s'", w.Name, prev.Name)
 					reported[i] = true
 				}
 			}
@@ -238,12 +238,12 @@ func (m *modChecker) mods(written []syntax.Mod, targets, parent tgt, isClass boo
 			continue
 		}
 		if possible, ok := possibleTargets[w.Name]; ok && possible&targets == 0 {
-			m.errorf(w.P, "modifier '%s' is not applicable to '%s'", w.Name, targets.first())
+			m.errorf(w.P, "WRONG_MODIFIER_TARGET", "modifier '%s' is not applicable to '%s'", w.Name, targets.first())
 			reported[i] = true
 			continue
 		}
 		if allowed, ok := allowedParents[w.Name]; ok && allowed&parent == 0 {
-			m.errorf(w.P, "modifier '%s' is not applicable inside '%s'", w.Name, parent.first())
+			m.errorf(w.P, "WRONG_MODIFIER_CONTAINING_DECLARATION", "modifier '%s' is not applicable inside '%s'", w.Name, parent.first())
 			reported[i] = true
 		}
 	}
@@ -278,7 +278,7 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 			if d.Mutable {
 				for _, w := range d.Written {
 					if w.Name == "const" {
-						m.errorf(w.P, "modifier 'const' is not applicable to 'vars'")
+						m.errorf(w.P, "WRONG_MODIFIER_TARGET", "modifier 'const' is not applicable to 'vars'")
 					}
 				}
 			}
@@ -371,10 +371,10 @@ func (m *modChecker) class(cd *syntax.ClassDecl, s modScope) {
 	reported := false
 	switch {
 	case cd.Object && !companion && local:
-		m.errorf(cd.P, "named object '%s' is a singleton and cannot be local; try using anonymous object instead", cd.Name)
+		m.errorf(cd.P, "LOCAL_OBJECT_NOT_ALLOWED", "named object '%s' is a singleton and cannot be local; try using anonymous object instead", cd.Name)
 		reported = true
 	case cd.Interface && local && s.cls == nil:
-		m.errorf(cd.P, "'%s' is an interface so it cannot be local", cd.Name)
+		m.errorf(cd.P, "LOCAL_INTERFACE_NOT_ALLOWED", "'%s' is an interface so it cannot be local", cd.Name)
 		reported = true
 	case s.cls != nil:
 		reported = m.nested(cd, s, local, inner, companion)
@@ -466,7 +466,7 @@ func (m *modChecker) nested(cd *syntax.ClassDecl, s modScope, local, inner, comp
 		bad = !inner && (s.clsInner || s.clsLocal || s.inAnon)
 	}
 	if bad {
-		m.errorf(cd.P, "a class is not allowed here")
+		m.errorf(cd.P, "NESTED_CLASS_NOT_ALLOWED", "a class is not allowed here")
 	}
 	return bad
 }
@@ -481,7 +481,7 @@ func (m *modChecker) sealedSupers(cd *syntax.ClassDecl) {
 		if sd, ok := st.T.C.Decl.(*syntax.ClassDecl); ok && (m.locals[sd] || sd.Local) {
 			continue
 		}
-		m.errorf(st.Type.P, "a local class cannot extend a sealed class or interface")
+		m.errorf(st.Type.P, "SEALED_SUPERTYPE_IN_LOCAL_CLASS", "a local class cannot extend a sealed class or interface")
 		return
 	}
 }
@@ -568,7 +568,7 @@ func (m *modChecker) getterVisibility(d *syntax.PropDecl) {
 		}
 		for _, w := range am {
 			if v, ok := visibilityNamed[w.Name]; ok && v != d.Visibility {
-				m.errorf(w.P, "getter visibility must be the same as property visibility")
+				m.errorf(w.P, "GETTER_VISIBILITY_DIFFERS_FROM_PROPERTY_VISIBILITY", "getter visibility must be the same as property visibility")
 			}
 		}
 	}
@@ -587,6 +587,6 @@ func (m *modChecker) setterVisibility(d *syntax.PropDecl) {
 		return
 	}
 	if sv, pv := d.SetterVis, d.Visibility; sv != pv && sv != syntax.Private && pv != syntax.Public {
-		m.errorf(d.SetterVisP, "setter visibility must be the same or less permissive than property visibility")
+		m.errorf(d.SetterVisP, "SETTER_VISIBILITY_INCONSISTENT_WITH_PROPERTY_VISIBILITY", "setter visibility must be the same or less permissive than property visibility")
 	}
 }

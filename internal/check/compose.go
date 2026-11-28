@@ -149,7 +149,7 @@ func (c *Checker) composeCall(p syntax.Pos, name string) {
 	case composeRef:
 		c.unsupported(p, "compose", "references to composables are not supported yet")
 	case composeNone:
-		c.errorf(p, "@Composable invocations can only happen from the context of a @Composable function")
+		c.errorf(p, "COMPOSABLE_INVOCATION", "@Composable invocations can only happen from the context of a @Composable function")
 	}
 }
 
@@ -394,7 +394,7 @@ func (w *composeWalk) calls(n any) bool {
 			return false
 		case *syntax.Try:
 			if w.calls(n.Body) {
-				w.c.errorf(n.P, "try catch is not supported around composable function invocations.")
+				w.c.errorf(n.P, "ILLEGAL_TRY_CATCH_AROUND_COMPOSABLE", "try catch is not supported around composable function invocations.")
 			}
 			handlers := w.calls(n.Finally)
 			for _, ct := range n.Catches {

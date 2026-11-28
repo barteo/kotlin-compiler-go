@@ -83,7 +83,7 @@ func tokenizeArgAt(file, src string, pos Pos) ([]Token, []*Error) {
 }
 
 func (lx *lexer) errorf(p Pos, msg string) {
-	lx.errs = append(lx.errs, &Error{File: lx.file, Pos: p, Msg: msg})
+	lx.errs = append(lx.errs, &Error{File: lx.file, Pos: p, Msg: msg, Name: ErrorName(msg)})
 }
 
 func (lx *lexer) pos() Pos { return Pos{lx.line, lx.col} }
@@ -250,9 +250,9 @@ func (lx *lexer) checkGlued(i int) {
 	prev, t := &lx.toks[i-1], &lx.toks[i]
 	switch {
 	case literalToken(prev.Kind) && gluedToken(t.Kind):
-		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: t.Pos, Msg: gluedLiteralMsg})
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: t.Pos, Msg: gluedLiteralMsg, Name: "UNSUPPORTED"})
 	case gluedToken(prev.Kind) && literalToken(t.Kind):
-		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: prev.Pos, Msg: gluedLiteralMsg})
+		lx.glued = append(lx.glued, &Error{File: lx.file, Pos: prev.Pos, Msg: gluedLiteralMsg, Name: "UNSUPPORTED"})
 	}
 }
 

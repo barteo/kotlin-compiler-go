@@ -155,7 +155,7 @@ func (c *Checker) synchronizedLocks() {
 			if t.N && types.IsPrimitiveKind(t.K) || !noIdentity(t) {
 				continue
 			}
-			c.errorf(syntax.StartPos(a), "synchronizing on '%s' is forbidden", t)
+			c.errorf(syntax.StartPos(a), "SYNCHRONIZED_BLOCK_ON_VALUE_CLASS_OR_PRIMITIVE_ERROR", "synchronizing on '%s' is forbidden", t)
 		}
 		return true
 	})

@@ -56,9 +56,9 @@ func (c *Checker) suspendCall(p syntax.Pos, f *types.FunSym) {
 	l, ok, critical, monitor := c.suspendScope1()
 	switch {
 	case !ok:
-		c.errorf(p, "suspend function '%s' can only be called from a coroutine or another suspend function", f.Name)
+		c.errorf(p, "ILLEGAL_SUSPEND_FUNCTION_CALL", "suspend function '%s' can only be called from a coroutine or another suspend function", f.Name)
 	case critical:
-		c.errorf(p, "the '%s' suspension point is inside a critical section", f.Name)
+		c.errorf(p, "SUSPENSION_POINT_INSIDE_CRITICAL_SECTION", "the '%s' suspension point is inside a critical section", f.Name)
 	case monitor:
 		// As kotlinc's backend, at the suspend lambda or function whose
 		// code holds the monitor, once.
@@ -71,12 +71,12 @@ func (c *Checker) suspendCall(p syntax.Pos, f *types.FunSym) {
 			}
 		}
 		if !c.hasErrorAt(at, "a suspension point is inside a monitor") {
-			c.errorf(at, "a suspension point is inside a monitor")
+			c.errorf(at, "SUSPENSION_POINT_INSIDE_MONITOR", "a suspension point is inside a monitor")
 		}
 		// And at an inline function the lambda is in, whose copy for
 		// inlining kotlinc's backend checks too.
 		if d := syntax.SourceInline(c.fn); d != nil && l != nil && !c.hasErrorAt(d.P, "a suspension point is inside a monitor") {
-			c.errorf(d.P, "a suspension point is inside a monitor")
+			c.errorf(d.P, "SUSPENSION_POINT_INSIDE_MONITOR", "a suspension point is inside a monitor")
 		}
 	}
 }
@@ -86,7 +86,7 @@ func (c *Checker) suspendCall(p syntax.Pos, f *types.FunSym) {
 func (c *Checker) suspendFunCall(x *syntax.Call, f *types.FunSym) {
 	c.suspendCall(x.P, f)
 	if f != nil && f.Suspend && !c.restrictedCall(x, f) {
-		c.errorf(x.P, "restricted suspending functions can invoke member or extension suspending functions only on their restricted coroutine scope")
+		c.errorf(x.P, "ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL", "restricted suspending functions can invoke member or extension suspending functions only on their restricted coroutine scope")
 	}
 }
 

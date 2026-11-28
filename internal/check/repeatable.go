@@ -36,7 +36,7 @@ func (c *Checker) repeatableContainer(d *syntax.ClassDecl) {
 			continue
 		}
 		if msg := c.containerError(cls, lit.Class.C); msg != "" {
-			c.errorf(a.P, "%s", msg)
+			c.errorf(a.P, containerErrorName(msg), "%s", msg)
 		}
 	}
 	if javaRepeatable {
@@ -47,7 +47,7 @@ func (c *Checker) repeatableContainer(d *syntax.ClassDecl) {
 	}
 	for _, m := range d.Members {
 		if n, ok := m.(*syntax.ClassDecl); ok && n.Name == "Container" && kotlinRepeatable(d) {
-			c.errorf(d.Find("", "Repeatable").P, "repeatable annotation cannot have a nested class named 'Container'. This name is reserved for auto-generated container class")
+			c.errorf(d.Find("", "Repeatable").P, "REPEATABLE_ANNOTATION_HAS_NESTED_CLASS_NAMED_CONTAINER_ERROR", "repeatable annotation cannot have a nested class named 'Container'. This name is reserved for auto-generated container class")
 			return
 		}
 	}
@@ -114,4 +114,17 @@ func containerTargets(ct, at types.Targets) bool {
 		}
 	}
 	return true
+}
+
+// containerErrorName is kotlinc's name for msg, an error of containerError.
+func containerErrorName(msg string) string {
+	switch {
+	case strings.Contains(msg, "does not have a default value"):
+		return "REPEATABLE_CONTAINER_HAS_NON_DEFAULT_PARAMETER_ERROR"
+	case strings.Contains(msg, "has a shorter retention"):
+		return "REPEATABLE_CONTAINER_HAS_SHORTER_RETENTION_ERROR"
+	case strings.HasPrefix(msg, "target set of"):
+		return "REPEATABLE_CONTAINER_TARGET_SET_NOT_A_SUBSET_ERROR"
+	}
+	return "REPEATABLE_CONTAINER_MUST_HAVE_VALUE_ARRAY_ERROR"
 }
