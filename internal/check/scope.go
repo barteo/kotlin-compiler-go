@@ -25,6 +25,10 @@ type narrow struct {
 	// class that a built-in type stands for, x is java.lang.CharSequence:
 	// kotlinc keeps the Java class, whose length() is a method.
 	javaClass bool
+	// stale is set on a smart cast of a local var made once a closure
+	// assigns it: kotlinc doesn't record that, where it reports one made
+	// before as impossible (see smartcastImpossible).
+	stale bool
 }
 
 type scope struct {
@@ -180,6 +184,19 @@ func (s *scope) narrowedMember(recv, v *types.VarSym, declared types.Type) types
 		}
 	}
 	return declared
+}
+
+// narrowedStale reports whether the smart cast of variable v in effect is
+// stale.
+func (s *scope) narrowedStale(v *types.VarSym) bool {
+	for sc := s; sc != nil; sc = sc.parent {
+		for i := len(sc.narrows) - 1; i >= 0; i-- {
+			if n := sc.narrows[i]; n.sym == v && n.recv == nil && !n.onlyNot {
+				return n.stale
+			}
+		}
+	}
+	return false
 }
 
 // excluded returns the values that property v of recv, or variable v, is

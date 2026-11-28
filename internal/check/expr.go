@@ -135,6 +135,12 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		sym, t, cast, ok := c.lookupVar(x.Name)
 		if ok {
 			c.recursiveVarRef(sym, x.P)
+			if c.lastUnstable.K != types.Invalid {
+				if c.unstableCasts == nil {
+					c.unstableCasts = map[*syntax.Ident]types.Type{}
+				}
+				c.unstableCasts[x] = c.lastUnstable
+			}
 		}
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
@@ -460,7 +466,11 @@ func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool)
 			c.capture(sym, depth)
 		}
 		t := c.scope.narrowed(sym)
+		c.lastUnstable = types.Type{}
 		if t != sym.Type && isVar(sym) && !c.varStable(sym, t) {
+			if !c.scope.narrowedStale(sym) {
+				c.lastUnstable = t
+			}
 			t = sym.Type // a lambda may assign it
 		}
 		return sym, t, needsCast(sym.Type, t), true
@@ -2770,6 +2780,10 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		if fn.Name == "plus" && (t.NonNull() == types.StringType || t.K == types.Null) {
 			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
+		if w, ok := c.smartcastImpossible(fn.X, fn.Name, true); ok {
+			fn.X = checked(fn.X, w)
+			return w, nil, true
+		}
 		if !c.namedOnNonNull(t, fn.Name) {
 			// kotlinc reports the unsafe call of a function it resolves
 			// on the non-null receiver, and an unresolved one otherwise:
@@ -2779,6 +2793,14 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		}
 		c.errorf(fn.P, "UNSAFE_CALL", "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return t, nil, false
+	}
+	if !fn.Safe && !c.namedOnNonNull(t, fn.Name) && len(c.extCallees(fn.Name, t)) == 0 {
+		// Nor does the declared type take it: kotlinc resolves it on the
+		// smart-cast type that a closure's assignment rules out.
+		if w, ok := c.smartcastImpossible(fn.X, fn.Name, false); ok {
+			fn.X = checked(fn.X, w)
+			return w, nil, true
+		}
 	}
 	return t.NonNull(), nil, true
 }
@@ -3110,6 +3132,10 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// that takes another error, the read is the error type; if the
 		// non-null receiver has no property of the name, kotlinc reports
 		// it unresolved rather than the unsafe call: x.length of an Any? x.
+		if w, ok := c.smartcastImpossible(x.X, x.Name, true); ok {
+			x.X = checked(x.X, w)
+			return c.memberOn(x, w)
+		}
 		n := len(c.errs)
 		t := c.memberOn(x, xt)
 		if len(c.errs) > n && c.errs[n].Name == "UNRESOLVED_REFERENCE" && c.errs[n].Pos == x.P && !c.namedOnNonNull(xt, x.Name) {
@@ -3231,6 +3257,9 @@ func (c *Checker) memberOn(x *syntax.Member, xt types.Type) types.Type {
 	}
 	if !found {
 		if t, found = c.extProp(x, rt); !found {
+			if t, ok := c.unstableMember(x); ok {
+				return t
+			}
 			c.errorf(x.P, "UNRESOLVED_REFERENCE", "unresolved reference: %s", x.Name)
 		}
 	}

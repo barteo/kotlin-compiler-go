@@ -201,6 +201,12 @@ type Checker struct {
 	// namedRecv are the receivers of the member calls with named
 	// arguments, for ambiguousParamName.
 	namedRecv map[*syntax.Call]namedRecv
+	// unstableCasts are the smart-cast types of the local vars that
+	// lookupVar couldn't smart cast, since a closure may assign them.
+	unstableCasts map[*syntax.Ident]types.Type
+	// lastUnstable is the type that the last lookupVar couldn't smart
+	// cast its variable to, if any.
+	lastUnstable types.Type
 	// orderDependent is the property whose type extFuncVar couldn't use
 	// because it is being inferred or its inference ran into a cycle.
 	orderDependent *types.VarSym

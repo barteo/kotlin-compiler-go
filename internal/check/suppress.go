@@ -69,6 +69,7 @@ func init() {
 		"RETURN_TYPE_MISMATCH":                              typeMismatch,
 		"TYPE_MISMATCH":                                     typeMismatch,
 		"TYPEALIAS_SHOULD_EXPAND_TO_CLASS":                  `^typealias should expand to a class`,
+		"SMARTCAST_IMPOSSIBLE":                              `^smart cast to '.*' is impossible`,
 		"UNSAFE_CALL":                                       `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
 		"UPPER_BOUND_VIOLATED":                              `^type argument is not within its bounds`,
 		"VAL_REASSIGNMENT":                                  `^val cannot be reassigned`,
