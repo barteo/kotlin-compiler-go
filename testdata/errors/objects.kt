@@ -2,8 +2,8 @@ class Outer(val x: Int) {
     fun f(): Int = x
 
     class Nested {
-        fun g(): Int = x // ERROR unresolved reference: x
-        fun h(): Int = f() // ERROR unresolved reference: f
+        fun g(): Int = x // ERROR outer class 'Outer' of non-inner class cannot be used as receiver
+        fun h(): Int = f() // ERROR outer class 'Outer' of non-inner class cannot be used as receiver
     }
 
     companion object {

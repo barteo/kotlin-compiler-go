@@ -126,24 +126,23 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 90 |
 | `type mismatch: inferred type is _ but _ was expected` | 83 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 46 |
+| `unresolved reference: _` | 83 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 34 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 20 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 18 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 17 |
 | `unresolved or unsupported type: _` | 14 |
 | `no function '_' takes n arguments` | 11 |
 | `unresolved import: _` | 11 |
-| `'_' overrides nothing` | 8 |
-| `missing return statement in function '_'` | 7 |
 | `cannot use '_' as reified type parameter` | 6 |
 | `captured values cannot be initialized because of possible reassignments` | 6 |
-| `val cannot be reassigned` | 6 |
 | `'_' modifier is required on '_'` | 5 |
 | `ambiguous call: n candidates for '_' take (_)` | 5 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 5 |
+| `val cannot be reassigned` | 5 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 4 |
 | `'_' is not allowed outside a loop` | 4 |
+| `'_' overrides nothing` | 4 |
 | `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 4 |
 | `inheriting an annotation class is prohibited` | 4 |
 | `no context argument for '_' found` | 4 |
@@ -156,7 +155,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected parameter of type _` | 2 |
 | `incompatible types Int and Nothing` | 2 |
 | `multiple vararg-parameters are prohibited` | 2 |
-| *56 more* | |
+| `not enough information to infer type arguments of ::fix: specify the expected function type` | 2 |
+| *55 more* | |
 
 ## Unsupported features
 
@@ -168,7 +168,7 @@ At each step, the feature that unblocks the most tests given the ones before it.
 
 ## Warnings
 
-Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3600 of the 3667 warnings the tests expect (98.2%) on their lines, and 13 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
+Of the tests kc compiled, warnings don't decide the category: those are about errors. kc reports 3600 of the 3667 warnings the tests expect (98.2%) on their lines, and 14 warnings on lines that don't expect them, but for those a test's `DIAGNOSTICS` directive switches off.
 
 Of the 127 warnings kc reports, 95 are on every line the tests expect them and nowhere else; the table lists the other 32.
 
@@ -177,7 +177,7 @@ Of the 127 warnings kc reports, 95 are on every line the tests expect them and n
 | `DEPRECATION` | 203 | 202 | 3 |
 | `UNREACHABLE_CODE` | 158 | 157 | 0 |
 | `USELESS_IS_CHECK` | 127 | 125 | 0 |
-| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 0 |
+| `UNNECESSARY_NOT_NULL_ASSERTION` | 95 | 94 | 1 |
 | `CAST_NEVER_SUCCEEDS` | 92 | 91 | 0 |
 | `SENSELESS_COMPARISON` | 91 | 88 | 1 |
 | `USELESS_CAST` | 91 | 89 | 1 |

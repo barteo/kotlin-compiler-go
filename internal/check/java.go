@@ -1144,7 +1144,11 @@ func (c *Checker) resolveImports() {
 			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
 		}
 		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
-			c.conflictingImports[alias] = true
+			// The same class imported twice is still the class, as
+			// kotlinc resolves it, for all the error.
+			c.conflictingImports[alias] = c.conflictingImports[alias] || slices.ContainsFunc(c.file.Imports, func(o *syntax.Import) bool {
+				return slices.Contains(ps, o.P) && o.Path != imp.Path
+			})
 			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
 		}
 	}

@@ -990,7 +990,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		switch {
 		case x.Names != nil && c.namedArgError(x, cands):
 			c.args(x, nil)
-			return types.InvalidType
+			return soleResult(cands)
 		case spreadMisplaced(x, cands):
 			c.errorf(x.P, "the spread operator (*foo) can only be applied in a vararg position")
 		case why != "":
@@ -1016,7 +1016,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return c.resolve1(x, cands, want, sink)
 		default:
 			c.arityError(x, name, cands)
-			return types.InvalidType
+			return soleResult(cands)
 		}
 		c.args(x, nil)
 		return types.InvalidType
@@ -2182,6 +2182,40 @@ func (c *Checker) memberResultClass(rt types.Type, name string) *types.ClassSym 
 		out = f.Ret.C
 	}
 	return out
+}
+
+// soleResult returns the result type of the only candidate of cands, a
+// call to which takes its arguments wrongly, if it doesn't depend on
+// type parameters, or the error type. As K2 resolves such a call to its
+// one candidate, the call has its type all the same, for the code
+// around it: val s: String = foo(1, zz = 2) is a mismatch too, and
+// run { foo() } is no less an Int.
+func soleResult(cands []callee) types.Type {
+	var only *callee
+	for i := range cands {
+		if cands[i].f.Hidden {
+			continue
+		}
+		if only != nil {
+			return types.InvalidType
+		}
+		only = &cands[i]
+	}
+	if only == nil || len(only.tparams) > 0 {
+		return types.InvalidType
+	}
+	f := only.f
+	if ensureFun(f); !f.Resolved {
+		return types.InvalidType
+	}
+	t := f.Ret
+	if len(only.recv) > 0 {
+		t = only.recv.Apply(t)
+	}
+	if t.K == types.Invalid || t.HasParams() || t.HasVars() {
+		return types.InvalidType
+	}
+	return t
 }
 
 // arityError reports call x, of the function name, that no candidate of

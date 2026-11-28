@@ -847,7 +847,7 @@ func (l *lowerer) lambda(n psi.NodeRef) *syntax.Lambda {
 	} else {
 		body.P = l.pos(block)
 	}
-	body.Stmts = l.stmts(block)
+	body.Stmts, body.LostJump = l.stmts(block)
 	body.End = l.pos(rbrace)
 	if !rbrace.Valid() {
 		body.End = l.end(n)
@@ -893,10 +893,14 @@ func (l *lowerer) destructuringEntries(d psi.NodeRef) ([]string, []*syntax.TypeR
 			continue
 		}
 		if m := child(e, psi.KindMODIFIER_LIST); m.Valid() {
-			// Only annotations: (private a) is a parse error in kotlinc.
+			// Only annotations: kotlinc's (private a) is a local
+			// variable with a modifier that isn't applicable.
 			for _, c := range kids(m) {
 				if k := c.NumericKind(); k != psi.KindANNOTATION_ENTRY && k != psi.KindANNOTATION {
-					l.unexpected(m)
+					if !l.recovering {
+						l.unexpected(m)
+					}
+					l.errorLater(l.pos(c), "modifier '%s' is not applicable to 'local variable'", c.Text())
 				}
 			}
 			for len(annots) < len(names) {
@@ -1167,7 +1171,7 @@ func (l *lowerer) placeholderEntry(e psi.NodeRef) *syntax.WhenBranch {
 	if !br.Else {
 		br.Conds = []syntax.WhenCond{{X: invalid()}}
 	}
-	br.Body = &syntax.Block{P: p, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: invalid()}}}
+	br.Body = &syntax.Block{P: p, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: invalid()}}, LostJump: hasJump(e)}
 	return br
 }
 

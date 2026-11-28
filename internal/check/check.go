@@ -189,6 +189,12 @@ type Checker struct {
 	// kotlinc's class still has a primary constructor without
 	// parameters, a candidate of this() in its secondary ones.
 	superCallNoPrimary map[*syntax.ClassDecl]bool
+	// errorSupers are the classes with a supertype of the error type,
+	// whose members, as FIR's, may override anything.
+	errorSupers map[*syntax.ClassDecl]bool
+	// interfaceSupers are the classes the interfaces inherit from, which
+	// is reported: as in FIR, their members override those classes'.
+	interfaceSupers map[*syntax.ClassDecl][]*types.ClassSym
 	// orderDependent is the property whose type extFuncVar couldn't use
 	// because it is being inferred or its inference ran into a cycle.
 	orderDependent *types.VarSym
@@ -246,6 +252,10 @@ type Checker struct {
 	// cyclicAt are, for a class of cyclic whose cycle goes through the
 	// class path, the supertypes that lead back to it.
 	cyclicAt map[*syntax.ClassDecl][]syntax.Pos
+	// cyclicKeep are, for a class of cyclic, its supertypes that don't
+	// lead back to it, which it keeps, as in FIR: only the supertypes in
+	// the cycle are left out.
+	cyclicKeep map[*syntax.ClassDecl][]types.Type
 	// contractAt are the positions of the contracts that dropContracts
 	// took out of the functions' bodies, by body, whose opt-in
 	// optInErrors checks.
