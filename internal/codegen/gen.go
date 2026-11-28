@@ -1411,6 +1411,9 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	for _, p := range companionFields(cd) {
 		g.propField(c, p, false)
 	}
+	if isRecord(cls) {
+		recordComponents(c, cd)
+	}
 	g.constFields(c, cd)
 	g.stableField(c, cd)
 	self := "L" + cls.Name + ";"
@@ -2270,6 +2273,37 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 		g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
 	}
 	g.fieldAnnotations(c.LastField(), as, p.Type, field)
+}
+
+// isRecord reports whether class cls is a record, a @JvmRecord data class:
+// one that extends java.lang.Record.
+func isRecord(cls *types.ClassSym) bool {
+	return cls.Super != nil && cls.Super.Name == "java/lang/Record"
+}
+
+// recordComponents adds the components of record cd's Record attribute,
+// its constructor's properties, as kotlinc writes them: with their
+// fields' generic signatures, and those of their fields' annotations
+// that Java applies to record components.
+func recordComponents(c *cf.Class, cd *syntax.ClassDecl) {
+	for _, cp := range cd.CtorParams {
+		p := cp.PropSym
+		if p == nil {
+			continue
+		}
+		m := c.AddRecordComponent(p.Name, desc(types.FieldType(p)))
+		if sig := c.FieldSignature(p.Name); sig != "" {
+			m.SetSignature(sig)
+		}
+		as, field, _ := classPropAnnotations(p)
+		var component []syntax.Annotation
+		for _, a := range as {
+			if a.Class != nil && a.Class.RecordComponent {
+				component = append(component, a)
+			}
+		}
+		writeAnnotations(m.Annotate, component, field)
+	}
 }
 
 // constFields adds the static fields of the consts of an object, or of

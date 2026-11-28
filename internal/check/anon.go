@@ -135,6 +135,10 @@ func (c *Checker) localClass(s *syntax.LocalClass) {
 		}
 		c.localClasses[sym] = localClassFrame{frame, depth}
 	})
+	// Its annotations are the statement's: classRules doesn't see them.
+	if a := c.findAnnotation(s.Annotations, "", "JvmRecord", "kotlin/jvm/JvmRecord"); a != nil && recordSuper(d) == nil {
+		c.jvmRecord(d, a)
+	}
 }
 
 // localClassFrame is a local class's capture frame, and the depth of the

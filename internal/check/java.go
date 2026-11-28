@@ -395,6 +395,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Targets |= types.TargetProperty
 		}
 		cls.TargetsKnown = known
+		cls.RecordComponent = info.JavaTargets == nil || slices.Contains(info.JavaTargets, "RECORD_COMPONENT")
 		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
 	}
 	cls.MethodAnnotations = func(name, desc string) (*classfile.MethodAnnotations, error) {
@@ -516,8 +517,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 		// javac leaves out synthetic parameters, which come first.
 		off := len(f.Params) - len(m.ParamAnnotations)
 		if t.javaTypes {
-			f.Ret = enhanceSignature(m.Annotations, f.Ret)
+			f.Ret = enhanceSignature(classfile.Nullability(m.Annotations, m.When), f.Ret)
 			for i, as := range m.ParamAnnotations {
+				as = classfile.Nullability(as, paramWhen(m, i))
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
 				// jSpecify's are type annotations: a vararg's are its
@@ -548,7 +550,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 					continue
 				}
 				if pt := f.Params[off+i].Type; pt.P && pt.IsParam() {
-					if pt = enhance(as, pt); !pt.N {
+					if pt = enhance(classfile.Nullability(as, paramWhen(m, i)), pt); !pt.N {
 						pt.D = true
 						f.Params[off+i].Type = pt
 					}
@@ -710,20 +712,33 @@ func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.
 	if !t.javaTypes {
 		return ft
 	}
-	if e := enhance(fd.Annotations, ft); !e.IsPrimitive() {
+	if e := enhance(classfile.Nullability(fd.Annotations, fd.When), ft); !e.IsPrimitive() {
 		return e
 	}
 	return ft
 }
 
+// paramWhen returns the when element of the JSR-305 @Nonnull of method
+// m's parameter i, by its index in m.ParamAnnotations
+// (classfile.Member.ParamWhen).
+func paramWhen(m classfile.Member, i int) string {
+	if i < len(m.ParamWhen) {
+		return m.ParamWhen[i]
+	}
+	return ""
+}
+
 // Nullability annotations kotlinc reads on Java declarations, by
 // descriptor: true for those that make a type non-null, false for
-// nullable. JSR-305's javax.annotation ones and androidx's RecentlyNonNull
-// and RecentlyNullable only warn by default, and leave platform types as
-// they are.
+// nullable. JSR-305's @javax.annotation.Nonnull is as its when element
+// makes it (classfile.Nullability). The other JSR-305 annotations that
+// say what a type is, its nicknames (TypeQualifierNickname) and defaults
+// (TypeQualifierDefault), such as Spring's @NonNullApi, and androidx's
+// RecentlyNonNull and RecentlyNullable, only warn by default, and leave
+// platform types as they are.
 var javaNullability = func() map[string]bool {
 	m := map[string]bool{}
-	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull",
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "javax/annotation/Nonnull", "androidx/annotation/NonNull",
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
@@ -731,7 +746,8 @@ var javaNullability = func() map[string]bool {
 		"org/jspecify/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
-	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable",
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "javax/annotation/Nullable",
+		"javax/annotation/CheckForNull", "androidx/annotation/Nullable",
 		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
@@ -3882,8 +3898,10 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
 		annotElem = true
-	case recordComponent(cls, x.Name):
-		getterName, special = x.Name, true // a Java record's component: x()
+	case recordComponent(cls, x.Name) && !slices.ContainsFunc(c.javaMethods(cls, getterName), func(f *types.FunSym) bool { return len(f.Params) == 0 }):
+		// A Java record's component: x(), unless the record has a getX(),
+		// which K2 reads as its property.
+		getterName, special = x.Name, true
 	}
 	setterName := types.SetterName(x.Name)
 	// Not those of an earlier check of x, an extension property's: a

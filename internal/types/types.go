@@ -995,6 +995,11 @@ type ClassSym struct {
 	// on a type. They decide where an annotation without a use-site
 	// target goes, as Kotlin's default rule does.
 	TargetsRead bool
+	// RecordComponent is set on an annotation class that Java applies to
+	// record components: one whose Java @Target has RECORD_COMPONENT, or
+	// that has none. A record's component has those of its field's
+	// annotations, as kotlinc writes it.
+	RecordComponent bool
 	// Repeatable is set on an annotation class annotated @Repeatable,
 	// @JvmRepeatable or Java's @Repeatable: an element can have several
 	// of its annotations.

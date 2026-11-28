@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -128,4 +130,33 @@ func noIdentity(t types.Type) bool {
 		return ensured(t.C).Value
 	}
 	return false
+}
+
+// synchronizedLocks reports the calls of kotlin's synchronized whose lock
+// has no consistent identity, as kotlinc does
+// (SYNCHRONIZED_BLOCK_ON_VALUE_CLASS_OR_PRIMITIVE): synchronized(1) {}
+// locks a new box each time. A nullable primitive, Int?, is a box and
+// isn't reported, but a nullable value class, V?, is.
+func (c *Checker) synchronizedLocks() {
+	walkCode(c.file.Decls, func(n any) bool {
+		x, ok := n.(*syntax.Call)
+		if !ok || x.Sym == nil || x.Invoke || x.Sym.Name != "synchronized" || !strings.HasPrefix(x.Sym.Facade, "kotlin/StandardKt") {
+			return true
+		}
+		for i, a := range x.Args {
+			p := i
+			if i < len(x.ArgMap) {
+				p = x.ArgMap[i]
+			}
+			if p != 0 || a == nil {
+				continue
+			}
+			t := a.Type()
+			if t.N && types.IsPrimitiveKind(t.K) || !noIdentity(t) {
+				continue
+			}
+			c.errorf(syntax.StartPos(a), "synchronizing on '%s' is forbidden", t)
+		}
+		return true
+	})
 }

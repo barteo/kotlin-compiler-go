@@ -44,6 +44,13 @@ func (c *Checker) localAnnotations(as []syntax.Annotation, site annotSite) {
 	}
 	n := len(c.errs)
 	c.checkAnnotations(as, c.cls, site, true)
+	c.dropRepeatedErrors(n)
+}
+
+// dropRepeatedErrors drops the errors reported since there were n that
+// were reported before, as by an earlier check of the same local code,
+// which a lambda's is when it is checked again.
+func (c *Checker) dropRepeatedErrors(n int) {
 	if len(c.errs) == n {
 		return
 	}
@@ -807,9 +814,14 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		if d.Sym != nil && !hasField && !externalAccessors(d) {
 			// Its annotations go to the property, as it has no field.
 			site.targets &^= types.TargetField
-			site.name = "member property without backing field or delegate"
+			if d.Field != nil {
+				site.name += " with delegate"
+			} else {
+				site.name += " without backing field or delegate"
+			}
 		}
 		c.annotations(d.Annotations, owner, site)
+		c.volatile(d.Annotations, d.Mutable, d.Field != nil)
 		if d.Field != nil {
 			c.noAllTarget(d.Annotations, "delegated properties")
 		} else if d.Sym != nil {
@@ -883,6 +895,9 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				}
 			} else {
 				c.allTargets(cp.Modifiers.Annotations, true, cp.Mutable, !cls.Annotation)
+				c.volatile(cp.Modifiers.Annotations, cp.Mutable, false)
+				c.synchronized(&cp.Modifiers, cls, "get", false, false)
+				c.synchronized(&cp.Modifiers, cls, "set", false, false)
 			}
 			if cp.IsProp && !cp.Mutable {
 				c.setOnImmutable(cp.Modifiers.Annotations)

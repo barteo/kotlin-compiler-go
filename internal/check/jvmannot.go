@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -144,7 +145,7 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 	case *syntax.FunDecl:
 		c.overloads(&d.Modifiers, owner, slices.ContainsFunc(d.Params, func(p *syntax.Param) bool { return p.Default != nil }))
-		c.synchronized(&d.Modifiers, owner, "", d.Inline)
+		c.synchronized(&d.Modifiers, owner, "", d.Inline, d.Suspend)
 		if a := d.Find("", "JvmName"); a != nil && d.AccessorOf == nil && renamesVirtual(d.Modifiers, owner) {
 			c.errorf(a.P, inapplicableJvmName)
 		}
@@ -166,11 +167,11 @@ func (c *Checker) jvmMemberAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		for i, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 			if acc != nil {
-				c.synchronized(&acc.Modifiers, owner, "", d.Inline || acc.Inline || i == 0 && d.InlineGetter || i == 1 && d.InlineSetter)
+				c.synchronized(&acc.Modifiers, owner, "", d.Inline || acc.Inline || i == 0 && d.InlineGetter || i == 1 && d.InlineSetter, false)
 			}
 		}
-		c.synchronized(&d.Modifiers, owner, "get", d.Inline || d.InlineGetter)
-		c.synchronized(&d.Modifiers, owner, "set", d.Inline || d.InlineSetter)
+		c.synchronized(&d.Modifiers, owner, "get", d.Inline || d.InlineGetter, false)
+		c.synchronized(&d.Modifiers, owner, "set", d.Inline || d.InlineSetter, false)
 		c.jvmFieldApplicable(d, owner)
 		if d.Field != nil {
 			if a := d.Find("delegate", "JvmSynthetic"); a != nil {
@@ -299,26 +300,73 @@ func (c *Checker) uselessOverloads(a *syntax.Annotation, m *syntax.Modifiers, de
 }
 
 // synchronized checks the @Synchronized, with use-site target target, of
-// a function or accessor of owner (nil at top level) with modifiers m,
-// inline if it is inline or an inline property's accessor.
-func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string, inline bool) {
+// a function or accessor of owner (nil at top level or in a block) with
+// modifiers m, inline if it is inline or an inline property's accessor,
+// suspend if it is a suspend function, as kotlinc's
+// FirSynchronizedAnnotationChecker does: it reports the first of these.
+func (c *Checker) synchronized(m *syntax.Modifiers, owner *types.ClassSym, target string, inline, suspend bool) {
 	a := m.Find(target, "Synchronized")
 	if a == nil {
 		return
 	}
-	if inline {
+	switch {
+	case inline:
 		// SYNCHRONIZED_ON_INLINE: an inline function's body is copied
 		// into its callers without the lock.
 		c.warnf(a.P, "SYNCHRONIZED_ON_INLINE", "'@Synchronized' annotation has no effect on inline functions")
-	}
-	if owner == nil {
-		return
-	}
-	switch {
+	case suspend:
+		// A suspend function may resume on another thread, which
+		// can't release the monitor.
+		c.errorf(a.P, synchronizedOnSuspend)
+	case owner == nil:
+	case owner.Annotation:
+		c.errorf(a.P, "'@Synchronized' annotation cannot be used on annotation parameters")
 	case owner.Interface:
 		c.errorf(a.P, "'@Synchronized' annotation cannot be used on interface members")
+	case owner.Value:
+		// Its methods are static ones, on the unboxed value.
+		c.errorf(a.P, "'@Synchronized' annotation has no effect on value classes")
 	case m.Abstract:
 		c.errorf(a.P, "'@Synchronized' annotation cannot be used on abstract functions")
+	}
+}
+
+// synchronizedOnSuspend is kotlinc's SYNCHRONIZED_ON_SUSPEND_ERROR.
+const synchronizedOnSuspend = "'@Synchronized' annotation is not applicable to 'suspend' functions and lambdas"
+
+// synchronizedLambda reports @Synchronized, among annotations as, on a
+// suspend lambda l, as kotlinc does (SYNCHRONIZED_ON_SUSPEND_ERROR).
+func (c *Checker) synchronizedLambda(l *syntax.Lambda, as []syntax.Annotation) {
+	if !l.Suspend && !l.SuspendMod {
+		return
+	}
+	if a := c.findAnnotation(as, "", "Synchronized", "kotlin/jvm/Synchronized"); a != nil {
+		n := len(c.errs)
+		c.errorf(a.P, synchronizedOnSuspend)
+		c.dropRepeatedErrors(n)
+	}
+}
+
+// volatile checks the @Volatile among the annotations as of a property,
+// mutable or not, delegated or not, as kotlinc does: Java's volatile
+// fields are mutable ones (VOLATILE_ON_VALUE), and a delegated property
+// has none of its own (VOLATILE_ON_DELEGATE). @field: and @delegate:
+// ones count.
+func (c *Checker) volatile(as []syntax.Annotation, mutable, delegated bool) {
+	for i := range as {
+		a := &as[i]
+		if a.Target != "" && a.Target != "field" && a.Target != "delegate" {
+			continue
+		}
+		if cls := cmp.Or(a.Class, a.Source); cls == nil || cls.Name != "kotlin/jvm/Volatile" {
+			continue
+		}
+		if delegated {
+			c.errorf(a.P, "'@Volatile' annotation cannot be used on delegated properties")
+		}
+		if !mutable {
+			c.errorf(a.P, "'@Volatile' annotation cannot be used on immutable properties")
+		}
 	}
 }
 

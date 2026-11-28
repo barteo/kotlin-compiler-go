@@ -148,6 +148,13 @@ type Member struct {
 	// out synthetic parameters, so there may be fewer than its
 	// descriptor has.
 	ParamAnnotations [][]string
+	// When is the when element of the member's JSR-305 @Nonnull, by
+	// which kotlinc reads it (Nullability), if it has one other than
+	// ALWAYS, its default: the name of a javax.annotation.meta.When
+	// constant, or "?" for another value. ParamWhen are its parameters',
+	// by parameter as ParamAnnotations, or nil if none has one.
+	When      string
+	ParamWhen []string
 	// Deprecated is the member's deprecation, or nil.
 	Deprecated *Deprecation
 	// BoundAnnotations are, for a generic method, as Info's for a class,
@@ -472,7 +479,12 @@ func Parse(data []byte) (*Info, error) {
 								break
 							}
 							m.ParamAnnotations[j] = append(m.ParamAnnotations[j], typ)
-							skipPairs(r)
+							if when := memberAnnotation(r, p, typ); when != "" {
+								if len(m.ParamWhen) < n {
+									m.ParamWhen = append(m.ParamWhen, make([]string, n-len(m.ParamWhen))...)
+								}
+								m.ParamWhen[j] = when
+							}
 						}
 					}
 					size = end - r.pos
@@ -485,7 +497,9 @@ func Parse(data []byte) (*Info, error) {
 						}
 						m.Annotations = append(m.Annotations, typ)
 						m.LowPriority = m.LowPriority || typ == "Lkotlin/internal/LowPriorityInOverloadResolution;"
-						skipPairs(r)
+						if when := memberAnnotation(r, p, typ); when != "" {
+							m.When = when
+						}
 					}
 					size = end - r.pos
 				case name == "RuntimeVisibleAnnotations":
@@ -497,6 +511,10 @@ func Parse(data []byte) (*Info, error) {
 							break
 						}
 						m.Annotations = append(m.Annotations, typ)
+						if typ == JSR305Nonnull {
+							m.When = memberAnnotation(r, p, typ)
+							continue
+						}
 						if typ == "Ljava/lang/Deprecated;" {
 							m.Deprecated = javaDeprecation(m.Deprecated)
 						}
@@ -940,6 +958,59 @@ func readValue(r *reader, p *pool, depth int) (ElementValue, bool) {
 		return v, r.err == nil
 	}
 	return v, false
+}
+
+// JSR305Nonnull is the descriptor of JSR-305's @javax.annotation.Nonnull.
+const JSR305Nonnull = "Ljavax/annotation/Nonnull;"
+
+// Nullability returns the nullability annotations that annotations as,
+// a member's or a parameter's, are to kotlinc, given when, the when
+// element of JSR-305's @Nonnull among them (Member.When): as, but with
+// @Nonnull as @CheckForNull, which JSR-305 declares as
+// @Nonnull(when = When.MAYBE), for MAYBE and NEVER, and left out, which
+// leaves a platform type, for UNKNOWN or another value.
+func Nullability(as []string, when string) []string {
+	if when == "" {
+		return as
+	}
+	out := make([]string, 0, len(as))
+	for _, a := range as {
+		switch {
+		case a != JSR305Nonnull:
+			out = append(out, a)
+		case when == "MAYBE" || when == "NEVER":
+			out = append(out, "Ljavax/annotation/CheckForNull;")
+		}
+	}
+	return out
+}
+
+// memberAnnotation reads the element-value pairs of a field's, method's
+// or parameter's annotation of type typ, and returns, if it is JSR-305's
+// @Nonnull, its when element as Member.When has it; "" otherwise.
+func memberAnnotation(r *reader, p *pool, typ string) string {
+	if typ != JSR305Nonnull {
+		skipPairs(r)
+		return ""
+	}
+	when := ""
+	for range r.u2() {
+		name, err := p.utf8(r.u2())
+		v, ok := readValue(r, p, 1)
+		switch {
+		case !ok:
+			return ""
+		case err != nil || name != "when":
+		case v.Tag == 'e' && v.Enum[0] == "Ljavax/annotation/meta/When;":
+			when = v.Enum[1]
+		default:
+			when = "?"
+		}
+	}
+	if when == "ALWAYS" {
+		return ""
+	}
+	return when
 }
 
 func skipPairs(r *reader) {

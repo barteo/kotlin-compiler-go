@@ -413,7 +413,7 @@ func (p *Pool) InvokeDynamic(bsm uint16, name, desc string) uint16 {
 
 type member struct {
 	access, name, desc uint16
-	nameStr            string // the name, for AddDelegates and HasMethod
+	nameStr            string // the name, for AddDelegates, HasMethod and FieldSignature
 	descriptor         string
 	excNames           []string // the Exceptions, by internal name
 	code               *Code
@@ -472,8 +472,11 @@ type Class struct {
 	// a sealed class or interface, if it has one.
 	Permitted []string
 	fields    []*member
-	methods   []*member
-	anns      annotations
+	// components are the record components of a record's Record
+	// attribute, which only has one if it has some.
+	components []*member
+	methods    []*member
+	anns       annotations
 }
 
 // EnclosingMethod is the method a local or anonymous class is declared
@@ -495,13 +498,32 @@ func NewClass(access uint16, name, super string) *Class {
 }
 
 func (c *Class) AddField(access uint16, name, desc string) {
-	c.fields = append(c.fields, &member{access: access, name: c.Utf8(name), desc: c.Utf8(desc), descriptor: desc})
+	c.fields = append(c.fields, &member{access: access, name: c.Utf8(name), nameStr: name, desc: c.Utf8(desc), descriptor: desc})
 }
 
 // AddConstField adds a static final field whose ConstantValue is value,
 // an Integer, Long, Float, Double or String constant of the pool.
 func (c *Class) AddConstField(access uint16, name, desc string, value uint16) {
-	c.fields = append(c.fields, &member{access: access, name: c.Utf8(name), desc: c.Utf8(desc), descriptor: desc, constant: value})
+	c.fields = append(c.fields, &member{access: access, name: c.Utf8(name), nameStr: name, desc: c.Utf8(desc), descriptor: desc, constant: value})
+}
+
+// AddRecordComponent adds a record component to the class's Record
+// attribute and returns it, for its signature and annotations.
+func (c *Class) AddRecordComponent(name, desc string) MemberRef {
+	m := &member{name: c.Utf8(name), nameStr: name, desc: c.Utf8(desc), descriptor: desc}
+	c.components = append(c.components, m)
+	return MemberRef{m}
+}
+
+// FieldSignature returns the generic signature of the class's field of a
+// name, if it has one.
+func (c *Class) FieldSignature(name string) string {
+	for _, f := range c.fields {
+		if f.nameStr == name {
+			return f.signature
+		}
+	}
+	return ""
 }
 
 // NewMethod adds a method and returns its code buffer.
@@ -734,6 +756,14 @@ func (c *Class) Bytes() []byte {
 			b = u2(b, c.Class(name))
 		}
 		classAttrs = append(classAttrs, attr{c.Utf8("PermittedSubclasses"), b})
+	}
+	if len(c.components) > 0 {
+		b := u2(nil, uint16(len(c.components)))
+		for _, m := range c.components {
+			b = u2(u2(b, m.name), m.desc)
+			b = appendAttrs(b, c.memberAttrs(nil, m))
+		}
+		classAttrs = append(classAttrs, attr{c.Utf8("Record"), b})
 	}
 	if len(c.bootstrap) > 0 {
 		// After the code, which adds bootstrap methods.

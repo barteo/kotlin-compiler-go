@@ -389,6 +389,11 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	recv := x.Recv
 	x.It, x.Recv = nil, nil
 	x.Suspend = w.suspend || x.SuspendMod
+	if x.Suspend && c.file.Annotated != nil {
+		if as, ok := c.file.Annotated[x]; ok {
+			c.synchronizedLambda(x, as)
+		}
+	}
 	x.Composable = c.u.compose && (w.composable || x.Annotated)
 	if w.composable && !c.u.compose {
 		c.unsupported(x.P, "compose", "composable lambdas need -compose")

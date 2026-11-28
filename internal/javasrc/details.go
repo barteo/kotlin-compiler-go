@@ -107,6 +107,30 @@ func (r *resolver) nullability(as []*Annotation) []string {
 	return out
 }
 
+// nonnullWhen returns the when element of JSR-305's @Nonnull among
+// annotations as, as classfile.Member.When has it: "" if there is none,
+// or it has none or ALWAYS, the name of the javax.annotation.meta.When
+// constant that the identifiers among its arguments end with, as
+// When.MAYBE does, or "?" for another value.
+func (r *resolver) nonnullWhen(as []*Annotation) string {
+	for _, a := range as {
+		if !strings.HasSuffix(a.Name, "Nonnull") || !slices.Contains(r.nullability([]*Annotation{a}), classfile.JSR305Nonnull) {
+			continue
+		}
+		if len(a.Args) == 0 {
+			return ""
+		}
+		switch w := a.Args[len(a.Args)-1]; w {
+		case "ALWAYS":
+			return ""
+		case "MAYBE", "NEVER", "UNKNOWN":
+			return w
+		}
+		return "?"
+	}
+	return ""
+}
+
 // starNullability returns the descriptor of the nullability annotation
 // that simple name names through a star import of its package, as with
 // import org.jetbrains.annotations.*, when no class it could name is

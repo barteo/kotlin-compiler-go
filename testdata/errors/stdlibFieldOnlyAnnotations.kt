@@ -7,7 +7,7 @@ annotation class PropertyField
 @Field
 val x: Int = 42
 
-@Field // ERROR not applicable to target 'member property without backing field or delegate'
+@Field // ERROR not applicable to target 'top level property without backing field or delegate'
 val y: Int
     get() = 13
 
@@ -26,7 +26,7 @@ abstract class My(@Field val w: Int) {
     @PropertyField
     abstract val b: Int
 
-    @Field // ERROR not applicable to target 'member property without backing field or delegate'
+    @Field // ERROR not applicable to target 'member property with delegate'
     val v: Int by D()
 }
 

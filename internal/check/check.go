@@ -1058,6 +1058,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
 		c.typeOfSuspend()
+		c.synchronizedLocks()
 		if !opts.Signatures {
 			c.localWarnings()
 		}
@@ -2058,6 +2059,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
 		sym.TargetsKnown, sym.TargetsRead = true, true
+		sym.RecordComponent = recordComponentAnnotation(&d.Modifiers)
 		sym.Repeatable = slices.ContainsFunc(d.Annotations, func(a syntax.Annotation) bool {
 			switch a.Name {
 			case "Repeatable", "kotlin.annotation.Repeatable", "JvmRepeatable", "kotlin.jvm.JvmRepeatable", "java.lang.annotation.Repeatable":
@@ -2649,6 +2651,18 @@ func privateField(cls *types.ClassSym) bool {
 	return !cls.Interface && !cls.Value
 }
 
+// accessorName returns the JVM name of the accessor, target "get" or
+// "set", of a property of modifiers m and name, declared in class owner:
+// @JvmName's, or for a record's, whose accessors are named as their
+// properties, as kotlinc writes them, the property's; or "" for the
+// default one.
+func accessorName(m *syntax.Modifiers, target, name string, owner *types.ClassSym) string {
+	if n := jvmName(m, target); n != "" || !isRecord(owner) {
+		return n
+	}
+	return name
+}
+
 // jvmName returns the name that @JvmName, with the use-site target
 // target, gives a declaration on the JVM, or "".
 func jvmName(m *syntax.Modifiers, target string) string {
@@ -2675,7 +2689,8 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	sym := d.Sym
 	if sym == nil {
 		sym = &types.VarSym{Name: d.Name, Kind: types.Prop, Mutable: d.Mutable, Owner: owner, Decl: d,
-			Module: c.internal(&d.Modifiers, owner, ""), JVMGetter: jvmName(&d.Modifiers, "get"), JVMSetter: jvmName(&d.Modifiers, "set")}
+			Module: c.internal(&d.Modifiers, owner, ""), JVMGetter: accessorName(&d.Modifiers, "get", d.Name, owner),
+			JVMSetter: accessorName(&d.Modifiers, "set", d.Name, owner)}
 		d.Sym = sym
 	}
 	if owner != nil {
@@ -2980,7 +2995,8 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		if cp.IsProp {
 			cp.PropSym = &types.VarSym{Name: cp.Name, Type: t, Kind: types.Prop, Mutable: cp.Mutable, Owner: cls, Decl: cp, Resolved: true,
 				Final: isFinal(cp.Modifiers, cls), Private: cp.Visibility == syntax.Private && privateField(cls),
-				Module: c.internal(&cp.Modifiers, cls, ""), JVMGetter: jvmName(&cp.Modifiers, "get"), JVMSetter: jvmName(&cp.Modifiers, "set")}
+				Module: c.internal(&cp.Modifiers, cls, ""), JVMGetter: accessorName(&cp.Modifiers, "get", cp.Name, cls),
+				JVMSetter: accessorName(&cp.Modifiers, "set", cp.Name, cls)}
 			cp.PropSym.JvmField = cp.Find("", "JvmField") != nil && !cp.PropSym.Private
 			c.memberModifiers(cp.Modifiers, cls, cp.P, "property '"+cp.Name+"'")
 			if cp.Abstract {

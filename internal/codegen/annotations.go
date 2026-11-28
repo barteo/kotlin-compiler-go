@@ -37,6 +37,26 @@ var all = placement{dflt: func(*types.ClassSym) bool { return true }}
 
 func site(s string) placement { return placement{site: s} }
 
+// places reports whether p places annotation a, of class cls: one with
+// p's use-site target, one without whose class p's default rule places,
+// and one with the use-site target all, which goes to each of a
+// property's elements its class's targets allow: its constructor
+// parameter, the property, its field, its getter and its setter's
+// parameter, as kotlinc writes it.
+func (p placement) places(a *syntax.Annotation, cls *types.ClassSym) bool {
+	switch a.Target {
+	case "":
+		return p.dflt != nil && p.dflt(cls)
+	case p.site:
+		return true
+	case "all":
+		target := map[string]types.Targets{"param": types.TargetValueParameter, "property": types.TargetProperty,
+			"field": types.TargetField, "get": types.TargetGetter, "setparam": types.TargetValueParameter}[p.site]
+		return cls.Targets&target != 0
+	}
+	return false
+}
+
 // writeAnnotations adds the annotations among as that p places. Those of
 // a repeatable annotation class with a container, as Compose's
 // @Preview's Preview.Container, go in one of its container, as kotlinc
@@ -49,10 +69,7 @@ func writeAnnotations(add adder, as []syntax.Annotation, p placement) bool {
 		if a.Class == nil {
 			continue
 		}
-		switch {
-		case a.Target == "" && p.dflt != nil && p.dflt(a.Class):
-		case a.Target != "" && a.Target == p.site:
-		default:
+		if !p.places(a, a.Class) {
 			continue
 		}
 		placed = append(placed, a)
@@ -299,13 +316,12 @@ func onField(c *types.ClassSym) bool {
 }
 
 // A constructor's property parameter's annotations without a use-site
-// target go to the parameter and the property, as Kotlin 2.2 places
-// them, or else to the field.
+// target go to the parameter, and to the property, or else to the field,
+// as far as their targets allow, as Kotlin 2.2 places them: one that
+// applies to parameters and fields goes to both.
 func onCtorParam(c *types.ClassSym) bool    { return c.Targets&types.TargetValueParameter != 0 }
 func onCtorProperty(c *types.ClassSym) bool { return onProperty(c) }
-func onCtorField(c *types.ClassSym) bool {
-	return c.Targets&(types.TargetValueParameter|types.TargetProperty) == 0 && c.Targets&types.TargetField != 0
-}
+func onCtorField(c *types.ClassSym) bool    { return onField(c) }
 
 // propertyAnnotations writes the annotations of a property that go to its
 // property target on its synthetic method getter$annotations, named after
@@ -323,7 +339,7 @@ func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, 
 		if cls == nil {
 			cls = a.Source
 		}
-		if cls != nil && (a.Target == p.site || a.Target == "" && p.dflt != nil && p.dflt(cls)) {
+		if cls != nil && p.places(a, cls) {
 			n++
 		}
 	}
